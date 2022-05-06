@@ -9,7 +9,7 @@ use std::{
     fs::File,
     rc::Rc
 };
-use pas_common::source_map::{SourceMap, SourceMapBuilder};
+use pas_common::source_map::{SourceMap, SourceMapBuilder, SourceMapEntry};
 use crate::{
     directive::{Directive, DirectiveParser},
     error::PreprocessorError
@@ -31,7 +31,7 @@ pub struct Preprocessor {
     output_lines: Vec<String>,
     comment_block: Option<CommentBlock>,
 
-    current_line: usize,
+    current_src_line: usize,
     last_char: char,
 
     opts: BuildOptions,
@@ -41,7 +41,7 @@ pub struct Preprocessor {
 
 struct CommentBlock {
     text: String,
-    span: Span,
+    src_span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -69,7 +69,7 @@ impl Preprocessor {
             output_lines: Vec::new(),
             comment_block: None,
 
-            current_line: 0,
+            current_src_line: 0,
 
             last_char: ' ',
 
@@ -79,7 +79,7 @@ impl Preprocessor {
 
     fn current_line_span(&self, col: usize) -> Span {
         let loc = Location {
-            line: self.current_line,
+            line: self.current_src_line,
             col,
         };
 
@@ -90,7 +90,7 @@ impl Preprocessor {
         for (line_num, line) in source.lines().enumerate() {
             self.process_line(line.to_string())?;
 
-            self.current_line = line_num + 1;
+            self.current_src_line = line_num + 1;
         }
 
         if let Some(condition) = self.condition_stack.last() {
@@ -108,7 +108,7 @@ impl Preprocessor {
         }
 
         if let Some(comment) = self.comment_block {
-            return Err(PreprocessorError::UnterminatedComment(comment.span));
+            return Err(PreprocessorError::UnterminatedComment(comment.src_span));
         }
 
         Ok(PreprocessedUnit {
@@ -123,17 +123,30 @@ impl Preprocessor {
     fn process_line(&mut self, mut line: String) -> Result<(), PreprocessorError> {
         let mut output = String::new();
 
+        let mut current_src_mapping = None;
+
         // line comments never contain pp directives, just discard them
         if let Some(comment_pos) = line.find("//") {
             line.truncate(comment_pos);
         };
 
         for (col, line_char) in line.chars().enumerate() {
-            let col = col + 1;
+            let mut src_mapping = current_src_mapping.get_or_insert_with(|| {
+                SourceMapEntry {
+                    src: Span {
+                        file: self.filename.clone(),
+                        start: Location::new(self.current_src_line, col),
+                        end: Location::new(self.current_src_line, col),
+                    },
+                    start: Location::new(self.output_lines.len(), output.len()),
+                    end: Location::new(self.output_lines.len(), output.len()),
+                }
+            });
+
             if let Some(comment_block) = &mut self.comment_block {
                 // continuing an existing comment
                 comment_block.text.push(line_char);
-                comment_block.span.end = Location::new(self.current_line, col + 1);
+                comment_block.src_span.end = Location::new(self.current_src_line, col + 1);
 
                 let comment_starter = comment_block.text.chars().next().unwrap();
 
@@ -147,41 +160,58 @@ impl Preprocessor {
                         self.process_directive(comment_block, col, &mut output)?;
                     }
                     self.comment_block = None;
+
+                    // start a new mapping entry after the comment closes
+                    current_src_mapping = None;
                 }
-            } else if line_char == '{' {
-                // start a new { } comment block
-                self.comment_block = Some(CommentBlock {
-                    text: "{".to_string(),
-                    span: self.current_line_span(col),
-                })
-            } else if self.last_char == '(' && line_char == '*' {
-                // start a new (* *) comment block
-                self.comment_block = Some(CommentBlock {
-                    text: "(*".to_string(),
-                    span: self.current_line_span(col.saturating_sub("(*".len())),
-                });
-                // it's a two character comment sequence so pop the (
-                output.pop();
-            } else if self.condition_active() {
-                output.push(line_char);
+            } else {
+                if line_char == '{' {
+                    let comment_src_span = self.current_line_span(col.saturating_sub("{".len()));
+
+                    // start a new { } comment block
+                    self.comment_block = Some(CommentBlock {
+                        text: "{".to_string(),
+                        src_span: comment_src_span,
+                    });
+
+                    if src_mapping.start != src_mapping.end {
+                        self.source_map.add(src_mapping.start, src_mapping.end, src_mapping.src.clone());
+                    }
+                } else if self.last_char == '(' && line_char == '*' {
+                    let comment_src_span = self.current_line_span(col.saturating_sub("(*".len()));
+
+                    // start a new (* *) comment block
+                    self.comment_block = Some(CommentBlock {
+                        text: "(*".to_string(),
+                        src_span: comment_src_span,
+                    });
+                    // it's a two character comment sequence so pop the (
+                    output.pop();
+
+                    if src_mapping.start != src_mapping.end {
+                        self.source_map.add(src_mapping.start, src_mapping.end, src_mapping.src.clone());
+                    }
+                } else if self.condition_active() {
+                    output.push(line_char);
+                }
+
+                src_mapping.src.end.col = col;
+                src_mapping.end.col = output.len();
             }
 
             self.last_char = line_char;
         }
 
-        let output_line_num = self.output_lines.len();
-        self.source_map.add(
-            Location::new(output_line_num, 1),
-            Location::new(output_line_num, output.len() + 1),
-            Span {
-                start: Location::new(self.current_line, 1),
-                end: Location::new(self.current_line, line.len() + 1),
-                file: self.filename.clone(),
+        if self.comment_block.is_none() {
+            if let Some(src_mapping) = current_src_mapping {
+                if src_mapping.start != src_mapping.end {
+                    self.source_map.add(src_mapping.start, src_mapping.end, src_mapping.src);
+                }
             }
-        );
 
-        // new line at end of real line
-        self.output_lines.push(output);
+            // new line at end of real line
+            self.output_lines.push(output);
+        }
 
         // if we're currently building a comment, add the newline to the comment text too
         if let Some(comment_block) = &mut self.comment_block {
@@ -209,7 +239,7 @@ impl Preprocessor {
                     !has_symbol
                 }
             },
-            start_line: self.current_line,
+            start_line: self.current_src_line,
         });
 
         Ok(())
@@ -228,7 +258,14 @@ impl Preprocessor {
             return Ok(());
         }
 
-        let directive_span = comment_block.span.clone();
+        let directive_span = comment_block.src_span.clone();
+
+        // totally remove the text of the directive from the output, if it expands to some other text
+        // like an include it needs to replace the directive comment completely
+        while self.output_lines.len() > directive_span.start.line {
+            *output = self.output_lines.pop().unwrap();
+        }
+        output.truncate(directive_span.start.col);
 
         // skip 2 for `{$` and take 1 less for the closing `}`
         let directive_name = comment_block
@@ -255,7 +292,7 @@ impl Preprocessor {
                 } else {
                     Err(PreprocessorError::SymbolNotDefined {
                         name: symbol,
-                        at: comment_block.span.clone(),
+                        at: comment_block.src_span.clone(),
                     })
                 }
             }
@@ -312,31 +349,46 @@ impl Preprocessor {
                     .map_err(|err| PreprocessorError::IncludeError {
                         filename,
                         err,
-                        at: directive_span,
+                        at: directive_span.clone(),
                     })?;
 
                 let pp = Preprocessor::new(full_path, self.opts.clone());
                 let include_output = pp.preprocess(&include_src)?;
 
-                let line_offset = self.output_lines.len();
-                for (i, mapping) in include_output.source_map.into_iter().enumerate() {
-                    let mut start = mapping.start;
-                    let mut end = mapping.end;
+                if !include_output.source.is_empty() {
+                    let line_offset = self.output_lines.len();
+                    let col_offset = output.len();
 
-                    start.line += line_offset;
-                    end.line += line_offset;
+                    // this excludes the global entry which is mapped to 0:0 -> 0:0
+                    let mapping_entries = include_output.source_map.into_iter().filter(|e| e.start != e.end);
+                    for mapping in mapping_entries {
+                        let mut start = mapping.start;
+                        let mut end = mapping.end;
 
-                    if i == 0 {
-                        start.col += current_col;
+                        start.line += line_offset;
+                        end.line += line_offset;
+
+                        // entries on the first line of the included file need to be offset since they're
+                        // being pasted in at the current location (subsequent lines don't include any offset)
+                        if mapping.start.line == 0 {
+                            start.col += col_offset;
+                        }
+                        if mapping.end.line == 0 {
+                            end.col += col_offset;
+                        }
+
+                        self.source_map.add(start, end, mapping.src);
                     }
 
-                    self.source_map.add(start, end, mapping.src);
-                }
+                    for include_source_line in include_output.source.lines() {
+                        output.push_str(include_source_line);
 
-                for include_source_line in include_output.source.lines() {
-                    output.push_str(include_source_line);
-                    self.output_lines.push(output.clone());
-                    output.clear();
+                        self.output_lines.push(output.clone());
+                        output.clear();
+                    }
+
+                    // actually we're still editing the last line
+                    *output = self.output_lines.pop().unwrap();
                 }
 
                 Ok(())

@@ -61,11 +61,11 @@ pub struct Args {
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
 pub enum Target {
-    Interpret,
-    Intermediate,
+    Preprocessed,
     SyntaxAst,
     TypecheckAst,
-    Preprocessed,
+    Intermediate,
+    Interpret,
 }
 
 impl FromStr for Target {

@@ -87,14 +87,18 @@ impl Lexer {
 
     // lookup the source span from `start` to the current position
     fn src_span_from(&self, start: Location) -> Span {
-        self.src_span(start, Location {
+        self.src_span(start, self.current_loc())
+    }
+
+    fn current_loc(&self) -> Location {
+        Location {
             line: self.location.line,
             col: if self.location.col == 0 {
                 0
             } else {
                 self.location.col - 1
             },
-        })
+        }
     }
 
     fn make_float_token(&mut self, len: Option<usize>) -> TokenizeResult<TokenTree> {

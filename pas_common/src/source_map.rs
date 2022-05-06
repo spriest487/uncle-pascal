@@ -36,7 +36,7 @@ impl SourceMapBuilder {
     }
 
     pub fn build(mut self) -> SourceMap {
-        self.source_map.entries.sort_by_key(|e| e.start.line);
+        self.source_map.entries.sort_by_key(|e| e.start);
 
         self.source_map
     }
@@ -49,18 +49,9 @@ pub struct SourceMap {
 
 impl SourceMap {
     pub fn lookup(&self, start: Location, end: Location) -> Span {
-        let start_line_index = match self.entries.binary_search_by_key(&start.line, |e| e.start.line) {
-            Ok(index) => index,
-            Err(insert_index) => insert_index,
-        };
+        let mut closest_entry = self.entries[0].clone();
 
-        let mut closest_entry = self.entries[start_line_index].clone();
-
-        for entry in self.entries.iter().skip(start_line_index) {
-            if entry.src.file != closest_entry.src.file {
-                continue;
-            }
-
+        for entry in self.entries.iter() {
             if entry.start <= start && entry.end >= end {
                 closest_entry = entry.clone();
             }
@@ -70,13 +61,8 @@ impl SourceMap {
         if start.col > closest_entry.start.col {
             src.start.col += start.col - closest_entry.start.col;
         }
-        if end.col < closest_entry.end.col {
-            src.end.col -= closest_entry.end.col - end.col;
-        }
-
-        if src.file.to_string_lossy().contains("Empty.pas") {
-            eprintln!("here: start={start}, end={end}, src={src}");
-        }
+        src.end.col = src.start.col + (end.col - start.col);
+        src.end.line = src.start.line + (end.line - start.line);
 
         src
     }

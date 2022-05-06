@@ -3,7 +3,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use pas_common::span::*;
 use pas_syn::IdentPath;
-use crate::{CompileError, Args};
+use crate::{CompileError, Args, Target};
 
 fn find_in_path(filename: &PathBuf, dir: &Path) -> Option<PathBuf> {
     if !dir.exists() || !dir.is_dir() {
@@ -73,8 +73,10 @@ impl SourceCollection {
             source_filenames: LinkedList::new(),
         };
 
-        // add system units
-        sources.add(&PathBuf::from("System.pas"), None)?;
+        // auto-add system units if we're going beyond parsing
+        if args.target > Target::SyntaxAst {
+            sources.add(&PathBuf::from("System.pas"), None)?;
+        }
 
         // add extra referenced units
         for unit_arg in &args.units {
