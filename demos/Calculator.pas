@@ -1,9 +1,15 @@
+unit Calculator;
+
+implementation
+
 uses System;
 
-var addCommand: Byte := 43; // '+'
-var subCommand: Byte := 45; // '-'
-var mulCommand: Byte := 42; // '*'
-var divCommand: Byte := 47; // '/'
+const addCommand: Byte = 43; // '+'
+    subCommand: Byte = 45; // '-'
+    mulCommand: Byte = 42; // '*'
+    divCommand: Byte = 47; // '/'
+
+initialization
 
 WriteLn('Enter an expression e.g. ''2*3'', ''4/2'' or ''exit''.');
 
@@ -35,15 +41,18 @@ while true do begin
         .StringTrim()
         .StrToInt();
 
-    var result :=
-        if op = addCommand then lhs + rhs
-        else if op = subCommand then lhs - rhs
-        else if op = divCommand then lhs / rhs
-        else if op = mulCommand then lhs * rhs
+    var result := case op of
+        addCommand: lhs + rhs;
+        subCommand: lhs - rhs;
+        divCommand: lhs / rhs;
+        mulCommand: lhs * rhs;
         else begin
             WriteLn('invalid operator found for command ' + command);
             -1
         end;
+    end;
 
     WriteLn(' => ' + result.IntToStr());
 end;
+
+end.

@@ -60,6 +60,8 @@ pub enum ParseError {
     InvalidFunctionImplType(TypeName),
     InvalidAssignmentExpr { span: Span },
     ExpectedSeparator { sep: Separator, span: Span },
+    EmptyConstDecl { span: Span },
+    EmptyTypeDecl { span: Span },
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -83,6 +85,8 @@ impl Spanned for ParseError {
             ParseError::InvalidFunctionImplType(tn) => tn.span(),
             ParseError::InvalidAssignmentExpr { span } => span,
             ParseError::ExpectedSeparator { span, .. } => span,
+            ParseError::EmptyConstDecl { span, .. } => span,
+            ParseError::EmptyTypeDecl { span, .. } => span,
         }
     }
 }
@@ -106,6 +110,8 @@ impl fmt::Display for ParseError {
             ParseError::InvalidFunctionImplType(..) => write!(f, "Invalid interface type for method"),
             ParseError::InvalidAssignmentExpr { .. } => write!(f, "Illegal assignment"),
             ParseError::ExpectedSeparator { .. } => write!(f, "Expected separator"),
+            ParseError::EmptyConstDecl { .. } => write!(f, "Empty const declaration"),
+            ParseError::EmptyTypeDecl { .. } => write!(f, "Empty type declaration"),
         }
     }
 }
@@ -175,6 +181,14 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::ExpectedSeparator { sep, .. } => {
                 format!("separator {} was expected after this item", sep)
+            }
+
+            ParseError::EmptyTypeDecl { .. } => {
+                format!("type declaration must contain one or more types")
+            }
+
+            ParseError::EmptyConstDecl { .. } => {
+                format!("const declaration must contain one or more constants")
             }
         };
 

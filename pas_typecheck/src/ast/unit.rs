@@ -5,6 +5,9 @@ use crate::ModuleUnit;
 pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
 pub type ConstDecl = ast::ConstDecl<TypeAnnotation>;
+pub type ConstDeclItem = ast::ConstDeclItem<TypeAnnotation>;
+pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
+pub type TypeDeclItem = ast::TypeDeclItem<TypeAnnotation>;
 
 fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context, visibility: Visibility) -> TypecheckResult<UnitDecl> {
     match decl {
@@ -111,16 +114,46 @@ fn typecheck_unit_func_decl(
 
     ctx.declare_function(name.clone(), &func_decl, visibility)?;
 
-    Ok(ast::UnitDecl::FunctionDecl {
+    Ok(UnitDecl::FunctionDecl {
         decl: func_decl,
     })
 }
 
-fn typecheck_unit_type_decl(
+pub fn typecheck_unit_type_decl(
     type_decl: &ast::TypeDecl<Span>,
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<UnitDecl> {
+    let decl = typecheck_type_decl(type_decl, visibility, ctx)?;
+
+    Ok(UnitDecl::Type {
+        decl
+    })
+}
+
+fn typecheck_type_decl(
+    type_decl: &ast::TypeDecl<Span>,
+    visibility: Visibility,
+    ctx: &mut Context,
+) -> TypecheckResult<TypeDecl> {
+    let mut items = Vec::with_capacity(type_decl.items.len());
+
+    for type_decl_item in &type_decl.items {
+        let item = typecheck_type_decl_item(type_decl_item, visibility, ctx)?;
+        items.push(item);
+    }
+
+    Ok(TypeDecl {
+        items,
+        span: type_decl.span.clone(),
+    })
+}
+
+fn typecheck_type_decl_item(
+    type_decl: &ast::TypeDeclItem<Span>,
+    visibility: Visibility,
+    ctx: &mut Context,
+) -> TypecheckResult<TypeDeclItem> {
     // type decls have an inner scope
     let ty_scope = ctx.push_scope(Environment::TypeDecl);
 
@@ -154,31 +187,58 @@ fn typecheck_unit_type_decl(
         ctx.declare_type_params(&checked_params)?;
     }
 
-    let type_decl = typecheck_type_decl(full_name, type_decl, ctx)?;
+    let type_decl = typecheck_type_decl_body(full_name, type_decl, ctx)?;
 
     ctx.pop_scope(ty_scope);
 
     match &type_decl {
-        ast::TypeDecl::Interface(iface) => {
+        TypeDeclItem::Interface(iface) => {
             ctx.declare_iface(iface.clone(), visibility)?;
         }
 
-        ast::TypeDecl::Variant(variant) => {
+        TypeDeclItem::Variant(variant) => {
             ctx.declare_variant(variant.clone(), visibility)?;
         }
 
-        ast::TypeDecl::Composite(class) => {
+        TypeDeclItem::Composite(class) => {
             ctx.declare_class(class.clone(), visibility)?;
         }
 
-        ast::TypeDecl::Alias(alias) => {
+        TypeDeclItem::Alias(alias) => {
             ctx.declare_type(alias.name.decl_name.ident.clone(), (*alias.ty).clone(), visibility)?;
         }
     }
 
-    Ok(ast::UnitDecl::Type {
-        decl: type_decl,
-    })
+    Ok(type_decl)
+}
+
+fn typecheck_type_decl_body(
+    name: Symbol,
+    type_decl: &ast::TypeDeclItem<Span>,
+    ctx: &mut Context,
+) -> TypecheckResult<TypeDeclItem> {
+    let type_decl = match type_decl {
+        ast::TypeDeclItem::Composite(class) => {
+            let class = typecheck_composite(name, class, ctx)?;
+            ast::TypeDeclItem::Composite(Rc::new(class))
+        }
+        ast::TypeDeclItem::Interface(iface) => {
+            let iface = typecheck_iface(name, iface, ctx)?;
+            ast::TypeDeclItem::Interface(Rc::new(iface))
+        }
+
+        ast::TypeDeclItem::Variant(variant) => {
+            let variant = typecheck_variant(name, variant, ctx)?;
+            ast::TypeDeclItem::Variant(Rc::new(variant))
+        }
+
+        ast::TypeDeclItem::Alias(alias) => {
+            let alias = typecheck_alias(name, alias, ctx)?;
+            ast::TypeDeclItem::Alias(Rc::new(alias))
+        }
+    };
+
+    Ok(type_decl)
 }
 
 fn typecheck_const_decl(
@@ -186,6 +246,24 @@ fn typecheck_const_decl(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<ConstDecl> {
+    let mut items = Vec::with_capacity(decl.items.len());
+
+    for const_decl_item in &decl.items {
+        let item = typecheck_const_decl_item(const_decl_item, visibility, ctx)?;
+        items.push(item);
+    }
+
+    Ok(ConstDecl {
+        items,
+        span: decl.span.clone(),
+    })
+}
+
+fn typecheck_const_decl_item(
+    decl: &ast::ConstDeclItem<Span>,
+    visibility: Visibility,
+    ctx: &mut Context,
+) -> TypecheckResult<ConstDeclItem> {
     let span = decl.span().clone();
 
     let (ty, const_val_expr) = match &decl.ty {
@@ -230,7 +308,7 @@ fn typecheck_const_decl(
         }.into(),
     );
 
-    Ok(ast::ConstDecl {
+    Ok(ConstDeclItem {
         ty: Some(ty),
         ident: decl.ident.clone(),
         val: Box::new(const_val),

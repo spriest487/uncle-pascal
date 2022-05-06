@@ -1,38 +1,10 @@
 use crate::ast::prelude::*;
 
-pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type Composite = ast::CompositeTypeDecl<TypeAnnotation>;
 pub type Member = ast::CompositeMember<TypeAnnotation>;
 pub type InterfaceDecl = ast::InterfaceDecl<TypeAnnotation>;
 pub type Variant = ast::Variant<TypeAnnotation>;
 pub type AliasDecl = ast::AliasDecl<TypeAnnotation>;
-
-pub fn typecheck_type_decl(
-    name: Symbol,
-    type_decl: &ast::TypeDecl<Span>,
-    ctx: &mut Context,
-) -> TypecheckResult<TypeDecl> {
-    match type_decl {
-        ast::TypeDecl::Composite(class) => {
-            let class = typecheck_composite(name, class, ctx)?;
-            Ok(ast::TypeDecl::Composite(Rc::new(class)))
-        }
-        ast::TypeDecl::Interface(iface) => {
-            let iface = typecheck_iface(name, iface, ctx)?;
-            Ok(ast::TypeDecl::Interface(Rc::new(iface)))
-        }
-
-        ast::TypeDecl::Variant(variant) => {
-            let variant = typecheck_variant(name, variant, ctx)?;
-            Ok(ast::TypeDecl::Variant(Rc::new(variant)))
-        }
-
-        ast::TypeDecl::Alias(alias) => {
-            let alias = typecheck_alias(name, alias, ctx)?;
-            Ok(ast::TypeDecl::Alias(Rc::new(alias)))
-        }
-    }
-}
 
 pub fn typecheck_composite(
     name: Symbol,
@@ -146,7 +118,7 @@ pub fn typecheck_variant(
     })
 }
 
-fn typecheck_alias(
+pub fn typecheck_alias(
     name: Symbol,
     alias: &ast::AliasDecl<Span>,
     ctx: &mut Context,

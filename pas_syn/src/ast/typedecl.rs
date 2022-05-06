@@ -4,7 +4,6 @@ use crate::{
 };
 use std::{
     rc::Rc,
-    hash::{Hash, Hasher}
 };
 use derivative::*;
 
@@ -325,22 +324,92 @@ impl<A: Annotation> Spanned for Variant<A> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum TypeDecl<A: Annotation> {
+#[derive(Clone, Eq, Derivative)]
+#[derivative(PartialEq, Debug, Hash)]
+pub struct TypeDecl<A: Annotation> {
+    pub items: Vec<TypeDeclItem<A>>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(Hash = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    pub span: Span,
+}
+
+impl Parse for TypeDecl<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let kw_tt = tokens.match_one(Keyword::Type)?;
+
+        let items = TypeDeclItem::parse_seq(tokens)?;
+
+        let last_item = items.last().ok_or_else(|| {
+            TracedError::trace(ParseError::EmptyTypeDecl {
+                span: kw_tt.clone().into_span()
+            })
+        })?;
+
+        let span = kw_tt.span().to(last_item.span());
+
+        Ok(TypeDecl {
+            span,
+            items,
+        })
+    }
+}
+
+impl<A: Annotation> Spanned for TypeDecl<A> {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl<A: Annotation> fmt::Display for TypeDecl<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "type")?;
+        for (i, item) in self.items.iter().enumerate() {
+            if i > 0 {
+                writeln!(f, ";")?;
+            }
+            write!(f, "\t{}", item)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum TypeDeclItem<A: Annotation> {
     Composite(Rc<CompositeTypeDecl<A>>),
     Interface(Rc<InterfaceDecl<A>>),
     Variant(Rc<Variant<A>>),
     Alias(Rc<AliasDecl<A>>),
 }
 
-impl<A: Annotation> TypeDecl<A> {
+impl<A: Annotation> TypeDeclItem<A> {
     pub fn ident(&self) -> &A::Name {
         match self {
-            TypeDecl::Composite(class) => &class.name,
-            TypeDecl::Interface(iface) => &iface.name,
-            TypeDecl::Variant(variant) => &variant.name,
-            TypeDecl::Alias(alias) => &alias.name,
+            TypeDeclItem::Composite(class) => &class.name,
+            TypeDeclItem::Interface(iface) => &iface.name,
+            TypeDeclItem::Variant(variant) => &variant.name,
+            TypeDeclItem::Alias(alias) => &alias.name,
         }
+    }
+}
+
+impl ParseSeq for TypeDeclItem<Span> {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        TypeDeclItem::parse(tokens)
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        tokens.match_one(Matcher::AnyIdent).is_some()
     }
 }
 
@@ -348,25 +417,16 @@ impl<A: Annotation> TypeDecl<A> {
 /// name. we parse it first and pass it into the parse functions for specific decl kinds.
 /// this isn't quite the same thing as a TypeName, which can be a full qualified path - a decl
 /// name is a single unqualified ident + maybe a type parameter list
-#[derive(Debug, Clone, Eq)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(PartialEq, Debug, Hash)]
 pub struct TypeDeclName {
     pub ident: Ident,
     pub type_params: Option<TypeList<Ident>>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(Hash = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub span: Span,
-}
-
-impl PartialEq for TypeDeclName {
-    fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident
-            && self.type_params == other.type_params
-    }
-}
-
-impl Hash for TypeDeclName {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ident.hash(state);
-        self.type_params.hash(state);
-    }
 }
 
 impl DeclNamed for TypeDeclName {
@@ -432,14 +492,8 @@ impl TypeDeclName {
     }
 }
 
-impl TypeDecl<Span> {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        tokens.match_one(Keyword::Type)?;
-
-        Self::parse_decl(tokens)
-    }
-
-    fn parse_decl(tokens: &mut TokenStream) -> ParseResult<Self> {
+impl Parse for TypeDeclItem<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let name = TypeDeclName::parse(tokens)?;
         tokens.match_one(Operator::Equals)?;
 
@@ -449,7 +503,7 @@ impl TypeDecl<Span> {
         match tokens.look_ahead().next() {
             Some(ref tt) if composite_kw_matcher.is_match(tt) => {
                 let composite_decl = CompositeTypeDecl::parse(tokens, name)?;
-                Ok(TypeDecl::Composite(Rc::new(composite_decl)))
+                Ok(TypeDeclItem::Composite(Rc::new(composite_decl)))
             }
 
             Some(TokenTree::Keyword {
@@ -457,7 +511,7 @@ impl TypeDecl<Span> {
                 ..
             }) => {
                 let iface_decl = InterfaceDecl::parse(tokens, name)?;
-                Ok(TypeDecl::Interface(Rc::new(iface_decl)))
+                Ok(TypeDeclItem::Interface(Rc::new(iface_decl)))
             }
 
             Some(TokenTree::Keyword {
@@ -465,14 +519,14 @@ impl TypeDecl<Span> {
                 ..
             }) => {
                 let variant_decl = Variant::parse(tokens, name)?;
-                Ok(TypeDecl::Variant(Rc::new(variant_decl)))
+                Ok(TypeDeclItem::Variant(Rc::new(variant_decl)))
             }
 
             // if it isn't a type def keyword, then it must be the name of an existing type to
             // declare an alias
             Some(..) => {
                 let alias_decl = AliasDecl::parse(tokens, name)?;
-                Ok(TypeDecl::Alias(Rc::new(alias_decl)))
+                Ok(TypeDeclItem::Alias(Rc::new(alias_decl)))
             },
 
             None => Err(TracedError::trace(ParseError::UnexpectedEOF(
@@ -483,26 +537,24 @@ impl TypeDecl<Span> {
     }
 }
 
-impl<A: Annotation> Spanned for TypeDecl<A> {
+impl<A: Annotation> Spanned for TypeDeclItem<A> {
     fn span(&self) -> &Span {
         match self {
-            TypeDecl::Composite(class) => class.span(),
-            TypeDecl::Interface(iface) => iface.span(),
-            TypeDecl::Variant(variant) => variant.span(),
-            TypeDecl::Alias(alias) => alias.span(),
+            TypeDeclItem::Composite(class) => class.span(),
+            TypeDeclItem::Interface(iface) => iface.span(),
+            TypeDeclItem::Variant(variant) => variant.span(),
+            TypeDeclItem::Alias(alias) => alias.span(),
         }
     }
 }
 
-impl<A: Annotation> fmt::Display for TypeDecl<A> {
+impl<A: Annotation> fmt::Display for TypeDeclItem<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "type {} = ", self.ident().as_local())?;
-
         match self {
-            TypeDecl::Composite(class) => write!(f, "{}", class),
-            TypeDecl::Interface(iface) => write!(f, "{}", iface),
-            TypeDecl::Variant(variant) => write!(f, "{}", variant),
-            TypeDecl::Alias(alias) => write!(f, "{}", alias),
+            TypeDeclItem::Composite(class) => write!(f, "{}", class),
+            TypeDeclItem::Interface(iface) => write!(f, "{}", iface),
+            TypeDeclItem::Variant(variant) => write!(f, "{}", variant),
+            TypeDeclItem::Alias(alias) => write!(f, "{}", alias),
         }
     }
 }

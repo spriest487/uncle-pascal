@@ -5,9 +5,10 @@ mod unit_decl;
 use std::fmt;
 use crate::{ast::*, parse::prelude::*};
 pub use self::{
-    const_decl::ConstDecl,
+    const_decl::{ConstDecl, ConstDeclItem},
     alias_decl::AliasDecl,
     unit_decl::{DeclMod, Visibility, UnitDecl, UseDecl},
+    typedecl::{TypeDecl, TypeDeclItem},
 };
 
 #[derive(Clone, Debug)]
@@ -146,21 +147,20 @@ fn parse_unit_decl(tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>> {
         }
 
         Some(tt) if tt.is_keyword(Keyword::Type) => {
-            let ty_decl = TypeDecl::parse(tokens)?;
             UnitDecl::Type {
-                decl: ty_decl,
+                decl: TypeDecl::parse(tokens)?,
             }
         }
 
         Some(tt) if tt.is_keyword(Keyword::Uses) => {
-            let uses_decl = UseDecl::parse(tokens)?;
-            UnitDecl::Uses { decl: uses_decl }
+            UnitDecl::Uses {
+                decl: UseDecl::parse(tokens)?
+            }
         }
 
         Some(tt) if tt.is_keyword(Keyword::Const) => {
-            let const_decl = ConstDecl::parse(tokens)?;
             UnitDecl::Const {
-                decl: const_decl,
+                decl: ConstDecl::parse(tokens)?,
             }
         }
 

@@ -91,21 +91,21 @@ impl Type {
         }
     }
 
-    pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
+    pub fn of_decl(type_decl: &ast::TypeDeclItem<TypeAnnotation>) -> Self {
         match type_decl {
-            ast::TypeDecl::Composite(class) if class.kind == CompositeTypeKind::Record => {
+            ast::TypeDeclItem::Composite(class) if class.kind == CompositeTypeKind::Record => {
                 Type::Record(Box::new(class.name.clone()))
             },
 
-            ast::TypeDecl::Composite(class) => Type::Class(Box::new(class.name.clone())),
+            ast::TypeDeclItem::Composite(class) => Type::Class(Box::new(class.name.clone())),
 
-            ast::TypeDecl::Variant(variant) => Type::Variant(Box::new(variant.name.clone())),
+            ast::TypeDeclItem::Variant(variant) => Type::Variant(Box::new(variant.name.clone())),
 
-            ast::TypeDecl::Interface(iface) => {
+            ast::TypeDeclItem::Interface(iface) => {
                 Type::Interface(Box::new(iface.name.qualified.clone()))
             },
 
-            ast::TypeDecl::Alias(alias) => {
+            ast::TypeDeclItem::Alias(alias) => {
                 (*alias.ty).clone()
             }
         }
