@@ -87,39 +87,60 @@ impl FunctionDecl<Span> {
 
         let func_ident = Ident::parse(tokens)?;
 
+        let mut span = func_kw.span().to(&func_ident);
+
         let type_params_list = match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
-            Some(..) => Some(TypeList::parse_type_params(tokens)?),
+            Some(..) => {
+                let type_list = TypeList::parse_type_params(tokens)?;
+                span = span.to(type_list.span());
+                Some(type_list)
+            },
             None => None,
         };
 
         let iface_ty = match tokens.match_one_maybe(Keyword::Of) {
-            Some(..) => TypeName::parse(tokens).map(Some)?,
+            Some(..) => {
+                let ty = TypeName::parse(tokens)?;
+                span = span.to(ty.span());
+                Some(ty)
+            },
             None => None,
         };
 
-        let params_group = tokens.match_one(DelimiterPair::Bracket)?;
-        let params_span = params_group.span().clone();
-        let mut params_tokens = match params_group {
-            TokenTree::Delimited(group) => group.to_inner_tokens(),
-            _ => unreachable!(),
-        };
+        let params = if let Some(params_tt) = tokens.match_one_maybe(DelimiterPair::Bracket) {
+            let params_group = match params_tt {
+                TokenTree::Delimited(group) => group,
+                _ => unreachable!(),
+            };
 
-        let params = Self::parse_params(&mut params_tokens)?;
+            span = span.to(&params_group.span);
+
+            let mut params_tokens = params_group.to_inner_tokens();
+            Self::parse_params(&mut params_tokens)?
+        } else {
+            Vec::new()
+        };
 
         let return_ty = match tokens.match_one_maybe(Separator::Colon) {
             Some(_) => {
                 // look for a return type
-                Some(TypeName::parse(tokens)?)
+                let ty = TypeName::parse(tokens)?;
+                span = span.to(ty.span());
+                Some(ty)
             },
             None => None,
         };
 
         let mods = DeclMod::parse_seq(tokens)?;
+        if let Some(last_mod) = mods.last() {
+            span = span.to(last_mod.span());
+        }
 
         let where_clause_tt = tokens.look_ahead().match_one(Keyword::Where);
         let type_params = match (type_params_list, where_clause_tt) {
             (Some(type_params_list), Some(..)) => {
                 let mut where_clause = WhereClause::parse(tokens)?;
+                span = span.to(where_clause.span());
 
                 // match parsed constraints in the where clause to type params in the param list by
                 // ident. if a param has no constraint with the same ident, it gets a None constraint instead
@@ -183,17 +204,6 @@ impl FunctionDecl<Span> {
 
             // the function has neither a type param list or a where clause
             (None, None) => None,
-        };
-
-        let sig_span = match &return_ty {
-            Some(return_ty) => func_kw.span().to(return_ty.span()),
-            None => func_kw.span().to(&params_span),
-        };
-
-        let span = if mods.is_empty() {
-            sig_span
-        } else {
-            sig_span.to(mods[mods.len() - 1].span())
         };
 
         let impl_iface = iface_ty.map(|ty| {
