@@ -86,10 +86,15 @@ impl Unit<Span> {
             // if we get unexpected tokens here, we should suggest a semicolon after the last decl as a more
             // helpful error - we know there are tokens, and we know the only way for anything other than "end"
             // to be a legal token here is to separate them from the last decl with a semicolon
-            let last_pos = tokens.context().clone();
+            let last_pos = tokens.current()
+                .map(|tt| tt.clone().into_span())
+                .unwrap_or_else(|| tokens.context().clone());
+
             tokens.match_one(Keyword::End).map_err(|mut err| {
                 if let ParseError::UnexpectedToken(..) = &err.err {
-                    err.err = ParseError::ExpectedSeparator { span: last_pos, sep: Separator::Semicolon };
+                    if tokens.current().map(|tt| tt.is_separator(Separator::Semicolon)) != Some(true) {
+                        err.err = ParseError::ExpectedSeparator { span: last_pos, sep: Separator::Semicolon };
+                    }
                 }
                 err
             })?;
@@ -142,7 +147,7 @@ fn parse_unit_decl(tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>> {
     let decl_start = UnitDecl::start_matcher();
 
     let decl = match tokens.look_ahead().match_one(decl_start) {
-        Some(tt) if tt.is_keyword(Keyword::Function) => {
+        Some(tt) if tt.is_keyword(Keyword::Function) || tt.is_keyword(Keyword::Procedure) => {
             parse_unit_func_decl(tokens)?
         }
 

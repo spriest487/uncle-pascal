@@ -83,7 +83,7 @@ pub struct FunctionDecl<A: Annotation> {
 
 impl FunctionDecl<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let func_kw = tokens.match_one(Keyword::Function)?;
+        let func_kw = tokens.match_one(Keyword::Function.or(Keyword::Procedure))?;
 
         let func_ident = Ident::parse(tokens)?;
 

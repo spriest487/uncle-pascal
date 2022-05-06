@@ -85,6 +85,7 @@ impl<A: Annotation> fmt::Display for UnitDecl<A> {
 impl UnitDecl<Span> {
     pub fn start_matcher() -> Matcher {
         Keyword::Function
+            .or(Keyword::Procedure)
             .or(Keyword::Uses)
             .or(Keyword::Type)
             .or(Keyword::Const)
