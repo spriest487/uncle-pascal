@@ -36,7 +36,9 @@ pub struct Preprocessor {
 
     opts: BuildOptions,
 
-    pub source_map: SourceMapBuilder,
+    source_map: SourceMapBuilder,
+
+    warnings: Vec<PreprocessorError>,
 }
 
 struct CommentBlock {
@@ -52,6 +54,8 @@ pub struct PreprocessedUnit {
     pub opts: BuildOptions,
 
     pub source_map: SourceMap,
+
+    pub warnings: Vec<PreprocessorError>,
 }
 
 impl Preprocessor {
@@ -74,6 +78,8 @@ impl Preprocessor {
             last_char: ' ',
 
             source_map: SourceMapBuilder::new(filename),
+
+            warnings: Vec::new(),
         }
     }
 
@@ -117,6 +123,8 @@ impl Preprocessor {
             opts: self.opts,
 
             source_map: self.source_map.build(),
+
+            warnings: self.warnings,
         })
     }
 
@@ -334,7 +342,7 @@ impl Preprocessor {
 
             Some(Directive::Mode(mode)) => {
                 if self.condition_active() {
-                    self.opts.mode = mode;
+                    self.opts.lang_mode = mode;
                 }
                 Ok(())
             }
@@ -348,12 +356,14 @@ impl Preprocessor {
                 let include_src = self.read_include(&full_path)
                     .map_err(|err| PreprocessorError::IncludeError {
                         filename,
-                        err,
+                        err: err.to_string(),
                         at: directive_span.clone(),
                     })?;
 
                 let pp = Preprocessor::new(full_path, self.opts.clone());
                 let include_output = pp.preprocess(&include_src)?;
+
+                self.warnings.extend(include_output.warnings);
 
                 if !include_output.source.is_empty() {
                     let line_offset = self.output_lines.len();
@@ -397,16 +407,18 @@ impl Preprocessor {
             None => {
                 if !self.condition_active() {
                     Ok(())
-                } else if !self.opts.strict_switches() {
-                    eprintln!("ignoring unrecognized directive {{${}}} (strict preprocessing not enabled for mode `{}`)",
-                              directive_name,
-                              self.opts.mode);
-                    Ok(())
                 } else {
-                    Err(PreprocessorError::IllegalDirective {
+                    let err = PreprocessorError::IllegalDirective {
                         directive: directive_name,
                         at: directive_span,
-                    })
+                    };
+
+                    if !self.opts.strict_switches() {
+                        self.warnings.push(err);
+                        Ok(())
+                    } else {
+                        Err(err)
+                    }
                 }
             }
         }

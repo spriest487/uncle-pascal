@@ -1,8 +1,8 @@
 use std::{
     path::PathBuf,
-    str::FromStr,
 };
 use structopt::*;
+use pas_common::LanguageMode;
 
 #[derive(StructOpt, Debug)]
 pub struct Args {
@@ -20,6 +20,9 @@ pub struct Args {
     #[structopt(name="define", short = "d")]
     pub define_syms: Vec<String>,
 
+    #[structopt(name="mode", short="m", default_value = "default", parse(try_from_str = parse_lang_mode))]
+    pub lang_mode: LanguageMode,
+
     /// additional units to compile
     #[structopt(name = "units", short = "u")]
     pub units: Vec<String>,
@@ -30,7 +33,7 @@ pub struct Args {
 
     /// target stage. intermediate targets other than `interpret` will cause
     /// compilation to stop at that stage and dump the output.
-    #[structopt(short = "t", long = "target", default_value = "interpret")]
+    #[structopt(short = "t", long = "target", default_value = "interpret", parse(try_from_str = parse_target))]
     pub target: Target,
 
     /// interpreter: log RC heap usage
@@ -68,17 +71,22 @@ pub enum Target {
     Interpret,
 }
 
-impl FromStr for Target {
-    type Err = String;
+fn parse_target(s: &str) -> Result<Target, String> {
+    match s {
+        "i" | "interpret" => Ok(Target::Interpret),
+        "ir" | "intermediate" => Ok(Target::Intermediate),
+        "p" | "parse" => Ok(Target::SyntaxAst),
+        "t" | "typecheck" => Ok(Target::TypecheckAst),
+        "pp" | "preprocess" => Ok(Target::Preprocessed),
+        _ => Err(format!("invalid output kind: {}", s)),
+    }
+}
 
-    fn from_str(s: &str) -> Result<Self, String> {
-        match s {
-            "i" | "interpret" => Ok(Target::Interpret),
-            "ir" | "intermediate" => Ok(Target::Intermediate),
-            "p" | "parse" => Ok(Target::SyntaxAst),
-            "t" | "typecheck" => Ok(Target::TypecheckAst),
-            "pp" | "preprocess" => Ok(Target::Preprocessed),
-            _ => Err(format!("invalid output kind: {}", s)),
-        }
+fn parse_lang_mode(s: &str) -> Result<LanguageMode, String> {
+    match s {
+        "delphi" | "Delphi" => Ok(LanguageMode::Delphi),
+        "fpc" | "FPC" => Ok(LanguageMode::Fpc),
+        "default" | "Default" => Ok(LanguageMode::Default),
+        _ => Err(format!("invalid language mode: {}", s)),
     }
 }

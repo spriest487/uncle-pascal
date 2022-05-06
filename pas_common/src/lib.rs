@@ -128,7 +128,7 @@ impl<T> Deref for TracedError<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuildOptions {
     pub case_sensitive: bool,
-    pub mode: Mode,
+    pub lang_mode: LanguageMode,
 
     pub verbose: bool,
 
@@ -141,7 +141,7 @@ impl Default for BuildOptions {
         BuildOptions {
             verbose: false,
             case_sensitive: true,
-            mode: Mode::Default,
+            lang_mode: LanguageMode::Default,
             pp_symbols: HashSet::new(),
             switches: HashMap::new(),
         }
@@ -166,8 +166,8 @@ impl BuildOptions {
     }
 
     pub fn strict_switches(&self) -> bool {
-        match self.mode {
-            Mode::Default => true,
+        match self.lang_mode {
+            LanguageMode::Default => true,
             _ => false,
         }
     }
@@ -178,21 +178,21 @@ impl BuildOptions {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Mode {
+pub enum LanguageMode {
     Default,
     Fpc,
     Delphi,
 }
 
-impl fmt::Display for Mode {
+impl fmt::Display for LanguageMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                Mode::Default => "Default",
-                Mode::Fpc => "FPC-compatible",
-                Mode::Delphi => "Delphi-compatible",
+                LanguageMode::Default => "Default",
+                LanguageMode::Fpc => "FPC-compatible",
+                LanguageMode::Delphi => "Delphi-compatible",
             }
         )
     }

@@ -1,5 +1,5 @@
 use regex::Regex;
-use pas_common::Mode;
+use pas_common::LanguageMode;
 
 pub enum Directive {
     Define(String),
@@ -9,7 +9,7 @@ pub enum Directive {
     EndIf,
     Else,
     ElseIf(String),
-    Mode(Mode),
+    Mode(LanguageMode),
     Switches(Vec<(String, bool)>),
     LinkLib(String),
     Include(String),
@@ -99,9 +99,9 @@ impl DirectiveParser {
             Some(Directive::ElseIf(symbol))
         } else if let Some(mode_captures) = self.mode_pattern.captures(s) {
             let mode = match mode_captures[1].to_uppercase().as_str() {
-                "FPC" => Mode::Fpc,
-                "UNCLE" => Mode::Default,
-                "DELPHI" => Mode::Delphi,
+                "FPC" => LanguageMode::Fpc,
+                "UNCLE" => LanguageMode::Default,
+                "DELPHI" => LanguageMode::Delphi,
                 unrecognized => {
                     eprintln!("unrecognized mode: {}", unrecognized);
                     return None;

@@ -1,15 +1,24 @@
-use std::{fmt, io};
 use pas_common::{
-    DiagnosticLabel,
-    DiagnosticOutput,
-    span::{Span, Spanned}
+    span::{Span, Spanned},
+    DiagnosticLabel, DiagnosticOutput,
 };
+use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PreprocessorError {
-    SymbolNotDefined { name: String, at: Span },
-    IllegalDirective { directive: String, at: Span },
-    IncludeError { filename: String, err: io::Error, at: Span },
+    SymbolNotDefined {
+        name: String,
+        at: Span,
+    },
+    IllegalDirective {
+        directive: String,
+        at: Span,
+    },
+    IncludeError {
+        filename: String,
+        err: String,
+        at: Span,
+    },
     UnexpectedEndIf(Span),
     UnterminatedCondition(Span),
     UnterminatedComment(Span),
@@ -20,27 +29,27 @@ impl fmt::Display for PreprocessorError {
         match self {
             PreprocessorError::SymbolNotDefined { name, .. } => {
                 write!(f, "symbol `{}` was not defined", name)
-            }
+            },
 
             PreprocessorError::IllegalDirective { directive, .. } => {
                 write!(f, "unrecognized directive `{}`", directive)
-            }
+            },
 
             PreprocessorError::UnexpectedEndIf(_) => {
                 write!(f, "else or endif without matching ifdef or ifndef")
-            }
+            },
 
             PreprocessorError::UnterminatedCondition(_) => {
                 write!(f, "unterminated conditional block")
-            }
+            },
 
             PreprocessorError::UnterminatedComment(_) => {
                 write!(f, "unterminated comment")
-            }
+            },
 
             PreprocessorError::IncludeError { err, .. } => {
                 write!(f, "{}", err)
-            }
+            },
         }
     }
 }

@@ -19,8 +19,10 @@ use std::{
     path::PathBuf,
     process,
 };
+use codespan_reporting::diagnostic::Severity;
 use structopt::StructOpt;
 use topological_sort::TopologicalSort;
+use crate::reporting::report_err;
 
 enum CompileOutput {
     Preprocess(Vec<PreprocessedUnit>),
@@ -82,6 +84,7 @@ fn parse(unit: PreprocessedUnit) -> Result<ast::Unit<Span>, CompileError> {
 fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
     let mut opts = BuildOptions::default();
     opts.verbose = args.verbose;
+    opts.lang_mode = args.lang_mode;
 
     for define_sym in &args.define_syms {
         opts.define(define_sym.clone());
@@ -117,6 +120,12 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         };
 
         let pp_unit = preprocess(&unit_filename, opts.clone())?;
+        for warning in &pp_unit.warnings {
+            if report_err(warning, Severity::Warning).is_err() {
+                eprintln!("warning: {}", warning);
+            }
+        }
+
         let parsed_unit = parse(pp_unit)?;
 
         let unit_ident = parsed_unit.ident.clone();
@@ -302,12 +311,8 @@ fn main() {
     let print_bt = args.backtrace;
 
     if let Err(err) = compile(&args).and_then(|output| handle_output(output, &args)) {
-        if let Err(io_err) = reporting::report_err(&err) {
-            eprintln!(
-                "error occurred displaying source for compiler message: {}",
-                io_err
-            );
-            eprintln!("{}", err);
+        if reporting::report_err(&err, Severity::Error).is_err() {
+            eprintln!("error: {}", err);
         }
 
         if print_bt {

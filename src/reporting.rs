@@ -59,7 +59,7 @@ fn output_to_report_diag(
         .with_notes(diag.notes))
 }
 
-pub fn report_err(err: &impl DiagnosticOutput) -> Result<(), FileError> {
+pub fn report_err(err: &impl DiagnosticOutput, severity: Severity) -> Result<(), FileError> {
     let out = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
     let config = codespan_reporting::term::Config::default();
 
@@ -70,7 +70,7 @@ pub fn report_err(err: &impl DiagnosticOutput) -> Result<(), FileError> {
         diag_msg,
         &mut code_map,
         LabelStyle::Primary,
-        Severity::Error,
+        severity,
     )?;
 
     codespan_reporting::term::emit(&mut out.lock(), &config, &code_map, &main_diag)?;
