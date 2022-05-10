@@ -10,7 +10,7 @@ pub enum Directive {
     Else,
     ElseIf(String),
     Mode(LanguageMode),
-    Switches(Vec<(String, bool)>),
+    Switch(String, bool),
     LinkLib(String),
     Include(String),
 }
@@ -43,32 +43,6 @@ impl DirectiveParser {
             switch_pattern: Regex::new(r"(?i)^([a-zA-Z]+)([+-])$").unwrap(),
             linklib_pattern: Regex::new(r"(?i)^linklib\s+(.+)$").unwrap(),
             include_pattern: Regex::new(r"(?i)^i(nclude)?\s+(.+)$").unwrap(),
-        }
-    }
-
-    fn match_switches(&self, s: &str) -> Option<Vec<(String, bool)>> {
-        let switches: Vec<_> = s
-            .split(',')
-            .map(|switch| {
-                if let Some(switch_capture) = self.switch_pattern.captures(&switch.trim()) {
-                    let switch_name = switch_capture[1].to_string();
-                    let switch_val = match &switch_capture[2] {
-                        "+" => true,
-                        "-" => false,
-                        _ => unreachable!("excluded by pattern: {}", &switch_capture[2]),
-                    };
-
-                    Some((switch_name, switch_val))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if switches.iter().any(Option::is_none) {
-            None
-        } else {
-            Some(switches.into_iter().map(Option::unwrap).collect())
         }
     }
 
@@ -109,8 +83,15 @@ impl DirectiveParser {
             };
 
             Some(Directive::Mode(mode))
-        } else if let Some(switches) = self.match_switches(s) {
-            Some(Directive::Switches(switches))
+        } else if let Some(switch_capture) = self.switch_pattern.captures(s) {
+            let switch_name = switch_capture[1].to_string();
+            let switch_val = match &switch_capture[2] {
+                "+" => true,
+                "-" => false,
+                _ => unreachable!("excluded by pattern: {}", &switch_capture[2]),
+            };
+
+            Some(Directive::Switch(switch_name, switch_val))
         } else if let Some(linklib) = self.linklib_pattern.captures(s) {
             Some(Directive::LinkLib(linklib[1].to_string()))
         } else if let Some(include) = self.include_pattern.captures(s) {

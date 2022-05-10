@@ -276,159 +276,171 @@ impl Preprocessor {
         output.truncate(directive_span.start.col);
 
         // skip 2 for `{$` and take 1 less for the closing `}`
-        let directive_name = comment_block
+        let directives_text = comment_block
             .text
             .chars()
             .skip(2)
             .take(comment_block.text.len() - 3)
-            .collect::<String>()
-            .trim()
-            .to_string();
+            .collect::<String>();
 
-        match self.directive_parser.parse(&directive_name) {
-            Some(Directive::Define(symbol)) => {
-                if self.condition_active() {
-                    self.opts.define(symbol);
-                }
+        let directives_items = directives_text
+            .split(',')
+            .map(|s| s.trim());
 
-                Ok(())
-            }
-
-            Some(Directive::Undef(symbol)) => {
-                if !self.condition_active() || self.opts.undef(&symbol) {
-                    Ok(())
-                } else {
-                    Err(PreprocessorError::SymbolNotDefined {
-                        name: symbol,
-                        at: comment_block.src_span.clone(),
-                    })
-                }
-            }
-
-            Some(Directive::IfDef(symbol)) => self.push_condition(&symbol, true),
-
-            Some(Directive::IfNDef(symbol)) => self.push_condition(&symbol, false),
-
-            Some(Directive::Else) => match self.condition_stack.last_mut() {
-                None => Err(PreprocessorError::UnexpectedEndIf(directive_span)),
-                Some(condition) => {
-                    condition.value = !condition.value;
-                    Ok(())
-                }
-            },
-
-            Some(Directive::ElseIf(symbol)) => {
-                self.pop_condition(current_col)?;
-                self.push_condition(&symbol, true)
-            }
-
-            Some(Directive::EndIf) => self.pop_condition(current_col),
-
-            Some(Directive::Switches(switches)) => {
-                if self.condition_active() {
-                    for (name, on) in switches {
-                        self.opts.set_switch(&name, on);
+        for directive_text in directives_items {
+            match self.directive_parser.parse(&directive_text) {
+                Some(Directive::Define(symbol)) => {
+                    if self.condition_active() {
+                        self.opts.define(symbol);
                     }
                 }
-                Ok(())
-            }
 
-            Some(Directive::LinkLib(lib_name)) => {
-                if self.condition_active() {
-                    self.opts.link_lib(lib_name.clone());
-                }
-                Ok(())
-            }
-
-            Some(Directive::Mode(mode)) => {
-                if self.condition_active() {
-                    self.opts.lang_mode = mode;
-                }
-                Ok(())
-            }
-
-            Some(Directive::Include(filename)) => {
-                let full_path = match self.filename.parent() {
-                    Some(parent) => parent.join(&filename),
-                    None => PathBuf::from(&filename),
-                };
-
-                let include_src = self.read_include(&full_path)
-                    .map_err(|err| PreprocessorError::IncludeError {
-                        filename,
-                        err: err.to_string(),
-                        at: directive_span.clone(),
-                    })?;
-
-                let pp = Preprocessor::new(full_path, self.opts.clone());
-                let include_output = pp.preprocess(&include_src)?;
-
-                self.warnings.extend(include_output.warnings);
-
-                if !include_output.source.is_empty() {
-                    let line_offset = self.output_lines.len();
-                    let col_offset = output.len();
-
-                    // this excludes the global entry which is mapped to 0:0 -> 0:0
-                    let mapping_entries = include_output.source_map.into_iter().filter(|e| e.start != e.end);
-                    for mapping in mapping_entries {
-                        let mut start = mapping.start;
-                        let mut end = mapping.end;
-
-                        start.line += line_offset;
-                        end.line += line_offset;
-
-                        // entries on the first line of the included file need to be offset since they're
-                        // being pasted in at the current location (subsequent lines don't include any offset)
-                        if mapping.start.line == 0 {
-                            start.col += col_offset;
-                        }
-                        if mapping.end.line == 0 {
-                            end.col += col_offset;
-                        }
-
-                        self.source_map.add(start, end, mapping.src);
+                Some(Directive::Undef(symbol)) => {
+                    if !self.condition_active() {
+                        continue;
                     }
 
-                    for include_source_line in include_output.source.lines() {
-                        output.push_str(include_source_line);
-
-                        self.output_lines.push(output.clone());
-                        output.clear();
+                    if !self.opts.undef(&symbol) {
+                        return Err(PreprocessorError::SymbolNotDefined {
+                            name: symbol,
+                            at: directive_span.clone(),
+                        })
                     }
-
-                    // actually we're still editing the last line
-                    *output = self.output_lines.pop().unwrap();
                 }
 
-                Ok(())
-            }
+                Some(Directive::IfDef(symbol)) => {
+                    self.push_condition(&symbol, true)?
+                },
 
-            None => {
-                if !self.condition_active() {
-                    Ok(())
-                } else {
+                Some(Directive::IfNDef(symbol)) => {
+                    self.push_condition(&symbol, false)?
+                },
+
+                Some(Directive::Else) => match self.condition_stack.last_mut() {
+                    None => {
+                        return Err(PreprocessorError::UnexpectedEndIf(directive_span.clone()));
+                    },
+
+                    Some(condition) => {
+                        condition.value = !condition.value;
+                    }
+                },
+
+                Some(Directive::ElseIf(symbol)) => {
+                    self.pop_condition(current_col)?;
+                    self.push_condition(&symbol, true)?;
+                }
+
+                Some(Directive::EndIf) => {
+                    self.pop_condition(current_col)?;
+                },
+
+                Some(Directive::Switch(switch, on)) => {
+                    if self.condition_active() {
+                        self.opts.set_switch(&switch, on);
+                    }
+                }
+
+                Some(Directive::LinkLib(lib_name)) => {
+                    if self.condition_active() {
+                        self.opts.link_lib(lib_name.clone());
+                    }
+                }
+
+                Some(Directive::Mode(mode)) => {
+                    if self.condition_active() {
+                        self.opts.lang_mode = mode;
+                    }
+                }
+
+                Some(Directive::Include(filename)) => {
+                    let full_path = match self.filename.parent() {
+                        Some(parent) => parent.join(&filename),
+                        None => PathBuf::from(&filename),
+                    };
+
+                    let include_src = Self::read_include(&full_path)
+                        .map_err(|err| PreprocessorError::IncludeError {
+                            filename,
+                            err: err.to_string(),
+                            at: directive_span.clone(),
+                        })?;
+
+                    self.include_file(full_path, include_src, output)?;
+                }
+
+                None => {
+                    if !self.condition_active() {
+                        continue;
+                    }
+
                     let err = PreprocessorError::IllegalDirective {
-                        directive: directive_name,
-                        at: directive_span,
+                        directive: directive_text.to_string(),
+                        at: directive_span.clone(),
                     };
 
                     if !self.opts.strict_switches() {
                         self.warnings.push(err);
-                        Ok(())
                     } else {
-                        Err(err)
+                        return Err(err);
                     }
                 }
             }
         }
+
+        Ok(())
     }
 
-    fn read_include(&mut self, filename: &PathBuf) -> io::Result<String> {
+    fn read_include(filename: &PathBuf) -> io::Result<String> {
         let mut file = File::open(filename)?;
         let mut src = String::new();
         file.read_to_string(&mut src)?;
 
         Ok(src)
+    }
+
+    fn include_file(&mut self, full_path: PathBuf, include_src: String, output: &mut String) -> Result<(), PreprocessorError> {
+        let pp = Preprocessor::new(full_path, self.opts.clone());
+        let include_output = pp.preprocess(&include_src)?;
+
+        self.warnings.extend(include_output.warnings);
+
+        if !include_output.source.is_empty() {
+            let line_offset = self.output_lines.len();
+            let col_offset = output.len();
+
+            // this excludes the global entry which is mapped to 0:0 -> 0:0
+            let mapping_entries = include_output.source_map.into_iter().filter(|e| e.start != e.end);
+            for mapping in mapping_entries {
+                let mut start = mapping.start;
+                let mut end = mapping.end;
+
+                start.line += line_offset;
+                end.line += line_offset;
+
+                // entries on the first line of the included file need to be offset since they're
+                // being pasted in at the current location (subsequent lines don't include any offset)
+                if mapping.start.line == 0 {
+                    start.col += col_offset;
+                }
+                if mapping.end.line == 0 {
+                    end.col += col_offset;
+                }
+
+                self.source_map.add(start, end, mapping.src);
+            }
+
+            for include_source_line in include_output.source.lines() {
+                output.push_str(include_source_line);
+
+                self.output_lines.push(output.clone());
+                output.clear();
+            }
+
+            // actually we're still editing the last line
+            *output = self.output_lines.pop().unwrap();
+        }
+
+        Ok(())
     }
 }
