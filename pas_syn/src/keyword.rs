@@ -3,6 +3,7 @@ use std::fmt;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Keyword {
     Program,
+    Library,
     Var,
     Function,
     Procedure,
@@ -53,6 +54,7 @@ impl Keyword {
     fn try_parse_lowercase(from: &str) -> Option<Self> {
         match from {
             "program" => Some(Keyword::Program),
+            "library" => Some(Keyword::Library),
             "var" => Some(Keyword::Var),
             "function" => Some(Keyword::Function),
             "procedure" => Some(Keyword::Procedure),
@@ -114,6 +116,7 @@ impl fmt::Display for Keyword {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             Keyword::Program => "program",
+            Keyword::Library => "library",
             Keyword::Var => "var",
             Keyword::Function => "function",
             Keyword::Procedure => "procedure",

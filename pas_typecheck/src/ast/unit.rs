@@ -351,6 +351,7 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
         let unit_ctx = ctx.clone();
 
         let unit = Unit {
+            kind: unit.kind,
             ident: unit.ident.clone(),
             init,
             iface_decls,

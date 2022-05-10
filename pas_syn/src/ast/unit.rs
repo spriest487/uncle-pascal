@@ -11,8 +11,17 @@ pub use self::{
     typedecl::{TypeDecl, TypeDeclItem},
 };
 
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
+pub enum UnitKind {
+    Program,
+    Library,
+    Unit,
+}
+
 #[derive(Clone, Debug)]
 pub struct Unit<A: Annotation> {
+    pub kind: UnitKind,
+
     pub ident: IdentPath,
 
     pub iface_decls: Vec<UnitDecl<A>>,
@@ -58,72 +67,105 @@ impl<A: Annotation> Unit<A> {
 
 impl Unit<Span> {
     pub fn parse(tokens: &mut TokenStream, file_ident: IdentPath) -> ParseResult<Self> {
-        let ident = match tokens.match_one_maybe(Keyword::Unit) {
-            Some(_unit_kw) => {
+        let unit_kind_kw_match = Keyword::Unit
+            .or(Keyword::Program)
+            .or(Keyword::Library);
+
+        let (unit_kind, ident) = match tokens.match_one_maybe(unit_kind_kw_match) {
+            Some(TokenTree::Keyword { kw, .. }) => {
                 let ident = IdentPath::parse(tokens)?;
                 tokens.match_one(Separator::Semicolon)?;
-                ident
+
+                let kind = match kw {
+                    Keyword::Program => UnitKind::Program,
+                    Keyword::Library => UnitKind::Library,
+                    _ => UnitKind::Unit,
+                };
+                (kind, ident)
             },
-            None => file_ident,
+
+            _ => (UnitKind::Unit, file_ident),
         };
 
         let mut iface_decls = Vec::new();
         let mut impl_decls = Vec::new();
         let mut init = Vec::new();
 
-        let has_interface = parse_decls_section(Keyword::Interface, &mut iface_decls, tokens)?;
-        let has_implementation = parse_decls_section(Keyword::Implementation, &mut impl_decls, tokens)?;
+        if unit_kind == UnitKind::Program {
+            let decls = UnitDecl::parse_seq(tokens)?;
 
-        let has_initialization = tokens.match_one_maybe(Keyword::Initialization).is_some();
-        if has_initialization {
-            let init_section = parse_init_section(tokens)?;
-            init.extend(init_section);
-        }
+            if !decls.is_empty() {
+                tokens.match_one(Separator::Semicolon)?;
+            }
 
-        if has_interface || has_implementation || has_initialization {
-            // it's a structured unit, we expect nothing after the defined sections
+            impl_decls.extend(decls);
 
-            // if we get unexpected tokens here, we should suggest a semicolon after the last decl as a more
-            // helpful error - we know there are tokens, and we know the only way for anything other than "end"
-            // to be a legal token here is to separate them from the last decl with a semicolon
-            let last_pos = tokens.current()
-                .map(|tt| tt.clone().into_span())
-                .unwrap_or_else(|| tokens.context().clone());
-
-            tokens.match_one(Keyword::End).map_err(|mut err| {
-                if let ParseError::UnexpectedToken(..) = &err.err {
-                    if tokens.current().map(|tt| tt.is_separator(Separator::Semicolon)) != Some(true) {
-                        err.err = ParseError::ExpectedSeparator { span: last_pos, sep: Separator::Semicolon };
-                    }
-                }
-                err
-            })?;
+            let main_block = Block::parse(tokens)?;
+            init.push(Statement::Block(Box::new(main_block)));
 
             // allow the traditional period after the final end
             tokens.match_one_maybe(Operator::Member);
         } else {
-            // no structured segments, it's a freeform unit - everything is in the interface
-            // and we don't expect an end keyword after all decls/init
-            let freeform_decls = if UnitDecl::has_more(&iface_decls, &mut tokens.look_ahead()) {
-                UnitDecl::parse_seq(tokens)?
+            let has_interface = parse_decls_section(Keyword::Interface, &mut iface_decls, tokens)?;
+            let has_implementation = parse_decls_section(Keyword::Implementation, &mut impl_decls, tokens)?;
+
+            let has_initialization = tokens.match_one_maybe(Keyword::Initialization).is_some();
+            if has_initialization {
+                let init_section = parse_init_section(tokens)?;
+                init.extend(init_section);
+            }
+
+            if has_interface || has_implementation || has_initialization {
+                // it's a structured unit, we expect nothing after the defined sections
+
+                // if we get unexpected tokens here, we should suggest a semicolon after the last decl as a more
+                // helpful error - we know there are tokens, and we know the only way for anything other than "end"
+                // to be a legal token here is to separate them from the last decl with a semicolon
+                let last_pos = tokens.current()
+                    .map(|tt| tt.clone().into_span())
+                    .unwrap_or_else(|| tokens.context().clone());
+
+                tokens.match_one(Keyword::End).map_err(|mut err| {
+                    if let ParseError::UnexpectedToken(..) = &err.err {
+                        if tokens.current().map(|tt| tt.is_separator(Separator::Semicolon)) != Some(true) {
+                            err.err = ParseError::ExpectedSeparator { span: last_pos, sep: Separator::Semicolon };
+                        }
+                    }
+                    err
+                })?;
+
+                // allow the traditional period after the final end
+                tokens.match_one_maybe(Operator::Member);
             } else {
-                vec![]
-            };
+                // no structured segments, it's a freeform unit - everything is in the interface
+                // and we don't expect an end keyword after all decls/init
+                let freeform_decls = if UnitDecl::has_more(&iface_decls, &mut tokens.look_ahead()) {
+                    UnitDecl::parse_seq(tokens)?
+                } else {
+                    vec![]
+                };
 
-            if freeform_decls.len() > 0 {
-                iface_decls.extend(freeform_decls);
+                if freeform_decls.len() > 0 {
+                    iface_decls.extend(freeform_decls);
 
-                if tokens.match_one_maybe(Separator::Semicolon).is_some() {
+                    if tokens.match_one_maybe(Separator::Semicolon).is_some() {
+                        let init_after_decls = parse_init_section(tokens)?;
+                        init.extend(init_after_decls);
+                    }
+                } else {
                     let init_after_decls = parse_init_section(tokens)?;
                     init.extend(init_after_decls);
                 }
-            } else {
-                let init_after_decls = parse_init_section(tokens)?;
-                init.extend(init_after_decls);
             }
         }
 
-        Ok(Unit { ident, init, iface_decls, impl_decls })
+        Ok(Unit {
+            kind: unit_kind,
+            ident,
+            init,
+            iface_decls,
+            impl_decls
+        })
     }
 }
 
