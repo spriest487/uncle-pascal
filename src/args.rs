@@ -17,18 +17,18 @@ pub struct Args {
     #[structopt(name = "OUTPUT", short = "o", parse(from_os_str))]
     pub output: Option<PathBuf>,
 
-    #[structopt(name="define", short = "d")]
+    #[structopt(long="define", short = "d")]
     pub define_syms: Vec<String>,
 
-    #[structopt(name="mode", short="m", default_value = "default", parse(try_from_str = parse_lang_mode))]
+    #[structopt(long="mode", short="m", default_value = "default", parse(try_from_str = parse_lang_mode))]
     pub lang_mode: LanguageMode,
 
     /// additional units to compile
-    #[structopt(name = "units", short = "u")]
+    #[structopt(long = "units", short = "u")]
     pub units: Vec<String>,
 
     /// source dir for unit source files
-    #[structopt(name = "search-dir", short = "s", parse(from_os_str))]
+    #[structopt(long = "search-dir", short = "s", parse(from_os_str))]
     pub search_dirs: Vec<PathBuf>,
 
     /// target stage. intermediate targets other than `interpret` will cause

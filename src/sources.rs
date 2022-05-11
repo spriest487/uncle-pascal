@@ -116,14 +116,18 @@ impl SourceCollection {
     pub fn add_used_unit(&mut self, base_unit_path: &PathBuf, used_unit: &IdentPath) -> Result<(), CompileError> {
         let unit_filename = PathBuf::from(used_unit.to_string() + ".pas");
 
+        self.add_used_unit_in_file(base_unit_path, used_unit, &unit_filename)
+    }
+
+    pub fn add_used_unit_in_file(&mut self, base_unit_path: &PathBuf, used_unit: &IdentPath, filename: &PathBuf) -> Result<(), CompileError> {
         if let Some(from_unit_dir) = base_unit_path.parent() {
-            if let Some(used_path) = find_in_path(&unit_filename, from_unit_dir) {
+            if let Some(used_path) = find_in_path(filename, from_unit_dir) {
                 self.source_filenames.push_back(used_path);
                 return Ok(());
             }
         }
 
-        self.add(&unit_filename, Some(used_unit.span().clone()))
+        self.add(filename, Some(used_unit.span().clone()))
     }
 
     pub fn next(&mut self) -> Option<PathBuf> {

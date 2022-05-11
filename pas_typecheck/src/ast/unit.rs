@@ -1,6 +1,16 @@
-use crate::ast::const_eval::ConstEval;
-use crate::ast::prelude::*;
-use crate::ModuleUnit;
+use crate::ast::{
+    expect_stmt_initialized, typecheck_alias, typecheck_composite, typecheck_expr,
+    typecheck_func_decl, typecheck_func_def, typecheck_iface, typecheck_stmt, typecheck_variant,
+    Expression,
+};
+use crate::{
+    ast::const_eval::ConstEval, typecheck_type, typecheck_type_params, ConstAnnotation, Context,
+    Environment, ExpectedKind, ModuleUnit, NameError, Named, ScopeMemberRef, Symbol, Type,
+    TypeAnnotation, TypecheckError, TypecheckResult,
+};
+use pas_common::span::{Span, Spanned};
+use pas_syn::{ast, ast::Visibility, IdentPath};
+use std::rc::Rc;
 
 pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
@@ -9,62 +19,69 @@ pub type ConstDeclItem = ast::ConstDeclItem<TypeAnnotation>;
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type TypeDeclItem = ast::TypeDeclItem<TypeAnnotation>;
 
-fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context, visibility: Visibility) -> TypecheckResult<UnitDecl> {
+fn typecheck_unit_decl(
+    decl: &ast::UnitDecl<Span>,
+    ctx: &mut Context,
+    visibility: Visibility,
+) -> TypecheckResult<UnitDecl> {
     match decl {
         ast::UnitDecl::Uses { decl: uses } => {
-            for unit in &uses.units {
-                typecheck_unit_uses_decl(unit, ctx)?;
+            for use_item in &uses.units {
+                typecheck_unit_uses_decl(use_item, ctx)?;
             }
 
             Ok(ast::UnitDecl::Uses { decl: uses.clone() })
-        }
+        },
 
-        ast::UnitDecl::FunctionDef {
-            def: func_def,
-        } => typecheck_unit_func_def(func_def, visibility, ctx),
+        ast::UnitDecl::FunctionDef { def: func_def } => {
+            typecheck_unit_func_def(func_def, visibility, ctx)
+        },
 
-        ast::UnitDecl::FunctionDecl {
-            decl: func_decl,
-        } => typecheck_unit_func_decl(func_decl, visibility, ctx),
+        ast::UnitDecl::FunctionDecl { decl: func_decl } => {
+            typecheck_unit_func_decl(func_decl, visibility, ctx)
+        },
 
-        ast::UnitDecl::Type {
-            decl: type_decl,
-        } => typecheck_unit_type_decl(type_decl, visibility, ctx),
+        ast::UnitDecl::Type { decl: type_decl } => {
+            typecheck_unit_type_decl(type_decl, visibility, ctx)
+        },
 
         ast::UnitDecl::Const { decl } => {
             let decl = typecheck_const_decl(decl, visibility, ctx)?;
 
-            Ok(ast::UnitDecl::Const {
-                decl,
-            })
-        }
+            Ok(ast::UnitDecl::Const { decl })
+        },
     }
 }
 
-fn typecheck_unit_uses_decl(unit_path: &IdentPath, ctx: &mut Context) -> TypecheckResult<()> {
-    match ctx.find_path(&unit_path) {
+fn typecheck_unit_uses_decl(use_item: &ast::UseDeclItem, ctx: &mut Context) -> TypecheckResult<()> {
+    match ctx.find_path(&use_item.ident) {
         // path refers to a known unit path (by alias or directly by its canon name)
         Some(ScopeMemberRef::Scope { path }) => {
             let unit_canon_ident = IdentPath::from_parts(path.keys().cloned());
 
             ctx.use_unit(unit_canon_ident);
-        }
+        },
 
         // path refers to some other decl
         Some(ScopeMemberRef::Decl { value, .. }) => {
             let unexpected = Named::Decl(value.clone());
             let err = NameError::Unexpected {
-                ident: unit_path.clone(),
+                ident: use_item.ident.clone(),
                 actual: unexpected,
                 expected: ExpectedKind::Namespace,
             };
-            return Err(TypecheckError::from_name_err(err, unit_path.path_span()));
-        }
+            return Err(TypecheckError::from_name_err(err, use_item.ident.path_span()));
+        },
 
         // path does not exist
         None => {
-            return Err(TypecheckError::from_name_err(NameError::NotFound { ident: unit_path.clone() }, unit_path.path_span()));
-        }
+            return Err(TypecheckError::from_name_err(
+                NameError::NotFound {
+                    ident: use_item.ident.clone(),
+                },
+                use_item.ident.path_span(),
+            ));
+        },
     }
 
     Ok(())
@@ -94,9 +111,7 @@ fn typecheck_unit_func_def(
         ctx.define_function(name, func_def.clone())?;
     }
 
-    Ok(UnitDecl::FunctionDef {
-        def: func_def,
-    })
+    Ok(UnitDecl::FunctionDef { def: func_def })
 }
 
 fn typecheck_unit_func_decl(
@@ -114,9 +129,7 @@ fn typecheck_unit_func_decl(
 
     ctx.declare_function(name.clone(), &func_decl, visibility)?;
 
-    Ok(UnitDecl::FunctionDecl {
-        decl: func_decl,
-    })
+    Ok(UnitDecl::FunctionDecl { decl: func_decl })
 }
 
 pub fn typecheck_unit_type_decl(
@@ -126,9 +139,7 @@ pub fn typecheck_unit_type_decl(
 ) -> TypecheckResult<UnitDecl> {
     let decl = typecheck_type_decl(type_decl, visibility, ctx)?;
 
-    Ok(UnitDecl::Type {
-        decl
-    })
+    Ok(UnitDecl::Type { decl })
 }
 
 fn typecheck_type_decl(
@@ -194,19 +205,23 @@ fn typecheck_type_decl_item(
     match &type_decl {
         TypeDeclItem::Interface(iface) => {
             ctx.declare_iface(iface.clone(), visibility)?;
-        }
+        },
 
         TypeDeclItem::Variant(variant) => {
             ctx.declare_variant(variant.clone(), visibility)?;
-        }
+        },
 
         TypeDeclItem::Composite(class) => {
             ctx.declare_class(class.clone(), visibility)?;
-        }
+        },
 
         TypeDeclItem::Alias(alias) => {
-            ctx.declare_type(alias.name.decl_name.ident.clone(), (*alias.ty).clone(), visibility)?;
-        }
+            ctx.declare_type(
+                alias.name.decl_name.ident.clone(),
+                (*alias.ty).clone(),
+                visibility,
+            )?;
+        },
     }
 
     Ok(type_decl)
@@ -221,21 +236,21 @@ fn typecheck_type_decl_body(
         ast::TypeDeclItem::Composite(class) => {
             let class = typecheck_composite(name, class, ctx)?;
             ast::TypeDeclItem::Composite(Rc::new(class))
-        }
+        },
         ast::TypeDeclItem::Interface(iface) => {
             let iface = typecheck_iface(name, iface, ctx)?;
             ast::TypeDeclItem::Interface(Rc::new(iface))
-        }
+        },
 
         ast::TypeDeclItem::Variant(variant) => {
             let variant = typecheck_variant(name, variant, ctx)?;
             ast::TypeDeclItem::Variant(Rc::new(variant))
-        }
+        },
 
         ast::TypeDeclItem::Alias(alias) => {
             let alias = typecheck_alias(name, alias, ctx)?;
             ast::TypeDeclItem::Alias(Rc::new(alias))
-        }
+        },
     };
 
     Ok(type_decl)
@@ -273,14 +288,14 @@ fn typecheck_const_decl_item(
             let const_val_expr = typecheck_expr(&decl.val, &ty, ctx)?;
 
             (ty, const_val_expr)
-        }
+        },
         None => {
             // infer from provided value expression
             let const_val_expr = typecheck_expr(&decl.val, &Type::Nothing, ctx)?;
             let ty = const_val_expr.annotation().ty().into_owned();
 
             (ty, const_val_expr)
-        }
+        },
     };
 
     let const_val_literal = match const_val_expr.const_eval(ctx) {
@@ -305,7 +320,8 @@ fn typecheck_const_decl_item(
             span: span.clone(),
             decl: Some(decl.ident.clone()),
             ty: ty.clone(),
-        }.into(),
+        }
+        .into(),
     );
 
     Ok(ConstDeclItem {
@@ -329,16 +345,21 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
         }
 
         // init statement is implicitly a block
-        let init = ctx.scope(Environment::Block { allow_unsafe: false}, |ctx| {
-            let mut init = Vec::new();
-            for stmt in &unit.init {
-                let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
-                expect_stmt_initialized(&stmt, ctx)?;
-                init.push(stmt);
-            }
+        let init = ctx.scope(
+            Environment::Block {
+                allow_unsafe: false,
+            },
+            |ctx| {
+                let mut init = Vec::new();
+                for stmt in &unit.init {
+                    let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
+                    expect_stmt_initialized(&stmt, ctx)?;
+                    init.push(stmt);
+                }
 
-            Ok(init)
-        })?;
+                Ok(init)
+            },
+        )?;
 
         let undefined = ctx.undefined_syms();
         if !undefined.is_empty() {

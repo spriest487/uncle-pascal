@@ -48,6 +48,7 @@ pub enum Keyword {
     Where,
     Unsafe,
     SizeOf,
+    In,
 }
 
 impl Keyword {
@@ -99,6 +100,7 @@ impl Keyword {
             "where" => Some(Keyword::Where),
             "unsafe" => Some(Keyword::Unsafe),
             "sizeof" => Some(Keyword::SizeOf),
+            "in" => Some(Keyword::In),
             _ => None,
         }
     }
@@ -161,6 +163,7 @@ impl fmt::Display for Keyword {
             Keyword::Where => "where",
             Keyword::Unsafe => "unsafe",
             Keyword::SizeOf => "sizeof",
+            Keyword::In => "in",
         })
     }
 }

@@ -7,7 +7,7 @@ use crate::{ast::*, parse::prelude::*};
 pub use self::{
     const_decl::{ConstDecl, ConstDeclItem},
     alias_decl::AliasDecl,
-    unit_decl::{DeclMod, Visibility, UnitDecl, UseDecl},
+    unit_decl::{DeclMod, Visibility, UnitDecl, UseDecl, UseDeclItem},
     typedecl::{TypeDecl, TypeDeclItem},
 };
 

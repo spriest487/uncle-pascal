@@ -159,17 +159,27 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
                 println!("unit {} used from {}", used_unit, unit_ident);
             }
 
-            compilation_order.add_dependency(used_unit.clone(), unit_ident.clone());
+            compilation_order.add_dependency(used_unit.ident.clone(), unit_ident.clone());
             if compilation_order.peek().is_none() {
                 return Err(CompileError::CircularDependency {
                     unit_ident,
-                    used_unit,
+                    used_unit: used_unit.ident,
                     span,
                 });
             }
 
-            if !parsed_units.contains_key(&used_unit) {
-                sources.add_used_unit(&unit_filename, &used_unit)?;
+            if !parsed_units.contains_key(&used_unit.ident) {
+                match used_unit.path {
+                    Some(path) => {
+                        let filename = PathBuf::from(path);
+                        sources.add_used_unit_in_file(&unit_filename, &used_unit.ident, &filename)?;
+                    }
+
+                    None => {
+                        sources.add_used_unit(&unit_filename, &used_unit.ident)?;
+                    }
+                }
+
             }
         }
     }

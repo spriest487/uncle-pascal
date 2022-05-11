@@ -26,6 +26,7 @@ use crate::{
     },
     parse::MatchOneOf
 };
+use derivative::*;
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Visibility {
@@ -112,7 +113,7 @@ impl ParseSeq for UnitDecl<Span> {
 
 #[derive(Clone, Debug)]
 pub struct UseDecl {
-    pub units: Vec<IdentPath>,
+    pub units: Vec<UseDeclItem>,
     pub span: Span,
 }
 
@@ -125,11 +126,12 @@ impl Spanned for UseDecl {
 impl fmt::Display for UseDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "uses ")?;
-        for (i, unit) in self.units.iter().enumerate() {
+        for (i, item) in self.units.iter().enumerate() {
             if i > 0 {
                 write!(f, ",")?;
             }
-            write!(f, "{}", unit)?;
+
+            write!(f, "{}", item)?;
         }
         Ok(())
     }
@@ -139,26 +141,91 @@ impl UseDecl {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Uses)?;
 
-        let mut units = Vec::new();
-        loop {
-            let unit_path = IdentPath::parse(tokens)?;
-            units.push(unit_path);
+        let items = UseDeclItem::parse_seq(tokens)?;
 
-            if tokens.match_one_maybe(Separator::Comma).is_none() {
-                break;
+        let span = match items.last() {
+            None => {
+                return Err(TracedError::trace(match tokens.look_ahead().next() {
+                    None => ParseError::UnexpectedEOF(Matcher::AnyIdent, kw.span().clone()),
+                    Some(x) => ParseError::UnexpectedToken(Box::new(x), Some(Matcher::AnyIdent)),
+                }));
+            },
+
+            Some(last_item) => {
+                kw.span().to(last_item.span())
             }
+        };
+
+        Ok(Self { units: items, span })
+    }
+}
+
+#[derive(Clone, Eq, Derivative)]
+#[derivative(PartialEq, Debug, Hash)]
+pub struct UseDeclItem {
+    pub ident: IdentPath,
+    
+    pub path: Option<String>,
+
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+}
+
+impl Spanned for UseDeclItem {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for UseDeclItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.ident)?;
+
+        if let Some(path) = &self.path {
+            write!(f, " in '{}'", path)?;
         }
 
-        if units.is_empty() {
-            return Err(TracedError::trace(match tokens.look_ahead().next() {
-                None => ParseError::UnexpectedEOF(Matcher::AnyIdent, kw.span().clone()),
-                Some(x) => ParseError::UnexpectedToken(Box::new(x), Some(Matcher::AnyIdent)),
-            }));
+        Ok(())
+    }
+}
+
+impl ParseSeq for UseDeclItem {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Comma)?;
         }
 
-        let span = kw.span().to(units.last().unwrap().span());
+        let unit = IdentPath::parse(tokens)?;
 
-        Ok(Self { units, span })
+        let (path, span) = match tokens.match_one_maybe(Keyword::In) {
+            Some(..) => {
+                let path_tt = tokens.match_one(Matcher::AnyLiteralString)?;
+                let path_string = path_tt.as_literal_string().unwrap().to_string();
+
+                (Some(path_string), unit.span().to(path_tt.span()))
+            }
+
+            None => {
+                let path_string = None;
+                (path_string, unit.span().clone())
+            },
+        };
+
+        Ok(UseDeclItem {
+            ident: unit,
+            path,
+            span,
+        })
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Comma).is_none() {
+            return false;
+        }
+
+        tokens.match_one(Matcher::AnyIdent).is_some()
     }
 }
 
