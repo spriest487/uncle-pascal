@@ -1,9 +1,11 @@
 [package]
 name = "pas_pp"
 version = "0.1.0"
-authors = ["Simon Priest <simon@westpierstudio.com>"]
+authors = ["spriest487 <spriest487@googlemail.com>"]
 edition = "2018"
 
 [dependencies]
 pas_common = { path = "../pas_common" }
+
 regex = "1.1.0"
+encoding_rs = "0.8.30"

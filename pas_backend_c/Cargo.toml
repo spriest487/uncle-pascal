@@ -1,7 +1,7 @@
 [package]
 name = "pas_backend_c"
 version = "0.1.0"
-authors = ["Simon Priest <simon@westpierstudio.com>"]
+authors = ["spriest487 <spriest487@googlemail.com>"]
 edition = "2018"
 
 [dependencies]
