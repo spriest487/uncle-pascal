@@ -44,6 +44,11 @@ pub struct Preprocessor {
 struct CommentBlock {
     text: String,
     src_span: Span,
+
+    // where this commend starts in the output text - if a block comment turns out to be a
+    // directive, we remove it from the output entirely after parsing its contents, so we need
+    // to remember where it starts
+    output_pos: Location,
 }
 
 #[derive(Clone, Debug)]
@@ -94,7 +99,7 @@ impl Preprocessor {
 
     pub fn preprocess(mut self, source: &str) -> Result<PreprocessedUnit, PreprocessorError> {
         for (line_num, line) in source.lines().enumerate() {
-            self.process_line(line.to_string())?;
+            self.process_line(line)?;
 
             self.current_src_line = line_num + 1;
         }
@@ -128,14 +133,14 @@ impl Preprocessor {
         })
     }
 
-    fn process_line(&mut self, mut line: String) -> Result<(), PreprocessorError> {
+    fn process_line(&mut self, mut line: &str) -> Result<(), PreprocessorError> {
         let mut output = String::new();
 
         let mut current_src_mapping = None;
 
         // line comments never contain pp directives, just discard them
         if let Some(comment_pos) = line.find("//") {
-            line.truncate(comment_pos);
+            line = &line[0..comment_pos];
         };
 
         for (col, line_char) in line.chars().enumerate() {
@@ -164,13 +169,13 @@ impl Preprocessor {
 
                 if terminated {
                     let comment_block = self.comment_block.take().unwrap();
-                    if line_char == '}' {
-                        self.process_directive(comment_block, col, &mut output)?;
-                    }
-                    self.comment_block = None;
 
                     // start a new mapping entry after the comment closes
                     current_src_mapping = None;
+
+                    if line_char == '}' {
+                        self.process_directive(comment_block, col, &mut output)?;
+                    }
                 }
             } else {
                 if line_char == '{' {
@@ -180,6 +185,10 @@ impl Preprocessor {
                     self.comment_block = Some(CommentBlock {
                         text: "{".to_string(),
                         src_span: comment_src_span,
+                        output_pos: Location {
+                            line: self.output_lines.len(),
+                            col: output.len(),
+                        },
                     });
 
                     if src_mapping.start != src_mapping.end {
@@ -192,6 +201,10 @@ impl Preprocessor {
                     self.comment_block = Some(CommentBlock {
                         text: "(*".to_string(),
                         src_span: comment_src_span,
+                        output_pos: Location {
+                            line: self.output_lines.len(),
+                            col: output.len(),
+                        },
                     });
                     // it's a two character comment sequence so pop the (
                     output.pop();
@@ -266,14 +279,15 @@ impl Preprocessor {
             return Ok(());
         }
 
-        let directive_span = comment_block.src_span.clone();
+        let directive_src_span = comment_block.src_span.clone();
+        let directive_start_pos = comment_block.output_pos;
 
         // totally remove the text of the directive from the output, if it expands to some other text
         // like an include it needs to replace the directive comment completely
-        while self.output_lines.len() > directive_span.start.line {
+        while self.output_lines.len() > directive_start_pos.line {
             *output = self.output_lines.pop().unwrap();
         }
-        output.truncate(directive_span.start.col);
+        output.truncate(directive_start_pos.col);
 
         // skip 2 for `{$` and take 1 less for the closing `}`
         let directives_text = comment_block
@@ -303,7 +317,7 @@ impl Preprocessor {
                     if !self.opts.undef(&symbol) {
                         return Err(PreprocessorError::SymbolNotDefined {
                             name: symbol,
-                            at: directive_span.clone(),
+                            at: directive_src_span.clone(),
                         })
                     }
                 }
@@ -318,7 +332,7 @@ impl Preprocessor {
 
                 Some(Directive::Else) => match self.condition_stack.last_mut() {
                     None => {
-                        return Err(PreprocessorError::UnexpectedEndIf(directive_span.clone()));
+                        return Err(PreprocessorError::UnexpectedEndIf(directive_src_span.clone()));
                     },
 
                     Some(condition) => {
@@ -363,7 +377,7 @@ impl Preprocessor {
                         .map_err(|err| PreprocessorError::IncludeError {
                             filename,
                             err: err.to_string(),
-                            at: directive_span.clone(),
+                            at: directive_src_span.clone(),
                         })?;
 
                     self.include_file(full_path, include_src, output)?;
@@ -376,7 +390,7 @@ impl Preprocessor {
 
                     let err = PreprocessorError::IllegalDirective {
                         directive: directive_text.to_string(),
-                        at: directive_span.clone(),
+                        at: directive_src_span.clone(),
                     };
 
                     if !self.opts.strict_switches() {
