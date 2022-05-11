@@ -2,14 +2,10 @@ use codespan_reporting::{
     files::SimpleFiles,
     diagnostic::{Diagnostic, Label, LabelStyle, Severity},
     term::termcolor,
+    files::{Files, Error as FileError}
 };
-use pas_common::{path_relative_to_cwd, DiagnosticMessage, DiagnosticOutput};
-use std::{
-    fs::File,
-    io::{Read as _},
-};
+use pas_common::{path_relative_to_cwd, DiagnosticMessage, DiagnosticOutput, read_source_file};
 use std::collections::HashMap;
-use codespan_reporting::files::{Files, Error as FileError};
 
 type CodeMap = SimpleFiles<String, String>;
 
@@ -28,10 +24,7 @@ fn output_to_report_diag(
         let file_id = match file_ids.get(&nice_filename) {
             Some(file_id) => *file_id,
             None => {
-                let mut src = String::new();
-
-                let mut file = File::open(label.span.file.as_ref())?;
-                file.read_to_string(&mut src)?;
+                let src = read_source_file(label.span.file.as_ref())?;
 
                 let file_id = code_map.add(nice_filename.display().to_string(), src);
                 file_ids.insert(nice_filename, file_id);

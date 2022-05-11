@@ -1,13 +1,17 @@
-pub mod span;
 pub mod source_map;
+pub mod span;
 
 use crate::span::*;
+use encoding_rs::{Encoding, UTF_8};
 use std::{
     cmp::Ordering,
     collections::{hash_map::HashMap, HashSet},
     env, fmt,
+    fs::File,
+    io,
+    io::Read,
     ops::Deref,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 pub use backtrace::Backtrace;
@@ -204,4 +208,17 @@ pub fn path_relative_to_cwd(path: &Path) -> &Path {
         .and_then(|cwd| cwd.canonicalize().ok())
         .and_then(|cwd| path.strip_prefix(cwd).ok())
         .unwrap_or_else(|| path)
+}
+
+pub fn read_source_file(filename: &PathBuf) -> io::Result<String> {
+    let mut file = File::open(filename)?;
+
+    let mut file_buf = Vec::new();
+    file.read_to_end(&mut file_buf)?;
+
+    let (encoding, _bom_len) = Encoding::for_bom(&file_buf).unwrap_or((UTF_8, 3));
+
+    let (src_str, _replaced) = encoding.decode_with_bom_removal(&file_buf);
+
+    Ok(src_str.to_string())
 }

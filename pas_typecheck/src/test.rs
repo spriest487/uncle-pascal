@@ -1,10 +1,7 @@
 use std::{fs::File, io::Read, iter, path::PathBuf};
 use std::collections::HashMap;
 use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
-use pas_common::{
-    span::Span,
-    BuildOptions
-};
+use pas_common::{span::Span, BuildOptions, read_source_file};
 use pas_pp::Preprocessor;
 use pas_syn::{
     parse::TokenStream,
@@ -29,11 +26,7 @@ where
 
     // always include the system unit from the configure unit path
     let unit_path = PathBuf::from(env!("PASCAL2_UNITS"));
-    let mut system_src = String::new();
-    File::open(unit_path.join("System.pas"))
-        .unwrap()
-        .read_to_string(&mut system_src)
-        .unwrap();
+    let system_src = read_source_file(&unit_path.join("System.pas")).unwrap();
 
     let unit_srcs = iter::once(("System", system_src))
         .chain(unit_srcs.into_iter()
@@ -43,7 +36,7 @@ where
         let pp = Preprocessor::new(format!("{}.pas", unit_name), BuildOptions::default());
         let pp_unit = pp.preprocess(&src).unwrap();
 
-        let tokens = TokenTree::tokenize(unit_name, &pp_unit.source, &pp_unit.opts).unwrap();
+        let tokens = TokenTree::tokenize(pp_unit).unwrap();
         let mut stream = TokenStream::new(tokens, Span::zero(unit_name));
 
         let unit_ident = Ident::new(unit_name, Span::zero(unit_name));

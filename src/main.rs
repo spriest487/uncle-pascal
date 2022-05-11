@@ -5,7 +5,7 @@ mod sources;
 
 use crate::{args::*, compile_error::*, sources::*};
 use pas_backend_c as backend_c;
-use pas_common::{span::*, BuildOptions};
+use pas_common::{span::*, BuildOptions, read_source_file};
 use pas_interpreter::{Interpreter, InterpreterOpts};
 use pas_ir::{self as ir, IROptions};
 use pas_pp::{self as pp, PreprocessedUnit};
@@ -15,7 +15,6 @@ use std::{
     collections::hash_map::{Entry, HashMap},
     fs::{self, File},
     io,
-    io::{Read as _},
     path::PathBuf,
     process,
 };
@@ -32,19 +31,13 @@ enum CompileOutput {
 }
 
 fn preprocess(filename: &PathBuf, opts: BuildOptions) -> Result<PreprocessedUnit, CompileError> {
-    let open_file = File::open(&filename).and_then(|mut f| {
-        let mut src = String::new();
-        f.read_to_string(&mut src)?;
-        Ok(src)
-    });
-
-    let src = match open_file {
-        Err(err) => {
-            eprintln!("failed to open {}: {}", filename.display(), err);
-            process::exit(1);
-        },
-        Ok(file) => file,
-    };
+    let src = read_source_file(filename)
+        .map_err(|err| {
+            CompileError::ReadSourceFileFailed {
+                path: filename.to_path_buf(),
+                msg: err.to_string(),
+            }
+        })?;
 
     let pp = pp::Preprocessor::new(filename, opts);
     let preprocessed = pp.preprocess(&src)?;

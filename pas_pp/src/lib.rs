@@ -1,12 +1,9 @@
 pub mod error;
 mod directive;
 
-use pas_common::{span::*, BuildOptions};
+use pas_common::{span::*, BuildOptions, read_source_file};
 use std::{
-    io::Read,
-    io,
     path::PathBuf,
-    fs::File,
     rc::Rc
 };
 use pas_common::source_map::{SourceMap, SourceMapBuilder, SourceMapEntry};
@@ -373,7 +370,7 @@ impl Preprocessor {
                         None => PathBuf::from(&filename),
                     };
 
-                    let include_src = Self::read_include(&full_path)
+                    let include_src = read_source_file(&full_path)
                         .map_err(|err| PreprocessorError::IncludeError {
                             filename,
                             err: err.to_string(),
@@ -403,14 +400,6 @@ impl Preprocessor {
         }
 
         Ok(())
-    }
-
-    fn read_include(filename: &PathBuf) -> io::Result<String> {
-        let mut file = File::open(filename)?;
-        let mut src = String::new();
-        file.read_to_string(&mut src)?;
-
-        Ok(src)
     }
 
     fn include_file(&mut self, full_path: PathBuf, include_src: String, output: &mut String) -> Result<(), PreprocessorError> {

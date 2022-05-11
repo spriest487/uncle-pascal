@@ -19,6 +19,10 @@ pub enum CompileError {
 
     InvalidUnitFilename(Span),
     FileNotFound(PathBuf, Option<Span>),
+    ReadSourceFileFailed {
+        path: PathBuf,
+        msg: String,
+    },
     OutputFailed(Span, io::Error),
     DuplicateUnit {
         unit_ident: IdentPath,
@@ -99,6 +103,11 @@ impl DiagnosticOutput for CompileError {
                 }),
                 notes: Vec::new(),
             },
+            CompileError::ReadSourceFileFailed { path, .. } => DiagnosticMessage {
+                title: format!("failed to read source file {}", path.to_string_lossy()),
+                label: None,
+                notes: Vec::new(),
+            },
             CompileError::DuplicateUnit { unit_ident, duplicate_path } => DiagnosticMessage {
                 title: format!("`{}` @ {} was already loaded", unit_ident, duplicate_path.display()),
                 label: None,
@@ -142,6 +151,7 @@ impl fmt::Display for CompileError {
             CompileError::ParseError(err) => write!(f, "{}", err.err),
             CompileError::TypecheckError(err) => write!(f, "{}", err),
             CompileError::PreprocessorError(err) => write!(f, "{}", err),
+            CompileError::ReadSourceFileFailed { msg, .. } => write!(f, "{}", msg),
             CompileError::InvalidUnitFilename(span) => write!(
                 f,
                 "invalid unit identifier in filename: {}",
