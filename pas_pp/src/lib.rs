@@ -247,7 +247,8 @@ impl Preprocessor {
             .all(|symbol_condition| symbol_condition.value)
     }
 
-    fn push_condition(&mut self, symbol: &str, positive: bool) -> Result<(), PreprocessorError> {
+    fn push_def_condition(&mut self, symbol: &str, positive: bool) {
+        eprintln!("{}pushing {}: {} @ {}", " ".repeat(self.condition_stack.len()), match positive { true => "ifdef", false => "ifndef" }, symbol, self.current_src_line);
         self.condition_stack.push(SymbolCondition {
             value: {
                 let has_symbol = self.opts.defined(symbol);
@@ -259,15 +260,24 @@ impl Preprocessor {
             },
             start_line: self.current_src_line,
         });
+    }
 
-        Ok(())
+    fn push_opt_condition(&mut self, opt: &str, on: bool) {
+        eprintln!("{}pushing ifopt: {}{} @ {}", " ".repeat(self.condition_stack.len()), opt, match on { true => '+', false => '-' }, self.current_src_line);
+        self.condition_stack.push(SymbolCondition {
+            value: on == self.opts.is_switch_on(opt),
+            start_line: self.current_src_line,
+        });
     }
 
     fn pop_condition(&mut self, col: usize) -> Result<(), PreprocessorError> {
-        match self.condition_stack.pop() {
-            Some(_) => Ok(()),
-            None => Err(PreprocessorError::UnexpectedEndIf(self.current_line_span(col))),
+        if self.condition_stack.pop().is_none() {
+            return Err(PreprocessorError::UnexpectedEndIf(self.current_line_span(col)));
         }
+
+        eprintln!("{}popped condition @ {}", " ".repeat(self.condition_stack.len()), self.current_src_line);
+
+        Ok(())
     }
 
     fn process_directive(&mut self, comment_block: CommentBlock, current_col: usize, output: &mut String) -> Result<(), PreprocessorError> {
@@ -311,20 +321,19 @@ impl Preprocessor {
                         continue;
                     }
 
-                    if !self.opts.undef(&symbol) {
-                        return Err(PreprocessorError::SymbolNotDefined {
-                            name: symbol,
-                            at: directive_src_span.clone(),
-                        })
-                    }
+                    self.opts.undef(&symbol);
                 }
 
                 Some(Directive::IfDef(symbol)) => {
-                    self.push_condition(&symbol, true)?
+                    self.push_def_condition(&symbol, true);
                 },
 
+                Some(Directive::IfOpt(switch, on)) => {
+                    self.push_opt_condition(&switch, on);
+                }
+
                 Some(Directive::IfNDef(symbol)) => {
-                    self.push_condition(&symbol, false)?
+                    self.push_def_condition(&symbol, false);
                 },
 
                 Some(Directive::Else) => match self.condition_stack.last_mut() {
@@ -339,10 +348,10 @@ impl Preprocessor {
 
                 Some(Directive::ElseIf(symbol)) => {
                     self.pop_condition(current_col)?;
-                    self.push_condition(&symbol, true)?;
+                    self.push_def_condition(&symbol, true);
                 }
 
-                Some(Directive::EndIf) => {
+                Some(Directive::EndIf(_)) => {
                     self.pop_condition(current_col)?;
                 },
 

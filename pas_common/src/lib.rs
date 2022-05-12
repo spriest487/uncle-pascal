@@ -169,6 +169,10 @@ impl BuildOptions {
         self.switches.insert(switch.to_string(), on);
     }
 
+    pub fn is_switch_on(&self, switch: &str) -> bool {
+        self.switches.get(switch).cloned().unwrap_or(false)
+    }
+
     pub fn strict_switches(&self) -> bool {
         match self.lang_mode {
             LanguageMode::Default => true,

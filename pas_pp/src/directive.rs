@@ -5,8 +5,9 @@ pub enum Directive {
     Define(String),
     Undef(String),
     IfDef(String),
+    IfOpt(String, bool),
     IfNDef(String),
-    EndIf,
+    EndIf(Option<String>),
     Else,
     ElseIf(String),
     Mode(LanguageMode),
@@ -19,6 +20,7 @@ pub struct DirectiveParser {
     define_pattern: Regex,
     undef_pattern: Regex,
     ifdef_pattern: Regex,
+    ifopt_pattern: Regex,
     ifndef_pattern: Regex,
     endif_pattern: Regex,
     else_pattern: Regex,
@@ -35,8 +37,9 @@ impl DirectiveParser {
             define_pattern: Regex::new(r"(?i)^define\s+(\w+)$").unwrap(),
             undef_pattern: Regex::new(r"(?i)^undef\s+(\w+)$").unwrap(),
             ifdef_pattern: Regex::new(r"(?i)^ifdef\s+(\w+)$").unwrap(),
+            ifopt_pattern: Regex::new(r"(?i)^ifopt\s+(\w+)([+-])$").unwrap(),
             ifndef_pattern: Regex::new(r"(?i)^ifndef\s+(\w+)$").unwrap(),
-            endif_pattern: Regex::new("(?i)^endif$").unwrap(),
+            endif_pattern: Regex::new(r"(?i)^endif(\s.+)?$").unwrap(),
             else_pattern: Regex::new("(?i)^else$").unwrap(),
             elseif_pattern: Regex::new(r"(?i)^elseif\s+(\w+)$").unwrap(),
             mode_pattern: Regex::new(r"(?i)^mode\s+(\w+)$").unwrap(),
@@ -59,12 +62,21 @@ impl DirectiveParser {
             let symbol = ifdef_captures[1].to_string();
 
             Some(Directive::IfDef(symbol))
+        } else if let Some(ifopt_captures) = self.ifopt_pattern.captures(s) {
+            let switch = ifopt_captures[1].to_string();
+            let on = match &ifopt_captures[2] {
+                "-" => false,
+                _ => true,
+            };
+
+            Some(Directive::IfOpt(switch, on))
         } else if let Some(ifndef_captures) = self.ifndef_pattern.captures(s) {
             let symbol = ifndef_captures[1].to_string();
 
             Some(Directive::IfNDef(symbol))
-        } else if self.endif_pattern.is_match(s) {
-            Some(Directive::EndIf)
+        } else if let Some(endif_captures) = self.endif_pattern.captures(s) {
+            let condition = endif_captures.get(1).map(|m| m.as_str().trim().to_string());
+            Some(Directive::EndIf(condition))
         } else if self.else_pattern.is_match(s) {
             Some(Directive::Else)
         } else if let Some(elseif_captures) = self.elseif_pattern.captures(s) {

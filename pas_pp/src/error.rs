@@ -6,10 +6,6 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum PreprocessorError {
-    SymbolNotDefined {
-        name: String,
-        at: Span,
-    },
     IllegalDirective {
         directive: String,
         at: Span,
@@ -27,10 +23,6 @@ pub enum PreprocessorError {
 impl fmt::Display for PreprocessorError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            PreprocessorError::SymbolNotDefined { name, .. } => {
-                write!(f, "symbol `{}` was not defined", name)
-            },
-
             PreprocessorError::IllegalDirective { directive, .. } => {
                 write!(f, "unrecognized directive `{}`", directive)
             },
@@ -57,7 +49,6 @@ impl fmt::Display for PreprocessorError {
 impl Spanned for PreprocessorError {
     fn span(&self) -> &Span {
         match self {
-            PreprocessorError::SymbolNotDefined { at, .. } => at,
             PreprocessorError::IllegalDirective { at, .. } => at,
             PreprocessorError::UnexpectedEndIf(at) => at,
             PreprocessorError::UnterminatedCondition(at) => at,
