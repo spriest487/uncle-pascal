@@ -24,7 +24,7 @@ pub fn typecheck_bin_op(
     let span = bin_op.annotation.clone();
 
     match &bin_op.op {
-        Operator::Member => typecheck_member_of(&bin_op.lhs, &bin_op.rhs, span, expect_ty, ctx),
+        Operator::Period => typecheck_member_of(&bin_op.lhs, &bin_op.rhs, span, expect_ty, ctx),
 
         Operator::Index => typecheck_indexer(&bin_op.lhs, &bin_op.rhs, &span, ctx),
 
@@ -381,7 +381,7 @@ fn typecheck_member_of(
 
             Ok(Expression::from(BinOp {
                 lhs,
-                op: Operator::Member,
+                op: Operator::Period,
                 rhs,
                 annotation,
             }))
@@ -425,7 +425,7 @@ fn typecheck_member_of(
                 lhs: lhs.annotation().ty().into_owned(),
                 rhs: rhs.annotation().ty().into_owned(),
                 span,
-                op: Operator::Member,
+                op: Operator::Period,
             })
         }
     }
@@ -613,7 +613,7 @@ pub fn typecheck_unary_op(
     ctx: &mut Context,
 ) -> TypecheckResult<UnaryOp> {
     let operand_expect_ty = match unary_op.op {
-        Operator::Add | Operator::Subtract | Operator::Not => expect_ty.clone(),
+        Operator::Add | Operator::Sub | Operator::Not => expect_ty.clone(),
         Operator::AddressOf => match expect_ty {
             // value of the operator expression is the pointer to the deref type, so the operand
             // is of the deref type
@@ -688,7 +688,7 @@ pub fn typecheck_unary_op(
         }
 
         // unary negation - should this be disallowed for unsigned types?
-        Operator::Subtract if operand_ty.valid_math_op(Operator::Subtract, &operand_ty) => {
+        Operator::Sub if operand_ty.valid_math_op(Operator::Sub, &operand_ty) => {
             TypedValueAnnotation {
                 ty: operand_ty.into_owned(),
                 value_kind: ValueKind::Temporary,

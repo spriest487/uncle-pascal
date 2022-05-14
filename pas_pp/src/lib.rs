@@ -248,7 +248,7 @@ impl Preprocessor {
     }
 
     fn push_def_condition(&mut self, symbol: &str, positive: bool) {
-        eprintln!("{}pushing {}: {} @ {}", " ".repeat(self.condition_stack.len()), match positive { true => "ifdef", false => "ifndef" }, symbol, self.current_src_line);
+        // eprintln!("{}pushing {}: {} @ {}", " ".repeat(self.condition_stack.len()), match positive { true => "ifdef", false => "ifndef" }, symbol, self.current_src_line);
         self.condition_stack.push(SymbolCondition {
             value: {
                 let has_symbol = self.opts.defined(symbol);
@@ -263,7 +263,7 @@ impl Preprocessor {
     }
 
     fn push_opt_condition(&mut self, opt: &str, on: bool) {
-        eprintln!("{}pushing ifopt: {}{} @ {}", " ".repeat(self.condition_stack.len()), opt, match on { true => '+', false => '-' }, self.current_src_line);
+        // eprintln!("{}pushing ifopt: {}{} @ {}", " ".repeat(self.condition_stack.len()), opt, match on { true => '+', false => '-' }, self.current_src_line);
         self.condition_stack.push(SymbolCondition {
             value: on == self.opts.is_switch_on(opt),
             start_line: self.current_src_line,
@@ -275,7 +275,7 @@ impl Preprocessor {
             return Err(PreprocessorError::UnexpectedEndIf(self.current_line_span(col)));
         }
 
-        eprintln!("{}popped condition @ {}", " ".repeat(self.condition_stack.len()), self.current_src_line);
+        // eprintln!("{}popped condition @ {}", " ".repeat(self.condition_stack.len()), self.current_src_line);
 
         Ok(())
     }

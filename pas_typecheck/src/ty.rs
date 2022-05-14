@@ -308,7 +308,7 @@ impl Type {
             (
                 Type::Pointer(_) | Type::Primitive(Primitive::Pointer),
                 Operator::Add
-                | Operator::Subtract
+                | Operator::Sub
                 | Operator::BitAnd
                 | Operator::BitOr
                 | Operator::Caret,
@@ -322,23 +322,37 @@ impl Type {
             (
                 Type::Pointer(_),
                 Operator::Add
-                | Operator::Subtract
+                | Operator::Sub
                 | Operator::BitAnd
                 | Operator::BitOr
                 | Operator::Caret,
                 Type::Pointer(..)
             ) => *self == *rhs,
 
-            // all maths ops are valid for primitives of the same type
+            // integer division is valid for two of the same primitive integer type
             (
                 Type::Primitive(a),
-                Operator::Add | Operator::Subtract | Operator::Divide | Operator::Multiply,
+                Operator::IDiv,
+                Type::Primitive(b)
+            ) => {
+                a.is_integer() && *a == *b
+            }
+
+            // real division is valid for two of the same primitive real type
+            (
+                Type::Primitive(a),
+                Operator::FDiv,
+                Type::Primitive(b)
+            ) => {
+                a.is_real() && *a == *b
+            }
+
+            // all maths ops except division are valid for primitives of the same type
+            (
+                Type::Primitive(a),
+                Operator::Add | Operator::Sub | Operator::Mul | Operator::Mod,
                 Type::Primitive(b)) => {
-                if a.is_numeric() && b.is_numeric() {
-                    *a == *b
-                } else {
-                    false
-                }
+                a.is_numeric() && *a == *b
             },
 
             // bitwise ops are valid for two identical unsigned primitive types

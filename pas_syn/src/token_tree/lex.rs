@@ -441,9 +441,9 @@ impl Lexer {
             ']' => Some(self.end_delim_group(DelimiterPair::SquareBracket, 1)?),
 
             '+' => Some(self.operator_or_compound_assignment_token(Operator::Add, CompoundAssignmentOperator::AddAssign)),
-            '-' => Some(self.operator_or_compound_assignment_token(Operator::Subtract, CompoundAssignmentOperator::SubtractAssign)),
-            '*' => Some(self.operator_or_compound_assignment_token(Operator::Multiply, CompoundAssignmentOperator::MultiplyAssign)),
-            '/' => Some(self.operator_or_compound_assignment_token(Operator::Divide, CompoundAssignmentOperator::DivideAssign)),
+            '-' => Some(self.operator_or_compound_assignment_token(Operator::Sub, CompoundAssignmentOperator::SubAssign)),
+            '*' => Some(self.operator_or_compound_assignment_token(Operator::Mul, CompoundAssignmentOperator::MulAssign)),
+            '/' => Some(self.operator_or_compound_assignment_token(Operator::FDiv, CompoundAssignmentOperator::FDivAssign)),
             '|' => Some(self.operator_token(Operator::BitOr, 1)),
             '&' => Some(self.operator_token(Operator::BitAnd, 1)),
             '~' => Some(self.operator_token(Operator::BitNot, 1)),
@@ -451,7 +451,7 @@ impl Lexer {
             ',' => Some(self.separator_token(Separator::Comma, 1)),
             '.' => Some(match self.line.get(self.location.col + 1) {
                 Some('.') => self.operator_token(Operator::RangeInclusive, 2),
-                _ => self.operator_token(Operator::Member, 1),
+                _ => self.operator_token(Operator::Period, 1),
             }),
             ';' => Some(self.separator_token(Separator::Semicolon, 1)),
             '^' => Some(self.operator_token(Operator::Caret, 1)),

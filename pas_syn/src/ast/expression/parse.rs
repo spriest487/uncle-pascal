@@ -401,7 +401,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
     }
 
     fn parse_member_access(&mut self) -> ParseResult<()> {
-        let member_op_tt = self.tokens.match_one(Operator::Member)?;
+        let member_op_tt = self.tokens.match_one(Operator::Period)?;
 
         self.push_operator_token(member_op_tt, Position::Binary);
 
@@ -425,7 +425,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         let match_after_operand = operator_matcher
             .or(DelimiterPair::SquareBracket) // array element access or explicit generic args
             .or(DelimiterPair::Bracket) // function call argument list
-            .or(Operator::Member); // member access
+            .or(Operator::Period); // member access
 
         let mut look_ahead = self.tokens.look_ahead();
 
@@ -455,7 +455,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             },
 
             Some(TokenTree::Operator {
-                op: Operator::Member,
+                op: Operator::Period,
                 ..
             }) => {
                 self.parse_member_access()?;

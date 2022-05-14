@@ -232,15 +232,15 @@ pub fn translate_compound_assignment(
             pas_syn::CompoundAssignmentOperator::AddAssign => {
                 builder.add(op_result.clone(), lhs.clone(), rhs.clone())
             },
-            pas_syn::CompoundAssignmentOperator::SubtractAssign => {
+            pas_syn::CompoundAssignmentOperator::SubAssign => {
                 builder.sub(op_result.clone(), lhs.clone(), rhs.clone())
-            },
-            pas_syn::CompoundAssignmentOperator::MultiplyAssign => {
+            }
+            pas_syn::CompoundAssignmentOperator::MulAssign => {
                 builder.mul(op_result.clone(), lhs.clone(), rhs.clone())
-            },
-            pas_syn::CompoundAssignmentOperator::DivideAssign => {
+            }
+            pas_syn::CompoundAssignmentOperator::FDivAssign => {
                 builder.idiv(op_result.clone(), lhs.clone(), rhs.clone())
-            },
+            }
         };
 
         // the new value is being stored in a new location, release the old value and retain it

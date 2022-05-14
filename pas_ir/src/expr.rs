@@ -675,7 +675,7 @@ fn translate_bin_op(
 
     // the functions to translate IR and member operators return pointers to the value
     let (out_val, out_is_ptr) = match bin_op.op {
-        syn::Operator::Member | syn::Operator::Index => {
+        syn::Operator::Period | syn::Operator::Index => {
             let out_val = builder.local_new(out_ty.clone().ptr(), None);
             (out_val, true)
         },
@@ -690,7 +690,7 @@ fn translate_bin_op(
     let lhs_val = translate_expr(&bin_op.lhs, builder);
 
     match &bin_op.op {
-        syn::Operator::Member => {
+        syn::Operator::Period => {
             // auto-deref for rc types
             let of_ty = builder.translate_type(&bin_op.lhs.annotation().ty());
 
@@ -769,23 +769,34 @@ fn translate_bin_op(
             });
         },
 
-        syn::Operator::Multiply => {
+        syn::Operator::Mul => {
             let b = translate_expr(&bin_op.rhs, builder);
             builder.append(Instruction::Mul {
                 out: out_val.clone(),
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        },
+        }
 
-        syn::Operator::Divide => {
+        syn::Operator::Mod => {
             let b = translate_expr(&bin_op.rhs, builder);
-            builder.append(Instruction::IDiv {
+            builder.append(Instruction::Mod {
                 out: out_val.clone(),
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        },
+        }
+
+        // both types of division translate to the same instructions, it just may imply some
+        // conversions for the values which should already be done by this point
+        syn::Operator::FDiv | syn::Operator::IDiv => {
+            let b = translate_expr(&bin_op.rhs, builder);
+            builder.append(Instruction::Div {
+                out: out_val.clone(),
+                a: lhs_val.into(),
+                b: b.into(),
+            });
+        }
 
         syn::Operator::Gt => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -866,7 +877,7 @@ fn translate_bin_op(
             });
         },
 
-        syn::Operator::Subtract => {
+        syn::Operator::Sub => {
             let b = translate_expr(&bin_op.rhs, builder);
             builder.append(Instruction::Sub {
                 out: out_val.clone(),
@@ -977,7 +988,7 @@ fn translate_unary_op(
 
         syn::Operator::Caret => operand_ref.to_deref(),
 
-        syn::Operator::Subtract => {
+        syn::Operator::Sub => {
             let out_ty = builder.translate_type(out_ty);
             let out_val = builder.local_new(out_ty.clone(), None);
 

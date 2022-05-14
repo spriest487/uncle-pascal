@@ -227,7 +227,7 @@ pub type IdentPath = Path<Ident>;
 impl IdentPath {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let path = tokens.match_repeating(|i, tokens| {
-            if i > 0 && tokens.match_one_maybe(Operator::Member).is_none() {
+            if i > 0 && tokens.match_one_maybe(Operator::Period).is_none() {
                 return Ok(Generate::Break);
             }
 

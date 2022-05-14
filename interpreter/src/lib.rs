@@ -769,7 +769,8 @@ impl Interpreter {
             Instruction::Add { out, a, b } => self.exec_add(out, a, b)?,
 
             Instruction::Mul { out, a, b } => self.exec_mul(out, a, b)?,
-            Instruction::IDiv { out, a, b } => self.exec_idiv(out, a, b)?,
+            Instruction::Div { out, a, b } => self.exec_div(out, a, b)?,
+            Instruction::Mod { out, a, b } => self.exec_mod(out, a, b)?,
             Instruction::Sub { out, a, b } => self.exec_sub(out, a, b)?,
             Instruction::Shl { out, a, b } => self.exec_shl(out, a, b)?,
             Instruction::Shr { out, a, b } => self.exec_shr(out, a, b)?,
@@ -1101,13 +1102,13 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_mul(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+    fn exec_div(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
         let a_val = self.evaluate(a)?;
         let b_val = self.evaluate(b)?;
 
-        match a_val.try_mul(&b_val) {
+        match a_val.try_div(&b_val) {
             Some(result) => self.store(out, result),
-            None => Err(ExecError::IllegalInstruction(Instruction::Mul {
+            None => Err(ExecError::IllegalInstruction(Instruction::Div {
                 a: a.clone(),
                 b: b.clone(),
                 out: out.clone(),
@@ -1115,13 +1116,27 @@ impl Interpreter {
         }
     }
 
-    fn exec_idiv(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+    fn exec_mod(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
         let a_val = self.evaluate(a)?;
         let b_val = self.evaluate(b)?;
 
-        match a_val.try_idiv(&b_val) {
+        match a_val.try_mod(&b_val) {
             Some(result) => self.store(out, result),
-            None => Err(ExecError::IllegalInstruction(Instruction::IDiv {
+            None => Err(ExecError::IllegalInstruction(Instruction::Mod {
+                a: a.clone(),
+                b: b.clone(),
+                out: out.clone(),
+            })),
+        }
+    }
+
+    fn exec_mul(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        match a_val.try_mul(&b_val) {
+            Some(result) => self.store(out, result),
+            None => Err(ExecError::IllegalInstruction(Instruction::Mul {
                 a: a.clone(),
                 b: b.clone(),
                 out: out.clone(),

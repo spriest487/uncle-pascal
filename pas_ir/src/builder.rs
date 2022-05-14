@@ -368,7 +368,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn idiv(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::IDiv {
+        self.append(Instruction::Div {
             out: out.into(),
             a: a.into(),
             b: b.into(),

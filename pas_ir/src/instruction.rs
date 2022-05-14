@@ -31,7 +31,12 @@ pub enum Instruction {
         a: Value,
         b: Value,
     },
-    IDiv {
+    Div {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    Mod {
         out: Ref,
         a: Value,
         b: Value,
@@ -220,7 +225,8 @@ impl Instruction {
             | Instruction::Add { out, .. }
             | Instruction::Sub { out, .. }
             | Instruction::Mul { out, .. }
-            | Instruction::IDiv { out, .. }
+            | Instruction::Div { out, .. }
+            | Instruction::Mod { out, .. }
             | Instruction::Shl { out, .. }
             | Instruction::Shr { out, .. }
             | Instruction::Eq { out, .. }

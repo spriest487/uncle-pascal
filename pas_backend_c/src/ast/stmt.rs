@@ -184,7 +184,11 @@ impl<'a> Builder<'a> {
                 self.write_infix_op(out, a, InfixOp::Mul, b);
             },
 
-            ir::Instruction::IDiv { out, a, b } => {
+            ir::Instruction::Mod { out, a, b } => {
+                self.write_infix_op(out, a, InfixOp::Rem, b);
+            },
+
+            ir::Instruction::Div { out, a, b } => {
                 self.write_infix_op(out, a, InfixOp::Div, b);
             },
 

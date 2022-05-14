@@ -72,6 +72,13 @@ impl Primitive {
         }
     }
 
+    pub fn is_real(&self) -> bool {
+        match self {
+            | Primitive::Real32 => true,
+            | _ => false,
+        }
+    }
+
     pub fn native_size(&self) -> usize {
         match self {
             | Primitive::UInt8 => size_of::<u8>(),

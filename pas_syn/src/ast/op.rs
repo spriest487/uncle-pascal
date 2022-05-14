@@ -35,7 +35,7 @@ pub struct BinOp<A: Annotation> {
 impl<A: Annotation> fmt::Display for BinOp<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.op {
-            Operator::RangeInclusive | Operator::Member => {
+            Operator::RangeInclusive | Operator::Period => {
                 write!(f, "{}{}{}", self.lhs, self.op, self.rhs)
             }
 

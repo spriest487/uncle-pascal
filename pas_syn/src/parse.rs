@@ -59,7 +59,6 @@ pub enum ParseError {
     UnterminatedStatement { span: Span },
     InvalidFunctionImplType(TypeName),
     InvalidAssignmentExpr { span: Span },
-    ExpectedSeparator { sep: Separator, span: Span },
     EmptyConstDecl { span: Span },
     EmptyTypeDecl { span: Span },
 }
@@ -84,7 +83,6 @@ impl Spanned for ParseError {
             ParseError::UnterminatedStatement { span } => span,
             ParseError::InvalidFunctionImplType(tn) => tn.span(),
             ParseError::InvalidAssignmentExpr { span } => span,
-            ParseError::ExpectedSeparator { span, .. } => span,
             ParseError::EmptyConstDecl { span, .. } => span,
             ParseError::EmptyTypeDecl { span, .. } => span,
         }
@@ -109,7 +107,6 @@ impl fmt::Display for ParseError {
             ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated statement"),
             ParseError::InvalidFunctionImplType(..) => write!(f, "Invalid interface type for method"),
             ParseError::InvalidAssignmentExpr { .. } => write!(f, "Illegal assignment"),
-            ParseError::ExpectedSeparator { .. } => write!(f, "Expected separator"),
             ParseError::EmptyConstDecl { .. } => write!(f, "Empty const declaration"),
             ParseError::EmptyTypeDecl { .. } => write!(f, "Empty type declaration"),
         }
@@ -177,10 +174,6 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::InvalidAssignmentExpr { .. } => {
                 format!("Assignment operator can only be used in an assignment statement")
-            }
-
-            ParseError::ExpectedSeparator { sep, .. } => {
-                format!("separator {} was expected after this item", sep)
             }
 
             ParseError::EmptyTypeDecl { .. } => {

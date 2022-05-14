@@ -282,7 +282,7 @@ impl DynValue {
         }
     }
 
-    pub fn try_idiv(&self, other: &Self) -> Option<Self> {
+    pub fn try_div(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a / b)),
             (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a / b)),
@@ -299,6 +299,25 @@ impl DynValue {
             },
 
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a / b)),
+
+            _ => None,
+        }
+    }
+
+    pub fn try_mod(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a % b)),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a % b)),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a % b)),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a % b)),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a % b)),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a % b)),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a % b)),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a % b)),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a % b)),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a % b)),
+
+            (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a % b)),
 
             _ => None,
         }

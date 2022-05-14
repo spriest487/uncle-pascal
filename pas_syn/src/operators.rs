@@ -25,9 +25,11 @@ pub enum Operator {
     CompoundAssignment(CompoundAssignmentOperator),
 
     Add,
-    Subtract,
-    Multiply,
-    Divide,
+    Sub,
+    Mul,
+    FDiv,
+    IDiv,
+    Mod,
 
     Caret,
     AddressOf,
@@ -54,7 +56,7 @@ pub enum Operator {
 
     In,
 
-    Member,
+    Period,
     Index,
 
     Shl,
@@ -68,18 +70,18 @@ pub enum Operator {
 #[derive(Eq, PartialEq, Clone, Debug, Copy, Hash)]
 pub enum CompoundAssignmentOperator {
     AddAssign,
-    SubtractAssign,
-    MultiplyAssign,
-    DivideAssign,
+    SubAssign,
+    MulAssign,
+    FDivAssign,
 }
 
 impl CompoundAssignmentOperator {
     pub fn binary_operator(self) -> Operator {
         match self {
             CompoundAssignmentOperator::AddAssign => Operator::Add,
-            CompoundAssignmentOperator::SubtractAssign => Operator::Subtract,
-            CompoundAssignmentOperator::MultiplyAssign => Operator::Multiply,
-            CompoundAssignmentOperator::DivideAssign => Operator::Divide,
+            CompoundAssignmentOperator::SubAssign => Operator::Sub,
+            CompoundAssignmentOperator::MulAssign => Operator::Mul,
+            CompoundAssignmentOperator::FDivAssign => Operator::FDiv,
         }
     }
 }
@@ -92,23 +94,25 @@ impl From<CompoundAssignmentOperator> for Operator {
 
 /// canonical operator precedence ordering. operations higher in the list
 /// take precedence over ones below them
-static PRECEDENCE: [(Operator, Position); 34] = [
+static PRECEDENCE: [(Operator, Position); 36] = [
     (Operator::Index, Position::Binary),
-    (Operator::Member, Position::Binary),
+    (Operator::Period, Position::Binary),
     (Operator::Call, Position::Postfix),
     (Operator::Caret, Position::Postfix),
     (Operator::AddressOf, Position::Prefix),
     (Operator::Add, Position::Prefix),
-    (Operator::Subtract, Position::Prefix),
+    (Operator::Sub, Position::Prefix),
     (Operator::Not, Position::Prefix),
     (Operator::BitNot, Position::Prefix),
     (Operator::As, Position::Postfix),
     (Operator::Shl, Position::Binary),
     (Operator::Shr, Position::Binary),
-    (Operator::Multiply, Position::Binary),
-    (Operator::Divide, Position::Binary),
+    (Operator::Mul, Position::Binary),
+    (Operator::FDiv, Position::Binary),
+    (Operator::IDiv, Position::Binary),
+    (Operator::Mod, Position::Binary),
     (Operator::Add, Position::Binary),
-    (Operator::Subtract, Position::Binary),
+    (Operator::Sub, Position::Binary),
     (Operator::Equals, Position::Binary),
     (Operator::NotEquals, Position::Binary),
     (Operator::Gt, Position::Binary),
@@ -124,9 +128,9 @@ static PRECEDENCE: [(Operator, Position); 34] = [
     (Operator::RangeInclusive, Position::Binary),
     (Operator::Assignment, Position::Binary),
     (Operator::CompoundAssignment(CompoundAssignmentOperator::AddAssign), Position::Binary),
-    (Operator::CompoundAssignment(CompoundAssignmentOperator::SubtractAssign), Position::Binary),
-    (Operator::CompoundAssignment(CompoundAssignmentOperator::MultiplyAssign), Position::Binary),
-    (Operator::CompoundAssignment(CompoundAssignmentOperator::DivideAssign), Position::Binary),
+    (Operator::CompoundAssignment(CompoundAssignmentOperator::SubAssign), Position::Binary),
+    (Operator::CompoundAssignment(CompoundAssignmentOperator::MulAssign), Position::Binary),
+    (Operator::CompoundAssignment(CompoundAssignmentOperator::FDivAssign), Position::Binary),
 ];
 
 impl Operator {
@@ -138,7 +142,7 @@ impl Operator {
 
     pub fn precedence(self, in_pos: Position) -> usize {
         match self {
-            Operator::Member | Operator::Index | Operator::Call => 0,
+            Operator::Period | Operator::Index | Operator::Call => 0,
 
             _ => PRECEDENCE
                 .iter()
@@ -169,6 +173,8 @@ impl Operator {
             "shl" => Some(Operator::Shl),
             "shr" => Some(Operator::Shr),
             "as" => Some(Operator::As),
+            "div" => Some(Operator::IDiv),
+            "mod" => Some(Operator::Mod),
             _ => None,
         }
     }
@@ -189,7 +195,7 @@ impl Operator {
 impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Operator::Member => write!(f, "."),
+            Operator::Period => write!(f, "."),
             Operator::Caret => write!(f, "^"),
             Operator::AddressOf => write!(f, "@"),
             Operator::Assignment => write!(f, ":="),
@@ -199,9 +205,11 @@ impl fmt::Display for Operator {
             Operator::Shl => write!(f, "shl"),
             Operator::Shr => write!(f, "shr"),
             Operator::Add => write!(f, "+"),
-            Operator::Subtract => write!(f, "-"),
-            Operator::Multiply => write!(f, "*"),
-            Operator::Divide => write!(f, "/"),
+            Operator::Sub => write!(f, "-"),
+            Operator::Mul => write!(f, "*"),
+            Operator::FDiv => write!(f, "/"),
+            Operator::IDiv => write!(f, "div"),
+            Operator::Mod => write!(f, "mod"),
             Operator::And => write!(f, "and"),
             Operator::Not => write!(f, "not"),
             Operator::Or => write!(f, "or"),
@@ -225,9 +233,9 @@ impl fmt::Display for CompoundAssignmentOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op_str = match self {
             CompoundAssignmentOperator::AddAssign => "+=",
-            CompoundAssignmentOperator::SubtractAssign => "-=",
-            CompoundAssignmentOperator::MultiplyAssign => "*=",
-            CompoundAssignmentOperator::DivideAssign => "/=",
+            CompoundAssignmentOperator::SubAssign => "-=",
+            CompoundAssignmentOperator::MulAssign => "*=",
+            CompoundAssignmentOperator::FDivAssign => "/=",
         };
         write!(f, "{}", op_str)
     }

@@ -104,7 +104,7 @@ impl Unit<Span> {
             init.push(Statement::Block(Box::new(main_block)));
 
             // allow the traditional period after the final end
-            tokens.match_one_maybe(Operator::Member);
+            tokens.match_one_maybe(Operator::Period);
         } else {
             let has_interface = parse_decls_section(Keyword::Interface, &mut iface_decls, tokens)?;
             let has_implementation = parse_decls_section(Keyword::Implementation, &mut impl_decls, tokens)?;
@@ -117,25 +117,10 @@ impl Unit<Span> {
 
             if has_interface || has_implementation || has_initialization {
                 // it's a structured unit, we expect nothing after the defined sections
-
-                // if we get unexpected tokens here, we should suggest a semicolon after the last decl as a more
-                // helpful error - we know there are tokens, and we know the only way for anything other than "end"
-                // to be a legal token here is to separate them from the last decl with a semicolon
-                let last_pos = tokens.current()
-                    .map(|tt| tt.clone().into_span())
-                    .unwrap_or_else(|| tokens.context().clone());
-
-                tokens.match_one(Keyword::End).map_err(|mut err| {
-                    if let ParseError::UnexpectedToken(..) = &err.err {
-                        if tokens.current().map(|tt| tt.is_separator(Separator::Semicolon)) != Some(true) {
-                            err.err = ParseError::ExpectedSeparator { span: last_pos, sep: Separator::Semicolon };
-                        }
-                    }
-                    err
-                })?;
+                tokens.match_one(Keyword::End)?;
 
                 // allow the traditional period after the final end
-                tokens.match_one_maybe(Operator::Member);
+                tokens.match_one_maybe(Operator::Period);
             } else {
                 // no structured segments, it's a freeform unit - everything is in the interface
                 // and we don't expect an end keyword after all decls/init
