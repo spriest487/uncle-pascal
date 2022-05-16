@@ -104,7 +104,7 @@ impl StackFrame {
                     });
                 }
 
-                // we are encountering an alloc expression for a previous allocation by the same
+                // we are encountering an alloc expr for a previous allocation by the same
                 // instruction, it must be identical and we can skip it
                 return Ok(());
             }

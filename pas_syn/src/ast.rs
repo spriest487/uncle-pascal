@@ -18,7 +18,7 @@ pub mod cast;
 pub use self::{
     block::*,
     call::*,
-    case::{CaseBranch, CaseExpr, CaseStatement, CaseBlock},
+    case::{CaseBranch, CaseExpr, CaseStmt, CaseBlock},
     match_block::*,
     cond::*,
     ctor::*,
@@ -64,9 +64,9 @@ impl Annotation for Span {
     type Name = TypeDeclName;
     type Pattern = TypeNamePattern;
 
-    type ConstStringExpr = Box<Expression<Span>>;
-    type ConstIntegerExpr = Box<Expression<Span>>;
-    type ConstExpr = Box<Expression<Span>>;
+    type ConstStringExpr = Box<Expr<Span>>;
+    type ConstIntegerExpr = Box<Expr<Span>>;
+    type ConstExpr = Box<Expr<Span>>;
 }
 
 #[derive(Clone, Debug, Eq)]
@@ -124,7 +124,7 @@ impl fmt::Display for IdentTypeName {
 #[derive(Clone, Debug, Eq)]
 pub struct ArrayTypeName {
     pub element: Box<TypeName>,
-    pub dim: Option<Box<Expression<Span>>>,
+    pub dim: Option<Box<Expr<Span>>>,
     pub indirection: usize,
     pub span: Span,
 }
@@ -362,7 +362,7 @@ impl TypeName {
             None => match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
                 TokenTree::Delimited(group) => {
                     let mut dim_tokens = group.to_inner_tokens();
-                    let dim_expr = Expression::parse(&mut dim_tokens)?;
+                    let dim_expr = Expr::parse(&mut dim_tokens)?;
                     dim_tokens.finish()?;
 
                     Some(Box::new(dim_expr))

@@ -5,7 +5,7 @@ use pas_common::span::*;
 use pas_syn::{ast::{Annotation, DeclNamed, TypeDeclName}, ident::IdentPath, Ident, IntConstant};
 use pas_syn::ast::TypeList;
 
-use crate::{ast::{Expression, FunctionDecl}, GenericError, GenericResult, result::*, ty::*, ValueKind};
+use crate::{ast::{Expr, FunctionDecl}, GenericError, GenericResult, result::*, ty::*, ValueKind};
 use crate::ast::{Literal, OverloadCandidate};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -31,7 +31,7 @@ pub struct OverloadAnnotation {
     pub candidates: Vec<OverloadCandidate>,
     sig: Option<Rc<FunctionSig>>,
 
-    pub self_arg: Option<Box<Expression>>,
+    pub self_arg: Option<Box<Expr>>,
 
     pub type_args: Vec<Type>,
 }
@@ -39,7 +39,7 @@ pub struct OverloadAnnotation {
 impl OverloadAnnotation {
     pub fn method(
         iface_ty: Type,
-        self_arg: Expression,
+        self_arg: Expr,
         decl: FunctionDecl,
         span: Span
     ) -> Self {
@@ -63,7 +63,7 @@ impl OverloadAnnotation {
 
     pub fn new(
         candidates: Vec<OverloadCandidate>,
-        self_arg: Option<Box<Expression>>,
+        self_arg: Option<Box<Expr>>,
         type_args: Vec<Type>,
         span: Span
     ) -> Self {
@@ -181,7 +181,7 @@ impl From<ConstAnnotation> for TypeAnnotation {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UFCSCallAnnotation {
-    pub self_arg: Box<Expression>,
+    pub self_arg: Box<Expr>,
     pub function_name: IdentPath,
     pub span: Span,
 

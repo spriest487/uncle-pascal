@@ -16,13 +16,13 @@ pub fn typecheck_block(
 
     let expect_output = *expect_ty != Type::Nothing;
 
-    for (i, stmt) in block.statements.iter().enumerate() {
-        let is_last_stmt = i == block.statements.len() - 1;
+    for (i, stmt) in block.stmts.iter().enumerate() {
+        let is_last_stmt = i == block.stmts.len() - 1;
 
         if is_last_stmt && expect_output && block.output.is_none() {
-            // this is the final statement in the block, and during parsing this block didn't
-            // get an output expression. we expect this block to have an output, so try to convert
-            // the final statement here into an expression
+            // this is the final stmt in the block, and during parsing this block didn't
+            // get an output expr. we expect this block to have an output, so try to convert
+            // the final stmt here into an expr
             match stmt.to_expr() {
                 Some(src_output_stmt_expr) => {
                     let mut output_stmt_expr = typecheck_expr(&src_output_stmt_expr, expect_ty, ctx)?;
@@ -33,7 +33,7 @@ pub fn typecheck_block(
                 },
 
                 None => {
-                    // typecheck the actual statement which isn't a valid expr so we can use it
+                    // typecheck the actual stmt which isn't a valid expr so we can use it
                     // for a better error message
                     let bad_stmt = typecheck_stmt(&stmt, expect_ty, ctx)?;
                     return Err(TypecheckError::BlockOutputIsNotExpression {
@@ -51,8 +51,8 @@ pub fn typecheck_block(
         statements.push(stmt);
     }
 
-    // process the parsed output expression (this is mutually exclusive with converting the final
-    // statement into an output)
+    // process the parsed output expr (this is mutually exclusive with converting the final
+    // stmt into an output)
     // the block's body statements can alter the context by declaring vars, initializing decls,
     // etc, so this has to be checked *after* we've processed the rest of the statements
     if let Some(src_output_expr) = &block.output {
@@ -92,7 +92,7 @@ pub fn typecheck_block(
     let block = Block {
         annotation,
         output,
-        statements,
+        stmts: statements,
 
         begin: block.begin.clone(),
         end: block.end.clone(),

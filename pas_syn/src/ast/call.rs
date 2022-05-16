@@ -1,4 +1,4 @@
-use crate::{ast::{Annotation, Expression, TypeList}, DelimiterPair, Ident, Separator, TokenTree};
+use crate::{ast::{Annotation, Expr, TypeList}, DelimiterPair, Ident, Separator, TokenTree};
 use std::{fmt};
 use pas_common::span::{Span, Spanned};
 use crate::parse::{LookAheadTokenStream, Matcher, ParseResult, ParseSeq, TokenStream};
@@ -13,7 +13,7 @@ pub struct MethodCall<A: Annotation> {
 
     pub ident: Ident,
 
-    pub args: Vec<Expression<A>>,
+    pub args: Vec<Expr<A>>,
     pub type_args: Option<TypeList<A::Type>>,
 
     pub annotation: A,
@@ -42,8 +42,8 @@ impl<A: Annotation> fmt::Display for MethodCall<A> {
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct FunctionCall<A: Annotation> {
-    pub target: Expression<A>,
-    pub args: Vec<Expression<A>>,
+    pub target: Expr<A>,
+    pub args: Vec<Expr<A>>,
 
     pub type_args: Option<TypeList<A::Type>>,
 
@@ -81,7 +81,7 @@ pub struct VariantCtorCall<A: Annotation> {
     pub variant: A::Name,
     pub case: Ident,
 
-    pub arg: Option<Expression<A>>,
+    pub arg: Option<Expr<A>>,
     pub annotation: A,
 }
 
@@ -146,7 +146,7 @@ impl<A: Annotation> Call<A> {
     }
 }
 
-struct ArgListItem(Expression<Span>);
+struct ArgListItem(Expr<Span>);
 
 impl ParseSeq for ArgListItem {
     fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
@@ -154,7 +154,7 @@ impl ParseSeq for ArgListItem {
             tokens.match_one(Separator::Comma)?;
         }
 
-        let arg = Expression::parse(tokens)?;
+        let arg = Expr::parse(tokens)?;
         Ok(ArgListItem(arg))
     }
 
@@ -171,7 +171,7 @@ impl ParseSeq for ArgListItem {
 pub struct ArgList<A: Annotation> {
     pub open: Span,
     pub close: Span,
-    pub args: Vec<Expression<A>>,
+    pub args: Vec<Expr<A>>,
 }
 
 impl ArgList<Span> {

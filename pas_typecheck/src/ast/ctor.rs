@@ -35,7 +35,7 @@ pub fn typecheck_object_ctor(
         })?;
 
     // generic types can't be constructed, but if the type hint is a parameterized instance of
-    // the generic type the constructor expression refers to, use that instead
+    // the generic type the constructor expr refers to, use that instead
     let ty = raw_ty
         .infer_specialized_from_hint(expect_ty)
         .ok_or_else(|| {
@@ -214,7 +214,7 @@ fn elements_for_inferred_ty(
     // must have at at least one element to infer types
     if ctor.elements.is_empty() {
         return Err(TypecheckError::UnableToInferType {
-            expr: Box::new(ast::Expression::from(ctor.clone())),
+            expr: Box::new(ast::Expr::from(ctor.clone())),
         });
     }
 

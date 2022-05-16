@@ -3,7 +3,7 @@ use std::{
 };
 use pas_common::span::{Span, Spanned};
 use crate::{
-    ast::{Annotation, Expression, TypeName},
+    ast::{Annotation, Expr, TypeName},
     Ident,
     Keyword,
     Operator,
@@ -78,7 +78,7 @@ pub struct ConstDeclItem<A: Annotation> {
     pub ident: Ident,
     pub ty: Option<A::Type>,
 
-    pub val: Box<Expression<A>>,
+    pub val: Box<Expr<A>>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -121,7 +121,7 @@ impl ParseSeq for ConstDeclItem<Span> {
 
         tokens.match_one(Operator::Equals)?;
 
-        let val = Expression::parse(tokens)?;
+        let val = Expr::parse(tokens)?;
 
         Ok(ConstDeclItem {
             span: ident.span().to(val.span()),

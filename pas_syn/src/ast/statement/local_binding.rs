@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        Expression, Typed,
+        Expr, Typed,
     },
     parse::prelude::*,
 };
@@ -9,7 +9,7 @@ use crate::{
 pub struct LocalBinding<A: Annotation> {
     pub name: Ident,
     pub ty: A::Type,
-    pub val: Option<Expression<A>>,
+    pub val: Option<Expr<A>>,
     pub annotation: A,
 }
 
@@ -25,7 +25,7 @@ impl LocalBinding<Span> {
 
         let (val, span) = match tokens.match_one_maybe(Operator::Assignment) {
             Some(_) => {
-                let val = Expression::parse(tokens)?;
+                let val = Expr::parse(tokens)?;
                 let span = var_kw_tt.span().to(val.annotation());
                 (Some(val), span)
             }

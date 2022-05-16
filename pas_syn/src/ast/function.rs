@@ -2,7 +2,7 @@
 mod test;
 
 use crate::{
-    ast::{Block, DeclMod, TypeList, TypeParam, WhereClause, Expression},
+    ast::{Block, DeclMod, TypeList, TypeParam, WhereClause, Expr},
     parse::prelude::*,
 };
 use derivative::*;
@@ -420,7 +420,7 @@ impl FunctionDef<Span> {
 
             let initial_val = match tokens.match_one_maybe(Operator::Equals) {
                 Some(..) => {
-                    let expr = Expression::parse(tokens)?;
+                    let expr = Expr::parse(tokens)?;
                     Some(Box::new(expr))
                 },
                 None => None,

@@ -1,17 +1,17 @@
-use crate::ast::{typecheck_expr, typecheck_stmt, Expression, implicit_conversion, Statement};
+use crate::ast::{typecheck_expr, typecheck_stmt, Expr, implicit_conversion, Stmt};
 use crate::{Binding, Context, Environment, Type, TypeAnnotation, TypePattern, TypecheckError, TypecheckResult, ValueKind, TypedValueAnnotation};
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
 
 pub type MatchBlock<B> = ast::MatchBlock<TypeAnnotation, B>;
-pub type MatchExpr = MatchBlock<Expression>;
-pub type MatchStmt = MatchBlock<Statement>;
+pub type MatchExpr = MatchBlock<Expr>;
+pub type MatchStmt = MatchBlock<Stmt>;
 pub type MatchBlockBranch<B> = ast::MatchBlockBranch<TypeAnnotation, B>;
 
 fn typecheck_match_cond<B>(
     match_block: &ast::MatchBlock<Span, B>,
     ctx: &mut Context,
-) -> TypecheckResult<Expression> {
+) -> TypecheckResult<Expr> {
     let cond_expr = typecheck_expr(&match_block.cond_expr, &Type::Nothing, ctx)?;
 
     let cond_ty = cond_expr.annotation().ty();
@@ -139,7 +139,7 @@ pub fn typecheck_match_expr(
             &cond_expr.annotation().ty(),
             expect_ty,
             block_ctx,
-            |item_expr, expect_ty, branches: &[MatchBlockBranch<Expression>], ctx| {
+            |item_expr, expect_ty, branches: &[MatchBlockBranch<Expr>], ctx| {
                 if branches.len() > 0 {
                     let result_ty = branches[0].item.annotation().ty();
                     let item_expr = typecheck_expr(item_expr, &result_ty, ctx)?;

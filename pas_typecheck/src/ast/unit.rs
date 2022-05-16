@@ -1,7 +1,7 @@
 use crate::ast::{
     expect_stmt_initialized, typecheck_alias, typecheck_composite, typecheck_expr,
     typecheck_func_decl, typecheck_func_def, typecheck_iface, typecheck_stmt, typecheck_variant,
-    Expression,
+    Expr,
 };
 use crate::{
     ast::const_eval::ConstEval, typecheck_type, typecheck_type_params, ConstAnnotation, Context,
@@ -290,7 +290,7 @@ fn typecheck_const_decl_item(
             (ty, const_val_expr)
         },
         None => {
-            // infer from provided value expression
+            // infer from provided value expr
             let const_val_expr = typecheck_expr(&decl.val, &Type::Nothing, ctx)?;
             let ty = const_val_expr.annotation().ty().into_owned();
 
@@ -313,7 +313,7 @@ fn typecheck_const_decl_item(
         span.clone(),
     )?;
 
-    let const_val = Expression::Literal(
+    let const_val = Expr::Literal(
         const_val_literal.clone(),
         ConstAnnotation {
             value: const_val_literal.clone(),
@@ -344,7 +344,7 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
             impl_decls.push(typecheck_unit_decl(decl, ctx, Visibility::Implementation)?);
         }
 
-        // init statement is implicitly a block
+        // init stmt is implicitly a block
         let init = ctx.scope(
             Environment::Block {
                 allow_unsafe: false,

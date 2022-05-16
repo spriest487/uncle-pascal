@@ -5,7 +5,7 @@ use crate::{
     Keyword,
     Separator,
     TokenTree,
-    ast::{Annotation, Expression, Statement, TypeNamePattern},
+    ast::{Annotation, Expr, Stmt, TypeNamePattern},
     parse::{LookAheadTokenStream, Parse, ParseResult, ParseSeq, TokenStream}
 };
 
@@ -14,7 +14,7 @@ pub struct MatchBlock<A, B>
 where
     A: Annotation
 {
-    pub cond_expr: Expression<A>,
+    pub cond_expr: Expr<A>,
 
     pub branches: Vec<MatchBlockBranch<A, B>>,
     pub else_branch: Option<B>,
@@ -22,8 +22,8 @@ where
     pub annotation: A,
 }
 
-pub type MatchExpr<A> = MatchBlock<A, Expression<A>>;
-pub type MatchStmt<A> = MatchBlock<A, Statement<A>>;
+pub type MatchExpr<A> = MatchBlock<A, Expr<A>>;
+pub type MatchStmt<A> = MatchBlock<A, Stmt<A>>;
 
 #[derive(Clone, Debug, Eq, Hash)]
 pub struct MatchBlockBranch<A, B>
@@ -106,7 +106,7 @@ where
 
         let mut inner_tokens = block_group.to_inner_tokens();
 
-        let cond_expr = Expression::parse(&mut inner_tokens)?;
+        let cond_expr = Expr::parse(&mut inner_tokens)?;
         inner_tokens.match_one(Keyword::Of)?;
 
         let branches = MatchBlockBranch::parse_seq(&mut inner_tokens)?;

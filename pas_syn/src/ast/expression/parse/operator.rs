@@ -9,7 +9,7 @@ use crate::{
         ArgList,
         BinOp,
         Cast,
-        Expression,
+        Expr,
         FunctionCall,
         TypeList,
         TypeName,
@@ -21,8 +21,8 @@ use crate::{
     parse::{ParseError, ParseResult},
 };
 
-fn resolve_postfix<F>(parts: Vec<CompoundExpressionPart>, lo_op_index: usize, span: &Span, f: F) -> ParseResult<Expression<Span>>
-    where F: FnOnce(Expression<Span>) -> Expression<Span>
+fn resolve_postfix<F>(parts: Vec<CompoundExpressionPart>, lo_op_index: usize, span: &Span, f: F) -> ParseResult<Expr<Span>>
+    where F: FnOnce(Expr<Span>) -> Expr<Span>
 {
     let (before_op, after_op) = parts.split_at(lo_op_index);
 
@@ -47,8 +47,8 @@ fn resolve_postfix<F>(parts: Vec<CompoundExpressionPart>, lo_op_index: usize, sp
     resolve_ops_by_precedence(merged_parts)
 }
 
-pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<Expression<Span>> {
-    assert!(!parts.is_empty(), "expression must not be empty");
+pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<Expr<Span>> {
+    assert!(!parts.is_empty(), "expr must not be empty");
 
     if parts.len() == 1 {
         return Ok(match parts.into_iter().next().unwrap() {
@@ -62,8 +62,8 @@ pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> P
         });
     }
 
-    // find the lowest-precedence operator in the expression, this becomes the
-    // outer expression
+    // find the lowest-precedence operator in the expr, this becomes the
+    // outer expr
     let (lo_op_index, lo_op) = parts
         .iter()
         .enumerate()
@@ -89,7 +89,7 @@ pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> P
             let target = resolve_ops_by_precedence(before_op.to_vec())?;
             let span = target.annotation().span().to(&args.close);
 
-            let op_expr = Expression::from(Call::Function(FunctionCall {
+            let op_expr = Expr::from(Call::Function(FunctionCall {
                 target,
                 annotation: span.clone(),
                 args: args.args,
@@ -138,7 +138,7 @@ pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> P
                     annotation: span.clone(),
                 };
 
-                Ok(Expression::from(bin_op))
+                Ok(Expr::from(bin_op))
             }
 
             Position::Prefix => {
@@ -162,7 +162,7 @@ pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> P
                         operand: rhs,
                         annotation: span.clone(),
                     };
-                    Expression::from(unary_op)
+                    Expr::from(unary_op)
                 };
 
                 let merged_parts: Vec<_> = before_op
@@ -179,7 +179,7 @@ pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> P
                 resolve_postfix(parts, lo_op_index, &op_token.span, |operand| {
                     let span = op_token.span.to(operand.annotation().span());
 
-                    Expression::from(UnaryOp {
+                    Expr::from(UnaryOp {
                         op: op_token.op,
                         annotation: span,
                         operand,
@@ -191,7 +191,7 @@ pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> P
         OperatorPart::AsCast { ty, kw_span } => {
             resolve_postfix(parts, lo_op_index, &kw_span, |operand| {
                 let span = operand.span().to(&ty);
-                Expression::from(Cast {
+                Expr::from(Cast {
                     expr: operand,
                     annotation: span,
                     ty,

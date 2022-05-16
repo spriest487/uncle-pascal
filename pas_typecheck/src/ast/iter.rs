@@ -22,7 +22,7 @@ pub fn typecheck_for_loop(
 
         ast::ForLoopInit::Assignment { counter, value } => {
             let counter = typecheck_expr(counter, &Primitive::Int32.into(), ctx)?;
-            if let ast::Expression::Ident(ident, ..) = &counter {
+            if let ast::Expr::Ident(ident, ..) = &counter {
                 if ctx.get_decl_scope(ident).is_some() {
                     ctx.initialize(ident)
                 }

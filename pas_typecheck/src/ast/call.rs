@@ -5,7 +5,7 @@ use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::cast::implicit_conversion;
-use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor, check_implicit_conversion};
+use crate::ast::{typecheck_expr, typecheck_object_ctor, Expr, FunctionDecl, ObjectCtor, check_implicit_conversion};
 use crate::{
     context::InstanceMethod, typecheck_type, Context, FunctionAnnotation, FunctionParamSig,
     FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation,
@@ -30,7 +30,7 @@ pub enum Invocation {
 }
 
 fn invalid_args(
-    actual_args: Vec<Expression>,
+    actual_args: Vec<Expr>,
     expected: &[FunctionParamSig],
     span: Span,
 ) -> TypecheckError {
@@ -46,11 +46,11 @@ fn invalid_args(
 
 fn build_args_for_params(
     params: &[FunctionParamSig],
-    src_args: &[ast::Expression<Span>],
-    self_arg: Option<&Expression>,
+    src_args: &[ast::Expr<Span>],
+    self_arg: Option<&Expr>,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Vec<Expression>> {
+) -> TypecheckResult<Vec<Expr>> {
     let mut checked_args = Vec::new();
 
     let rest_args = if let Some(self_arg) = self_arg {
@@ -211,7 +211,7 @@ pub fn typecheck_call(
 fn typecheck_func_overload(
     ctx: &mut Context,
     func_call: &ast::FunctionCall<Span>,
-    target: &Expression,
+    target: &Expr,
     overloaded: &OverloadAnnotation,
 ) -> TypecheckResult<Call> {
     let overload = resolve_overload(
@@ -378,7 +378,7 @@ fn typecheck_iface_method_call(
 
 fn typecheck_ufcs_call(
     ufcs_call: &UFCSCallAnnotation,
-    rest_args: &[ast::Expression<Span>],
+    rest_args: &[ast::Expr<Span>],
     span: &Span,
     arg_brackets: (&Span, &Span),
     ctx: &mut Context,
@@ -408,7 +408,7 @@ fn typecheck_ufcs_call(
     .into();
 
     // todo: this should construct a fully qualified path expr instead
-    let target = ast::Expression::Ident(ufcs_call.function_name.last().clone(), func_annotation);
+    let target = ast::Expr::Ident(ufcs_call.function_name.last().clone(), func_annotation);
 
     let annotation = TypedValueAnnotation {
         ty: specialized_call_args.sig.return_ty.clone(),
@@ -430,7 +430,7 @@ fn typecheck_ufcs_call(
 struct SpecializedCallArgs {
     sig: FunctionSig,
     type_args: Option<TypeList<Type>>,
-    actual_args: Vec<Expression>,
+    actual_args: Vec<Expr>,
 }
 
 fn specialize_arg<ArgProducer>(
@@ -438,10 +438,10 @@ fn specialize_arg<ArgProducer>(
     inferred_ty_args: &mut Vec<Option<Type>>,
     produce_expr: ArgProducer,
     ctx: &mut Context,
-) -> TypecheckResult<Expression>
-// (expected type, ctx) -> expression val
+) -> TypecheckResult<Expr>
+// (expected type, ctx) -> expr val
 where
-    ArgProducer: FnOnce(&Type, &mut Context) -> TypecheckResult<Expression>,
+    ArgProducer: FnOnce(&Type, &mut Context) -> TypecheckResult<Expr>,
 {
     match param_ty {
         // param is generic: arg expr ty drives param type
@@ -530,8 +530,8 @@ fn infer_from_structural_ty_args(
 
 fn specialize_call_args(
     decl_sig: &FunctionSig,
-    args: &[ast::Expression<Span>],
-    self_arg: Option<&Expression>,
+    args: &[ast::Expr<Span>],
+    self_arg: Option<&Expr>,
     explicit_ty_args: Option<TypeList<Type>>,
     span: &Span,
     ctx: &mut Context,
@@ -635,7 +635,7 @@ fn specialize_call_args(
 fn unwrap_inferred_args(
     decl_sig: &FunctionSig,
     inferred_args: Vec<Option<Type>>,
-    actual_args: &[Expression],
+    actual_args: &[Expr],
     span: &Span,
 ) -> TypecheckResult<TypeList<Type>> {
     let mut items = Vec::new();
@@ -673,7 +673,7 @@ fn unwrap_inferred_args(
 /// - ensure that the expressions provided for out/var refs are mutable l-values
 /// - mark the names referenced in out vars as initialized
 fn validate_args(
-    args: &mut [Expression],
+    args: &mut [Expr],
     params: &[FunctionParamSig],
     span: &Span,
     ctx: &mut Context,
@@ -720,7 +720,7 @@ fn validate_args(
             }
 
             let ref_name = match &arg {
-                ast::Expression::Ident(ident, ..) => ident,
+                ast::Expr::Ident(ident, ..) => ident,
                 _ => {
                     return Err(TypecheckError::InvalidRefExpression {
                         expr: Box::new(arg.clone()),
@@ -785,7 +785,7 @@ fn typecheck_func_call(
 fn typecheck_variant_ctor_call(
     variant: &IdentPath,
     case: &Ident,
-    args: &[ast::Expression<Span>],
+    args: &[ast::Expr<Span>],
     span: Span,
     expect_ty: &Type,
     ctx: &mut Context,
@@ -847,7 +847,7 @@ fn typecheck_variant_ctor_call(
         },
 
         Some(data_ty) => {
-            let args: Vec<Expression> = args
+            let args: Vec<Expr> = args
                 .iter()
                 .map(|arg| typecheck_expr(arg, data_ty, ctx))
                 .collect::<TypecheckResult<_>>()?;
@@ -891,7 +891,7 @@ fn typecheck_variant_ctor_call(
 
 pub struct Overload {
     pub selected_sig: usize,
-    pub args: Vec<Expression>,
+    pub args: Vec<Expr>,
     pub type_args: Option<TypeList<Type>>,
 }
 
@@ -965,8 +965,8 @@ impl fmt::Display for OverloadCandidate {
 
 pub fn resolve_overload(
     candidates: &[OverloadCandidate],
-    args: &[ast::Expression<Span>],
-    self_arg: Option<&Expression>,
+    args: &[ast::Expr<Span>],
+    self_arg: Option<&Expr>,
     span: &Span,
     ctx: &mut Context,
 ) -> TypecheckResult<Overload> {

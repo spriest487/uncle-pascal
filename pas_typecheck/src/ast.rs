@@ -1,16 +1,16 @@
 pub use self::{
-    block::*, call::*, case::*, cond::*, ctor::*, expression::*, function::*, iter::*,
-    op::*, raise::*, statement::*, typedecl::*, unit::*, cast::*, match_block::*,
+    block::*, call::*, case::*, cond::*, ctor::*, expr::*, function::*, iter::*,
+    op::*, raise::*, stmt::*, typedecl::*, unit::*, cast::*, match_block::*,
 };
 
 mod block;
 mod cond;
 mod ctor;
-mod expression;
+mod expr;
 mod function;
 mod iter;
 mod op;
-mod statement;
+mod stmt;
 mod typedecl;
 mod unit;
 mod call;

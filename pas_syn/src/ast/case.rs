@@ -1,19 +1,19 @@
 #[cfg(test)]
 mod test;
 
-use crate::ast::{Annotation, Expression, Statement};
+use crate::ast::{Annotation, Expr, Stmt};
 use crate::parse::{MatchOneOf, Parse, ParseResult, TokenStream};
 use crate::{DelimiterPair, Keyword, Separator, TokenTree};
 use pas_common::span::{Span, Spanned};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-pub type CaseStatement<A> = CaseBlock<A, Statement<A>>;
-pub type CaseExpr<A> = CaseBlock<A, Expression<A>>;
+pub type CaseStmt<A> = CaseBlock<A, Stmt<A>>;
+pub type CaseExpr<A> = CaseBlock<A, Expr<A>>;
 
 #[derive(Debug, Clone, Eq)]
 pub struct CaseBlock<A: Annotation, B> {
-    pub cond_expr: Box<Expression<A>>,
+    pub cond_expr: Box<Expr<A>>,
     pub branches: Vec<CaseBranch<A, B>>,
     pub else_branch: Option<Box<B>>,
 
@@ -95,7 +95,7 @@ where
     }
 
     fn parse_group(tokens: &mut TokenStream, case_kw: Span, end_kw: Span) -> ParseResult<Self> {
-        let cond_expr = Expression::parse(tokens)?;
+        let cond_expr = Expr::parse(tokens)?;
 
         tokens.match_one(Keyword::Of)?;
 
@@ -113,7 +113,7 @@ where
                 if let Some(..) = tokens.match_one_maybe(Keyword::Else) {
                     let else_item = B::parse(tokens)?;
 
-                    // allow a semicolon separator between the "else" statement and the end keyword
+                    // allow a semicolon separator between the "else" stmt and the end keyword
                     tokens.match_one_maybe(Separator::Semicolon);
 
                     break Some(else_item);
@@ -134,7 +134,7 @@ where
             branches.push(case_branch);
 
             // a semicolon is required to separate branches, but not before the final "end"
-            // or "else" keywords. if a statement isn't followed by the separator, it must be the
+            // or "else" keywords. if a stmt isn't followed by the separator, it must be the
             // last one, and if not we'll get a parse error
             prev_sep = tokens.match_one_maybe(Separator::Semicolon).is_some();
         };
@@ -152,7 +152,7 @@ where
 
 #[derive(Debug, Clone, Eq)]
 pub struct CaseBranch<A: Annotation, Item> {
-    pub value: Box<Expression<A>>,
+    pub value: Box<Expr<A>>,
     pub item: Box<Item>,
     pub span: Span,
 }
@@ -202,7 +202,7 @@ where
     Item: Parse + Spanned,
 {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let value = Expression::parse(tokens)?;
+        let value = Expr::parse(tokens)?;
         tokens.match_one(Separator::Colon)?;
         let item = Item::parse(tokens)?;
 
@@ -216,9 +216,9 @@ where
     }
 }
 
-impl CaseStatement<Span> {
+impl CaseStmt<Span> {
     pub fn to_expr(&self) -> Option<CaseExpr<Span>> {
-        // must have an else branch that is a valid expression
+        // must have an else branch that is a valid expr
         let else_branch = self.else_branch.as_ref()?.clone().to_expr()?;
 
         let mut branches = Vec::with_capacity(self.branches.len());

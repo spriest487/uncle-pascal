@@ -1184,7 +1184,7 @@ impl<'m> Builder<'m> {
         let (break_label, break_scope) = {
             let current_loop = self
                 .current_loop()
-                .expect("break statement must appear in a loop");
+                .expect("break stmt must appear in a loop");
 
             (current_loop.break_label, current_loop.block_level)
         };
@@ -1200,7 +1200,7 @@ impl<'m> Builder<'m> {
         let (continue_label, continue_scope) = {
             let current_loop = self
                 .current_loop()
-                .expect("continue statement must appear in a loop");
+                .expect("continue stmt must appear in a loop");
 
             (current_loop.continue_label, current_loop.block_level)
         };

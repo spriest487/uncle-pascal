@@ -10,12 +10,12 @@ use crate::test::module_from_src;
 use crate::{Context, FunctionSig, Primitive, Type};
 use std::cmp::Ordering;
 
-fn parse_expr(src: &str) -> ast::Expression<Span> {
+fn parse_expr(src: &str) -> ast::Expr<Span> {
     let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
 
     let mut tokens = TokenStream::new(tokens, Span::zero("test"));
 
-    ast::Expression::parse(&mut tokens)
+    ast::Expr::parse(&mut tokens)
         .and_then(|expr| {
             tokens.finish()?;
             Ok(expr)

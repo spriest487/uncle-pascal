@@ -5,8 +5,8 @@ pub type BinOp = ast::BinOp<TypeAnnotation>;
 
 fn invalid_bin_op(
     bin_op: &ast::BinOp<Span>,
-    lhs: &Expression,
-    rhs: &Expression,
+    lhs: &Expr,
+    rhs: &Expr,
 ) -> TypecheckError {
     TypecheckError::InvalidBinOp {
         lhs: lhs.annotation().ty().into_owned(),
@@ -20,7 +20,7 @@ pub fn typecheck_bin_op(
     bin_op: &ast::BinOp<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Expression> {
+) -> TypecheckResult<Expr> {
     let span = bin_op.annotation.clone();
 
     match &bin_op.op {
@@ -30,22 +30,22 @@ pub fn typecheck_bin_op(
 
         Operator::And | Operator::Or => {
             let bin_op = typecheck_logical_op(bin_op, span, ctx)?;
-            Ok(Expression::from(bin_op))
+            Ok(Expr::from(bin_op))
         }
 
         Operator::Equals | Operator::NotEquals => {
             let bin_op = typecheck_equality(bin_op, span, ctx)?;
-            Ok(Expression::from(bin_op))
+            Ok(Expr::from(bin_op))
         }
 
         Operator::Gt | Operator::Gte | Operator::Lt | Operator::Lte => {
             let bin_op = typecheck_comparison(bin_op, span, ctx)?;
-            Ok(Expression::from(bin_op))
+            Ok(Expr::from(bin_op))
         }
 
         Operator::BitAnd | Operator::BitOr | Operator::Shr | Operator::Shl | Operator::Caret => {
             let bin_op = typecheck_bitwise_op(bin_op, expect_ty, ctx)?;
-            Ok(Expression::from(bin_op))
+            Ok(Expr::from(bin_op))
         }
 
         _ => {
@@ -98,7 +98,7 @@ pub fn typecheck_bin_op(
                 }.into(),
             };
 
-            Ok(Expression::from(ast::BinOp {
+            Ok(Expr::from(ast::BinOp {
                 lhs,
                 op: bin_op.op,
                 rhs,
@@ -213,10 +213,10 @@ fn typecheck_bitwise_op(bin_op: &ast::BinOp<Span>, expect_ty: &Type, ctx: &mut C
 
 // turn value `x` that implements System.Displayable into a call to `System.Displayable.ToString(x)`
 fn desugar_displayable_to_string(
-    expr: &Expression,
+    expr: &Expr,
     span: &Span,
     ctx: &Context,
-) -> Option<Expression> {
+) -> Option<Expr> {
     let src_ty = expr.annotation().ty();
 
     let system_unit_ident = Ident::new(SYSTEM_UNIT_NAME, span.clone());
@@ -266,16 +266,16 @@ fn desugar_displayable_to_string(
         }.into(),
     });
 
-    Some(Expression::from(displayable_call))
+    Some(Expr::from(displayable_call))
 }
 
 // desugar a binary + operation on two strings into a call to System.StringConcat
 fn desugar_string_concat(
-    lhs: Expression,
-    rhs: Expression,
+    lhs: Expr,
+    rhs: Expr,
     string_ty: &Type,
     ctx: &Context,
-) -> TypecheckResult<Expression> {
+) -> TypecheckResult<Expr> {
     let span = lhs.annotation().span().to(rhs.annotation().span());
     let annotation = TypedValueAnnotation {
         ty: string_ty.clone(),
@@ -287,9 +287,9 @@ fn desugar_string_concat(
     // if LHS and RHS are both string literals, we can concat them ahead of time
     match (&lhs, &rhs) {
         (
-            ast::Expression::Literal(ast::Literal::String(a), _),
-            ast::Expression::Literal(ast::Literal::String(b), _),
-        ) => Ok(ast::Expression::Literal(
+            ast::Expr::Literal(ast::Literal::String(a), _),
+            ast::Expr::Literal(ast::Literal::String(b), _),
+        ) => Ok(ast::Expr::Literal(
             ast::Literal::String(Rc::new((**a).clone() + b.as_str())),
             annotation,
         )),
@@ -308,7 +308,7 @@ fn desugar_string_concat(
                 type_args: None,
             }.into();
 
-            let concat_func = ast::Expression::Ident(concat_path.last().clone(), concat_annotation);
+            let concat_func = ast::Expr::Ident(concat_path.last().clone(), concat_annotation);
 
             let concat_call = ast::Call::Function(ast::FunctionCall {
                 annotation: annotation.clone(),
@@ -318,23 +318,23 @@ fn desugar_string_concat(
                 args_brackets: (span.clone(), span.clone()),
             });
 
-            Ok(ast::Expression::from(concat_call))
+            Ok(ast::Expr::from(concat_call))
         }
     }
 }
 
 fn typecheck_member_of(
-    lhs: &ast::Expression<Span>,
-    rhs: &ast::Expression<Span>,
+    lhs: &ast::Expr<Span>,
+    rhs: &ast::Expr<Span>,
     span: Span,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Expression> {
+) -> TypecheckResult<Expr> {
     let lhs = typecheck_expr(lhs, &Type::Nothing, ctx)?;
 
     match rhs {
         // x.y
-        ast::Expression::Ident(member_ident, _) => {
+        ast::Expr::Ident(member_ident, _) => {
             let member_ident = member_ident.clone();
 
             let annotation = match lhs.annotation() {
@@ -377,9 +377,9 @@ fn typecheck_member_of(
                 }
             };
 
-            let rhs = ast::Expression::Ident(member_ident, annotation.clone());
+            let rhs = ast::Expr::Ident(member_ident, annotation.clone());
 
-            Ok(Expression::from(BinOp {
+            Ok(Expr::from(BinOp {
                 lhs,
                 op: Operator::Period,
                 rhs,
@@ -388,7 +388,7 @@ fn typecheck_member_of(
         }
 
         // a.B(x: x)
-        ast::Expression::ObjectCtor(ctor) => {
+        ast::Expr::ObjectCtor(ctor) => {
             match lhs.annotation() {
                 // a must be a namespace qualifier before the constructed object name
                 TypeAnnotation::Namespace(ns_path, ..) => {
@@ -408,7 +408,7 @@ fn typecheck_member_of(
                     let span = lhs.annotation().span().to(qualified_ctor.annotation.span());
 
                     let ctor = typecheck_object_ctor(&qualified_ctor, span, expect_ty, ctx)?;
-                    Ok(Expression::from(ctor))
+                    Ok(Expr::from(ctor))
                 }
 
                 _ => Err(TypecheckError::InvalidCtorType {
@@ -450,7 +450,7 @@ fn typecheck_type_member(
 }
 
 pub fn typecheck_member_value(
-    lhs: &Expression,
+    lhs: &Expr,
     base_ty: &Type,
     value_kind: ValueKind,
     member_ident: &Ident,
@@ -575,7 +575,7 @@ pub fn typecheck_variant_ctor(
 ) -> TypecheckResult<TypeAnnotation> {
     assert!(
         variant_name.type_args.is_none(),
-        "shouldn't be possible to have explicit type args for a variant constructor expression"
+        "shouldn't be possible to have explicit type args for a variant constructor expr"
     );
 
     // we check the named case exists in the unspecialized definition here, but
@@ -615,7 +615,7 @@ pub fn typecheck_unary_op(
     let operand_expect_ty = match unary_op.op {
         Operator::Add | Operator::Sub | Operator::Not => expect_ty.clone(),
         Operator::AddressOf => match expect_ty {
-            // value of the operator expression is the pointer to the deref type, so the operand
+            // value of the operator expr is the pointer to the deref type, so the operand
             // is of the deref type
             Type::Pointer(deref_ty) => (**deref_ty).clone(),
             _ => Type::Nothing,
@@ -768,11 +768,11 @@ pub fn typecheck_unary_op(
 }
 
 pub fn typecheck_indexer(
-    base: &ast::Expression<Span>,
-    index: &ast::Expression<Span>,
+    base: &ast::Expr<Span>,
+    index: &ast::Expr<Span>,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Expression> {
+) -> TypecheckResult<Expr> {
     // todo: other index types
     let index_ty = Type::Primitive(Primitive::Int32);
     let index = typecheck_expr(&index, &index_ty, ctx)?;
@@ -815,7 +815,7 @@ pub fn typecheck_indexer(
         decl: None,
     }.into();
 
-    Ok(Expression::from(BinOp {
+    Ok(Expr::from(BinOp {
         lhs: base,
         rhs: index,
         op: Operator::Index,
@@ -823,7 +823,7 @@ pub fn typecheck_indexer(
     }))
 }
 
-fn check_array_bound_static(base: &Expression, index: &Expression, ctx: &mut Context) -> TypecheckResult<()>  {
+fn check_array_bound_static(base: &Expr, index: &Expr, ctx: &mut Context) -> TypecheckResult<()>  {
     fn out_of_range(dim: usize, index: IntConstant) -> bool {
         index.as_i128() < 0 || index.as_i128() >= dim as i128
     }

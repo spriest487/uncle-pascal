@@ -11,8 +11,8 @@ pub fn typecheck_raise(
     let value = typecheck_expr(&raise.value, &string_ty, ctx)?;
     value.annotation().expect_value(&string_ty)?;
 
-    // the "raise" expression just aborts, so it has whatever type is expected of it, so we
-    // can use it in any expression position
+    // the "raise" expr just aborts, so it has whatever type is expected of it, so we
+    // can use it in any expr position
     let annotation = TypedValueAnnotation {
         ty: expect_ty.clone(),
         span: raise.span().clone(),

@@ -1,6 +1,6 @@
 use crate::{
     annotation::TypeAnnotation,
-    ast::{Call, Expression, Variant, OverloadCandidate},
+    ast::{Call, Expr, Variant, OverloadCandidate},
     context::NameError,
     GenericError, Type, ValueKind,
 };
@@ -8,7 +8,7 @@ use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, Diagnos
 use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator, IntConstant};
 use std::fmt;
 use std::path::PathBuf;
-use crate::ast::{DeclMod, Statement};
+use crate::ast::{DeclMod, Stmt};
 
 #[derive(Debug)]
 pub enum TypecheckError {
@@ -16,7 +16,7 @@ pub enum TypecheckError {
         err: NameError,
         span: Span
     },
-    NotCallable(Box<Expression>),
+    NotCallable(Box<Expr>),
     InvalidArgs {
         expected: Vec<Type>,
         actual: Vec<Type>,
@@ -24,7 +24,7 @@ pub enum TypecheckError {
     },
     InvalidCallInExpression(Box<Call>),
     InvalidIndexer {
-        base: Box<Expression>,
+        base: Box<Expr>,
         index_ty: Type,
         span: Span,
     },
@@ -39,7 +39,7 @@ pub enum TypecheckError {
         span: Span,
     },
     NotMutable {
-        expr: Box<Expression>,
+        expr: Box<Expr>,
         decl: Option<Ident>,
     },
     NotAddressable {
@@ -67,10 +67,10 @@ pub enum TypecheckError {
         span: Span,
     },
     BlockOutputIsNotExpression {
-        stmt: Box<Statement>,
+        stmt: Box<Stmt>,
         expected_expr_ty: Type,
     },
-    InvalidBlockOutput(Box<Expression>),
+    InvalidBlockOutput(Box<Expr>),
     AmbiguousMethod {
         method: Ident,
         span: Span,
@@ -103,7 +103,7 @@ pub enum TypecheckError {
         syms: Vec<Ident>,
     },
     UnableToInferType {
-        expr: Box<ast::Expression<Span>>,
+        expr: Box<ast::Expr<Span>>,
     },
     UnableToInferSpecialization {
         generic_ty: Type,
@@ -124,7 +124,7 @@ pub enum TypecheckError {
         usage: Span,
     },
     InvalidRefExpression {
-        expr: Box<Expression>,
+        expr: Box<Expr>,
     },
     InvalidStatement(Box<InvalidStatement<TypeAnnotation>>),
     EmptyVariant(Box<ast::Variant<Span>>),
@@ -134,10 +134,10 @@ pub enum TypecheckError {
         span: Span,
     },
     NoLoopContext {
-        stmt: Box<ast::Statement<Span>>,
+        stmt: Box<ast::Stmt<Span>>,
     },
     NoFunctionContext {
-        stmt: Box<ast::Statement<Span>>,
+        stmt: Box<ast::Stmt<Span>>,
     },
 
     UnsizedMember {
@@ -175,7 +175,7 @@ pub enum TypecheckError {
         span: Span,
     },
     InvalidConstExpr {
-        expr: Box<Expression>,
+        expr: Box<Expr>,
     },
 
     InvalidCaseExprBlock {
@@ -302,8 +302,8 @@ impl DiagnosticOutput for TypecheckError {
             }
             TypecheckError::NotCallable(_) => "Not callable".to_string(),
             TypecheckError::InvalidArgs { .. } => "Invalid arguments".to_string(),
-            TypecheckError::InvalidCallInExpression(_) => "Invalid call in expression".to_string(),
-            TypecheckError::InvalidIndexer { .. } => "Invalid indexer expression".to_string(),
+            TypecheckError::InvalidCallInExpression(_) => "Invalid call in expr".to_string(),
+            TypecheckError::InvalidIndexer { .. } => "Invalid indexer expr".to_string(),
             TypecheckError::IndexOutOfBounds { .. } => "Index out of bounds".to_string(),
             TypecheckError::TypeMismatch { .. } => "Type mismatch".to_string(),
             TypecheckError::NotMutable { .. } => "Value not mutable".to_string(),
@@ -312,18 +312,18 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::NotMatchable { .. } => "Type is not matchable".to_string(),
             TypecheckError::InvalidBinOp { .. } => "Invalid binary operation".to_string(),
             TypecheckError::InvalidUnaryOp { .. } => "Invalid unary operation".to_string(),
-            TypecheckError::BlockOutputIsNotExpression { .. } => "Expected block output expression".to_string(),
-            TypecheckError::InvalidBlockOutput(_) => "Invalid block output expression".to_string(),
+            TypecheckError::BlockOutputIsNotExpression { .. } => "Expected block output expr".to_string(),
+            TypecheckError::InvalidBlockOutput(_) => "Invalid block output expr".to_string(),
             TypecheckError::AmbiguousFunction { .. } => "Function reference is ambiguous".to_string(),
             TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
             TypecheckError::AmbiguousSelfType { .. } => "Self type of method is ambiguous".to_string(),
             TypecheckError::ExternalGenericFunction { .. } => "Function imported from external module may not have type parameters".to_string(),
             TypecheckError::InvalidCtorType { .. } => {
-                "Invalid constructor expression type".to_string()
+                "Invalid constructor expr type".to_string()
             }
             TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
             TypecheckError::UnableToInferType { .. } => {
-                "Unable to infer type of expression".to_string()
+                "Unable to infer type of expr".to_string()
             }
             TypecheckError::UnableToInferSpecialization { .. } => {
                 "Unable to infer type specialization".to_string()
@@ -336,7 +336,7 @@ impl DiagnosticOutput for TypecheckError {
             }
             TypecheckError::NotInitialized { .. } => "Use of uninitialized value".to_string(),
             TypecheckError::InvalidRefExpression { .. } => {
-                "Invalid reference expression".to_string()
+                "Invalid reference expr".to_string()
             }
             TypecheckError::InvalidStatement(invalid_stmt) => invalid_stmt.title(),
             TypecheckError::EmptyVariant(..) => "Empty variant".to_string(),
@@ -364,13 +364,13 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::UnsafeConversionNotAllowed { .. } => "Conversion not allowed in a safe context".to_string(),
             TypecheckError::UnsafeAddressoOfNotAllowed { .. } => "Address operator not allowed on this type in a safe context".to_string(),
 
-            TypecheckError::InvalidConstExpr { .. } => "Invalid constant expression".to_string(),
+            TypecheckError::InvalidConstExpr { .. } => "Invalid constant expr".to_string(),
 
-            TypecheckError::InvalidCaseExprBlock { .. } => "Case block invalid as expression".to_string(),
+            TypecheckError::InvalidCaseExprBlock { .. } => "Case block invalid as expr".to_string(),
 
             TypecheckError::InvalidCast { .. } => "Invalid cast".to_string(),
             TypecheckError::EmptyMatchBlock { .. } => "Empty match block".to_string(),
-            TypecheckError::MatchExprNotExhaustive { .. } => "Match expression is not exhaustive".to_string(),
+            TypecheckError::MatchExprNotExhaustive { .. } => "Match expr is not exhaustive".to_string(),
             TypecheckError::InvalidExitWithValue { .. } => "Invalid exit with value".to_string(),
             TypecheckError::ConstDeclWithNoValue { .. } => "Constant declaration without a value".to_string(),
             TypecheckError::InvalidLoopCounterType { .. } => "Invalid loop counter type".to_string(),
@@ -549,7 +549,7 @@ impl fmt::Display for TypecheckError {
         match self {
             TypecheckError::NameError { err, .. } => write!(f, "{}", err),
             TypecheckError::NotCallable(expr) => {
-                write!(f, "expression `{}` of type `{}` is not a callable function", expr, expr.annotation().ty())
+                write!(f, "expr `{}` of type `{}` is not a callable function", expr, expr.annotation().ty())
             }
 
             TypecheckError::InvalidArgs { expected, actual, .. } => {
@@ -561,7 +561,7 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::InvalidCallInExpression(call) => {
-                write!(f, "function call `{}` returns no value and cannot be used as part of an expression", call)
+                write!(f, "function call `{}` returns no value and cannot be used as part of an expr", call)
             }
 
             TypecheckError::InvalidIndexer { base, index_ty, .. } => {
@@ -584,7 +584,7 @@ impl fmt::Display for TypecheckError {
             TypecheckError::NotAddressable { ty, value_kind, .. } => {
                 match value_kind {
                     Some(value_kind) => write!(f, "{} of type {} cannot have its address taken", value_kind, ty),
-                    None => write!(f, "expression without a value cannot have its address taken"),
+                    None => write!(f, "expr without a value cannot have its address taken"),
                 }
             }
 
@@ -612,11 +612,11 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::BlockOutputIsNotExpression { stmt, expected_expr_ty } => {
-                write!(f, "expected expression of type `{}` but found statement `{}`", expected_expr_ty, stmt)
+                write!(f, "expected expr of type `{}` but found stmt `{}`", expected_expr_ty, stmt)
             }
 
             TypecheckError::InvalidBlockOutput(expr) => {
-                write!(f, "expression `{}` is not valid as the final expression in a block because it is not a complete statement", expr)
+                write!(f, "expr `{}` is not valid as the final expr in a block because it is not a complete stmt", expr)
             }
 
             TypecheckError::AmbiguousFunction { .. } => {
@@ -636,7 +636,7 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::InvalidCtorType { ty, .. } => {
-                write!(f, "type `{}` cannot be created with a constructor expression", ty)
+                write!(f, "type `{}` cannot be created with a constructor expr", ty)
             }
 
             TypecheckError::UndefinedSymbols { unit, .. } => {
@@ -681,11 +681,11 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::NoLoopContext { stmt } => {
-                write!(f, "the statement `{}` can only appear inside a loop", stmt)
+                write!(f, "the stmt `{}` can only appear inside a loop", stmt)
             }
 
             TypecheckError::NoFunctionContext { stmt } => {
-                write!(f, "the statement `{}` can only appear inside a function", stmt)
+                write!(f, "the stmt `{}` can only appear inside a function", stmt)
             }
 
             TypecheckError::UnsizedMember { decl, member_ty, .. } => {
@@ -721,11 +721,11 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::InvalidConstExpr { expr } => {
-                write!(f, "expression `{}` is not a constant value", expr)
+                write!(f, "expr `{}` is not a constant value", expr)
             }
 
             TypecheckError::InvalidCaseExprBlock { .. } => {
-                write!(f, "case expression must contain at least one branch and an `else` branch")
+                write!(f, "case expr must contain at least one branch and an `else` branch")
             }
 
             TypecheckError::InvalidCast { from, to, .. } => {
@@ -737,7 +737,7 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::MatchExprNotExhaustive { missing_cases, .. } => {
-                write!(f, "this match expression must be exhaustive or have an `else` branch")?;
+                write!(f, "this match expr must be exhaustive or have an `else` branch")?;
                 if missing_cases.len() > 0 {
                     write!(f, " (unhandled cases: ")?;
                     for (i, missing_case) in missing_cases.iter().enumerate() {

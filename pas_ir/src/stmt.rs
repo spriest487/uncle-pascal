@@ -9,66 +9,66 @@ use pas_common::span::Spanned;
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 
-pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
+pub fn translate_stmt(stmt: &pas_ty::ast::Stmt, builder: &mut Builder) {
     builder.push_debug_context(stmt.annotation().span().clone());
     if builder.opts().debug_info {
         builder.comment(&stmt);
     }
 
     match stmt {
-        ast::Statement::LocalBinding(binding) => {
+        ast::Stmt::LocalBinding(binding) => {
             build_binding(binding, builder);
         },
 
-        ast::Statement::Call(call) => {
+        ast::Stmt::Call(call) => {
             build_call(call, builder);
         },
 
-        ast::Statement::Block(block) => {
+        ast::Stmt::Block(block) => {
             translate_block(block, Ref::Discard, builder);
         },
 
-        ast::Statement::Exit(exit) => {
+        ast::Stmt::Exit(exit) => {
             translate_exit(exit, builder);
         },
 
-        ast::Statement::ForLoop(for_loop) => {
+        ast::Stmt::ForLoop(for_loop) => {
             build_for_loop(for_loop, builder);
         },
 
-        ast::Statement::WhileLoop(while_loop) => {
+        ast::Stmt::WhileLoop(while_loop) => {
             translate_while_loop(while_loop, builder);
         },
 
-        ast::Statement::Assignment(assignment) => {
+        ast::Stmt::Assignment(assignment) => {
             translate_assignment(assignment, builder);
         },
 
-        ast::Statement::CompoundAssignment(assignment) => {
+        ast::Stmt::CompoundAssignment(assignment) => {
             translate_compound_assignment(assignment, builder);
         },
 
-        ast::Statement::If(if_stmt) => {
+        ast::Stmt::If(if_stmt) => {
             translate_if_cond_stmt(if_stmt, builder);
         },
 
-        ast::Statement::Raise(raise) => {
+        ast::Stmt::Raise(raise) => {
             translate_raise(raise, builder);
         },
 
-        ast::Statement::Break(_) => {
+        ast::Stmt::Break(_) => {
             builder.break_loop();
         },
 
-        ast::Statement::Continue(_) => {
+        ast::Stmt::Continue(_) => {
             builder.continue_loop();
         },
 
-        ast::Statement::Case(case) => {
+        ast::Stmt::Case(case) => {
             translate_case_stmt(case, builder);
         },
 
-        ast::Statement::Match(match_stmt) => {
+        ast::Stmt::Match(match_stmt) => {
             translate_match_stmt(match_stmt, builder);
         },
     }
@@ -76,7 +76,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     builder.pop_debug_context()
 }
 
-fn build_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder) {
+fn build_binding(binding: &pas_ty::ast::VarBinding, builder: &mut Builder) {
     let bound_ty = builder.translate_type(&binding.ty);
 
     let binding_ref = builder.local_new(bound_ty.clone(), Some(binding.name.to_string()));
@@ -275,7 +275,7 @@ pub fn translate_compound_assignment(
     });
 }
 
-fn translate_case_stmt(case: &pas_ty::ast::CaseStatement, builder: &mut Builder) {
+fn translate_case_stmt(case: &pas_ty::ast::CaseStmt, builder: &mut Builder) {
     build_case_block(case, builder, |item, builder| translate_stmt(item, builder))
 }
 
@@ -301,7 +301,7 @@ pub fn build_case_block<Item, ItemFn>(
             _ => None,
         };
 
-        // jump to the branch statement where the actual value is equal to the branch value
+        // jump to the branch stmt where the actual value is equal to the branch value
         for (branch, branch_label) in case.branches.iter().zip(branch_labels.iter()) {
             builder.scope(|builder| {
                 let branch_val = translate_expr(&branch.value, builder);

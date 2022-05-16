@@ -1,10 +1,10 @@
-use crate::ast::{Annotation, Expression};
+use crate::ast::{Annotation, Expr};
 use std::fmt;
 use pas_common::span::{Span, Spanned};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Cast<A: Annotation> {
-    pub expr: Expression<A>,
+    pub expr: Expr<A>,
     pub ty: A::Type,
     pub annotation: A,
 }

@@ -2,10 +2,10 @@ use std::borrow::Cow;
 use crate::ast::prelude::*;
 
 pub type IfCond<B> = ast::IfCond<TypeAnnotation, B>;
-pub type IfCondExpression = ast::IfCond<TypeAnnotation, Expression>;
-pub type IfCondStatement = ast::IfCond<TypeAnnotation, Statement>;
+pub type IfCondExpression = ast::IfCond<TypeAnnotation, Expr>;
+pub type IfCondStatement = ast::IfCond<TypeAnnotation, Stmt>;
 
-fn typecheck_cond_expr<B>(if_cond: &ast::IfCond<Span, B>, ctx: &mut Context) -> TypecheckResult<Expression> {
+fn typecheck_cond_expr<B>(if_cond: &ast::IfCond<Span, B>, ctx: &mut Context) -> TypecheckResult<Expr> {
     // condition expr has a boolean hint if we're not doing an is-match
     let cond_expect_ty = if if_cond.is_pattern.is_some() {
         Type::Nothing
@@ -15,7 +15,7 @@ fn typecheck_cond_expr<B>(if_cond: &ast::IfCond<Span, B>, ctx: &mut Context) -> 
 
     let cond = typecheck_expr(&if_cond.cond, &cond_expect_ty, ctx)?;
 
-    // if there's no is-match, implicit conversion of the condition expression to bool
+    // if there's no is-match, implicit conversion of the condition expr to bool
     let cond = match if_cond.is_pattern {
         Some(..) => cond,
         None => implicit_conversion(cond, &Type::Primitive(Primitive::Boolean), ctx)?,
@@ -24,7 +24,7 @@ fn typecheck_cond_expr<B>(if_cond: &ast::IfCond<Span, B>, ctx: &mut Context) -> 
     Ok(cond)
 }
 
-fn typecheck_pattern_match<B>(if_cond: &ast::IfCond<Span, B>, cond: &Expression, ctx: &mut Context) -> TypecheckResult<Option<TypePattern>> {
+fn typecheck_pattern_match<B>(if_cond: &ast::IfCond<Span, B>, cond: &Expr, ctx: &mut Context) -> TypecheckResult<Option<TypePattern>> {
     let is_pattern = match &if_cond.is_pattern {
         Some(pattern) => {
             let pattern = TypePattern::typecheck(
@@ -63,10 +63,10 @@ fn create_then_branch_ctx(is_pattern: Option<&TypePattern>, ctx: &mut Context) -
 }
 
 pub fn typecheck_if_cond_stmt(
-    if_cond: &ast::IfCond<Span, ast::Statement<Span>>,
+    if_cond: &ast::IfCond<Span, ast::Stmt<Span>>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<IfCond<Statement>> {
+) -> TypecheckResult<IfCond<Stmt>> {
     let cond = typecheck_cond_expr(&if_cond, ctx)?;
 
     let is_pattern = typecheck_pattern_match(&if_cond, &cond, ctx)?;
@@ -101,10 +101,10 @@ pub fn typecheck_if_cond_stmt(
 }
 
 pub fn typecheck_if_cond_expr(
-    if_cond: &ast::IfCond<Span, ast::Expression<Span>>,
+    if_cond: &ast::IfCond<Span, ast::Expr<Span>>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<IfCond<Expression>> {
+) -> TypecheckResult<IfCond<Expr>> {
     let cond = typecheck_cond_expr(&if_cond, ctx)?;
 
     let is_pattern = typecheck_pattern_match(&if_cond, &cond, ctx)?;

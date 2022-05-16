@@ -5,10 +5,10 @@ use pas_syn::{ast, IntConstant};
 use crate::ast::cast::typecheck_cast_expr;
 use crate::ast::match_block::MatchExpr;
 
-pub type Expression = ast::Expression<TypeAnnotation>;
+pub type Expr = ast::Expr<TypeAnnotation>;
 pub type Literal = ast::Literal<Type>;
 
-pub fn const_eval_string(expr: &Expression, ctx: &Context) -> TypecheckResult<String> {
+pub fn const_eval_string(expr: &Expr, ctx: &Context) -> TypecheckResult<String> {
     match expr.const_eval(ctx) {
         Some(Literal::String(src_str)) => Ok((*src_str).clone()),
 
@@ -18,7 +18,7 @@ pub fn const_eval_string(expr: &Expression, ctx: &Context) -> TypecheckResult<St
     }
 }
 
-pub fn const_eval_integer(expr: &Expression, ctx: &Context) -> TypecheckResult<IntConstant> {
+pub fn const_eval_integer(expr: &Expr, ctx: &Context) -> TypecheckResult<IntConstant> {
     match expr.const_eval(ctx) {
         Some(Literal::Integer(int_const)) => Ok(int_const),
 
@@ -29,14 +29,14 @@ pub fn const_eval_integer(expr: &Expression, ctx: &Context) -> TypecheckResult<I
 }
 
 pub fn typecheck_expr(
-    expr_node: &ast::Expression<Span>,
+    expr_node: &ast::Expr<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Expression> {
+) -> TypecheckResult<Expr> {
     let span = expr_node.annotation().clone();
 
     match expr_node {
-        ast::Expression::Literal(ast::Literal::String(s), _) => {
+        ast::Expr::Literal(ast::Literal::String(s), _) => {
             let binding = ValueKind::Immutable;
             let annotation = TypedValueAnnotation {
                 ty: string_type(ctx)?,
@@ -45,13 +45,13 @@ pub fn typecheck_expr(
                 decl: None,
             }.into();
 
-            Ok(ast::Expression::Literal(
+            Ok(ast::Expr::Literal(
                 ast::Literal::String(s.clone()),
                 annotation,
             ))
         }
 
-        ast::Expression::Literal(ast::Literal::Boolean(b), _) => {
+        ast::Expr::Literal(ast::Literal::Boolean(b), _) => {
             let annotation = TypedValueAnnotation {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Immutable,
@@ -59,17 +59,17 @@ pub fn typecheck_expr(
                 decl: None,
             }.into();
 
-            Ok(ast::Expression::Literal(
+            Ok(ast::Expr::Literal(
                 ast::Literal::Boolean(*b),
                 annotation,
             ))
         }
 
-        ast::Expression::Literal(ast::Literal::Integer(i), _) => {
+        ast::Expr::Literal(ast::Literal::Integer(i), _) => {
             typecheck_literal_int(i, expect_ty, span)
         }
 
-        ast::Expression::Literal(ast::Literal::Real(x), _) => {
+        ast::Expr::Literal(ast::Literal::Real(x), _) => {
             let ty = if x.as_f32().is_some() {
                 Type::from(Primitive::Real32)
             } else {
@@ -83,13 +83,13 @@ pub fn typecheck_expr(
                 decl: None,
             }.into();
 
-            Ok(ast::Expression::Literal(
+            Ok(ast::Expr::Literal(
                 ast::Literal::Real(x.clone()),
                 annotation,
             ))
         }
 
-        ast::Expression::Literal(ast::Literal::Nil, _) => {
+        ast::Expr::Literal(ast::Literal::Nil, _) => {
             let ty = match expect_ty {
                 ptr @ Type::Pointer(..) => ptr.clone(),
                 _ => Type::Nil,
@@ -101,13 +101,13 @@ pub fn typecheck_expr(
                 span,
                 decl: None,
             }.into();
-            Ok(ast::Expression::Literal(ast::Literal::Nil, annotation))
+            Ok(ast::Expr::Literal(ast::Literal::Nil, annotation))
         }
 
-        ast::Expression::Literal(ast::Literal::SizeOf(size_of_ty), span) => {
+        ast::Expr::Literal(ast::Literal::SizeOf(size_of_ty), span) => {
             let ty = typecheck_type(&size_of_ty, ctx)?;
 
-            Ok(Expression::Literal(
+            Ok(Expr::Literal(
                 Literal::SizeOf(Box::new(ty)),
                 TypedValueAnnotation {
                     ty: Type::Primitive(Primitive::Int32),
@@ -118,13 +118,13 @@ pub fn typecheck_expr(
             ))
         }
 
-        ast::Expression::Ident(ident, _) => match ctx.find_name(&ident) {
+        ast::Expr::Ident(ident, _) => match ctx.find_name(&ident) {
             // const values from any scope can be transformed directly into literals
             Some(ScopeMemberRef::Decl {
                 value: Decl::Const { ty, val, .. },
                 key,
                 ..
-            }) => Ok(ast::Expression::Literal(
+            }) => Ok(ast::Expr::Literal(
                 val.clone(),
                 TypedValueAnnotation {
                     ty: ty.clone(),
@@ -148,7 +148,7 @@ pub fn typecheck_expr(
                     }
                 }
 
-                Ok(ast::Expression::Ident(ident.clone(), annotation))
+                Ok(ast::Expr::Ident(ident.clone(), annotation))
             }
 
             _ => {
@@ -160,75 +160,75 @@ pub fn typecheck_expr(
             },
         },
 
-        ast::Expression::BinOp(bin_op) => typecheck_bin_op(bin_op, expect_ty, ctx),
+        ast::Expr::BinOp(bin_op) => typecheck_bin_op(bin_op, expect_ty, ctx),
 
-        ast::Expression::UnaryOp(unary_op) => {
+        ast::Expr::UnaryOp(unary_op) => {
             let unary_op = typecheck_unary_op(unary_op, expect_ty, ctx)?;
-            Ok(ast::Expression::from(unary_op))
+            Ok(ast::Expr::from(unary_op))
         }
 
-        ast::Expression::Call(call) => {
+        ast::Expr::Call(call) => {
             let expr = match typecheck_call(call, expect_ty, ctx)? {
-                Invocation::Call(call) => ast::Expression::from(*call),
-                Invocation::Ctor(ctor) => ast::Expression::from(*ctor),
+                Invocation::Call(call) => ast::Expr::from(*call),
+                Invocation::Ctor(ctor) => ast::Expr::from(*ctor),
             };
             Ok(expr)
         }
 
-        ast::Expression::ObjectCtor(ctor) => {
+        ast::Expr::ObjectCtor(ctor) => {
             let span = ctor.annotation.span().clone();
             let ctor = typecheck_object_ctor(ctor, span, expect_ty, ctx)?;
-            Ok(ast::Expression::from(ctor))
+            Ok(ast::Expr::from(ctor))
         }
 
-        ast::Expression::CollectionCtor(ctor) => {
+        ast::Expr::CollectionCtor(ctor) => {
             let ctor = typecheck_collection_ctor(ctor, expect_ty, ctx)?;
-            Ok(ast::Expression::from(ctor))
+            Ok(ast::Expr::from(ctor))
         }
 
-        ast::Expression::IfCond(if_cond) => {
+        ast::Expr::IfCond(if_cond) => {
             let if_cond = typecheck_if_cond_expr(if_cond, expect_ty, ctx)?;
-            Ok(ast::Expression::from(if_cond))
+            Ok(ast::Expr::from(if_cond))
         }
 
-        ast::Expression::Block(block) => {
+        ast::Expr::Block(block) => {
             let block = typecheck_block(block, expect_ty, ctx)?;
-            Ok(ast::Expression::from(block))
+            Ok(ast::Expr::from(block))
         }
 
-        ast::Expression::Raise(raise) => {
+        ast::Expr::Raise(raise) => {
             let raise = typecheck_raise(raise, expect_ty, ctx)?;
-            Ok(ast::Expression::from(raise))
+            Ok(ast::Expr::from(raise))
         }
 
-        ast::Expression::Case(case) => {
+        ast::Expr::Case(case) => {
             let case = typecheck_case_expr(case, expect_ty, ctx)?;
-            Ok(ast::Expression::from(case))
+            Ok(ast::Expr::from(case))
         }
 
-        ast::Expression::Match(match_expr) => {
+        ast::Expr::Match(match_expr) => {
             let match_expr = typecheck_match_expr(match_expr, expect_ty, ctx)?;
-            Ok(ast::Expression::from(match_expr))
+            Ok(ast::Expr::from(match_expr))
         }
 
-        ast::Expression::Exit(exit) => {
+        ast::Expr::Exit(exit) => {
             let exit = typecheck_exit(exit, expect_ty, ctx)?;
-            Ok(ast::Expression::from(exit))
+            Ok(ast::Expr::from(exit))
         }
 
-        ast::Expression::Cast(cast) => {
+        ast::Expr::Cast(cast) => {
             let cast = typecheck_cast_expr(cast, ctx)?;
-            Ok(ast::Expression::from(cast))
+            Ok(ast::Expr::from(cast))
         }
 
-        ast::Expression::AnonymousFunction(def) => {
+        ast::Expr::AnonymousFunction(def) => {
             let anon_func = typecheck_func_expr(def, expect_ty, ctx)?;
-            Ok(ast::Expression::from(anon_func))
+            Ok(ast::Expr::from(anon_func))
         }
     }
 }
 
-fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypecheckResult<Expression> {
+fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypecheckResult<Expr> {
     let ty = match expect_ty {
         Type::Primitive(Primitive::UInt8) => try_map_primitive_int(i, Primitive::UInt8, IntConstant::as_u8),
         Type::Primitive(Primitive::Int8) => try_map_primitive_int(i, Primitive::Int8, IntConstant::as_i8),
@@ -256,7 +256,7 @@ fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> Typec
         decl: None,
     }.into();
 
-    Ok(ast::Expression::Literal(
+    Ok(ast::Expr::Literal(
         ast::Literal::Integer(*i),
         annotation,
     ))
@@ -313,7 +313,7 @@ pub fn member_annotation(
                 name: key.clone(),
                 sig: sig.clone(),
                 // the named version of the function never has type args, the caller will have
-                // to specialize the expression to add some
+                // to specialize the expr to add some
                 type_args: None,
             }.into()
         }
@@ -343,17 +343,17 @@ pub fn member_annotation(
     }
 }
 
-pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResult<()> {
+pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypecheckResult<()> {
     match stmt {
-        ast::Statement::Call(call) => expect_call_initialized(call, ctx),
+        ast::Stmt::Call(call) => expect_call_initialized(call, ctx),
 
-        ast::Statement::If(if_stmt) => expect_if_stmt_initialized(if_stmt, ctx),
+        ast::Stmt::If(if_stmt) => expect_if_stmt_initialized(if_stmt, ctx),
 
-        ast::Statement::Block(block) => expect_block_initialized(block, ctx),
+        ast::Stmt::Block(block) => expect_block_initialized(block, ctx),
 
-        ast::Statement::LocalBinding(binding) => expect_binding_initialized(binding, ctx),
+        ast::Stmt::LocalBinding(binding) => expect_binding_initialized(binding, ctx),
 
-        ast::Statement::ForLoop(for_loop) => {
+        ast::Stmt::ForLoop(for_loop) => {
             match &for_loop.init {
                 ast::ForLoopInit::Binding(init_binding) => expect_binding_initialized(init_binding, ctx)?,
                 ast::ForLoopInit::Assignment { counter: _, value } => {
@@ -366,38 +366,38 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
             Ok(())
         }
 
-        ast::Statement::WhileLoop(while_loop) => {
+        ast::Stmt::WhileLoop(while_loop) => {
             expect_expr_initialized(&while_loop.condition, ctx)?;
             expect_stmt_initialized(&while_loop.body, ctx)?;
             Ok(())
         }
 
-        ast::Statement::Exit(exit) => match exit.as_ref() {
+        ast::Stmt::Exit(exit) => match exit.as_ref() {
             ast::Exit::WithoutValue(_) => Ok(()),
             ast::Exit::WithValue(exit_val, ..) => expect_expr_initialized(exit_val, ctx),
         },
 
-        ast::Statement::Assignment(assignment) => expect_expr_initialized(&assignment.rhs, ctx),
+        ast::Stmt::Assignment(assignment) => expect_expr_initialized(&assignment.rhs, ctx),
 
-        ast::Statement::CompoundAssignment(assignment) => {
+        ast::Stmt::CompoundAssignment(assignment) => {
             expect_expr_initialized(&assignment.lhs, ctx)?;
             expect_expr_initialized(&assignment.rhs, ctx)?;
             Ok(())
         },
 
-        ast::Statement::Break(..) | ast::Statement::Continue(..) => Ok(()),
+        ast::Stmt::Break(..) | ast::Stmt::Continue(..) => Ok(()),
 
-        ast::Statement::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
+        ast::Stmt::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
 
-        ast::Statement::Case(case) => expect_case_stmt_initialized(case, ctx),
+        ast::Stmt::Case(case) => expect_case_stmt_initialized(case, ctx),
 
-        ast::Statement::Match(match_stmt) => expect_match_stmt_initialized(match_stmt, ctx),
+        ast::Stmt::Match(match_stmt) => expect_match_stmt_initialized(match_stmt, ctx),
     }
 }
 
-pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckResult<()> {
+pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypecheckResult<()> {
     match expr {
-        ast::Expression::Ident(ident, ..) => match expr.annotation().value_kind() {
+        ast::Expr::Ident(ident, ..) => match expr.annotation().value_kind() {
             Some(ValueKind::Uninitialized) => {
                 let decl_ident = ctx.find_decl(ident).unwrap_or(ident);
                 Err(TypecheckError::NotInitialized {
@@ -409,54 +409,54 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
             _ => Ok(()),
         },
 
-        ast::Expression::Literal(..) => Ok(()),
+        ast::Expr::Literal(..) => Ok(()),
 
-        ast::Expression::Block(block) => expect_block_initialized(block, ctx),
+        ast::Expr::Block(block) => expect_block_initialized(block, ctx),
 
-        ast::Expression::IfCond(cond) => expect_if_expr_initialized(cond, ctx),
+        ast::Expr::IfCond(cond) => expect_if_expr_initialized(cond, ctx),
 
-        ast::Expression::ObjectCtor(ctor) => {
+        ast::Expr::ObjectCtor(ctor) => {
             for member in &ctor.args.members {
                 expect_expr_initialized(&member.value, ctx)?;
             }
             Ok(())
         }
 
-        ast::Expression::CollectionCtor(ctor) => {
+        ast::Expr::CollectionCtor(ctor) => {
             for el in &ctor.elements {
                 expect_expr_initialized(&el.value, ctx)?;
             }
             Ok(())
         }
 
-        ast::Expression::Call(call) => expect_call_initialized(call, ctx),
+        ast::Expr::Call(call) => expect_call_initialized(call, ctx),
 
-        ast::Expression::BinOp(bin_op) => {
+        ast::Expr::BinOp(bin_op) => {
             expect_expr_initialized(&bin_op.lhs, ctx)?;
             expect_expr_initialized(&bin_op.rhs, ctx)?;
             Ok(())
         }
 
-        ast::Expression::UnaryOp(unary_op) => expect_expr_initialized(&unary_op.operand, ctx),
+        ast::Expr::UnaryOp(unary_op) => expect_expr_initialized(&unary_op.operand, ctx),
 
-        ast::Expression::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
+        ast::Expr::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
 
-        ast::Expression::Case(case) => expect_case_expr_initialized(&case, ctx),
+        ast::Expr::Case(case) => expect_case_expr_initialized(&case, ctx),
 
-        ast::Expression::Match(match_expr) => expect_match_expr_initialized(&match_expr, ctx),
+        ast::Expr::Match(match_expr) => expect_match_expr_initialized(&match_expr, ctx),
 
-        ast::Expression::Exit(exit) => match exit.as_ref() {
+        ast::Expr::Exit(exit) => match exit.as_ref() {
             ast::Exit::WithValue(exit_val, _) => expect_expr_initialized(exit_val, ctx),
             ast::Exit::WithoutValue(_) => Ok(()),
         },
 
-        ast::Expression::Cast(cast) => expect_expr_initialized(&cast.expr, ctx),
+        ast::Expr::Cast(cast) => expect_expr_initialized(&cast.expr, ctx),
 
-        ast::Expression::AnonymousFunction(_) => Ok(()),
+        ast::Expr::AnonymousFunction(_) => Ok(()),
     }
 }
 
-fn expect_binding_initialized(binding: &LocalBinding, ctx: &Context) -> TypecheckResult<()> {
+fn expect_binding_initialized(binding: &VarBinding, ctx: &Context) -> TypecheckResult<()> {
     if let Some(init_val) = &binding.val {
         expect_expr_initialized(init_val, ctx)?;
     }
@@ -465,14 +465,14 @@ fn expect_binding_initialized(binding: &LocalBinding, ctx: &Context) -> Typechec
 
 fn expect_args_initialized(
     params: &[FunctionParamSig],
-    args: &[Expression],
+    args: &[Expr],
     ctx: &Context,
 ) -> TypecheckResult<()> {
     assert_eq!(
         params.len(),
         args.len(),
         "function call with wrong number of args shouldn't pass type checking. got:\n{}\nexpected:\n{}",
-        args.iter().map(Expression::to_string).collect::<Vec<_>>().join("; "),
+        args.iter().map(Expr::to_string).collect::<Vec<_>>().join("; "),
         params.iter().map(|param| param.ty.to_string()).collect::<Vec<_>>().join("; "),
     );
 
@@ -524,7 +524,7 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
     Ok(())
 }
 
-fn expect_if_expr_initialized(if_stmt: &IfCond<Expression>, ctx: &Context) -> TypecheckResult<()> {
+fn expect_if_expr_initialized(if_stmt: &IfCond<Expr>, ctx: &Context) -> TypecheckResult<()> {
     expect_expr_initialized(&if_stmt.cond, ctx)?;
     expect_expr_initialized(&if_stmt.then_branch, ctx)?;
     if let Some(else_branch) = &if_stmt.else_branch {
@@ -533,7 +533,7 @@ fn expect_if_expr_initialized(if_stmt: &IfCond<Expression>, ctx: &Context) -> Ty
     Ok(())
 }
 
-fn expect_if_stmt_initialized(if_stmt: &IfCond<Statement>, ctx: &Context) -> TypecheckResult<()> {
+fn expect_if_stmt_initialized(if_stmt: &IfCond<Stmt>, ctx: &Context) -> TypecheckResult<()> {
     expect_expr_initialized(&if_stmt.cond, ctx)?;
     expect_stmt_initialized(&if_stmt.then_branch, ctx)?;
     if let Some(else_branch) = &if_stmt.else_branch {
@@ -543,7 +543,7 @@ fn expect_if_stmt_initialized(if_stmt: &IfCond<Statement>, ctx: &Context) -> Typ
 }
 
 fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()> {
-    for stmt in &block.statements {
+    for stmt in &block.stmts {
         expect_stmt_initialized(stmt, ctx)?;
     }
     if let Some(output) = &block.output {
@@ -552,7 +552,7 @@ fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()>
     Ok(())
 }
 
-fn expect_case_stmt_initialized(case: &CaseStatement, ctx: &Context) -> TypecheckResult<()> {
+fn expect_case_stmt_initialized(case: &CaseStmt, ctx: &Context) -> TypecheckResult<()> {
     expect_expr_initialized(&case.cond_expr, ctx)?;
 
     for branch in &case.branches {

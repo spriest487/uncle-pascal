@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expression, LocalBinding, Statement},
+    ast::{Expr, LocalBinding, Stmt},
     parse::prelude::*,
 };
 
@@ -7,8 +7,8 @@ use crate::{
 pub enum ForLoopInit<A: Annotation> {
     Binding(Box<LocalBinding<A>>),
     Assignment {
-        counter: Box<Expression<A>>,
-        value: Box<Expression<A>>,
+        counter: Box<Expr<A>>,
+        value: Box<Expr<A>>,
     },
 }
 
@@ -33,8 +33,8 @@ impl<A: Annotation> Spanned for ForLoopInit<A> {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ForLoop<A: Annotation> {
     pub init: ForLoopInit<A>,
-    pub to_expr: Expression<A>,
-    pub body: Box<Statement<A>>,
+    pub to_expr: Expr<A>,
+    pub body: Box<Stmt<A>>,
     pub annotation: A,
 }
 
@@ -58,12 +58,12 @@ impl ForLoop<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let for_kw = tokens.match_one(Keyword::For)?;
 
-        let init = match Statement::parse(tokens)? {
-            Statement::LocalBinding(binding) => {
+        let init = match Stmt::parse(tokens)? {
+            Stmt::LocalBinding(binding) => {
                 ForLoopInit::Binding(binding)
             }
 
-            Statement::Assignment(assignment) => {
+            Stmt::Assignment(assignment) => {
                 ForLoopInit::Assignment {
                     counter: Box::new(assignment.lhs),
                     value: Box::new(assignment.rhs)
@@ -76,10 +76,10 @@ impl ForLoop<Span> {
         };
 
         tokens.match_one(Keyword::To)?;
-        let to_expr = Expression::parse(tokens)?;
+        let to_expr = Expr::parse(tokens)?;
 
         tokens.match_one(Keyword::Do)?;
-        let body = Statement::parse(tokens)?;
+        let body = Stmt::parse(tokens)?;
 
         let span = for_kw.span().to(body.annotation().span());
 
@@ -94,8 +94,8 @@ impl ForLoop<Span> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct WhileLoop<A: Annotation> {
-    pub condition: Expression<A>,
-    pub body: Box<Statement<A>>,
+    pub condition: Expr<A>,
+    pub body: Box<Stmt<A>>,
 
     pub annotation: A,
 }
@@ -116,11 +116,11 @@ impl WhileLoop<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::While)?;
 
-        let condition = Expression::parse(tokens)?;
+        let condition = Expr::parse(tokens)?;
 
         let _do = tokens.match_one(Keyword::Do)?;
 
-        let body = Statement::parse(tokens)?;
+        let body = Stmt::parse(tokens)?;
 
         let span = kw.span().to(body.annotation().span());
 

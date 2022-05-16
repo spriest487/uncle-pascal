@@ -8,7 +8,7 @@ use crate::{
         unit::{parse_unit_decl},
         Annotation,
         ConstDecl,
-        Expression,
+        Expr,
         FunctionDecl,
         FunctionDef,
         TypeDecl
@@ -252,7 +252,7 @@ impl ParseSeq for DeclMod<Span> {
 
         let new_mod = match word_token.name.as_str() {
             Self::EXTERNAL_WORD => {
-                let src = Expression::parse(tokens)?;
+                let src = Expr::parse(tokens)?;
                 DeclMod::External {
                     span: word_token.span().to(src.span()),
                     src: Box::new(src),

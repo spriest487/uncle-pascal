@@ -1,8 +1,8 @@
-use crate::{ast::{Expression}, parse::prelude::* };
+use crate::{ast::{Expr}, parse::prelude::* };
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Raise<A: Annotation> {
-    pub value: Box<Expression<A>>,
+    pub value: Box<Expr<A>>,
     pub annotation: A,
 }
 
@@ -21,7 +21,7 @@ impl<A: Annotation> Spanned for Raise<A> {
 impl Raise<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let raise_kw = tokens.match_one(Keyword::Raise)?;
-        let value = Expression::parse(tokens)?;
+        let value = Expr::parse(tokens)?;
 
         Ok(Self {
             annotation: raise_kw.span().to(value.span()),

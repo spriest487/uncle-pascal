@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Annotation, Expression},
+    ast::{Annotation, Expr},
     parse::{
         LookAheadTokenStream, Matcher, ParseResult, ParseSeq,
         TokenStream,
@@ -13,7 +13,7 @@ use crate::parse::Parse;
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtorMember<A: Annotation> {
     pub ident: Ident,
-    pub value: Expression<A>,
+    pub value: Expr<A>,
     pub span: Span,
 }
 
@@ -38,7 +38,7 @@ impl ParseSeq for ObjectCtorMember<Span> {
         let ident = Ident::parse(tokens)?;
         tokens.match_one(Separator::Colon)?;
 
-        let value = Expression::parse(tokens)?;
+        let value = Expr::parse(tokens)?;
 
         Ok(ObjectCtorMember {
             span: ident.span().to(value.span()),
@@ -111,7 +111,7 @@ impl<A: Annotation> fmt::Display for ObjectCtorArgs<A> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CollectionCtorElement<A: Annotation> {
-    pub value: Expression<A>,
+    pub value: Expr<A>,
 }
 
 impl<A: Annotation> fmt::Display for CollectionCtorElement<A> {
@@ -132,7 +132,7 @@ impl ParseSeq for CollectionCtorElement<Span> {
             tokens.match_one(Separator::Comma)?;
         }
 
-        let value = Expression::parse(tokens)?;
+        let value = Expr::parse(tokens)?;
         Ok(CollectionCtorElement { value })
     }
 

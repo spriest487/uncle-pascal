@@ -22,22 +22,22 @@ use std::fmt;
 pub use self::{matcher::*, token_stream::*};
 
 #[derive(Debug)]
-pub struct InvalidStatement<A: Annotation>(pub Box<Expression<A>>);
+pub struct InvalidStatement<A: Annotation>(pub Box<Expr<A>>);
 
 impl<A: Annotation> fmt::Display for InvalidStatement<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "the expression `{}` is not valid as a statement", self.0)
+        write!(f, "the expr `{}` is not valid as a stmt", self.0)
     }
 }
 
 impl<A: Annotation> InvalidStatement<A> {
     pub fn title(&self) -> String {
-        "Invalid statement".to_string()
+        "Invalid stmt".to_string()
     }
 }
 
-impl<A: Annotation> From<Expression<A>> for InvalidStatement<A> {
-    fn from(expr: Expression<A>) -> Self {
+impl<A: Annotation> From<Expr<A>> for InvalidStatement<A> {
+    fn from(expr: Expr<A>) -> Self {
         InvalidStatement(Box::new(expr))
     }
 }
@@ -61,7 +61,7 @@ pub enum ParseError {
     InvalidAssignmentExpr { span: Span },
     EmptyConstDecl { span: Span },
     EmptyTypeDecl { span: Span },
-    InvalidForLoopInit(Statement<Span>),
+    InvalidForLoopInit(Stmt<Span>),
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -106,12 +106,12 @@ impl fmt::Display for ParseError {
             ParseError::EmptyTypeParamList { .. } => write!(f, "Empty type parameter list"),
             ParseError::EmptyTypeArgList { .. } => write!(f, "Empty type argument list"),
             ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
-            ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated statement"),
+            ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated stmt"),
             ParseError::InvalidFunctionImplType(..) => write!(f, "Invalid interface type for method"),
             ParseError::InvalidAssignmentExpr { .. } => write!(f, "Illegal assignment"),
             ParseError::EmptyConstDecl { .. } => write!(f, "Empty const declaration"),
             ParseError::EmptyTypeDecl { .. } => write!(f, "Empty type declaration"),
-            ParseError::InvalidForLoopInit( .. ) => write!(f, "Invalid for-loop initialization statement"),
+            ParseError::InvalidForLoopInit( .. ) => write!(f, "Invalid for-loop initialization stmt"),
         }
     }
 }
@@ -144,7 +144,7 @@ impl DiagnosticOutput for ParseError {
             ),
 
             ParseError::CtorWithTypeArgs { .. } => {
-                "Object constructor expression cannot explicitly specify type args".to_string()
+                "Object constructor expr cannot explicitly specify type args".to_string()
             }
 
             ParseError::TypeConstraintAlreadySpecified(c) => {
@@ -168,7 +168,7 @@ impl DiagnosticOutput for ParseError {
             }
 
             ParseError::UnterminatedStatement { .. } => {
-                format!("statement here is unterminated")
+                format!("stmt here is unterminated")
             }
 
             ParseError::InvalidFunctionImplType(ty) => {
@@ -176,7 +176,7 @@ impl DiagnosticOutput for ParseError {
             }
 
             ParseError::InvalidAssignmentExpr { .. } => {
-                format!("Assignment operator can only be used in an assignment statement")
+                format!("Assignment operator can only be used in an assignment stmt")
             }
 
             ParseError::EmptyTypeDecl { .. } => {
@@ -188,7 +188,7 @@ impl DiagnosticOutput for ParseError {
             }
 
             ParseError::InvalidForLoopInit(stmt) => {
-                format!("statement `{}` cannot be used to initialize the counter variable of a for-loop", stmt)
+                format!("stmt `{}` cannot be used to initialize the counter variable of a for-loop", stmt)
             }
         };
 

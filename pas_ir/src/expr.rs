@@ -13,39 +13,39 @@ use syn::ast;
 
 use crate::ty::VirtualTypeID;
 
-pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
+pub fn translate_expr(expr: &pas_ty::ast::Expr, builder: &mut Builder) -> Ref {
     builder.push_debug_context(expr.annotation().span().clone());
 
     let result_ref = match expr {
-        ast::Expression::Literal(lit, annotation) => {
+        ast::Expr::Literal(lit, annotation) => {
             translate_literal(lit, &annotation.ty(), builder)
         },
 
-        ast::Expression::BinOp(bin_op) => {
+        ast::Expr::BinOp(bin_op) => {
             translate_bin_op(bin_op, &bin_op.annotation.ty(), builder)
         },
 
-        ast::Expression::UnaryOp(unary_op) => {
+        ast::Expr::UnaryOp(unary_op) => {
             translate_unary_op(unary_op, &unary_op.annotation.ty(), builder)
         },
 
-        ast::Expression::Ident(ident, annotation) => translate_ident(ident, annotation, builder),
+        ast::Expr::Ident(ident, annotation) => translate_ident(ident, annotation, builder),
 
-        ast::Expression::Call(call) => {
-            build_call(call, builder).expect("call used in expression must have a return value")
+        ast::Expr::Call(call) => {
+            build_call(call, builder).expect("call used in expr must have a return value")
         },
 
-        ast::Expression::ObjectCtor(ctor) => translate_object_ctor(ctor, builder),
+        ast::Expr::ObjectCtor(ctor) => translate_object_ctor(ctor, builder),
 
-        ast::Expression::CollectionCtor(ctor) => translate_collection_ctor(ctor, builder),
+        ast::Expr::CollectionCtor(ctor) => translate_collection_ctor(ctor, builder),
 
-        ast::Expression::IfCond(if_cond) => translate_if_cond_expr(if_cond, builder)
-            .expect("conditional used in expression must have a type"),
+        ast::Expr::IfCond(if_cond) => translate_if_cond_expr(if_cond, builder)
+            .expect("conditional used in expr must have a type"),
 
-        ast::Expression::Block(block) => {
+        ast::Expr::Block(block) => {
             let out_ty = match &block.output {
                 Some(output_expr) => builder.translate_type(&output_expr.annotation().ty()),
-                None => panic!("block used in expression must have a type"),
+                None => panic!("block used in expr must have a type"),
             };
             let out_ref = builder.local_new(out_ty, None);
             translate_block(block, out_ref.clone(), builder);
@@ -53,18 +53,18 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
             out_ref
         },
 
-        ast::Expression::Raise(raise) => translate_raise(raise, builder),
-        ast::Expression::Exit(exit) => {
+        ast::Expr::Raise(raise) => translate_raise(raise, builder),
+        ast::Expr::Exit(exit) => {
             translate_exit(exit, builder);
             Ref::Discard
         },
 
-        ast::Expression::Case(case) => translate_case_expr(case, builder),
-        ast::Expression::Match(match_expr) => translate_match_expr(match_expr, builder),
+        ast::Expr::Case(case) => translate_case_expr(case, builder),
+        ast::Expr::Match(match_expr) => translate_match_expr(match_expr, builder),
 
-        ast::Expression::Cast(cast) => translate_cast_expr(cast, builder),
+        ast::Expr::Cast(cast) => translate_cast_expr(cast, builder),
 
-        ast::Expression::AnonymousFunction(def) => builder.build_closure_expr(def),
+        ast::Expr::AnonymousFunction(def) => builder.build_closure_expr(def),
     };
 
     builder.pop_debug_context();
@@ -202,7 +202,7 @@ pub fn translate_if_cond_stmt(
     translate_if_cond(if_cond, builder, |branch, out_ref, _out_ty, builder| {
         assert!(
             out_ref.is_none(),
-            "branch translated as statement should not have an out location"
+            "branch translated as stmt should not have an out location"
         );
 
         translate_stmt(&branch, builder);
@@ -282,7 +282,7 @@ where
 
 fn translate_call_with_args(
     call_target: CallTarget,
-    args: &[pas_ty::ast::Expression],
+    args: &[pas_ty::ast::Expr],
     sig: &pas_ty::FunctionSig,
     builder: &mut Builder,
 ) -> Option<Ref> {
@@ -1046,7 +1046,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
         Type::RcPointer(VirtualTypeID::Class(struct_id)) => *struct_id,
         Type::Struct(struct_id) => *struct_id,
         _ => panic!(
-            "type of object ctor expression `{}` must be a record or class",
+            "type of object ctor expr `{}` must be a record or class",
             ctor
         ),
     };
@@ -1302,7 +1302,7 @@ pub fn translate_block(block: &pas_ty::ast::Block, out_ref: Ref, builder: &mut B
 
     builder.begin_scope();
 
-    for stmt in &block.statements {
+    for stmt in &block.stmts {
         translate_stmt(stmt, builder);
     }
 
@@ -1320,7 +1320,7 @@ pub fn translate_exit(exit: &pas_ty::ast::Exit, builder: &mut Builder) {
         let value_ty = builder.translate_type(&val.annotation().ty());
         let value_val = translate_expr(val, builder);
 
-        // we can assume this function has a return register, otherwise an exit statement
+        // we can assume this function has a return register, otherwise an exit stmt
         // wouldn't pass typechecking
         builder.mov(RETURN_REF, value_val);
 
@@ -1425,7 +1425,7 @@ fn translate_match_expr(match_expr: &pas_ty::ast::MatchExpr, builder: &mut Build
         }
 
         // we MUST have executed a branch!
-        let err = "unhandled pattern in match expression";
+        let err = "unhandled pattern in match expr";
         let err_str = builder.find_or_insert_string(err);
         builder.append(Instruction::Raise {
             val: Ref::Global(GlobalRef::StringLiteral(err_str)),

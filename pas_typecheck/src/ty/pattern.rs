@@ -169,7 +169,7 @@ impl TypePattern {
         match pattern {
             // this pattern typename will never contain generic args (we can't parse those here),
             // so either this is a non-generic type or we'll infer a specialization from the
-            // expression's expected type
+            // expr's expected type
             ast::TypeNamePattern::TypeName {
                 name,
                 kind,

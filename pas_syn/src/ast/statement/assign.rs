@@ -1,12 +1,12 @@
-use crate::ast::{Annotation, Expression};
+use crate::ast::{Annotation, Expr};
 use pas_common::span::{Span, Spanned};
 use std::fmt;
 use crate::operators::CompoundAssignmentOperator;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Assignment<A: Annotation> {
-    pub lhs: Expression<A>,
-    pub rhs: Expression<A>,
+    pub lhs: Expr<A>,
+    pub rhs: Expr<A>,
     pub annotation: A,
 }
 
@@ -27,8 +27,8 @@ impl<A: Annotation> fmt::Display for Assignment<A> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CompoundAssignment<A: Annotation> {
-    pub lhs: Expression<A>,
-    pub rhs: Expression<A>,
+    pub lhs: Expr<A>,
+    pub rhs: Expr<A>,
     pub annotation: A,
     pub op: CompoundAssignmentOperator,
 }

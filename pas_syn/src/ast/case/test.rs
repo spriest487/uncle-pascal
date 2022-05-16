@@ -13,8 +13,8 @@ fn parse_case<Item>(s: &str) -> CaseBlock<Span, Item>
     CaseBlock::parse(&mut token_stream).unwrap()
 }
 
-fn parse_case_stmt(s: &str) -> CaseStatement<Span> {
-    parse_case::<Statement<Span>>(s)
+fn parse_case_stmt(s: &str) -> CaseStmt<Span> {
+    parse_case::<Stmt<Span>>(s)
 }
 
 #[test]

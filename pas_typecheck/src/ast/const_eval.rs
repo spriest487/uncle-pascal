@@ -1,6 +1,6 @@
 use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
 use std::rc::Rc;
-use crate::ast::{BinOp, Expression, IfCond, Literal, UnaryOp};
+use crate::ast::{BinOp, Expr, IfCond, Literal, UnaryOp};
 use crate::Context;
 use pas_syn::{IntConstant, Operator};
 
@@ -14,13 +14,13 @@ impl ConstEval for Literal {
     }
 }
 
-impl ConstEval for Expression {
+impl ConstEval for Expr {
     fn const_eval(&self, ctx: &Context) -> Option<Literal> {
         match self {
-            Expression::Literal(lit, ..) => Some(lit.clone()),
-            Expression::BinOp(bin_op) => bin_op.const_eval(ctx),
-            Expression::UnaryOp(op) => op.const_eval(ctx),
-            Expression::IfCond(cond) => cond.const_eval(ctx),
+            Expr::Literal(lit, ..) => Some(lit.clone()),
+            Expr::BinOp(bin_op) => bin_op.const_eval(ctx),
+            Expr::UnaryOp(op) => op.const_eval(ctx),
+            Expr::IfCond(cond) => cond.const_eval(ctx),
             _ => None,
         }
     }
@@ -172,7 +172,7 @@ impl ConstEval for UnaryOp {
     }
 }
 
-impl ConstEval for IfCond<Expression> {
+impl ConstEval for IfCond<Expr> {
     fn const_eval(&self, ctx: &Context) -> Option<Literal> {
         let else_branch = self.else_branch.as_ref()?;
 

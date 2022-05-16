@@ -12,7 +12,7 @@ use crate::{
         CaseExpr,
         CollectionCtor,
         Exit,
-        Expression,
+        Expr,
         IfCond,
         Literal,
         ObjectCtor,
@@ -29,57 +29,57 @@ use crate::{
 use pas_common::{span::*, TracedError};
 use std::fmt;
 
-fn parse_identifier(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
-    // the context of an identifier expression should be the first part of the
+fn parse_identifier(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
+    // the context of an identifier expr should be the first part of the
     // identifier (if it has multiple parts)
     match tokens.match_one(Matcher::AnyIdent)? {
         TokenTree::Ident(ident) => {
             let span = ident.span.clone();
-            Ok(Expression::Ident(ident, span))
+            Ok(Expr::Ident(ident, span))
         },
         _ => unreachable!(),
     }
 }
 
-fn parse_literal_string(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
+fn parse_literal_string(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     match tokens.match_one(Matcher::AnyLiteralString)? {
         TokenTree::String { value, span } => {
             let str_lit = Literal::String(value);
-            Ok(Expression::Literal(str_lit, span))
+            Ok(Expr::Literal(str_lit, span))
         },
         _ => unreachable!(),
     }
 }
 
-fn parse_literal_integer(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
+fn parse_literal_integer(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     match tokens.match_one(Matcher::AnyLiteralInteger)? {
         TokenTree::IntNumber { value, span } => {
             let int_lit = Literal::Integer(value);
-            Ok(Expression::Literal(int_lit, span))
+            Ok(Expr::Literal(int_lit, span))
         },
         _ => unreachable!(),
     }
 }
 
-fn parse_literal_real(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
+fn parse_literal_real(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     match tokens.match_one(Matcher::AnyLiteralReal)? {
         TokenTree::RealNumber { value, span } => {
             let real_lit = Literal::Real(value);
-            Ok(Expression::Literal(real_lit, span))
+            Ok(Expr::Literal(real_lit, span))
         },
 
         _ => unreachable!(),
     }
 }
 
-fn parse_literal_bool(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
+fn parse_literal_bool(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     let kw = tokens.match_one(Keyword::True.or(Keyword::False))?;
     let val = kw.is_keyword(Keyword::True);
-    let expr = Expression::Literal(Literal::Boolean(val), kw.span().clone());
+    let expr = Expr::Literal(Literal::Boolean(val), kw.span().clone());
     Ok(expr)
 }
 
-fn parse_size_of(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
+fn parse_size_of(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     let kw = tokens.match_one(Keyword::SizeOf)?;
 
     let (close_bracket, mut ty_tokens) = match tokens.match_one(DelimiterPair::Bracket)? {
@@ -92,19 +92,19 @@ fn parse_size_of(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
 
     let span = kw.span().to(close_bracket.span());
 
-    Ok(Expression::Literal(Literal::SizeOf(Box::new(ty)), span))
+    Ok(Expr::Literal(Literal::SizeOf(Box::new(ty)), span))
 }
 
-pub fn parse_case_expr(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
+pub fn parse_case_expr(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     let case = CaseExpr::parse(tokens)?;
-    let expr = Expression::Case(Box::new(case));
+    let expr = Expr::Case(Box::new(case));
 
     Ok(expr)
 }
 
 #[derive(Debug, Clone)]
 enum CompoundExpressionPart {
-    Operand(Expression<Span>),
+    Operand(Expr<Span>),
     Operator(OperatorPart),
 }
 
@@ -160,7 +160,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         }
     }
 
-    pub fn parse(mut self) -> ParseResult<Expression<Span>> {
+    pub fn parse(mut self) -> ParseResult<Expr<Span>> {
         loop {
             // an operand can't be followed by another operand, so each time we finish
             // an operand, the next thing must be a member access, a list of arguments to
@@ -200,10 +200,10 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         match look_ahead.match_one(Matcher::ExprOperandStart) {
             Some(TokenTree::Delimited(group)) => {
                 match group.delim {
-                    // operand is a () group: must be a sub-expression
+                    // operand is a () group: must be a sub-expr
                     DelimiterPair::Bracket => {
                         let mut group_tokens = group.to_inner_tokens();
-                        let sub_expr = Expression::parse(&mut group_tokens)?;
+                        let sub_expr = Expr::parse(&mut group_tokens)?;
                         group_tokens.finish()?;
                         self.tokens.advance(1);
                         self.push_operand(sub_expr);
@@ -212,25 +212,25 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                     // operand is a [] group: must be a collection ctor
                     DelimiterPair::SquareBracket => {
                         let ctor = CollectionCtor::parse(self.tokens)?;
-                        let expr = Expression::from(ctor);
+                        let expr = Expr::from(ctor);
                         self.push_operand(expr);
                     },
 
                     // operand is a begin/end group: must be a block
                     DelimiterPair::BeginEnd => {
                         let block = Block::parse(self.tokens)?;
-                        let expr = Expression::from(block);
+                        let expr = Expr::from(block);
                         self.push_operand(expr);
                     },
 
                     DelimiterPair::CaseEnd => {
                         let case = CaseExpr::parse(&mut self.tokens)?;
-                        self.push_operand(Expression::from(case))
+                        self.push_operand(Expr::from(case))
                     },
 
                     DelimiterPair::MatchEnd => {
                         let match_expr = MatchExpr::parse(&mut self.tokens)?;
-                        self.push_operand(Expression::from(match_expr))
+                        self.push_operand(Expr::from(match_expr))
                     },
                 }
             },
@@ -238,12 +238,12 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             // operand is an unsafe block
             Some(tt) if tt.is_keyword(Keyword::Unsafe) => {
                 let block = Block::parse(self.tokens)?;
-                let expr = Expression::from(block);
+                let expr = Expr::from(block);
                 self.push_operand(expr);
             },
 
             // it's an operator, but thanks to the match we know this operator
-            // is valid in prefix position, so it's part of this expression
+            // is valid in prefix position, so it's part of this expr
             Some(TokenTree::Operator { .. }) => {
                 // we need to parse another operand after this!
                 self.last_was_operand = false;
@@ -269,7 +269,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
             Some(tt) if tt.is_keyword(Keyword::Nil) => {
                 let nil_token = self.tokens.next().unwrap();
-                self.push_operand(Expression::Literal(Literal::Nil, nil_token.span().clone()));
+                self.push_operand(Expr::Literal(Literal::Nil, nil_token.span().clone()));
             },
 
             Some(tt) if tt.is_keyword(Keyword::SizeOf) => {
@@ -279,7 +279,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
             Some(tt) if tt.is_keyword(Keyword::If) => {
                 let cond = IfCond::parse(self.tokens)?;
-                let expr = Expression::from(cond);
+                let expr = Expr::from(cond);
                 self.push_operand(expr);
             },
 
@@ -290,13 +290,13 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
             Some(tt) if tt.is_keyword(Keyword::Raise) => {
                 let raise = Raise::parse(self.tokens)?;
-                let expr = Expression::from(raise);
+                let expr = Expr::from(raise);
                 self.push_operand(expr);
             },
 
             Some(tt) if tt.is_keyword(Keyword::Exit) => {
                 let raise = Exit::parse(self.tokens)?;
-                let expr = Expression::from(raise);
+                let expr = Expr::from(raise);
                 self.push_operand(expr);
             },
 
@@ -312,12 +312,12 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
             Some(tt) if tt.is_keyword(Keyword::Function) || tt.is_keyword(Keyword::Procedure) => {
                 let func_def = AnonymousFunctionDef::parse(self.tokens)?;
-                self.push_operand(Expression::from(func_def))
+                self.push_operand(Expr::from(func_def))
             },
 
             Some(x) => unreachable!("got {:?} which is excluded by pattern", x),
 
-            // next token is not valid as part of an operand, so this expression
+            // next token is not valid as part of an operand, so this expr
             // must end here
             None => return Ok(false),
         }
@@ -325,12 +325,12 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         Ok(true)
     }
 
-    fn push_operand(&mut self, expr: Expression<Span>) {
+    fn push_operand(&mut self, expr: Expr<Span>) {
         let part = CompoundExpressionPart::Operand(expr);
         self.parts.push(part);
     }
 
-    fn pop_operand(&mut self) -> Expression<Span> {
+    fn pop_operand(&mut self) -> Expr<Span> {
         match self.parts.pop() {
             Some(CompoundExpressionPart::Operand(operand)) => operand,
             _ => unreachable!("last should always exist and be an operand here"),
@@ -388,7 +388,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 annotation: span.clone(),
             };
 
-            self.push_operand(Expression::from(ctor));
+            self.push_operand(Expr::from(ctor));
         } else {
             let args = ArgList::parse(&mut self.tokens)?;
 
@@ -411,7 +411,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             .into_ident()
             .unwrap();
 
-        self.push_operand(Expression::from(member_ident));
+        self.push_operand(Expr::from(member_ident));
 
         self.last_was_operand = true;
 
@@ -510,7 +510,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
         let index = {
             let mut index_tokens = index_group.to_inner_tokens();
-            let index_expr = Expression::parse(&mut index_tokens)?;
+            let index_expr = Expr::parse(&mut index_tokens)?;
             index_tokens.finish()?;
 
             index_expr

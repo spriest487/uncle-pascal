@@ -2,7 +2,7 @@
 mod test;
 
 use crate::{
-    ast::{Expression, Statement},
+    ast::{Expr, Stmt},
     parse::prelude::*,
 };
 
@@ -11,7 +11,7 @@ pub struct IfCond<A, B>
 where
     A: Annotation,
 {
-    pub cond: Expression<A>,
+    pub cond: Expr<A>,
 
     pub is_pattern: Option<A::Pattern>,
 
@@ -26,7 +26,7 @@ where
 {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let if_token = tokens.match_one(Keyword::If)?;
-        let cond = Expression::parse(tokens)?;
+        let cond = Expr::parse(tokens)?;
 
         let is_pattern = match tokens.match_one_maybe(Keyword::Is) {
             Some(_is_kw) => {
@@ -93,8 +93,8 @@ where
     }
 }
 
-impl IfCond<Span, Statement<Span>> {
-    pub fn to_expr(&self) -> Option<IfCond<Span, Expression<Span>>> {
+impl IfCond<Span, Stmt<Span>> {
+    pub fn to_expr(&self) -> Option<IfCond<Span, Expr<Span>>> {
         let then_branch = self.then_branch.to_expr()?;
         let else_branch = match &self.else_branch {
             Some(else_stmt) => Some(else_stmt.to_expr()?),

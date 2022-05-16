@@ -3,9 +3,9 @@ use crate::ast::prelude::*;
 pub type CaseBranch<Item> = ast::CaseBranch<TypeAnnotation, Item>;
 pub type CaseBlock<Item> = ast::CaseBlock<TypeAnnotation, Item>;
 pub type CaseExpr = ast::CaseExpr<TypeAnnotation>;
-pub type CaseStatement = ast::CaseStatement<TypeAnnotation>;
+pub type CaseStmt = ast::CaseStmt<TypeAnnotation>;
 
-pub fn typecheck_case_stmt(case: &ast::CaseStatement<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<CaseStatement> {
+pub fn typecheck_case_stmt(case: &ast::CaseStmt<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<CaseStmt> {
     let cond_expr = typecheck_expr(&case.cond_expr, &Type::Nothing, ctx)?;
     let cond_ty = cond_expr.annotation().ty();
 
@@ -34,7 +34,7 @@ pub fn typecheck_case_stmt(case: &ast::CaseStatement<Span>, expect_ty: &Type, ct
 
     let annotation = TypeAnnotation::Untyped(case.span().clone());
 
-    Ok(CaseStatement {
+    Ok(CaseStmt {
         cond_expr: Box::new(cond_expr),
         branches,
         else_branch: else_branch.map(Box::new),

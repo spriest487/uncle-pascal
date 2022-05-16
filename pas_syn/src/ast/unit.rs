@@ -26,7 +26,7 @@ pub struct Unit<A: Annotation> {
 
     pub iface_decls: Vec<UnitDecl<A>>,
     pub impl_decls: Vec<UnitDecl<A>>,
-    pub init: Vec<Statement<A>>,
+    pub init: Vec<Stmt<A>>,
 }
 
 impl<A: Annotation> Unit<A> {
@@ -101,7 +101,7 @@ impl Unit<Span> {
             impl_decls.extend(decls);
 
             let main_block = Block::parse(tokens)?;
-            init.push(Statement::Block(Box::new(main_block)));
+            init.push(Stmt::Block(Box::new(main_block)));
 
             // allow the traditional period after the final end
             tokens.match_one_maybe(Operator::Period);
@@ -233,10 +233,10 @@ fn parse_unit_func_decl(tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>>
     }
 }
 
-fn parse_init_section(tokens: &mut TokenStream) -> ParseResult<Vec<Statement<Span>>> {
-    let stmts = Statement::parse_seq(tokens)?;
+fn parse_init_section(tokens: &mut TokenStream) -> ParseResult<Vec<Stmt<Span>>> {
+    let stmts = Stmt::parse_seq(tokens)?;
 
-    // the last statement may be optionally terminated with a redundant separator
+    // the last stmt may be optionally terminated with a redundant separator
     if stmts.len() > 0 {
         tokens.match_one_maybe(Separator::Semicolon);
     }

@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Annotation, Expression, Statement},
+    ast::{Annotation, Expr, Stmt},
     parse::*,
     token_tree::*,
     Keyword,
@@ -9,17 +9,17 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Block<A: Annotation> {
-    pub statements: Vec<Statement<A>>,
+    pub stmts: Vec<Stmt<A>>,
     pub annotation: A,
 
-    // the final expression of the block which determines its value.
-    // we can identify this during parsing if the last "statement" in the block is an
-    // expression which can't be parsed as a valid standalone statement. otherwise, this gets
+    // the final expr of the block which determines its value.
+    // we can identify this during parsing if the last "stmt" in the block is an
+    // expr which can't be parsed as a valid standalone stmt. otherwise, this gets
     // populated during typechecking.
     // e.g. a function call at the end a block may be the the block output depending on the return
     // type of the function, but we don't know that until typechecking. a value on its own, however,
     // would HAVE to be the block output to be valid!
-    pub output: Option<Expression<A>>,
+    pub output: Option<Expr<A>>,
 
     pub unsafe_kw: Option<Span>,
 
@@ -28,12 +28,12 @@ pub struct Block<A: Annotation> {
 }
 
 impl<A: Annotation> Block<A> {
-    pub fn single_stmt(stmt: Statement<A>) -> Self {
+    pub fn single_stmt(stmt: Stmt<A>) -> Self {
         Self {
             annotation: stmt.annotation().clone(),
             begin: stmt.annotation().span().clone(),
             end: stmt.annotation().span().clone(),
-            statements: vec![stmt],
+            stmts: vec![stmt],
             unsafe_kw: None,
             output: None,
         }
@@ -65,7 +65,7 @@ impl Block<Span> {
         stmt_tokens.finish()?;
 
         let block = Self {
-            statements,
+            stmts: statements,
             annotation: span,
 
             // we don't know until typechecking
@@ -79,7 +79,7 @@ impl Block<Span> {
         Ok(block)
     }
 
-    // convert block-as-statement into an block-as-expression
+    // convert block-as-stmt into an block-as-expr
     // todo: should these be two different types?
     pub fn to_expr(&self) -> Option<Self> {
         if self.output.is_some() {
@@ -88,17 +88,17 @@ impl Block<Span> {
         }
 
         let final_stmt_expr = self
-            .statements
+            .stmts
             .last()
             .and_then(|final_stmt| final_stmt.clone().to_expr());
 
         if let Some(output_expr) = final_stmt_expr {
-            // block where we can reinterpret the final statement as an output expr
-            let mut statements = self.statements.clone();
+            // block where we can reinterpret the final stmt as an output expr
+            let mut statements = self.stmts.clone();
             statements.pop();
 
             return Some(Block {
-                statements,
+                stmts: statements,
                 output: Some(output_expr),
                 annotation: self.annotation.clone(),
                 unsafe_kw: self.unsafe_kw.clone(),
@@ -114,12 +114,12 @@ impl Block<Span> {
 
 fn parse_block_stmts(
     tokens: &mut TokenStream,
-) -> ParseResult<(Vec<Statement<Span>>, Option<Expression<Span>>)> {
+) -> ParseResult<(Vec<Stmt<Span>>, Option<Expr<Span>>)> {
     let mut statements = Vec::new();
-    let mut output_expr: Option<Expression<_>> = None;
+    let mut output_expr: Option<Expr<_>> = None;
 
     loop {
-        if output_expr.is_some() || !Statement::has_more(&statements, &mut tokens.look_ahead()) {
+        if output_expr.is_some() || !Stmt::has_more(&statements, &mut tokens.look_ahead()) {
             break;
         }
 
@@ -127,23 +127,23 @@ fn parse_block_stmts(
             tokens.match_one(Separator::Semicolon)?;
         }
 
-        // record the start position of this statement, because if it fails to parse as a statement we can
-        // take a second attempt at parsing the same tokens as an output expression
+        // record the start position of this stmt, because if it fails to parse as a stmt we can
+        // take a second attempt at parsing the same tokens as an output expr
         let stmt_start_pos = tokens.position();
 
-        match Statement::parse(tokens) {
+        match Stmt::parse(tokens) {
             Ok(stmt) => {
                 statements.push(stmt);
             },
 
             Err(traced_err) => match &traced_err.err {
-                // if the final statement is invalid as a statement but still a valid
-                // expression, assume it's the block output. some expressions (eg calls) are
+                // if the final stmt is invalid as a stmt but still a valid
+                // expr, assume it's the block output. some expressions (eg calls) are
                 // always valid as statements regardless of type, so in some cases the block
                 // output can't be determined until typechecking
                 ParseError::InvalidStatement(InvalidStatement(_invalid)) => {
                     tokens.seek(stmt_start_pos);
-                    output_expr = Some(Expression::parse(tokens)?);
+                    output_expr = Some(Expr::parse(tokens)?);
                 },
 
                 // failed for other reasons, this is an actual error
@@ -162,11 +162,11 @@ fn parse_block_stmts(
 impl<A: Annotation> fmt::Display for Block<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "begin")?;
-        for (i, stmt) in self.statements.iter().enumerate() {
+        for (i, stmt) in self.stmts.iter().enumerate() {
             write!(f, "{}", stmt)?;
 
-            // only add a ; on the last statement if there's also an output expr
-            if i != self.statements.len() - 1 || self.output.is_some() {
+            // only add a ; on the last stmt if there's also an output expr
+            if i != self.stmts.len() - 1 || self.output.is_some() {
                 writeln!(f, ";")?;
             }
         }

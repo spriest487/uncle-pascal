@@ -2,8 +2,8 @@ mod assign;
 
 use crate::ast::{
     prelude::*,
-    expression::{Invocation, typecheck_call},
-    statement::assign::{typecheck_assignment, typecheck_compound_assignment},
+    expr::{Invocation, typecheck_call},
+    stmt::assign::{typecheck_assignment, typecheck_compound_assignment},
 };
 use pas_syn::Operator;
 use crate::ast::cast::implicit_conversion;
@@ -12,14 +12,14 @@ pub use self::assign::{
     CompoundAssignment,
 };
 
-pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
-pub type Statement = ast::Statement<TypeAnnotation>;
+pub type VarBinding = ast::LocalBinding<TypeAnnotation>;
+pub type Stmt = ast::Stmt<TypeAnnotation>;
 pub type Exit = ast::Exit<TypeAnnotation>;
 
 pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<LocalBinding> {
+) -> TypecheckResult<VarBinding> {
     let (val, binding_ty) = match &binding.ty {
         ast::TypeName::Unknown(_) => match &binding.val {
             None => {
@@ -98,7 +98,7 @@ pub fn typecheck_local_binding(
 
     let annotation = TypeAnnotation::Untyped(span);
 
-    let local_binding = LocalBinding {
+    let local_binding = VarBinding {
         name,
         ty: binding_ty,
         val,
@@ -109,86 +109,86 @@ pub fn typecheck_local_binding(
 }
 
 pub fn typecheck_stmt(
-    stmt: &ast::Statement<Span>,
+    stmt: &ast::Stmt<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Statement> {
+) -> TypecheckResult<Stmt> {
     match stmt {
-        ast::Statement::LocalBinding(binding) => {
-            typecheck_local_binding(binding, ctx).map(|s| ast::Statement::LocalBinding(Box::new(s)))
+        ast::Stmt::LocalBinding(binding) => {
+            typecheck_local_binding(binding, ctx).map(|s| ast::Stmt::LocalBinding(Box::new(s)))
         }
 
-        ast::Statement::Call(call) => match typecheck_call(call, expect_ty, ctx)? {
-            Invocation::Call(call) => Ok(ast::Statement::Call(call)),
+        ast::Stmt::Call(call) => match typecheck_call(call, expect_ty, ctx)? {
+            Invocation::Call(call) => Ok(ast::Stmt::Call(call)),
             Invocation::Ctor(ctor) => {
-                let ctor_expr = Expression::from(*ctor);
+                let ctor_expr = Expr::from(*ctor);
                 let invalid_stmt = InvalidStatement::from(ctor_expr);
                 Err(TypecheckError::InvalidStatement(Box::new(invalid_stmt)))
             }
         },
 
-        ast::Statement::Block(block) => {
+        ast::Stmt::Block(block) => {
             let block = typecheck_block(block, expect_ty, ctx)?;
 
-            Ok(ast::Statement::Block(Box::new(block)))
+            Ok(ast::Stmt::Block(Box::new(block)))
         }
 
-        ast::Statement::ForLoop(for_loop) => {
-            typecheck_for_loop(for_loop, ctx).map(Box::new).map(ast::Statement::ForLoop)
+        ast::Stmt::ForLoop(for_loop) => {
+            typecheck_for_loop(for_loop, ctx).map(Box::new).map(ast::Stmt::ForLoop)
         }
 
-        ast::Statement::WhileLoop(while_loop) => {
-            typecheck_while_loop(while_loop, ctx).map(Box::new).map(ast::Statement::WhileLoop)
+        ast::Stmt::WhileLoop(while_loop) => {
+            typecheck_while_loop(while_loop, ctx).map(Box::new).map(ast::Stmt::WhileLoop)
         }
 
-        ast::Statement::Assignment(assignment) => {
-            typecheck_assignment(assignment, ctx).map(Box::new).map(ast::Statement::Assignment)
+        ast::Stmt::Assignment(assignment) => {
+            typecheck_assignment(assignment, ctx).map(Box::new).map(ast::Stmt::Assignment)
         }
 
-        ast::Statement::CompoundAssignment(assignment) => {
-            typecheck_compound_assignment(assignment, ctx).map(Box::new).map(ast::Statement::CompoundAssignment)
+        ast::Stmt::CompoundAssignment(assignment) => {
+            typecheck_compound_assignment(assignment, ctx).map(Box::new).map(ast::Stmt::CompoundAssignment)
         }
 
-        ast::Statement::Exit(exit) => {
+        ast::Stmt::Exit(exit) => {
             let exit = typecheck_exit(exit, &expect_ty, ctx)?;
-            Ok(ast::Statement::Exit(Box::new(exit)))
+            Ok(ast::Stmt::Exit(Box::new(exit)))
         }
 
-        ast::Statement::Break(span) => {
+        ast::Stmt::Break(span) => {
             expect_in_loop(stmt, ctx)?;
             let annotation = TypeAnnotation::Untyped(span.clone());
-            Ok(ast::Statement::Break(annotation))
+            Ok(ast::Stmt::Break(annotation))
         }
 
-        ast::Statement::Continue(span) => {
+        ast::Stmt::Continue(span) => {
             expect_in_loop(stmt, ctx)?;
             let annotation = TypeAnnotation::Untyped(span.clone());
-            Ok(ast::Statement::Continue(annotation))
+            Ok(ast::Stmt::Continue(annotation))
         }
 
-        ast::Statement::If(if_cond) => {
+        ast::Stmt::If(if_cond) => {
             let if_cond = typecheck_if_cond_stmt(if_cond, expect_ty, ctx)?;
-            Ok(ast::Statement::If(Box::new(if_cond)))
+            Ok(ast::Stmt::If(Box::new(if_cond)))
         }
 
-        ast::Statement::Raise(raise) => {
+        ast::Stmt::Raise(raise) => {
             let raise = typecheck_raise(raise, expect_ty, ctx)?;
-            Ok(ast::Statement::Raise(Box::new(raise)))
+            Ok(ast::Stmt::Raise(Box::new(raise)))
         }
 
-        ast::Statement::Case(case) => {
+        ast::Stmt::Case(case) => {
             let case = typecheck_case_stmt(case, expect_ty, ctx)?;
-            Ok(ast::Statement::Case(Box::new(case)))
+            Ok(ast::Stmt::Case(Box::new(case)))
         }
 
-        ast::Statement::Match(match_stmt) => {
+        ast::Stmt::Match(match_stmt) => {
             let match_stmt = typecheck_match_stmt(match_stmt, expect_ty, ctx)?;
-            Ok(ast::Statement::Match(Box::new(match_stmt)))
+            Ok(ast::Stmt::Match(Box::new(match_stmt)))
         }
     }
 }
 
-fn expect_in_loop(stmt: &ast::Statement<Span>, ctx: &Context) -> TypecheckResult<()> {
+fn expect_in_loop(stmt: &ast::Stmt<Span>, ctx: &Context) -> TypecheckResult<()> {
     match ctx.in_loop() {
         Some(..) => Ok(()),
 
@@ -202,14 +202,14 @@ pub fn typecheck_exit(exit: &ast::Exit<Span>, expect_ty: &Type, ctx: &mut Contex
     let ret_ty = ctx.current_func_return_ty()
         .ok_or_else(|| {
             TypecheckError::NoFunctionContext {
-                stmt: Box::new(ast::Statement::Exit(Box::new(exit.clone())))
+                stmt: Box::new(ast::Stmt::Exit(Box::new(exit.clone())))
             }
         })?
         .clone();
 
     // exit expressions always count as the expected type, so you can write e.g.
     // `let x := if true then 1 else exit;`
-    // since no value will ever be assigned to `x` if the exit expression is reached
+    // since no value will ever be assigned to `x` if the exit expr is reached
     let make_annotation = |span: &Span| match expect_ty {
         Type::Nothing => TypeAnnotation::Untyped(span.clone()),
         _ => TypedValueAnnotation {

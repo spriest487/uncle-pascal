@@ -1,6 +1,6 @@
 use std::fmt;
 use crate::{
-    ast::{Annotation, Expression},
+    ast::{Annotation, Expr},
     parse::{ParseResult, TokenStream},
     Keyword,
 };
@@ -9,7 +9,7 @@ use crate::parse::Matcher;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Exit<A: Annotation> {
-    WithValue(Expression<A>, A),
+    WithValue(Expr<A>, A),
     WithoutValue(A),
 }
 
@@ -21,7 +21,7 @@ impl Exit<Span> {
             None => Exit::WithoutValue(exit_tt.span().clone()),
 
             Some(..) => {
-                let value_expr = Expression::parse(tokens)?;
+                let value_expr = Expr::parse(tokens)?;
                 let span = exit_tt.span().to(value_expr.annotation().span());
                 Exit::WithValue(value_expr, span)
             }
