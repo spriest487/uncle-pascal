@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::expr::translate_raise;
 use crate::pattern::translate_pattern_match;
 use crate::{
@@ -16,7 +17,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 
     match stmt {
         ast::Statement::LocalBinding(binding) => {
-            translate_binding(binding, builder);
+            build_binding(binding, builder);
         },
 
         ast::Statement::Call(call) => {
@@ -32,7 +33,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         },
 
         ast::Statement::ForLoop(for_loop) => {
-            translate_for_loop(for_loop, builder);
+            build_for_loop(for_loop, builder);
         },
 
         ast::Statement::WhileLoop(while_loop) => {
@@ -75,7 +76,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     builder.pop_debug_context()
 }
 
-fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder) {
+fn build_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder) {
     let bound_ty = builder.translate_type(&binding.ty);
 
     let binding_ref = builder.local_new(bound_ty.clone(), Some(binding.name.to_string()));
@@ -90,41 +91,61 @@ fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder)
     };
 }
 
-pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder) {
+pub fn build_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder) {
     let top_label = builder.alloc_label();
     let continue_label = builder.alloc_label();
     let break_label = builder.alloc_label();
 
+    let counter_ty = match &for_loop.init {
+        ast::ForLoopInit::Assignment { counter, .. } => counter.annotation().ty(),
+        ast::ForLoopInit::Binding(binding) => Cow::Borrowed(&binding.ty),
+    };
+
     let loop_instructions = builder.scope(|builder| {
         // counter
-        let counter_ty = builder.translate_type(&for_loop.init_binding.ty);
-        if counter_ty != Type::I32 {
-            unimplemented!("non-i32 counters");
-        }
+        let counter_ty = builder.translate_type(&counter_ty);
 
-        let counter_init = for_loop
-            .init_binding
-            .val
-            .as_ref()
-            .expect("for loop counter binding must have an init expr");
+        let (counter_val, counter_init_val) = match &for_loop.init {
+            ast::ForLoopInit::Assignment { counter, value } => {
+                let counter_val = translate_expr(counter, builder);
+                let init_val = translate_expr(&value, builder);
 
-        assert!(
-            !for_loop.init_binding.ty.is_rc_reference(),
-            "counter type must not be ref counted"
-        );
+                (counter_val, init_val)
+            }
 
-        let inc_val = Value::LiteralI32(1);
+            ast::ForLoopInit::Binding(counter_binding) => {
+                let counter_init_val = counter_binding
+                    .val
+                    .as_ref()
+                    .expect("for loop counter binding must have an init expr");
+
+                let counter_binding_name = counter_binding.name.to_string();
+                let counter_val = builder.local_new(counter_ty.clone(), Some(counter_binding_name));
+                let init_val = translate_expr(&counter_init_val, builder);
+
+                (counter_val, init_val)
+            }
+        };
+
+        let inc_val = match counter_ty {
+            Type::I8 => Value::LiteralI8(1),
+            Type::U8 => Value::LiteralU8(1),
+            Type::I16 => Value::LiteralI16(1),
+            Type::U16 => Value::LiteralU16(1),
+            Type::I32 => Value::LiteralI32(1),
+            Type::U32 => Value::LiteralU32(1),
+            Type::I64 => Value::LiteralI64(1),
+            Type::U64 => Value::LiteralU64(1),
+            Type::ISize => Value::LiteralISize(1),
+            Type::USize => Value::LiteralUSize(1),
+            _ => Value::LiteralI32(1),
+        };
 
         // temp value to store the result of evaluating the break condition
         let break_cond_val = builder.local_temp(Type::Bool);
-
-        let counter_binding_name = for_loop.init_binding.name.to_string();
-        let counter_val = builder.local_new(counter_ty, Some(counter_binding_name));
-        let init_val = translate_expr(&counter_init, builder);
-
         let to_val = translate_expr(&for_loop.to_expr, builder);
 
-        builder.mov(counter_val.clone(), init_val);
+        builder.mov(counter_val.clone(), counter_init_val);
 
         builder.label(top_label);
 

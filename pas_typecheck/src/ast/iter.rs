@@ -10,20 +10,44 @@ pub fn typecheck_for_loop(
     let annotation = TypeAnnotation::Untyped(for_loop.annotation.clone());
 
     let inner_scope = ctx.push_scope(Environment::Block { allow_unsafe: false });
-    let init_binding = typecheck_local_binding(&for_loop.init_binding, ctx)?;
 
-    if init_binding.ty != Type::Primitive(Primitive::Int32) {
-        unimplemented!("non-int32 loops");
-    }
+    let (init, counter_ty) = match &for_loop.init {
+        ast::ForLoopInit::Binding(init_binding) => {
+            let init_binding = typecheck_local_binding(init_binding, ctx)?;
+            let counter_ty = init_binding.ty.clone();
 
-    let to_expr = typecheck_expr(&for_loop.to_expr, &Type::Primitive(Primitive::Boolean), ctx)?;
-    if *to_expr.annotation().ty() != init_binding.ty {
-        return Err(TypecheckError::TypeMismatch {
-            expected: init_binding.ty,
-            actual: to_expr.annotation().ty().into_owned(),
+            let init = ast::ForLoopInit::Binding(Box::new(init_binding));
+            (init, counter_ty)
+        }
+
+        ast::ForLoopInit::Assignment { counter, value } => {
+            let counter = typecheck_expr(counter, &Primitive::Int32.into(), ctx)?;
+            if let ast::Expression::Ident(ident, ..) = &counter {
+                if ctx.get_decl_scope(ident).is_some() {
+                    ctx.initialize(ident)
+                }
+            }
+
+            let counter_ty = counter.annotation().ty().into_owned();
+            let value = typecheck_expr(value, &counter_ty, ctx)?;
+            let init = ast::ForLoopInit::Assignment {
+                counter: Box::new(counter),
+                value: Box::new(value),
+            };
+
+            (init, counter_ty)
+        }
+    };
+
+    if !counter_ty.as_primitive().map(|p| p.is_integer()).unwrap_or(false) {
+        return Err(TypecheckError::InvalidLoopCounterType {
+            counter_ty,
             span: annotation.span().clone(),
-        });
+        })
     }
+
+    let to_expr = typecheck_expr(&for_loop.to_expr, &counter_ty, ctx)?;
+    to_expr.annotation().expect_value(&counter_ty)?;
 
     // loops bodies never have values
     let body_expect_ty = Type::Nothing;
@@ -35,7 +59,7 @@ pub fn typecheck_for_loop(
     ctx.pop_scope(inner_scope);
 
     Ok(ForLoop {
-        init_binding,
+        init,
         to_expr,
         body,
         annotation,

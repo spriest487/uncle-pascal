@@ -354,7 +354,13 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
         ast::Statement::LocalBinding(binding) => expect_binding_initialized(binding, ctx),
 
         ast::Statement::ForLoop(for_loop) => {
-            expect_binding_initialized(&for_loop.init_binding, ctx)?;
+            match &for_loop.init {
+                ast::ForLoopInit::Binding(init_binding) => expect_binding_initialized(init_binding, ctx)?,
+                ast::ForLoopInit::Assignment { counter: _, value } => {
+                    // only the initial value needs to be initialized - we (re)initialize the counter in the loop
+                    expect_expr_initialized(value, ctx)?;
+                }
+            }
             expect_expr_initialized(&for_loop.to_expr, ctx)?;
             expect_stmt_initialized(&for_loop.body, ctx)?;
             Ok(())

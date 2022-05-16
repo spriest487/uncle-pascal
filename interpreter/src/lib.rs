@@ -319,7 +319,7 @@ impl Interpreter {
                 Ok(ref_val.into_owned())
             },
 
-            Value::LiteralByte(i) => Ok(DynValue::U8(*i)),
+            Value::LiteralU8(i) => Ok(DynValue::U8(*i)),
             Value::LiteralI8(i) => Ok(DynValue::I8(*i)),
             Value::LiteralI16(i) => Ok(DynValue::I16(*i)),
             Value::LiteralU16(i) => Ok(DynValue::U16(*i)),

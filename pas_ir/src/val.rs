@@ -32,7 +32,7 @@ pub enum Value {
     Ref(Ref),
     LiteralNull,
     LiteralBool(bool),
-    LiteralByte(u8),
+    LiteralU8(u8),
     LiteralI8(i8),
     LiteralI16(i16),
     LiteralU16(u16),
@@ -49,7 +49,7 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Value::Ref(r) => write!(f, "{}", r),
-            Value::LiteralByte(i) => write!(f, "{}u8", i),
+            Value::LiteralU8(i) => write!(f, "{}u8", i),
             Value::LiteralI8(i) => write!(f, "{}i8", i),
             Value::LiteralI16(i) => write!(f, "{}i16", i),
             Value::LiteralU16(i) => write!(f, "{}u16", i),

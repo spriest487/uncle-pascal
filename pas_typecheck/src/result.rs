@@ -199,6 +199,11 @@ pub enum TypecheckError {
     InvalidExitWithValue {
         span: Span,
     },
+
+    InvalidLoopCounterType {
+        counter_ty: Type,
+        span: Span,
+    }
 }
 
 impl TypecheckError {
@@ -269,6 +274,7 @@ impl Spanned for TypecheckError {
             TypecheckError::MatchExprNotExhaustive { span, .. } => span,
             TypecheckError::InvalidExitWithValue { span, .. } => span,
             TypecheckError::ConstDeclWithNoValue { span, .. } => span,
+            TypecheckError::InvalidLoopCounterType { span, .. } => span,
         }
     }
 }
@@ -367,6 +373,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::MatchExprNotExhaustive { .. } => "Match expression is not exhaustive".to_string(),
             TypecheckError::InvalidExitWithValue { .. } => "Invalid exit with value".to_string(),
             TypecheckError::ConstDeclWithNoValue { .. } => "Constant declaration without a value".to_string(),
+            TypecheckError::InvalidLoopCounterType { .. } => "Invalid loop counter type".to_string(),
         }
     }
 
@@ -750,6 +757,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::ConstDeclWithNoValue { .. } => {
                 write!(f, "constant declaration must have a value")
+            }
+
+            TypecheckError::InvalidLoopCounterType { counter_ty, .. } => {
+                write!(f, "type `{}` cannot be used as a loop counter", counter_ty)
             }
         }
     }

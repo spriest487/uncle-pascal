@@ -365,11 +365,19 @@ impl DynValue {
 
     pub fn try_gt(&self, other: &Self) -> Option<bool> {
         match (self, other) {
-            (DynValue::I32(a), DynValue::I32(b)) => Some(a > b),
+            (DynValue::I8(a), DynValue::I8(b)) => Some(a > b),
             (DynValue::U8(a), DynValue::U8(b)) => Some(a > b),
-            (DynValue::F32(a), DynValue::F32(b)) => Some(a > b),
-            (DynValue::Bool(a), DynValue::Bool(b)) => Some(a > b),
-            (DynValue::Pointer(a), DynValue::Pointer(b)) => Some(a > b),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(a > b),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(a > b),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(a > b),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(a > b),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(a > b),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(a > b),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(a > b),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(a > b),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(a.addr > b.addr)
+            },
 
             _ => None,
         }

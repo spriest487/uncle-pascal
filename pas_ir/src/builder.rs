@@ -456,7 +456,7 @@ impl<'m> Builder<'m> {
             (Value::LiteralI32(lit_a), Value::LiteralI32(lit_b)) => {
                 Value::LiteralBool(lit_a < lit_b)
             },
-            (Value::LiteralByte(lit_a), Value::LiteralByte(lit_b)) => {
+            (Value::LiteralU8(lit_a), Value::LiteralU8(lit_b)) => {
                 Value::LiteralBool(lit_a < lit_b)
             },
             (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {
@@ -512,7 +512,7 @@ impl<'m> Builder<'m> {
             (Value::LiteralI32(lit_a), Value::LiteralI32(lit_b)) => {
                 Value::LiteralBool(lit_a >= lit_b)
             },
-            (Value::LiteralByte(lit_a), Value::LiteralByte(lit_b)) => {
+            (Value::LiteralU8(lit_a), Value::LiteralU8(lit_b)) => {
                 Value::LiteralBool(lit_a >= lit_b)
             },
             (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {

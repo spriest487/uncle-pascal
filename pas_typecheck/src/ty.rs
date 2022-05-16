@@ -408,6 +408,13 @@ impl Type {
         }
     }
 
+    pub fn as_primitive(&self) -> Option<Primitive> {
+        match self {
+            Type::Primitive(p) => Some(*p),
+            _ => None,
+        }
+    }
+
     pub fn as_iface(&self) -> Result<&IdentPath, &Self> {
         match self {
             Type::Interface(iface) => Ok(iface),

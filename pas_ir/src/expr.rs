@@ -569,7 +569,7 @@ pub fn translate_literal(
                 let val = i
                     .as_u8()
                     .expect("UInt8-typed constant must be within range of u8");
-                builder.mov(out.clone(), Value::LiteralByte(val))
+                builder.mov(out.clone(), Value::LiteralU8(val))
             },
             pas_ty::Type::Primitive(pas_ty::Primitive::Int16) => {
                 let val = i
@@ -996,7 +996,7 @@ fn translate_unary_op(
 
             let zero_val = match op_ty.as_ref() {
                 pas_ty::Type::Primitive(pas_ty::Primitive::Int8) => Value::LiteralI8(0),
-                pas_ty::Type::Primitive(pas_ty::Primitive::UInt8) => Value::LiteralByte(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::UInt8) => Value::LiteralU8(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::Int16) => Value::LiteralI16(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::UInt16) => Value::LiteralI16(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Value::LiteralI32(0),

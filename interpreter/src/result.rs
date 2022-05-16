@@ -54,14 +54,6 @@ impl ExecError {
         }
     }
 
-    pub fn with_debug_ctx(self, context: Span, stack_frames: Vec<String>) -> Self {
-        ExecError::WithDebugContext {
-            err: Box::new(self),
-            span: Some(context),
-            stack_trace: stack_frames,
-        }
-    }
-
     fn label_span(&self) -> Option<&Span> {
         match self {
             ExecError::WithDebugContext { span, .. } => span.as_ref(),

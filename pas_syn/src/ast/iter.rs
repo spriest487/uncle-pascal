@@ -4,8 +4,35 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum ForLoopInit<A: Annotation> {
+    Binding(Box<LocalBinding<A>>),
+    Assignment {
+        counter: Box<Expression<A>>,
+        value: Box<Expression<A>>,
+    },
+}
+
+impl<A: Annotation> fmt::Display for ForLoopInit<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ForLoopInit::Binding(b) => write!(f, "{}", b),
+            ForLoopInit::Assignment { counter, value } => write!(f, "{} := {}", counter, value),
+        }
+    }
+}
+
+impl<A: Annotation> Spanned for ForLoopInit<A> {
+    fn span(&self) -> &Span {
+        match self {
+            ForLoopInit::Binding(b) => b.span(),
+            ForLoopInit::Assignment { counter, .. } => counter.span(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ForLoop<A: Annotation> {
-    pub init_binding: LocalBinding<A>,
+    pub init: ForLoopInit<A>,
     pub to_expr: Expression<A>,
     pub body: Box<Statement<A>>,
     pub annotation: A,
@@ -16,7 +43,7 @@ impl<A: Annotation> fmt::Display for ForLoop<A> {
         write!(
             f,
             "for {} to {} do {}",
-            self.init_binding, self.to_expr, self.body
+            self.init, self.to_expr, self.body
         )
     }
 }
@@ -30,7 +57,23 @@ impl<A: Annotation> Spanned for ForLoop<A> {
 impl ForLoop<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let for_kw = tokens.match_one(Keyword::For)?;
-        let init_binding = LocalBinding::parse(tokens)?;
+
+        let init = match Statement::parse(tokens)? {
+            Statement::LocalBinding(binding) => {
+                ForLoopInit::Binding(binding)
+            }
+
+            Statement::Assignment(assignment) => {
+                ForLoopInit::Assignment {
+                    counter: Box::new(assignment.lhs),
+                    value: Box::new(assignment.rhs)
+                }
+            }
+
+            stmt => {
+                return Err(TracedError::trace(ParseError::InvalidForLoopInit(stmt)))
+            }
+        };
 
         tokens.match_one(Keyword::To)?;
         let to_expr = Expression::parse(tokens)?;
@@ -41,7 +84,7 @@ impl ForLoop<Span> {
         let span = for_kw.span().to(body.annotation().span());
 
         Ok(Self {
-            init_binding,
+            init,
             to_expr,
             body: Box::new(body),
             annotation: span,

@@ -114,7 +114,7 @@ impl Expr {
             ir::Value::LiteralBool(b) => Expr::LitBool(*b),
             ir::Value::LiteralNull => Expr::Null,
             ir::Value::LiteralI8(i) => Expr::LitInt(*i as i128),
-            ir::Value::LiteralByte(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralU8(i) => Expr::LitInt(*i as i128),
             ir::Value::LiteralI16(i) => Expr::LitInt(*i as i128),
             ir::Value::LiteralU16(i) => Expr::LitInt(*i as i128),
             ir::Value::LiteralI32(i) => Expr::LitInt(*i as i128),

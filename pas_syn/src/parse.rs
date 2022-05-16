@@ -61,6 +61,7 @@ pub enum ParseError {
     InvalidAssignmentExpr { span: Span },
     EmptyConstDecl { span: Span },
     EmptyTypeDecl { span: Span },
+    InvalidForLoopInit(Statement<Span>),
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -85,6 +86,7 @@ impl Spanned for ParseError {
             ParseError::InvalidAssignmentExpr { span } => span,
             ParseError::EmptyConstDecl { span, .. } => span,
             ParseError::EmptyTypeDecl { span, .. } => span,
+            ParseError::InvalidForLoopInit(stmt) => stmt.span(),
         }
     }
 }
@@ -109,6 +111,7 @@ impl fmt::Display for ParseError {
             ParseError::InvalidAssignmentExpr { .. } => write!(f, "Illegal assignment"),
             ParseError::EmptyConstDecl { .. } => write!(f, "Empty const declaration"),
             ParseError::EmptyTypeDecl { .. } => write!(f, "Empty type declaration"),
+            ParseError::InvalidForLoopInit( .. ) => write!(f, "Invalid for-loop initialization statement"),
         }
     }
 }
@@ -182,6 +185,10 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::EmptyConstDecl { .. } => {
                 format!("const declaration must contain one or more constants")
+            }
+
+            ParseError::InvalidForLoopInit(stmt) => {
+                format!("statement `{}` cannot be used to initialize the counter variable of a for-loop", stmt)
             }
         };
 
