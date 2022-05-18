@@ -968,11 +968,13 @@ impl Interpreter {
             return Err(ExecError::ZeroLengthAllocation);
         }
 
-        let alloc_ptr = self.dynalloc(ty, values.len())?;
         let marshal_ty = self.marshaller.get_ty(&ty)?;
+        let marshal_size = marshal_ty.size();
 
         for (i, value) in values.into_iter().enumerate() {
-            let element_offset = i * marshal_ty.size();
+        let alloc_len = marshal_size * values.len();
+        let alloc_ptr = self.dynalloc(ty, alloc_len)?;
+            let element_offset = i * marshal_size;
             let val_dst = Pointer {
                 addr: alloc_ptr.addr + element_offset,
                 ty: ty.clone(),
