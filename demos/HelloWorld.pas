@@ -1,3 +1,3 @@
-{$I ./Empty.pas}
+uses System;
 
-System.WriteLn('Hello, world!');
+System.WriteLn('Hello,' + ' world!');

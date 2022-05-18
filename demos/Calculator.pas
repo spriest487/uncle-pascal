@@ -44,7 +44,7 @@ while true do begin
     var result := case op of
         addCommand: lhs + rhs;
         subCommand: lhs - rhs;
-        divCommand: lhs / rhs;
+        divCommand: lhs div rhs;
         mulCommand: lhs * rhs;
         else begin
             WriteLn('invalid operator found for command ' + command);
