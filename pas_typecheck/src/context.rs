@@ -11,7 +11,7 @@ pub use self::{
     builtin::*, decl::*, def::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
 };
 use crate::ast::Literal;
-use crate::{ast::{Composite, FunctionDecl, FunctionDef, InterfaceDecl, OverloadCandidate, Variant}, specialize_composite_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
+use crate::{ast::{StructDef, FunctionDecl, FunctionDef, InterfaceDecl, OverloadCandidate, VariantDef}, specialize_struct_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -416,7 +416,7 @@ impl Context {
 
     pub fn declare_variant(
         &mut self,
-        variant: Rc<Variant>,
+        variant: Rc<VariantDef>,
         visibility: Visibility,
     ) -> TypecheckResult<()> {
         let name = variant.name.decl_name.ident.clone();
@@ -435,12 +435,12 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_class(&mut self, class: Rc<Composite>, visibility: Visibility) -> TypecheckResult<()> {
+    pub fn declare_class(&mut self, class: Rc<StructDef>, visibility: Visibility) -> TypecheckResult<()> {
         let name = class.name.decl_name.ident.clone();
 
         let class_ty = match class.kind {
-            pas_syn::ast::CompositeTypeKind::Class => Type::Class(Box::new(class.name.clone())),
-            pas_syn::ast::CompositeTypeKind::Record => Type::Record(Box::new(class.name.clone())),
+            pas_syn::ast::StructKind::Class => Type::Class(Box::new(class.name.clone())),
+            pas_syn::ast::StructKind::Record | pas_syn::ast::StructKind::PackedRecord => Type::Record(Box::new(class.name.clone())),
         };
 
         self.declare_type(name.clone(), class_ty, visibility)?;
@@ -793,7 +793,7 @@ impl Context {
         self.defs.get(name)
     }
 
-    pub fn find_composite_def(&self, name: &IdentPath) -> NameResult<Rc<Composite>> {
+    pub fn find_struct_def(&self, name: &IdentPath) -> NameResult<Rc<StructDef>> {
         match self.defs.get(name) {
             Some(Def::Class(class_def)) => Ok(class_def.clone()),
 
@@ -817,14 +817,14 @@ impl Context {
         }
     }
 
-    pub fn instantiate_composite(&self, name: &Symbol) -> NameResult<Rc<Composite>> {
+    pub fn instantiate_struct_def(&self, name: &Symbol) -> NameResult<Rc<StructDef>> {
         name.expect_not_unspecialized()?;
 
-        let base_def = self.find_composite_def(&name.qualified)?;
+        let base_def = self.find_struct_def(&name.qualified)?;
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
-                let instance_def = specialize_composite_def(base_def.as_ref(), type_args)?;
+                let instance_def = specialize_struct_def(base_def.as_ref(), type_args)?;
                 Rc::new(instance_def)
             }
             None => base_def,
@@ -833,7 +833,7 @@ impl Context {
         Ok(instance_def)
     }
 
-    pub fn find_variant_def(&self, name: &IdentPath) -> NameResult<Rc<Variant>> {
+    pub fn find_variant_def(&self, name: &IdentPath) -> NameResult<Rc<VariantDef>> {
         match self.defs.get(name) {
             Some(Def::Variant(variant_def)) => Ok(variant_def.clone()),
 
@@ -857,18 +857,14 @@ impl Context {
         }
     }
 
-    pub fn instantiate_variant(&self, name: &Symbol) -> TypecheckResult<Rc<Variant>> {
-        name.expect_not_unspecialized()
-            .map_err(|err| TypecheckError::from_generic_err(err, name.span().clone()))?;
+    pub fn instantiate_variant_def(&self, name: &Symbol) -> NameResult<Rc<VariantDef>> {
+        name.expect_not_unspecialized()?;
 
-        let base_def = self.find_variant_def(&name.qualified)
-            .map_err(|err| TypecheckError::from_name_err(err, name.span().clone()))?;
+        let base_def = self.find_variant_def(&name.qualified)?;
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
-                let instance_def =
-                    specialize_generic_variant(base_def.as_ref(), type_args)
-                        .map_err(|err| TypecheckError::from_generic_err(err, type_args.span().clone()))?;
+                let instance_def = specialize_generic_variant(base_def.as_ref(), type_args)?;
                 Rc::new(instance_def)
             }
             None => base_def,
@@ -1067,7 +1063,7 @@ impl Context {
             Type::Nothing | Type::MethodSelf => Ok(true),
 
             Type::Class(class) | Type::Record(class) => {
-                match self.find_composite_def(&class.qualified) {
+                match self.find_struct_def(&class.qualified) {
                     Ok(..) => Ok(false),
                     Err(NameError::NotFound { .. }) => Ok(true),
                     Err(err) => Err(err),

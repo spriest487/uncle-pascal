@@ -1,13 +1,13 @@
-use crate::{Module, NamePath, pas_ty, translate_name, Type, TypeDefID};
+use crate::{pas_ty, translate_name, Module, NamePath, Type, TypeDefID};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
-use std::collections::HashMap;
-use std::fmt;
-use pas_syn::ast::CompositeTypeKind;
+use pas_syn::ast::StructKind;
+use std::{collections::HashMap, fmt};
+use pas_typecheck::layout::{StructLayoutMember};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct StructFieldDef {
-    pub name: String,
+    pub name: Option<String>,
     pub ty: Type,
     pub rc: bool,
 }
@@ -47,7 +47,8 @@ pub struct Struct {
 impl Struct {
     pub fn find_field(&self, name: &str) -> Option<FieldID> {
         self.fields.iter().find_map(|(id, field)| {
-            if field.name.as_str() == name {
+            let field_name = field.name.as_ref()?;
+            if field_name == name {
                 Some(*id)
             } else {
                 None
@@ -85,7 +86,7 @@ impl Struct {
         self.fields.insert(
             id,
             StructFieldDef {
-                name: name.into(),
+                name: Some(name.into()),
                 ty,
                 rc,
             },
@@ -122,27 +123,54 @@ impl fmt::Display for FieldID {
     }
 }
 
-pub fn translate_class(
-    class_def: &pas_ty::ast::Composite,
+pub fn translate_struct_def(
+    struct_def: &pas_ty::ast::StructDef,
     type_args: Option<&pas_ty::TypeList>,
     module: &mut Module,
 ) -> Struct {
-    let name_path = translate_name(&class_def.name, type_args, module);
+    let name_path = translate_name(&struct_def.name, type_args, module);
 
     let mut fields = HashMap::new();
-    for (id, member) in class_def.members.iter().enumerate() {
-        let name = member.ident.to_string();
-        let ty = module.translate_type(&member.ty, type_args);
-        let rc = member.ty.is_rc_reference();
+    let mut pad_run = 0;
+    let mut next_id = FieldID(0);
+    for member in module.aligned_struct_members(struct_def) {
+        match member {
+            StructLayoutMember::Data { member, .. } => {
+                if pad_run > 0 {
+                    fields.insert(next_id, StructFieldDef {
+                        name: None,
+                        rc: false,
+                        ty: Type::U8.array(pad_run),
+                    });
+                    pad_run = 0;
+                    next_id.0 += 1;
+                }
 
-        fields.insert(FieldID(id), StructFieldDef { name, ty, rc });
+                let name = member.ident.to_string();
+                let ty = module.translate_type(&member.ty, type_args);
+                let rc = member.ty.is_rc_reference();
+                fields.insert(next_id, StructFieldDef { name: Some(name), ty, rc });
+                next_id.0 += 1;
+            }
+
+            StructLayoutMember::PaddingByte => {
+                pad_run += 1;
+            }
+        }
     }
 
-    let src_span = class_def.span().clone();
+    if pad_run > 0 {
+        let pad_ty = Type::U8.array(pad_run);
+        fields.insert(next_id, StructFieldDef { name: None, rc: false, ty: pad_ty });
+    }
 
-    let identity = match class_def.kind {
-        CompositeTypeKind::Class => StructIdentity::Class(name_path),
-        CompositeTypeKind::Record => StructIdentity::Record(name_path),
+    let src_span = struct_def.span().clone();
+
+    let identity = match struct_def.kind {
+        StructKind::Class => StructIdentity::Class(name_path),
+        StructKind::Record | StructKind::PackedRecord => {
+            StructIdentity::Record(name_path)
+        },
     };
 
     Struct::new(identity, Some(src_span)).with_fields(fields)

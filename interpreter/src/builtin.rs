@@ -216,8 +216,10 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             ExecError::illegal_state(msg)
         })?;
 
+    let new_arr_struct = state.init_struct(array_type_id)?;
+
     let old_arr = state.evaluate(&Value::Ref(array_arg_ref))?;
-    let new_arr = state.rc_alloc(array_type_id, [])?;
+    let new_arr = state.rc_alloc(new_arr_struct)?;
     let new_arr_val = DynValue::Pointer(new_arr);
 
     state.call(alloc_func, &[new_arr_val.clone(), new_len, old_arr, default_val_ptr], None)?;

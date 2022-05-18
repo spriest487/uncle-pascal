@@ -812,7 +812,8 @@ fn typecheck_variant_ctor_call(
         }, span));
     }
 
-    let variant_def = ctx.instantiate_variant(&variant_sym)?;
+    let variant_def = ctx.instantiate_variant_def(&variant_sym)
+        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
     let case_index = match variant_def.case_position(case) {
         Some(index) => index,

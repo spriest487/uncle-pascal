@@ -10,6 +10,8 @@ use pas_common::span::{Span, Spanned};
 use pas_syn::{Ident, IdentPath};
 use pas_typecheck::{ast::specialize_func_decl, builtin_string_name, TypeList};
 use std::{collections::HashMap, fmt, rc::Rc};
+use pas_syn::ast::StructKind;
+use pas_typecheck::layout::{StructLayout, StructLayoutMember};
 
 #[derive(Clone, Debug)]
 pub struct Module {
@@ -459,7 +461,7 @@ impl Module {
         // instantiate types which may contain generic params
         let ty = match &src_ty {
             pas_ty::Type::Variant(variant) => {
-                let variant_def = self.src_metadata.instantiate_variant(variant).unwrap();
+                let variant_def = self.src_metadata.instantiate_variant_def(variant).unwrap();
 
                 let id = self.metadata.reserve_new_struct();
                 let ty = Type::Variant(id);
@@ -468,7 +470,7 @@ impl Module {
                 let name_path = translate_name(&variant, type_args, self);
                 self.metadata.declare_struct(id, &name_path);
 
-                let variant_meta = translate_variant(&variant_def, type_args, self);
+                let variant_meta = translate_variant_def(&variant_def, type_args, self);
 
                 self.metadata.define_variant(id, variant_meta);
                 ty
@@ -484,15 +486,17 @@ impl Module {
                     return string_ty;
                 }
 
-                let def = self.src_metadata.instantiate_composite(name).unwrap();
+                let def = self.src_metadata.instantiate_struct_def(name).unwrap();
 
                 let id = self.metadata.reserve_new_struct();
 
                 let ty = match def.kind {
-                    pas_syn::ast::CompositeTypeKind::Class => {
+                    pas_syn::ast::StructKind::Class => {
                         Type::RcPointer(VirtualTypeID::Class(id))
                     },
-                    pas_syn::ast::CompositeTypeKind::Record => Type::Struct(id),
+                    pas_syn::ast::StructKind::Record | pas_syn::ast::StructKind::PackedRecord => {
+                        Type::Struct(id)
+                    },
                 };
 
                 self.type_cache.insert(src_ty.clone(), ty.clone());
@@ -501,7 +505,7 @@ impl Module {
 
                 self.metadata.declare_struct(id, &name_path);
 
-                let struct_meta = translate_class(&def, type_args, self);
+                let struct_meta = translate_struct_def(&def, type_args, self);
                 self.metadata.define_struct(id, struct_meta);
 
                 ty
@@ -573,6 +577,15 @@ impl Module {
             None => self.metadata.define_dyn_array_struct(element_ty),
         }
     }
+
+    pub fn aligned_struct_members<'a>(&self, struct_def: &'a pas_ty::ast::StructDef) -> Vec<StructLayoutMember<'a>> {
+        let layout = match struct_def.kind {
+            StructKind::Class | StructKind::Record => StructLayout::Auto,
+            StructKind::PackedRecord => StructLayout::Packed,
+        };
+
+        layout.members_of(&struct_def, &self.src_metadata).unwrap()
+    }
 }
 
 impl fmt::Display for Module {
@@ -612,8 +625,13 @@ impl fmt::Display for Module {
                     });
 
                     for (id, field) in fields {
-                        write!(f, "{:8>} {}: ", format!("  .{}", id), field.name,)?;
+                        write!(f, "  {:8>}: ", id)?;
                         self.metadata.format_type(&field.ty, f)?;
+
+                        if let Some(field_name) = &field.name {
+                            write!(f, " (`{}`)", field_name)?;
+                        }
+
                         writeln!(f)?;
                     }
 

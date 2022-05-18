@@ -127,8 +127,8 @@ impl<'m> Builder<'m> {
         translate_name(name, self.type_args().cloned().as_ref(), self.module)
     }
 
-    pub fn translate_class(&mut self, class_def: &pas_ty::ast::Composite) -> Struct {
-        translate_class(class_def, self.type_args().cloned().as_ref(), self.module)
+    pub fn translate_class(&mut self, class_def: &pas_ty::ast::StructDef) -> Struct {
+        translate_struct_def(class_def, self.type_args().cloned().as_ref(), self.module)
     }
 
     pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::InterfaceDecl) -> Interface {
@@ -235,9 +235,17 @@ impl<'m> Builder<'m> {
 
             // initialize closure capture fields - copy from local scope into closure object
             for (field_id, field_def) in closure_def.fields.iter() {
+                // skip the closure pointer field
                 if *field_id == CLOSURE_PTR_FIELD {
                     continue;
                 }
+
+                // skip unnamed (padding) fields
+                let field_name = match &field_def.name {
+                    None => continue,
+                    Some(name) => name,
+                };
+
 
                 let capture_field_ptr = builder.local_temp(field_def.ty.clone().ptr());
                 builder.field(
@@ -249,7 +257,7 @@ impl<'m> Builder<'m> {
 
                 let capture_field = capture_field_ptr.to_deref();
 
-                let captured_local_id = builder.find_local(&field_def.name).unwrap().id();
+                let captured_local_id = builder.find_local(field_name).unwrap().id();
                 builder.mov(capture_field.clone(), Ref::Local(captured_local_id));
 
                 builder.retain(capture_field.clone(), &field_def.ty);

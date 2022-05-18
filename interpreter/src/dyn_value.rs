@@ -524,3 +524,15 @@ impl DynValue {
         }
     }
 }
+
+impl From<StructValue> for DynValue {
+    fn from(s: StructValue) -> Self {
+        DynValue::Structure(Box::new(s))
+    }
+}
+
+impl From<ArrayValue> for DynValue {
+    fn from(arr: ArrayValue) -> Self {
+        DynValue::Array(Box::new(arr))
+    }
+}

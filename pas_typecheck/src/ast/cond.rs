@@ -47,7 +47,10 @@ fn create_then_branch_ctx(is_pattern: Option<&TypePattern>, ctx: &mut Context) -
 
     // is-pattern binding only exists in the "then" branch, if present
     if let Some(pattern) = &is_pattern {
-        for binding in pattern.bindings(ctx)? {
+        let bindings = pattern.bindings(ctx)
+            .map_err(|err| TypecheckError::from_name_err(err, pattern.span().clone()))?;
+
+        for binding in bindings {
             then_ctx.declare_binding(
                 binding.ident.clone(),
                 Binding {

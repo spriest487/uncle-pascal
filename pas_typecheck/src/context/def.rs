@@ -1,15 +1,15 @@
 use std::rc::Rc;
 use pas_common::span::{Span, Spanned};
 use pas_syn::Ident;
-use crate::ast::{Composite, FunctionDecl, FunctionDef, InterfaceDecl, Variant};
+use crate::ast::{StructDef, FunctionDecl, FunctionDef, InterfaceDecl, VariantDef};
 
 #[derive(Clone, Debug)]
 pub enum Def {
     External(FunctionDecl),
     Function(FunctionDef),
-    Class(Rc<Composite>),
+    Class(Rc<StructDef>),
     Interface(Rc<InterfaceDecl>),
-    Variant(Rc<Variant>),
+    Variant(Rc<VariantDef>),
 }
 
 impl Def {

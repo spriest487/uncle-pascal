@@ -66,6 +66,14 @@ impl Span {
             end: other.span().end,
         }
     }
+
+    pub fn of_slice<T: Spanned>(slice: &[T]) -> Span {
+        match slice.len() {
+            0 => panic!("Span::of_slice: argument must have at least one element"),
+            1 => slice[0].span().clone(),
+            _ => slice[0].span().to(slice[slice.len() - 1].span()),
+        }
+    }
 }
 
 impl fmt::Display for Location {

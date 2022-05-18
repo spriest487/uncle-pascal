@@ -182,9 +182,14 @@ pub fn build_closure_function_def(
             continue;
         }
 
+        let field_name = match field_def.name.as_ref() {
+            None => continue,
+            Some(name) => name,
+        };
+
         let capture_val_ptr_ty = field_def.ty.clone().ptr();
         let capture_val_ptr_ref =
-            body_builder.local_closure_capture(capture_val_ptr_ty, field_def.name.clone());
+            body_builder.local_closure_capture(capture_val_ptr_ty, field_name.clone());
 
         body_builder.field(
             capture_val_ptr_ref.clone(),

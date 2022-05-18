@@ -234,7 +234,7 @@ impl Metadata {
         }
     }
 
-    pub fn get_variant_def(&self, struct_id: TypeDefID) -> Option<&Variant> {
+    pub fn get_variant_def(&self, struct_id: TypeDefID) -> Option<&VariantDef> {
         match self.type_decls.get(&struct_id)? {
             TypeDecl::Reserved | TypeDecl::Forward(..) => None,
 
@@ -505,7 +505,7 @@ impl Metadata {
         }
     }
 
-    pub fn define_variant(&mut self, id: TypeDefID, variant_def: Variant) {
+    pub fn define_variant(&mut self, id: TypeDefID, variant_def: VariantDef) {
         match &mut self.type_decls[&id] {
             TypeDecl::Forward(name) => {
                 assert_eq!(*name, variant_def.name);
@@ -800,7 +800,7 @@ impl Metadata {
         fields.insert(
             DYNARRAY_LEN_FIELD,
             StructFieldDef {
-                name: "len".to_string(),
+                name: Some("len".to_string()),
                 ty: Type::I32,
                 rc: false,
             },
@@ -808,7 +808,7 @@ impl Metadata {
         fields.insert(
             DYNARRAY_PTR_FIELD,
             StructFieldDef {
-                name: "ptr".to_string(),
+                name: Some("ptr".to_string()),
                 ty: element.clone().ptr(),
                 rc: false,
             },
@@ -890,7 +890,7 @@ impl Metadata {
         })
     }
 
-    pub fn find_variant_def(&self, name: &NamePath) -> Option<(TypeDefID, &Variant)> {
+    pub fn find_variant_def(&self, name: &NamePath) -> Option<(TypeDefID, &VariantDef)> {
         self.type_decls.iter().find_map(|(id, def)| match def {
             TypeDecl::Def(TypeDef::Variant(variant_def)) if variant_def.name == *name => {
                 Some((*id, variant_def))

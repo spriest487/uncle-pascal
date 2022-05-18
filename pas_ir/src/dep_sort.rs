@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 use crate::{
-    ty::{Struct, TypeDef, Variant},
+    ty::{Struct, TypeDef, VariantDef},
     metadata::{Metadata, TypeDefID},
     FunctionSig,
     Type
@@ -74,7 +74,7 @@ fn add_struct_deps(struct_def: &Struct, deps: &mut HashSet<TypeDefID>, metadata:
     }
 }
 
-fn add_variant_deps(variant_def: &Variant, deps: &mut HashSet<TypeDefID>, metadata: &Metadata) {
+fn add_variant_deps(variant_def: &VariantDef, deps: &mut HashSet<TypeDefID>, metadata: &Metadata) {
     for case in &variant_def.cases {
         if let Some(case_ty) = &case.ty {
             add_dep(case_ty, deps, metadata);

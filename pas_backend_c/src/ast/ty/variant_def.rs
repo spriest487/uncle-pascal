@@ -45,7 +45,7 @@ impl Hash for VariantDef {
 }
 
 impl VariantDef {
-    pub fn translate(id: TypeDefID, variant: &metadata::Variant, module: &mut Module) -> Self {
+    pub fn translate(id: TypeDefID, variant: &metadata::VariantDef, module: &mut Module) -> Self {
         let cases = variant
             .cases
             .iter()

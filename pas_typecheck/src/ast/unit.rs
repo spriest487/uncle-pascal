@@ -1,5 +1,5 @@
 use crate::ast::{
-    expect_stmt_initialized, typecheck_alias, typecheck_composite, typecheck_expr,
+    expect_stmt_initialized, typecheck_alias, typecheck_struct_decl, typecheck_expr,
     typecheck_func_decl, typecheck_func_def, typecheck_iface, typecheck_stmt, typecheck_variant,
     Expr,
 };
@@ -234,7 +234,7 @@ fn typecheck_type_decl_body(
 ) -> TypecheckResult<TypeDeclItem> {
     let type_decl = match type_decl {
         ast::TypeDeclItem::Composite(class) => {
-            let class = typecheck_composite(name, class, ctx)?;
+            let class = typecheck_struct_decl(name, class, ctx)?;
             ast::TypeDeclItem::Composite(Rc::new(class))
         },
         ast::TypeDeclItem::Interface(iface) => {

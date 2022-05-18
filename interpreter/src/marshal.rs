@@ -9,7 +9,7 @@ use libffi::{
     raw::FFI_TYPE_STRUCT,
 };
 use pas_ir::{
-    metadata::{VirtualTypeID, FunctionID, Metadata, Struct, TypeDefID, Variant},
+    metadata::{VirtualTypeID, FunctionID, Metadata, Struct, TypeDefID, VariantDef},
     ExternalFunctionRef,
     Instruction,
     InstructionFormatter,
@@ -331,7 +331,7 @@ impl Marshaller {
     pub fn add_variant(
         &mut self,
         id: TypeDefID,
-        def: &Variant,
+        def: &VariantDef,
         metadata: &Metadata,
     ) -> MarshalResult<ForeignType> {
         let variant_ty = Type::Variant(id);

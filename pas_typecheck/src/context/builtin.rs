@@ -1,7 +1,7 @@
 use crate::{Primitive, Symbol};
 use crate::{ast, Type};
 use pas_common::span::*;
-use pas_syn::ast::{CompositeTypeKind, TypeDeclName};
+use pas_syn::ast::{StructKind, TypeDeclName};
 use pas_syn::ident::*;
 use std::rc::Rc;
 
@@ -44,10 +44,10 @@ pub fn builtin_string_name() -> Symbol {
     }
 }
 
-pub fn builtin_string_class() -> ast::Composite {
+pub fn builtin_string_class() -> ast::StructDef {
     let builtin_span = builtin_span();
 
-    ast::Composite {
+    ast::StructDef {
         name: builtin_string_name(),
         members: vec![
             ast::Member {
@@ -61,7 +61,7 @@ pub fn builtin_string_class() -> ast::Composite {
                 span: builtin_span.clone(),
             },
         ],
-        kind: CompositeTypeKind::Class,
+        kind: StructKind::Class,
         span: builtin_span,
     }
 }

@@ -88,7 +88,7 @@ impl fmt::Display for TypeDecl {
 #[derive(Clone, Debug)]
 pub enum TypeDef {
     Struct(Struct),
-    Variant(Variant),
+    Variant(VariantDef),
     Function(FunctionSig),
 }
 

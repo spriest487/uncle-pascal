@@ -7,7 +7,7 @@ use pas_syn::{
 };
 use pas_syn::ast::IdentTypeName;
 
-use crate::{context, result::*, Context, Decl, NameError, Symbol, ty::{Type, Specializable, typecheck_type}, NameContainer};
+use crate::{context, result::*, Context, Decl, NameError, Symbol, ty::{Type, Specializable, typecheck_type}, NameContainer, NameResult};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TypePattern {
@@ -233,7 +233,7 @@ impl TypePattern {
         }
     }
 
-    pub fn bindings(&self, ctx: &mut Context) -> TypecheckResult<Vec<PatternBinding>> {
+    pub fn bindings(&self, ctx: &mut Context) -> NameResult<Vec<PatternBinding>> {
         match self {
             TypePattern::Type {
                 ty,
@@ -253,7 +253,7 @@ impl TypePattern {
                 data_binding: Some(ident),
                 ..
             } => {
-                let variant_def = ctx.instantiate_variant(variant)?;
+                let variant_def = ctx.instantiate_variant_def(variant)?;
                 let case_ty = variant_def.cases.iter()
                     .find_map(|c| if c.ident == *case {
                         c.data_ty.clone()

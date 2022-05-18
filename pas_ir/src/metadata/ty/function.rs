@@ -89,7 +89,7 @@ pub fn translate_closure_struct(
     fields.insert(
         CLOSURE_PTR_FIELD,
         StructFieldDef {
-            name: String::new(),
+            name: None,
             rc: false,
             ty: Type::Function(identity.func_ty_id),
         },
@@ -103,7 +103,7 @@ pub fn translate_closure_struct(
         fields.insert(
             field_id,
             StructFieldDef {
-                name: (*capture_name.name).clone(),
+                name: Some((*capture_name.name).clone()),
                 ty,
                 rc: capture_ty.is_rc_reference(),
             },

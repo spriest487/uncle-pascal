@@ -118,14 +118,14 @@ impl Interpreter {
         &self.marshaller
     }
 
-    fn init_struct(&self, id: TypeDefID) -> ExecResult<DynValue> {
+    fn init_struct(&self, id: TypeDefID) -> ExecResult<StructValue> {
         let struct_def = self.metadata.get_struct_def(id).cloned()
             .ok_or_else(|| {
                 let msg = format!("missing struct definition in metadata: {}", id);
                 ExecError::illegal_state(msg)
             })?;
 
-        let mut fields = Vec::new();
+        let mut fields = Vec::with_capacity(struct_def.fields.len());
         for (&id, field) in &struct_def.fields {
             // include padding of -1s for non-contiguous IDs
             if id.0 >= fields.len() {
@@ -136,7 +136,7 @@ impl Interpreter {
 
         let struct_val = StructValue { type_id: id, fields, rc: None };
 
-        Ok(DynValue::Structure(Box::new(struct_val)))
+        Ok(struct_val)
     }
 
     fn default_init_dyn_val(&self, ty: &Type) -> ExecResult<DynValue> {
@@ -155,7 +155,7 @@ impl Interpreter {
             Type::Bool => DynValue::Bool(false),
             Type::F32 => DynValue::F32(f32::NAN),
 
-            Type::Struct(id) => self.init_struct(*id)?,
+            Type::Struct(id) => DynValue::from(self.init_struct(*id)?),
 
             Type::RcPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
                 VirtualTypeID::Class(struct_id) => Type::Struct(*struct_id),
@@ -165,10 +165,11 @@ impl Interpreter {
             Type::Pointer(target) => DynValue::Pointer(Pointer::null((**target).clone())),
 
             Type::Array { element, dim } => {
-                let mut elements = Vec::new();
+                let mut elements = Vec::with_capacity(*dim);
+                let el = self.default_init_dyn_val(element.as_ref())?;
+
                 for _ in 0..*dim {
-                    let el = self.default_init_dyn_val(element.as_ref())?;
-                    elements.push(el);
+                    elements.push(el.clone());
                 }
 
                 DynValue::Array(Box::new(ArrayValue {
@@ -764,7 +765,7 @@ impl Interpreter {
             Instruction::LocalBegin => self.exec_local_begin()?,
             Instruction::LocalEnd => self.exec_local_end()?,
 
-            Instruction::RcNew { out, struct_id } => self.exec_rc_new(out, struct_id)?,
+            Instruction::RcNew { out, struct_id } => self.exec_rc_new(out, *struct_id)?,
 
             Instruction::Add { out, a, b } => self.exec_add(out, a, b)?,
 
@@ -877,8 +878,9 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_rc_new(&mut self, out: &Ref, struct_id: &TypeDefID) -> ExecResult<()> {
-        let rc_ptr = self.rc_alloc(*struct_id, [])?;
+    fn exec_rc_new(&mut self, out: &Ref, struct_id: TypeDefID) -> ExecResult<()> {
+        let struct_val = self.init_struct(struct_id)?;
+        let rc_ptr = self.rc_alloc(struct_val)?;
 
         self.store(out, DynValue::Pointer(rc_ptr))?;
 
@@ -963,7 +965,12 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn dynalloc_init(&mut self, ty: &Type, values: Vec<DynValue>) -> ExecResult<Pointer> {
+    pub fn dynalloc_init<ValuesIter, Values>(&mut self, ty: &Type, values: Values) -> ExecResult<Pointer>
+    where
+        Values: IntoIterator<Item=DynValue, IntoIter=ValuesIter>,
+        ValuesIter: ExactSizeIterator<Item=DynValue>,
+    {
+        let values = values.into_iter();
         if values.len() == 0 {
             return Err(ExecError::ZeroLengthAllocation);
         }
@@ -971,9 +978,10 @@ impl Interpreter {
         let marshal_ty = self.marshaller.get_ty(&ty)?;
         let marshal_size = marshal_ty.size();
 
-        for (i, value) in values.into_iter().enumerate() {
         let alloc_len = marshal_size * values.len();
         let alloc_ptr = self.dynalloc(ty, alloc_len)?;
+
+        for (i, value) in values.enumerate() {
             let element_offset = i * marshal_size;
             let val_dst = Pointer {
                 addr: alloc_ptr.addr + element_offset,
@@ -1522,20 +1530,16 @@ impl Interpreter {
         }
     }
 
-    fn rc_alloc(&mut self, type_id: TypeDefID, fields: impl IntoIterator<Item=DynValue>) -> ExecResult<Pointer> {
-        let res_ty = Type::Struct(type_id);
+    fn rc_alloc(&mut self, mut value: StructValue) -> ExecResult<Pointer> {
+        let res_ty = Type::Struct(value.type_id);
 
-        let res_struct = StructValue {
-            type_id,
-            fields: fields.into_iter().collect(),
-            rc: Some(RcState {
-                strong_count: 1,
-                weak_count: 0,
-            })
-        };
+        value.rc = Some(RcState {
+            strong_count: 1,
+            weak_count: 0,
+        });
 
-        let res_ptr = self.dynalloc_init(&res_ty, vec![
-            DynValue::Structure(Box::new(res_struct))
+        let res_ptr = self.dynalloc_init(&res_ty, [
+            DynValue::from(value)
         ])?;
 
         Ok(res_ptr)
@@ -1690,10 +1694,11 @@ impl Interpreter {
             Pointer::null(Type::U8)
         };
 
-        let str_ptr = self.rc_alloc(STRING_ID, [
-            DynValue::Pointer(chars_ptr),
-            DynValue::I32(chars_len),
-        ])?;
+        let mut string_struct = self.init_struct(STRING_ID)?;
+        string_struct[STRING_LEN_FIELD] = DynValue::I32(chars_len);
+        string_struct[STRING_CHARS_FIELD] = DynValue::Pointer(chars_ptr);
+
+        let str_ptr = self.rc_alloc(string_struct)?;
 
         Ok(DynValue::Pointer(str_ptr))
     }

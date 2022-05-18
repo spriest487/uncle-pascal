@@ -9,18 +9,18 @@ pub struct VariantCase {
 }
 
 #[derive(Clone, Debug)]
-pub struct Variant {
+pub struct VariantDef {
     pub name: NamePath,
     pub cases: Vec<VariantCase>,
 
     pub src_span: Option<Span>,
 }
 
-pub fn translate_variant(
-    variant_def: &pas_ty::ast::Variant,
+pub fn translate_variant_def(
+    variant_def: &pas_ty::ast::VariantDef,
     type_args: Option<&pas_ty::TypeList>,
     module: &mut Module,
-) -> Variant {
+) -> VariantDef {
     let name_path = translate_name(&variant_def.name, type_args, module);
 
     let mut cases = Vec::new();
@@ -40,7 +40,7 @@ pub fn translate_variant(
         });
     }
 
-    Variant {
+    VariantDef {
         name: name_path,
         src_span: Some(variant_def.span().clone()),
         cases,

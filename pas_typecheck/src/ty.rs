@@ -1,6 +1,6 @@
 pub use self::{pattern::*, primitive::*, sig::*, ty_param::*};
 use crate::{
-    ast::{const_eval_integer, typecheck_expr, Composite, FunctionDecl, Member, Variant},
+    ast::{const_eval_integer, typecheck_expr, StructDef, FunctionDecl, Member, VariantDef},
     context,
     result::*,
     Context, GenericError, GenericResult, GenericTarget, NameResult, Symbol, TypeAnnotation,
@@ -8,7 +8,7 @@ use crate::{
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast::{self, ArrayTypeName, CompositeTypeKind, IdentTypeName, Typed},
+    ast::{self, ArrayTypeName, StructKind, IdentTypeName, Typed},
     ident::*,
     Operator,
 };
@@ -21,6 +21,7 @@ pub mod pattern;
 pub mod primitive;
 pub mod sig;
 pub mod ty_param;
+pub mod layout;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum Type {
@@ -93,7 +94,7 @@ impl Type {
 
     pub fn of_decl(type_decl: &ast::TypeDeclItem<TypeAnnotation>) -> Self {
         match type_decl {
-            ast::TypeDeclItem::Composite(class) if class.kind == CompositeTypeKind::Record => {
+            ast::TypeDeclItem::Composite(class) if class.kind == StructKind::Record => {
                 Type::Record(Box::new(class.name.clone()))
             },
 
@@ -114,7 +115,7 @@ impl Type {
     pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NameResult<Option<Member>> {
         match self {
             Type::Class(class_name) | Type::Record(class_name) => {
-                let def = ctx.instantiate_composite(class_name)?;
+                let def = ctx.instantiate_struct_def(class_name)?;
 
                 Ok(def.find_member(member).cloned())
             },
@@ -126,7 +127,7 @@ impl Type {
     pub fn get_member(&self, index: usize, ctx: &Context) -> NameResult<Option<Member>> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                let class = ctx.instantiate_composite(class)?;
+                let class = ctx.instantiate_struct_def(class)?;
 
                 Ok(class.members.get(index).cloned())
             },
@@ -138,7 +139,7 @@ impl Type {
     pub fn members_len(&self, ctx: &Context) -> NameResult<usize> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                let class = ctx.instantiate_composite(class)?;
+                let class = ctx.instantiate_struct_def(class)?;
                 Ok(class.members.len())
             },
 
@@ -723,7 +724,7 @@ pub fn specialize_generic_name(name: &Symbol, args: &TypeList) -> GenericResult<
     Ok(name)
 }
 
-pub fn specialize_composite_def(class: &Composite, ty_args: &TypeList) -> GenericResult<Composite> {
+pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList) -> GenericResult<StructDef> {
     let parameterized_name = specialize_generic_name(&class.name, &ty_args)?;
 
     let members: Vec<_> = class
@@ -733,14 +734,14 @@ pub fn specialize_composite_def(class: &Composite, ty_args: &TypeList) -> Generi
             //            let ty = specialize_member(&member.ty, &args, span)?;
             let ty = member.ty.clone().substitute_type_args(&ty_args);
 
-            Ok(ast::CompositeMember {
+            Ok(ast::StructMember {
                 ty,
                 ..member.clone()
             })
         })
         .collect::<GenericResult<_>>()?;
 
-    Ok(Composite {
+    Ok(StructDef {
         name: parameterized_name,
         members,
         span: class.span.clone(),
@@ -748,7 +749,7 @@ pub fn specialize_composite_def(class: &Composite, ty_args: &TypeList) -> Generi
     })
 }
 
-pub fn specialize_generic_variant(variant: &Variant, args: &TypeList) -> GenericResult<Variant> {
+pub fn specialize_generic_variant(variant: &VariantDef, args: &TypeList) -> GenericResult<VariantDef> {
     let parameterized_name = specialize_generic_name(&variant.name, &args)?;
 
     let cases: Vec<_> = variant
@@ -770,7 +771,7 @@ pub fn specialize_generic_variant(variant: &Variant, args: &TypeList) -> Generic
         })
         .collect::<GenericResult<_>>()?;
 
-    Ok(Variant {
+    Ok(VariantDef {
         name: parameterized_name,
         span: variant.span().clone(),
         cases,

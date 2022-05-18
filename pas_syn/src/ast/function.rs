@@ -405,18 +405,17 @@ impl FunctionDef<Span> {
                 tokens.match_one(Separator::Semicolon)?;
             }
 
-            let mut idents = Vec::new();
-            loop {
-                if !idents.is_empty() && tokens.match_one_maybe(Separator::Comma).is_none() {
-                    break;
-                }
-
+            let first_ident = Ident::parse(tokens)?;
+            let mut idents = vec![first_ident];
+            while tokens.match_one_maybe(Separator::Comma).is_some() {
                 let ident = Ident::parse(tokens)?;
                 idents.push(ident);
             }
 
-            tokens.match_one(Separator::Colon)?;
-            let ty = TypeName::parse(tokens)?;
+            let ty = match tokens.match_one_maybe(Separator::Colon) {
+                None => TypeName::Unknown(Span::of_slice(&idents)),
+                Some(..) => TypeName::parse(tokens)?,
+            };
 
             let initial_val = match tokens.match_one_maybe(Operator::Equals) {
                 Some(..) => {

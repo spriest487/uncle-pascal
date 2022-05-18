@@ -510,7 +510,7 @@ impl InstructionFormatter for Metadata {
             })
             .and_then(|struct_id| self.get_struct_def(struct_id))
             .and_then(|struct_def| struct_def.fields.get(&field))
-            .map(|field| &field.name);
+            .and_then(|field| field.name.as_ref());
 
         match field_name {
             Some(name) => write!(f, "{}", name),

@@ -1,6 +1,6 @@
 use crate::{
     annotation::TypeAnnotation,
-    ast::{Call, Expr, Variant, OverloadCandidate},
+    ast::{Call, Expr, VariantDef, OverloadCandidate},
     context::NameError,
     GenericError, Type, ValueKind,
 };
@@ -127,9 +127,9 @@ pub enum TypecheckError {
         expr: Box<Expr>,
     },
     InvalidStatement(Box<InvalidStatement<TypeAnnotation>>),
-    EmptyVariant(Box<ast::Variant<Span>>),
+    EmptyVariant(Box<ast::VariantDef<Span>>),
     EmptyVariantCaseBinding {
-        variant: Box<Variant>,
+        variant: Box<VariantDef>,
         case_index: usize,
         span: Span,
     },
