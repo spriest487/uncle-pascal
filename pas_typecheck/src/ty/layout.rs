@@ -3,6 +3,8 @@ use crate::{Context, GenericError, NameError, NameResult, Primitive, Type, TypeA
 use pas_syn::ast::{StructKind, StructMember};
 use std::mem::size_of;
 
+const WORD_SIZE: usize = size_of::<usize>();
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StructLayout {
     Auto,
@@ -67,8 +69,6 @@ impl StructLayout {
     }
 
     pub fn size_of(self, ty: &Type, ctx: &Context) -> NameResult<usize> {
-        const WORD_SIZE: usize = size_of::<usize>();
-
         let size = match ty {
             Type::Nothing
             | Type::Nil
@@ -135,13 +135,17 @@ impl StructLayout {
         def: &'a StructDef,
         ctx: &Context,
     ) -> NameResult<Vec<StructLayoutMember<'a>>> {
-        let mut members = vec![];
-        let mut offset = 0;
+        let mut members = Vec::with_capacity(def.members.len());
 
-        // class structs msut be aligned to at least the word size since they start with the class pointer
-        let mut max_align = match def.kind {
-            StructKind::Class => size_of::<usize>(),
-            _ => 1,
+        let (mut offset, mut max_align) = match def.kind {
+            StructKind::Class => {
+                // class structs start with the RC state object which consists of the class pointer and
+                // the two ref count values (both I32), which affects their initial offset and alignment requirement
+                let max_align = WORD_SIZE;
+                let offset = WORD_SIZE + 8;
+                (offset, max_align)
+            },
+            _ => (0, 1),
         };
 
         for def_member in &def.members {
