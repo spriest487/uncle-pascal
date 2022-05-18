@@ -211,7 +211,7 @@ fn typecheck_type_decl_item(
             ctx.declare_variant(variant.clone(), visibility)?;
         },
 
-        TypeDeclItem::Composite(class) => {
+        TypeDeclItem::Struct(class) => {
             ctx.declare_class(class.clone(), visibility)?;
         },
 
@@ -233,9 +233,9 @@ fn typecheck_type_decl_body(
     ctx: &mut Context,
 ) -> TypecheckResult<TypeDeclItem> {
     let type_decl = match type_decl {
-        ast::TypeDeclItem::Composite(class) => {
+        ast::TypeDeclItem::Struct(class) => {
             let class = typecheck_struct_decl(name, class, ctx)?;
-            ast::TypeDeclItem::Composite(Rc::new(class))
+            ast::TypeDeclItem::Struct(Rc::new(class))
         },
         ast::TypeDeclItem::Interface(iface) => {
             let iface = typecheck_iface(name, iface, ctx)?;

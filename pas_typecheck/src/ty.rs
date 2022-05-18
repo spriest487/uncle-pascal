@@ -94,11 +94,11 @@ impl Type {
 
     pub fn of_decl(type_decl: &ast::TypeDeclItem<TypeAnnotation>) -> Self {
         match type_decl {
-            ast::TypeDeclItem::Composite(class) if class.kind == StructKind::Record => {
+            ast::TypeDeclItem::Struct(class) if class.kind == StructKind::Record => {
                 Type::Record(Box::new(class.name.clone()))
             },
 
-            ast::TypeDeclItem::Composite(class) => Type::Class(Box::new(class.name.clone())),
+            ast::TypeDeclItem::Struct(class) => Type::Class(Box::new(class.name.clone())),
 
             ast::TypeDeclItem::Variant(variant) => Type::Variant(Box::new(variant.name.clone())),
 

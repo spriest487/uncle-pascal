@@ -12,6 +12,7 @@ use pas_common::{
     TracedError,
 };
 use std::{fmt, fmt::Debug, hash::Hash, rc::Rc};
+use crate::parse::MatchSequenceOf;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
@@ -23,32 +24,6 @@ pub struct StructMember<A: Annotation> {
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
     pub span: Span,
-}
-
-impl ParseSeq for StructMember<Span> {
-    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
-        if !prev.is_empty() {
-            tokens.match_one(Separator::Semicolon)?;
-        }
-
-        let ident = Ident::parse(tokens)?;
-        tokens.match_one(Separator::Colon)?;
-        let ty = TypeName::parse(tokens)?;
-
-        Ok(StructMember {
-            span: ident.span().to(&ty),
-            ty,
-            ident,
-        })
-    }
-
-    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
-            return false;
-        }
-
-        tokens.match_one(Matcher::AnyIdent).is_some()
-    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -84,6 +59,39 @@ impl<A: Annotation> StructDef<A> {
     }
 }
 
+fn parse_struct_members(tokens: &mut TokenStream) -> ParseResult<Vec<StructMember<Span>>> {
+    let mut members = Vec::new();
+    loop {
+        if !members.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        let ident = Ident::parse(tokens)?;
+        let mut idents = vec![ident];
+        while tokens.match_one_maybe(Separator::Comma).is_some() {
+            let ident = Ident::parse(tokens)?;
+            idents.push(ident);
+        }
+
+        tokens.match_one(Separator::Colon)?;
+        let ty = TypeName::parse(tokens)?;
+
+        for ident in idents {
+            members.push(StructMember {
+                span: ident.span().to(&ty),
+                ty: ty.clone(),
+                ident,
+            });
+        }
+
+        if tokens.look_ahead().match_sequence(Separator::Semicolon.and_then(Matcher::AnyIdent)).is_none() {
+            break;
+        }
+    }
+
+    Ok(members)
+}
+
 impl StructDef<Span> {
     fn match_kw() -> Matcher {
         Keyword::Class.or(Keyword::Record).or(Keyword::Packed)
@@ -101,7 +109,7 @@ impl StructDef<Span> {
             _ => unreachable!(),
         };
 
-        let members = StructMember::parse_seq(tokens)?;
+        let members = parse_struct_members(tokens)?;
         tokens.match_one_maybe(Separator::Semicolon);
 
         let end_token = tokens.match_one(Keyword::End)?;
@@ -394,7 +402,7 @@ impl<A: Annotation> fmt::Display for TypeDecl<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeDeclItem<A: Annotation> {
-    Composite(Rc<StructDef<A>>),
+    Struct(Rc<StructDef<A>>),
     Interface(Rc<InterfaceDecl<A>>),
     Variant(Rc<VariantDef<A>>),
     Alias(Rc<AliasDecl<A>>),
@@ -403,7 +411,7 @@ pub enum TypeDeclItem<A: Annotation> {
 impl<A: Annotation> TypeDeclItem<A> {
     pub fn ident(&self) -> &A::Name {
         match self {
-            TypeDeclItem::Composite(class) => &class.name,
+            TypeDeclItem::Struct(class) => &class.name,
             TypeDeclItem::Interface(iface) => &iface.name,
             TypeDeclItem::Variant(variant) => &variant.name,
             TypeDeclItem::Alias(alias) => &alias.name,
@@ -519,7 +527,7 @@ impl Parse for TypeDeclItem<Span> {
         match tokens.look_ahead().next() {
             Some(ref tt) if composite_kw_matcher.is_match(tt) => {
                 let composite_decl = StructDef::parse(tokens, name)?;
-                Ok(TypeDeclItem::Composite(Rc::new(composite_decl)))
+                Ok(TypeDeclItem::Struct(Rc::new(composite_decl)))
             },
 
             Some(TokenTree::Keyword {
@@ -556,7 +564,7 @@ impl Parse for TypeDeclItem<Span> {
 impl<A: Annotation> Spanned for TypeDeclItem<A> {
     fn span(&self) -> &Span {
         match self {
-            TypeDeclItem::Composite(class) => class.span(),
+            TypeDeclItem::Struct(class) => class.span(),
             TypeDeclItem::Interface(iface) => iface.span(),
             TypeDeclItem::Variant(variant) => variant.span(),
             TypeDeclItem::Alias(alias) => alias.span(),
@@ -567,7 +575,7 @@ impl<A: Annotation> Spanned for TypeDeclItem<A> {
 impl<A: Annotation> fmt::Display for TypeDeclItem<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeDeclItem::Composite(class) => write!(f, "{}", class),
+            TypeDeclItem::Struct(class) => write!(f, "{}", class),
             TypeDeclItem::Interface(iface) => write!(f, "{}", iface),
             TypeDeclItem::Variant(variant) => write!(f, "{}", variant),
             TypeDeclItem::Alias(alias) => write!(f, "{}", alias),

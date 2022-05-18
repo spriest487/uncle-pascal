@@ -9,22 +9,19 @@ uses
 
 type
     A = class
-        member1: UInt8;
-        member2: UInt8;
+        member1, member2: UInt8;
         member3: UInt32;
         member4: UInt8;
     end;
 
     B = record
-        member1: UInt8;
-        member2: UInt8;
+        member1, member2: UInt8;
         member3: UInt32;
         member4: UInt8;
     end;
 
     C = packed record
-        member1: UInt8;
-        member2: UInt8;
+        member1, member2: UInt8;
         member3: UInt32;
         member4: UInt8;
     end;
