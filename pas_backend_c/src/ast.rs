@@ -239,6 +239,7 @@ impl Module {
                 let name = TypeDefName::StaticArray(next_id);
                 let array_struct = StructDef {
                     decl: TypeDecl { name: name.clone() },
+                    packed: false,
                     members: vec![StructMember {
                         name: FieldName::StaticArrayElements,
                         ty: element.clone().sized_array(dim),

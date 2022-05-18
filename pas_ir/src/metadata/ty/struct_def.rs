@@ -16,14 +16,16 @@ pub struct StructFieldDef {
 pub enum StructIdentity {
     Record(NamePath),
     Class(NamePath),
+    Array(Type, usize),
+    DynArray(Type),
     Closure(ClosureIdentity),
 }
 
 impl StructIdentity {
     pub fn is_ref_type(&self) -> bool {
         match self {
-            StructIdentity::Record(..) => false,
-            StructIdentity::Class(..) | StructIdentity::Closure(..) => true,
+            StructIdentity::Array(..) | StructIdentity::Record(..) => false,
+            StructIdentity::Class(..) | StructIdentity::DynArray(..) | StructIdentity::Closure(..) => true,
         }
     }
 }
@@ -71,7 +73,7 @@ impl Struct {
     pub fn name(&self) -> Option<&NamePath> {
         match &self.identity {
             StructIdentity::Class(name) | StructIdentity::Record(name) => Some(name),
-            StructIdentity::Closure(..) => None,
+            StructIdentity::Closure(..) | StructIdentity::Array(..) | StructIdentity::DynArray(..) => None,
         }
     }
 
@@ -104,6 +106,8 @@ impl Struct {
 impl fmt::Display for Struct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.identity {
+            StructIdentity::Array(ty, dim) => write!(f, "array[{}] of {}", dim, ty),
+            StructIdentity::DynArray(ty) => write!(f, "array of {}", ty),
             StructIdentity::Class(name) | StructIdentity::Record(name) => write!(f, "{}", name),
             StructIdentity::Closure(identity) => write!(
                 f,

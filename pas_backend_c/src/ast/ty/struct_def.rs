@@ -4,7 +4,7 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
 };
-use pas_ir::metadata::FieldID;
+use pas_ir::metadata::{FieldID, StructIdentity};
 
 #[derive(Clone, Eq)]
 pub struct StructMember {
@@ -31,6 +31,8 @@ impl Hash for StructMember {
 pub struct StructDef {
     pub decl: TypeDecl,
     pub members: Vec<StructMember>,
+
+    pub packed: bool,
 
     pub comment: Option<String>,
 }
@@ -81,10 +83,18 @@ impl StructDef {
         let struct_ty = metadata::Type::Struct(id);
         let comment = module.pretty_type(&struct_ty).to_string();
 
+        // user-defined types will have explicit padding, so they should be packed to avoid
+        // the C compiler inserting any extra padding
+        let packed = match &ir_struct.identity {
+            StructIdentity::Record(_) | StructIdentity::Class(_) => true,
+            _ => false,
+        };
+
         Self {
             decl: TypeDecl {
                 name: TypeDefName::Struct(id),
             },
+            packed,
             members,
             comment: Some(comment),
         }
@@ -97,6 +107,10 @@ impl fmt::Display for StructDef {
             writeln!(f, "/** {} */", comment)?;
         }
 
+        if self.packed {
+            write!(f, "PACKED_DECL(")?;
+        }
+
         writeln!(f, "{} {{", self.decl)?;
         for member in self.members.iter() {
             if let Some(comment) = &member.comment {
@@ -106,7 +120,13 @@ impl fmt::Display for StructDef {
             let name = format!("{}", member.name);
             writeln!(f, "{};", member.ty.to_decl_string(&name))?;
         }
-        write!(f, "}}")
+        write!(f, "}}")?;
+
+        if self.packed {
+            write!(f, ")")?;
+        }
+
+        Ok(())
     }
 }
 

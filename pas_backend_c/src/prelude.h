@@ -14,6 +14,12 @@ typedef void (*RcRetainFunc)(void*);
 #define STRING_CHARS(str_ptr) (str_ptr->field_0)
 #define STRING_LEN(str_ptr) (str_ptr->field_1)
 
+#ifdef _MSC_VER
+#   define PACKED_DECL(DECL) __pragma(pack(push, 1)) DECL __pragma(pack(pop))
+#else
+#   define PACKED_DECL(DECL) DECL __attribute__((__packed__))
+#endif
+
 // classes and interfaces runtime support
 
 struct MethodTable {
@@ -223,12 +229,12 @@ static void* System_ArraySetLengthInternal(void* arr, int32_t new_len, void* def
 // runtime start/stop
 
 // this needs to match what would ordinarily be generated for the System.String decl
-STRING_STRUCT {
+PACKED_DECL(STRING_STRUCT {
     struct Rc rc;
 
     unsigned char* field_0;
     int32_t field_1;
-};
+});
 
 static void ModuleInit();
 

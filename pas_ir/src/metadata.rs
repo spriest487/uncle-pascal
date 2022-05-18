@@ -793,9 +793,6 @@ impl Metadata {
             element
         );
 
-        let name =
-            NamePath::from_parts(vec![format!("array of {}", self.pretty_ty_name(&element))]);
-
         let mut fields = LinkedHashMap::new();
         fields.insert(
             DYNARRAY_LEN_FIELD,
@@ -818,7 +815,7 @@ impl Metadata {
         self.type_decls.insert(
             struct_id,
             TypeDecl::Def(TypeDef::Struct(Struct {
-                identity: StructIdentity::Class(name),
+                identity: StructIdentity::DynArray(element.clone()),
                 fields,
                 src_span: None,
             })),

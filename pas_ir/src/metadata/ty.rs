@@ -122,6 +122,14 @@ impl TypeDef {
                     let func_ty_name = ty_format(&Type::Function(identity.func_ty_id));
                     format!("closure of {} @ {}:{}:{}", func_ty_name, identity.module, identity.line, identity.col)
                 },
+                StructIdentity::Array(ty, dim) => {
+                    let ty_name = ty_format(&ty);
+                    format!("array[{}] of {}", dim, ty_name)
+                }
+                StructIdentity::DynArray(ty) => {
+                    let ty_name = ty_format(&ty);
+                    format!("array of {}", ty_name)
+                }
             },
             TypeDef::Variant(def) => def.name.to_pretty_string(ty_format),
             TypeDef::Function(def) => {

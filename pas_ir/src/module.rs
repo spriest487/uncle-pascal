@@ -614,6 +614,10 @@ impl fmt::Display for Module {
                                 func_ty_name, identity.module, identity.line, identity.col
                             )?;
                         },
+
+                        StructIdentity::Array(_, _) => {}
+
+                        StructIdentity::DynArray(_) => {}
                     }
 
                     writeln!(f)?;

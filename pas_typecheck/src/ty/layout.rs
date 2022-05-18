@@ -180,7 +180,10 @@ impl StructLayout {
 
     fn padding(offset: usize, align: usize) -> usize {
         if offset > 0 && align > 1 {
-            offset % align
+            match offset % align {
+                0 => 0,
+                diff => align - diff,
+            }
         } else {
             0
         }
