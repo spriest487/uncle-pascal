@@ -221,6 +221,12 @@ impl Parse for Stmt<Span> {
                 Ok(Stmt::Exit(Box::new(exit)))
             },
 
+            Some(tt) if tt.is_delimited(DelimiterPair::BeginEnd) => {
+                let block = Block::parse(tokens)?;
+
+                Ok(Stmt::Block(Box::new(block)))
+            },
+
             Some(tt) if tt.is_delimited(DelimiterPair::CaseEnd) => {
                 let case = CaseBlock::parse(tokens)?;
 
@@ -239,7 +245,7 @@ impl Parse for Stmt<Span> {
                 Ok(Stmt::If(Box::new(if_cond)))
             }
 
-            Some(..) => {
+            Some(_tt) => {
                 // it doesn't start with a stmt keyword, it must be an expr
                 let expr = Expr::parse(tokens)?;
 
