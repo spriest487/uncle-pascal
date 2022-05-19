@@ -246,9 +246,10 @@ impl Lexer {
 
         let start_loc = self.location;
 
-        let mut next_col = self.location.col + 1;
-        loop {
-            match self.line.get(next_col) {
+        self.location.col += 1;
+
+        'whole_string: loop {
+            match self.line.get(self.location.col) {
                 // todo: better error for unterminated string literal
                 None => {
                     let span = self.src_span_from(start_loc);
@@ -256,37 +257,56 @@ impl Lexer {
                 }
 
                 // depends on the token after this one
-                Some('\'') => match self.line.get(next_col + 1) {
+                Some('\'') => match self.line.get(self.location.col + 1) {
                     // it's quoted quote, add it to the contents and advance an extra col
                     Some('\'') => {
                         contents.push('\'');
-                        next_col += 1;
+                        self.location.col += 2;
+                    }
+
+                    // this string part ends but is followed by a char literal (e.g. `'hello'#10`)
+                    Some('#') => {
+                        self.location.col += 1;
+
+                        'char_codes: loop {
+                            let char_start_loc = self.location;
+                            let char_token = self.literal_int(true)?;
+                            match char_token.as_literal_int().and_then(|i| i.as_u32()).and_then(char::from_u32) {
+                                Some(char_val) => {
+                                    contents.push(char_val);
+                                }
+
+                                None => {
+                                    let err_span = self.src_span_from(char_start_loc);
+                                    return Err(TracedError::trace(TokenizeError::IllegalChar(err_span)));
+                                }
+                            }
+
+                            match self.line.get(self.location.col) {
+                                Some('#') => {
+                                    // another char follows this one
+                                },
+                                Some('\'') => {
+                                    // the string resumes
+                                    self.location.col += 1;
+                                    break 'char_codes;
+                                }
+                                _ => break 'whole_string,
+                            }
+                        }
                     }
 
                     // it's something else, this string ends here
-                    _ => break,
+                    _ => {
+                        self.location.col += 1;
+                        break 'whole_string;
+                    },
                 },
 
-                Some(c) => contents.push(*c),
-            }
-
-            next_col += 1;
-        }
-
-        self.location.col = next_col + 1;
-
-        let char_start_loc = self.location;
-        while let Some('#') = self.line.get(self.location.col) {
-            let char_token = self.literal_int(true)?;
-            match char_token.as_literal_int().and_then(|i| i.as_u32()).and_then(char::from_u32) {
-                Some(char_val) => {
-                    contents.push(char_val);
-                }
-
-                None => {
-                    let err_span = self.src_span_from(char_start_loc);
-                    return Err(TracedError::trace(TokenizeError::IllegalChar(err_span)));
-                }
+                Some(c) => {
+                    contents.push(*c);
+                    self.location.col += 1;
+                },
             }
         }
 
