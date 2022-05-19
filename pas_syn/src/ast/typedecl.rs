@@ -1,10 +1,13 @@
+mod enum_decl;
+mod iface_decl;
+mod struct_def;
+mod variant_def;
+
+pub use self::{enum_decl::*, iface_decl::*, struct_def::*, variant_def::*};
 use crate::{
-    ast::{unit::AliasDecl, Annotation, DeclNamed, FunctionDecl, TypeList, TypeName},
-    parse::{
-        LookAheadTokenStream, MatchOneOf, Matcher, Parse, ParseError, ParseResult, ParseSeq,
-        TokenStream,
-    },
-    DelimiterPair, Ident, Keyword, Operator, Separator, TokenTree,
+    ast::{unit::AliasDecl, Annotation, DeclNamed, TypeList},
+    parse::{LookAheadTokenStream, Matcher, Parse, ParseError, ParseResult, ParseSeq, TokenStream},
+    DelimiterPair, Ident, Keyword, Operator, Separator,
 };
 use derivative::*;
 use pas_common::{
@@ -12,344 +15,6 @@ use pas_common::{
     TracedError,
 };
 use std::{fmt, fmt::Debug, hash::Hash, rc::Rc};
-use crate::parse::MatchSequenceOf;
-
-#[derive(Clone, Eq, Derivative)]
-#[derivative(Debug, PartialEq, Hash)]
-pub struct StructMember<A: Annotation> {
-    pub ident: Ident,
-    pub ty: A::Type,
-
-    #[derivative(Debug = "ignore")]
-    #[derivative(PartialEq = "ignore")]
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum StructKind {
-    /// heap-allocated, reference-counted type, passed by pointer. declared
-    /// with the `class` keyword.
-    Class,
-
-    /// locally-allocated value type. declared with the `record` keyword.
-    Record,
-
-    /// locally-allocated value type with memory layout based on declared field order and no extra padding.
-    /// declared with the `packed record` keywords
-    PackedRecord,
-}
-
-#[derive(Clone, Eq, Derivative)]
-#[derivative(Debug, PartialEq, Hash)]
-pub struct StructDef<A: Annotation> {
-    pub kind: StructKind,
-    pub name: A::Name,
-    pub members: Vec<StructMember<A>>,
-
-    #[derivative(Debug = "ignore")]
-    #[derivative(PartialEq = "ignore")]
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-}
-
-impl<A: Annotation> StructDef<A> {
-    pub fn find_member(&self, by_ident: &Ident) -> Option<&StructMember<A>> {
-        self.members.iter().find(|m| m.ident == *by_ident)
-    }
-}
-
-fn parse_struct_members(tokens: &mut TokenStream) -> ParseResult<Vec<StructMember<Span>>> {
-    let mut members = Vec::new();
-    loop {
-        if !members.is_empty() {
-            tokens.match_one(Separator::Semicolon)?;
-        }
-
-        let ident = Ident::parse(tokens)?;
-        let mut idents = vec![ident];
-        while tokens.match_one_maybe(Separator::Comma).is_some() {
-            let ident = Ident::parse(tokens)?;
-            idents.push(ident);
-        }
-
-        tokens.match_one(Separator::Colon)?;
-        let ty = TypeName::parse(tokens)?;
-
-        for ident in idents {
-            members.push(StructMember {
-                span: ident.span().to(&ty),
-                ty: ty.clone(),
-                ident,
-            });
-        }
-
-        if tokens.look_ahead().match_sequence(Separator::Semicolon.and_then(Matcher::AnyIdent)).is_none() {
-            break;
-        }
-    }
-
-    Ok(members)
-}
-
-impl StructDef<Span> {
-    fn match_kw() -> Matcher {
-        Keyword::Class.or(Keyword::Record).or(Keyword::Packed)
-    }
-
-    fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
-        let kw_token = tokens.match_one(Self::match_kw())?;
-        let kind = match &kw_token {
-            tt if tt.is_keyword(Keyword::Class) => StructKind::Class,
-            tt if tt.is_keyword(Keyword::Record) => StructKind::Record,
-            tt if tt.is_keyword(Keyword::Packed) => {
-                tokens.match_one(Keyword::Record)?;
-                StructKind::PackedRecord
-            },
-            _ => unreachable!(),
-        };
-
-        let members = parse_struct_members(tokens)?;
-        tokens.match_one_maybe(Separator::Semicolon);
-
-        let end_token = tokens.match_one(Keyword::End)?;
-
-        Ok(StructDef {
-            kind,
-            name,
-            members,
-            span: kw_token.span().to(end_token.span()),
-        })
-    }
-}
-
-impl<A: Annotation> Spanned for StructDef<A> {
-    fn span(&self) -> &Span {
-        &self.span
-    }
-}
-
-impl<A: Annotation> fmt::Display for StructDef<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(
-            f,
-            "{}",
-            match self.kind {
-                StructKind::Record => "record",
-                StructKind::PackedRecord => "packed record",
-                StructKind::Class => "class",
-            }
-        )?;
-        for member in &self.members {
-            writeln!(f, "{}: {};", member.ident, member.ty)?;
-        }
-        write!(f, "end")
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct InterfaceMethodDecl<A: Annotation> {
-    pub decl: FunctionDecl<A>,
-}
-
-impl<A: Annotation> InterfaceMethodDecl<A> {
-    pub fn ident(&self) -> &Ident {
-        assert_eq!(
-            1,
-            self.decl.ident.len(),
-            "interface methods should always have a single-part ident path after parsing"
-        );
-        self.decl.ident.single()
-    }
-}
-
-impl<A: Annotation> Spanned for InterfaceMethodDecl<A> {
-    fn span(&self) -> &Span {
-        self.decl.span()
-    }
-}
-
-impl<A: Annotation> fmt::Display for InterfaceMethodDecl<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.decl)
-    }
-}
-
-impl ParseSeq for InterfaceMethodDecl<Span> {
-    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
-        if !prev.is_empty() {
-            tokens.match_one(Separator::Semicolon)?;
-        }
-
-        let decl = FunctionDecl::parse(tokens)?;
-        Ok(InterfaceMethodDecl { decl })
-    }
-
-    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
-            return false;
-        }
-
-        tokens
-            .match_one(Keyword::Function.or(Keyword::Procedure))
-            .is_some()
-    }
-}
-
-#[derive(Clone, Eq, Derivative)]
-#[derivative(Debug, PartialEq, Hash)]
-pub struct InterfaceDecl<A: Annotation> {
-    pub name: A::Name,
-    pub methods: Vec<InterfaceMethodDecl<A>>,
-
-    #[derivative(Debug = "ignore")]
-    #[derivative(PartialEq = "ignore")]
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-}
-
-impl<A: Annotation> InterfaceDecl<A> {
-    pub fn get_method(&self, method: &Ident) -> Option<&InterfaceMethodDecl<A>> {
-        self.methods.iter().find(|m| *m.ident() == *method)
-    }
-}
-
-impl InterfaceDecl<Span> {
-    pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
-        let iface_kw = tokens.match_one(Keyword::Interface)?;
-
-        let methods = InterfaceMethodDecl::parse_seq(tokens)?;
-        tokens.match_one_maybe(Separator::Semicolon);
-
-        let end = tokens.match_one(Keyword::End)?;
-
-        Ok(InterfaceDecl {
-            name,
-            span: iface_kw.span().to(end.span()),
-            methods,
-        })
-    }
-}
-
-impl<A: Annotation> Spanned for InterfaceDecl<A> {
-    fn span(&self) -> &Span {
-        &self.span
-    }
-}
-
-impl<A: Annotation> fmt::Display for InterfaceDecl<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "interface")?;
-        for method in &self.methods {
-            writeln!(f, "{};", method)?;
-        }
-        write!(f, "end")
-    }
-}
-
-#[derive(Clone, Eq, Derivative)]
-#[derivative(Debug, PartialEq, Hash)]
-pub struct VariantDef<A: Annotation> {
-    pub name: A::Name,
-    pub cases: Vec<VariantCase<A>>,
-
-    #[derivative(Debug = "ignore")]
-    #[derivative(PartialEq = "ignore")]
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-}
-
-#[derive(Clone, Eq, Derivative)]
-#[derivative(Debug, PartialEq, Hash)]
-pub struct VariantCase<A: Annotation> {
-    pub ident: Ident,
-    pub data_ty: Option<A::Type>,
-
-    #[derivative(Debug = "ignore")]
-    #[derivative(PartialEq = "ignore")]
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-}
-
-impl ParseSeq for VariantCase<Span> {
-    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
-        if !prev.is_empty() {
-            tokens.match_one(Separator::Semicolon)?;
-        }
-
-        let ident = Ident::parse(tokens)?;
-
-        let case = match tokens.match_one_maybe(Separator::Colon) {
-            Some(..) => {
-                let ty = TypeName::parse(tokens)?;
-                let span = ident.span().to(ty.span());
-
-                VariantCase {
-                    span,
-                    ident,
-                    data_ty: Some(ty),
-                }
-            },
-
-            None => VariantCase {
-                span: ident.span.clone(),
-                ident,
-                data_ty: None,
-            },
-        };
-
-        Ok(case)
-    }
-
-    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
-            return false;
-        }
-
-        tokens.match_one(Matcher::AnyIdent).is_some()
-    }
-}
-
-impl<A: Annotation> VariantDef<A> {
-    pub fn case_position(&self, case_ident: &Ident) -> Option<usize> {
-        self.cases.iter().position(|c| c.ident == *case_ident)
-    }
-}
-
-impl VariantDef<Span> {
-    pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
-        let kw = tokens.match_one(Keyword::Variant)?;
-
-        let cases = VariantCase::parse_seq(tokens)?;
-        tokens.match_one_maybe(Separator::Semicolon);
-
-        let end_kw = tokens.match_one(Keyword::End)?;
-
-        let span = kw.span().to(end_kw.span());
-
-        Ok(VariantDef { name, cases, span })
-    }
-}
-
-impl<A: Annotation> fmt::Display for VariantDef<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "variant {}", self.name)?;
-        for case in &self.cases {
-            write!(f, "  {}", case.ident)?;
-            if let Some(data_ty) = &case.data_ty {
-                write!(f, ": {}", data_ty)?;
-            }
-            writeln!(f, ";")?;
-        }
-        write!(f, "end")
-    }
-}
-
-impl<A: Annotation> Spanned for VariantDef<A> {
-    fn span(&self) -> &Span {
-        &self.span
-    }
-}
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Debug, Hash)]
@@ -406,6 +71,7 @@ pub enum TypeDeclItem<A: Annotation> {
     Interface(Rc<InterfaceDecl<A>>),
     Variant(Rc<VariantDef<A>>),
     Alias(Rc<AliasDecl<A>>),
+    Enum(Rc<EnumDecl<A>>),
 }
 
 impl<A: Annotation> TypeDeclItem<A> {
@@ -415,6 +81,7 @@ impl<A: Annotation> TypeDeclItem<A> {
             TypeDeclItem::Interface(iface) => &iface.name,
             TypeDeclItem::Variant(variant) => &variant.name,
             TypeDeclItem::Alias(alias) => &alias.name,
+            TypeDeclItem::Enum(enum_decl) => &enum_decl.name,
         }
     }
 }
@@ -530,20 +197,19 @@ impl Parse for TypeDeclItem<Span> {
                 Ok(TypeDeclItem::Struct(Rc::new(composite_decl)))
             },
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::Interface,
-                ..
-            }) => {
+            Some(tt) if tt.is_keyword(Keyword::Interface) => {
                 let iface_decl = InterfaceDecl::parse(tokens, name)?;
                 Ok(TypeDeclItem::Interface(Rc::new(iface_decl)))
             },
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::Variant,
-                ..
-            }) => {
+            Some(tt) if tt.is_keyword(Keyword::Variant) => {
                 let variant_decl = VariantDef::parse(tokens, name)?;
                 Ok(TypeDeclItem::Variant(Rc::new(variant_decl)))
+            },
+
+            Some(tt) if tt.is_delimited(DelimiterPair::Bracket) => {
+                let enum_decl = EnumDecl::parse(name, tokens)?;
+                Ok(TypeDeclItem::Enum(Rc::new(enum_decl)))
             },
 
             // if it isn't a type def keyword, then it must be the name of an existing type to
@@ -568,6 +234,7 @@ impl<A: Annotation> Spanned for TypeDeclItem<A> {
             TypeDeclItem::Interface(iface) => iface.span(),
             TypeDeclItem::Variant(variant) => variant.span(),
             TypeDeclItem::Alias(alias) => alias.span(),
+            TypeDeclItem::Enum(enum_decl) => enum_decl.span(),
         }
     }
 }
@@ -579,6 +246,7 @@ impl<A: Annotation> fmt::Display for TypeDeclItem<A> {
             TypeDeclItem::Interface(iface) => write!(f, "{}", iface),
             TypeDeclItem::Variant(variant) => write!(f, "{}", variant),
             TypeDeclItem::Alias(alias) => write!(f, "{}", alias),
+            TypeDeclItem::Enum(enum_decl) => write!(f, "{}", enum_decl),
         }
     }
 }

@@ -150,6 +150,13 @@ impl TokenTree {
         }
     }
 
+    pub fn into_delimited_group(self) -> Option<DelimitedGroup> {
+        match self {
+            TokenTree::Delimited(group) => Some(group),
+            _ => None,
+        }
+    }
+
     pub fn is_keyword(&self, kw: Keyword) -> bool {
         match self {
             TokenTree::Keyword { kw: token_kw, .. } => *token_kw == kw,

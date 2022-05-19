@@ -39,6 +39,7 @@ pub enum Type {
     MethodSelf,
     GenericParam(Box<TypeParamType>),
     Any,
+    Enum(Box<Symbol>),
 }
 
 impl From<Primitive> for Type {
@@ -83,6 +84,7 @@ impl Type {
             Type::Variant(_) => false,
             Type::Array { .. } => false,
             Type::GenericParam(_) => false,
+            Type::Enum(..) => false,
 
             Type::Class(_) => true,
             Type::Interface(_) => true,
@@ -105,6 +107,10 @@ impl Type {
             ast::TypeDeclItem::Interface(iface) => {
                 Type::Interface(Box::new(iface.name.qualified.clone()))
             },
+
+            ast::TypeDeclItem::Enum(enum_decl) => {
+                Type::Enum(Box::new(enum_decl.name.clone()))
+            }
 
             ast::TypeDeclItem::Alias(alias) => {
                 (*alias.ty).clone()
@@ -313,8 +319,11 @@ impl Type {
                 | Operator::BitAnd
                 | Operator::BitOr
                 | Operator::Caret,
-                Type::Primitive(p),
-            ) => p.is_integer() && p.native_size() <= Primitive::Pointer.native_size(),
+                Type::Primitive(rhs_primitive),
+            ) => {
+                let rhs_valid = rhs_primitive.is_integer() || rhs_primitive.is_pointer();
+                rhs_valid && rhs_primitive.native_size() <= Primitive::Pointer.native_size()
+            },
 
             // (typed) pointer arithmetic:
             // - lhs is any pointer
@@ -336,7 +345,8 @@ impl Type {
                 Operator::IDiv,
                 Type::Primitive(b)
             ) => {
-                a.is_integer() && *a == *b
+                let a_valid = a.is_integer() || a.is_pointer();
+                a_valid && *a == *b
             }
 
             // real division is valid for two of the same primitive real type
@@ -564,7 +574,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Nil => write!(f, "nil"),
-            Type::Class(name) | Type::Record(name) => write!(f, "{}", name),
+            Type::Class(name) | Type::Record(name) | Type::Enum(name) => write!(f, "{}", name),
             Type::Interface(iface) => write!(f, "{}", iface),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
             Type::Array(array_ty) => write!(f, "{}", array_ty),

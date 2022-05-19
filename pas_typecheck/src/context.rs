@@ -10,7 +10,7 @@ mod def;
 pub use self::{
     builtin::*, decl::*, def::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
 };
-use crate::ast::Literal;
+use crate::ast::{EnumDecl, Literal};
 use crate::{ast::{StructDef, FunctionDecl, FunctionDef, InterfaceDecl, OverloadCandidate, VariantDef}, specialize_struct_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
@@ -452,6 +452,28 @@ impl Context {
             DefDeclMatch::always_match,
             map_unexpected,
         )?;
+
+        Ok(())
+    }
+
+    pub fn declare_enum(&mut self, enum_decl: Rc<EnumDecl>, visibility: Visibility) -> TypecheckResult<()> {
+        let name = enum_decl.name.decl_name.ident.clone();
+
+        let enum_ty = Type::Enum(Box::new(enum_decl.name.clone()));
+
+        self.declare_type(name.clone(), enum_ty.clone(), visibility)?;
+
+        self.define(
+            name,
+            Def::Enum(enum_decl.clone()),
+            DefDeclMatch::always_match,
+            |_, _| unreachable!(),
+        )?;
+        
+        for item in &enum_decl.items {
+            let ord_val = item.value.as_ref().expect("enum ord values must exist after typechecking");
+            self.declare_const(item.ident.clone(), Literal::Integer(*ord_val), enum_ty.clone(), visibility, item.span.clone())?;
+        }
 
         Ok(())
     }
@@ -1085,7 +1107,8 @@ impl Context {
             | Type::Primitive(..)
             | Type::Nil
             | Type::Function(..)
-            | Type::DynArray { .. } => Ok(false),
+            | Type::DynArray { .. }
+            | Type::Enum(..) => Ok(false),
         }
     }
 

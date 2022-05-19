@@ -778,6 +778,9 @@ impl Metadata {
                 None => panic!("no type definition for function with sig {}", sig),
             },
 
+            // TODO: enums may later be variably sized
+            pas_ty::Type::Enum(..) => Type::ISize,
+
             pas_ty::Type::Any => Type::RcPointer(VirtualTypeID::Any),
         }
     }

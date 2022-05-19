@@ -34,14 +34,14 @@ impl Primitive {
         Primitive::Pointer,
     ];
 
-    pub fn is_numeric(&self) -> bool {
+    pub const fn is_numeric(&self) -> bool {
         match self {
             Primitive::Boolean => false,
             _ => true,
         }
     }
 
-    pub fn is_signed(&self) -> bool {
+    pub const fn is_signed(&self) -> bool {
         match self {
             Primitive::Int8
             | Primitive::Int16
@@ -54,7 +54,7 @@ impl Primitive {
         }
     }
 
-    pub fn is_integer(&self) -> bool {
+    pub const fn is_integer(&self) -> bool {
         match self {
             | Primitive::UInt8
             | Primitive::Int8
@@ -72,14 +72,21 @@ impl Primitive {
         }
     }
 
-    pub fn is_real(&self) -> bool {
+    pub const fn is_pointer(&self) -> bool {
+        match self {
+            Primitive::Pointer => true,
+            _ => false,
+        }
+    }
+
+    pub const fn is_real(&self) -> bool {
         match self {
             | Primitive::Real32 => true,
             | _ => false,
         }
     }
 
-    pub fn native_size(&self) -> usize {
+    pub const fn native_size(&self) -> usize {
         match self {
             | Primitive::UInt8 => size_of::<u8>(),
             | Primitive::Int8 => size_of::<i8>(),
@@ -97,7 +104,7 @@ impl Primitive {
         }
     }
 
-    pub fn name(&self) -> &str {
+    pub const fn name(&self) -> &str {
         match self {
             Primitive::Boolean => "Boolean",
             Primitive::UInt8 => "UInt8",

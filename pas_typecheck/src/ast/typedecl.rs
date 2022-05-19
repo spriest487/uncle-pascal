@@ -1,5 +1,5 @@
 use crate::{
-    ast::{typecheck_func_decl, InterfaceMethodDecl},
+    ast::{const_eval_integer, typecheck_expr, typecheck_func_decl, InterfaceMethodDecl},
     typecheck_type, Context, NameError, Primitive, Symbol, Type, TypeAnnotation, TypecheckError,
     TypecheckResult,
 };
@@ -7,6 +7,7 @@ use pas_common::span::{Span, Spanned};
 use pas_syn::{
     ast,
     ast::{StructKind, Visibility},
+    Ident, IntConstant,
 };
 
 pub type StructDef = ast::StructDef<TypeAnnotation>;
@@ -14,6 +15,8 @@ pub type Member = ast::StructMember<TypeAnnotation>;
 pub type InterfaceDecl = ast::InterfaceDecl<TypeAnnotation>;
 pub type VariantDef = ast::VariantDef<TypeAnnotation>;
 pub type AliasDecl = ast::AliasDecl<TypeAnnotation>;
+pub type EnumDecl = ast::EnumDecl<TypeAnnotation>;
+pub type EnumDeclItem = ast::EnumDeclItem<TypeAnnotation>;
 
 pub const VARIANT_TAG_TYPE: Type = Type::Primitive(Primitive::Int32);
 
@@ -150,4 +153,65 @@ pub fn typecheck_alias(
         ty: Box::new(ty),
         span: alias.span.clone(),
     })
+}
+
+pub fn typecheck_enum_decl(
+    name: Symbol,
+    enum_decl: &pas_syn::ast::EnumDecl<Span>,
+    ctx: &mut Context,
+) -> TypecheckResult<EnumDecl> {
+    if name.decl_name.type_params.is_some() {
+        return Err(TypecheckError::EnumDeclWithTypeParams {
+            span: name.span().clone(),
+        });
+    }
+    assert!(name.type_args.is_none());
+
+    let mut prev_item: Option<(Ident, i128)> = None;
+
+    let mut items = Vec::with_capacity(enum_decl.items.len());
+    for item in &enum_decl.items {
+        let ord_val = match &item.value {
+            Some(val_expr) => {
+                let val_expr =
+                    typecheck_expr(&val_expr, &Type::Primitive(Primitive::NativeInt), ctx)?;
+                let item_ord_val = const_eval_integer(&val_expr, ctx)?.as_i128();
+
+                if let Some((prev_ident, prev_ord_val)) = &prev_item {
+                    if item_ord_val <= *prev_ord_val {
+                        return Err(TypecheckError::EnumValuesMustBeAscending {
+                            span: item.span().clone(),
+                            prev_ident: prev_ident.clone(),
+                            prev_val: *prev_ord_val,
+                            next_ident: item.ident.clone(),
+                            next_val: item_ord_val,
+                        });
+                    }
+                }
+
+                item_ord_val
+            },
+
+            None => prev_item
+                .map(|(_prev_ident, prev_ord_val)| prev_ord_val + 1)
+                .unwrap_or(0),
+        };
+
+        let item = EnumDeclItem {
+            ident: item.ident.clone(),
+            span: item.span.clone(),
+            value: Some(IntConstant::from(ord_val)),
+        };
+
+        prev_item = Some((item.ident.clone(), ord_val));
+
+        items.push(item);
+    }
+
+    let enum_decl = EnumDecl {
+        name,
+        items,
+        span: enum_decl.span.clone(),
+    };
+    Ok(enum_decl)
 }

@@ -25,6 +25,7 @@ impl StructLayout {
                 | Type::Class(..)
                 | Type::Interface(..)
                 | Type::Any
+                | Type::Enum(..)
                 | Type::Primitive(..) => self.size_of(ty, ctx)?,
 
                 Type::Array(array_ty) => self.align_of(&array_ty.element_ty, ctx)?,
@@ -77,6 +78,7 @@ impl StructLayout {
             | Type::DynArray { .. }
             | Type::Interface(..)
             | Type::Any
+            | Type::Enum(..) // TODO: enums may be variable size later depending on their range?
             | Type::Class(..) => WORD_SIZE,
 
             Type::Array(array_ty) => self.size_of(&array_ty.element_ty, ctx)? * array_ty.dim,

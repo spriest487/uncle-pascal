@@ -604,27 +604,33 @@ pub fn translate_literal(
             pas_ty::Type::Primitive(pas_ty::Primitive::UInt64) => {
                 let val = i
                     .as_u64()
-                    .expect("Int64-typed constant must be within range of i64");
+                    .expect("Int64-typed constant must be within range of u64");
                 builder.mov(out.clone(), Value::LiteralU64(val))
             },
             pas_ty::Type::Primitive(pas_ty::Primitive::NativeInt) => {
                 let val = i
                     .as_isize()
-                    .expect("Int64-typed constant must be within range of i64");
+                    .expect("Int64-typed constant must be within range of isize");
                 builder.mov(out.clone(), Value::LiteralISize(val))
             },
             pas_ty::Type::Primitive(pas_ty::Primitive::NativeUInt) => {
                 let val = i
                     .as_usize()
-                    .expect("Int64-typed constant must be within range of isize");
+                    .expect("Int64-typed constant must be within range of usize");
                 builder.mov(out.clone(), Value::LiteralUSize(val))
             },
             pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => {
                 let val = i
                     .as_f32()
-                    .expect("Real-typed constant must be within range of usize");
+                    .expect("Real-typed constant must be within range of f32");
                 builder.mov(out.clone(), Value::LiteralF32(val))
             },
+            pas_ty::Type::Enum(..) => {
+                let val = i
+                    .as_isize()
+                    .expect("Enum-typed constant must be within range of isize");
+                builder.mov(out.clone(), Value::LiteralISize(val))
+            }
 
             _ => panic!("bad type for integer literal: {}", ty),
         },

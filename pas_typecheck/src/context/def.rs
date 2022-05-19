@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use pas_common::span::{Span, Spanned};
 use pas_syn::Ident;
-use crate::ast::{StructDef, FunctionDecl, FunctionDef, InterfaceDecl, VariantDef};
+use crate::ast::{StructDef, FunctionDecl, FunctionDef, InterfaceDecl, VariantDef, EnumDecl};
 
 #[derive(Clone, Debug)]
 pub enum Def {
@@ -10,6 +10,7 @@ pub enum Def {
     Class(Rc<StructDef>),
     Interface(Rc<InterfaceDecl>),
     Variant(Rc<VariantDef>),
+    Enum(Rc<EnumDecl>),
 }
 
 impl Def {
@@ -20,6 +21,7 @@ impl Def {
             Def::Class(class) => &class.name.decl_name.ident,
             Def::Interface(iface) => &iface.name.decl_name.ident,
             Def::Variant(variant) => &variant.name.decl_name.ident,
+            Def::Enum(enum_decl) => &enum_decl.name.decl_name.ident,
         }
     }
 }
@@ -32,6 +34,7 @@ impl Spanned for Def {
             Def::Class(def) => def.span(),
             Def::Interface(def) => def.span(),
             Def::Variant(def) => def.span(),
+            Def::Enum(decl) => decl.span(),
         }
     }
 }

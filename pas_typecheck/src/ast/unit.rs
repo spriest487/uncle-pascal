@@ -1,8 +1,4 @@
-use crate::ast::{
-    expect_stmt_initialized, typecheck_alias, typecheck_struct_decl, typecheck_expr,
-    typecheck_func_decl, typecheck_func_def, typecheck_iface, typecheck_stmt, typecheck_variant,
-    Expr,
-};
+use crate::ast::{expect_stmt_initialized, typecheck_alias, typecheck_struct_decl, typecheck_expr, typecheck_func_decl, typecheck_func_def, typecheck_iface, typecheck_stmt, typecheck_variant, Expr, typecheck_enum_decl};
 use crate::{
     ast::const_eval::ConstEval, typecheck_type, typecheck_type_params, ConstAnnotation, Context,
     Environment, ExpectedKind, ModuleUnit, NameError, Named, ScopeMemberRef, Symbol, Type,
@@ -215,6 +211,10 @@ fn typecheck_type_decl_item(
             ctx.declare_class(class.clone(), visibility)?;
         },
 
+        TypeDeclItem::Enum(enum_decl) => {
+            ctx.declare_enum(enum_decl.clone(), visibility)?;
+        }
+
         TypeDeclItem::Alias(alias) => {
             ctx.declare_type(
                 alias.name.decl_name.ident.clone(),
@@ -251,6 +251,11 @@ fn typecheck_type_decl_body(
             let alias = typecheck_alias(name, alias, ctx)?;
             ast::TypeDeclItem::Alias(Rc::new(alias))
         },
+
+        ast::TypeDeclItem::Enum(enum_decl) => {
+            let enum_decl = typecheck_enum_decl(name, enum_decl, ctx)?;
+            ast::TypeDeclItem::Enum(Rc::new(enum_decl))
+        }
     };
 
     Ok(type_decl)

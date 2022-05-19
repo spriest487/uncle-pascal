@@ -110,6 +110,8 @@ pub fn check_explicit_cast(
         | (Type::Primitive(..), Type::Pointer(..) | Type::Nil)
             => Ok(()),
 
+        | (Type::Enum(..), Type::Primitive(p)) if p.is_integer() => Ok(()),
+
         // upcast ref type to Any
         | (Type::Class(..) | Type::Interface(..), Type::Any) => Ok(()),
 

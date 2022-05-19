@@ -2,7 +2,7 @@ use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
 use std::rc::Rc;
 use crate::ast::{BinOp, Expr, IfCond, Literal, UnaryOp};
 use crate::Context;
-use pas_syn::{IntConstant, Operator};
+use pas_syn::{IntConstant, Operator, RealConstant};
 
 pub trait ConstEval {
     fn const_eval(&self, ctx: &Context) -> Option<Literal>;
@@ -161,6 +161,33 @@ impl ConstEval for UnaryOp {
                     Literal::Integer(i) => {
                         let operand_val = i.as_u64()?;
                         Some(Literal::Integer(IntConstant::from(!operand_val)))
+                    }
+
+                    _ => None
+                }
+            }
+
+            Operator::Add => {
+                // unary + on a numeric constant just returns itself
+                match self.operand.const_eval(ctx)? {
+                    Literal::Integer(i) => Some(Literal::Integer(i)),
+                    Literal::Real(r) => Some(Literal::Real(r)),
+
+                    _ => None
+                }
+            }
+
+            Operator::Sub => {
+                // unary negation for numeric constants
+                match self.operand.const_eval(ctx)? {
+                    Literal::Integer(i) => {
+                        let operand_val = i.as_i128();
+                        Some(Literal::Integer(IntConstant::from(-operand_val)))
+                    }
+
+                    Literal::Real(r) => {
+                        let operand_val = r.0;
+                        Some(Literal::Real(RealConstant(-operand_val)))
                     }
 
                     _ => None

@@ -203,6 +203,18 @@ pub enum TypecheckError {
     InvalidLoopCounterType {
         counter_ty: Type,
         span: Span,
+    },
+
+    EnumDeclWithTypeParams {
+        span: Span,
+    },
+    EnumValuesMustBeAscending {
+        span: Span,
+        prev_ident: Ident,
+        prev_val: i128,
+
+        next_ident: Ident,
+        next_val: i128,
     }
 }
 
@@ -275,6 +287,8 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidExitWithValue { span, .. } => span,
             TypecheckError::ConstDeclWithNoValue { span, .. } => span,
             TypecheckError::InvalidLoopCounterType { span, .. } => span,
+            TypecheckError::EnumDeclWithTypeParams { span, .. } => span,
+            TypecheckError::EnumValuesMustBeAscending { span, .. } => span,
         }
     }
 }
@@ -374,6 +388,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidExitWithValue { .. } => "Invalid exit with value".to_string(),
             TypecheckError::ConstDeclWithNoValue { .. } => "Constant declaration without a value".to_string(),
             TypecheckError::InvalidLoopCounterType { .. } => "Invalid loop counter type".to_string(),
+            TypecheckError::EnumDeclWithTypeParams { .. } => "Enumeration type declared with type params".to_string(),
+            TypecheckError::EnumValuesMustBeAscending { .. } => "Enumeration values must be ascending".to_string(),
         }
     }
 
@@ -761,6 +777,14 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidLoopCounterType { counter_ty, .. } => {
                 write!(f, "type `{}` cannot be used as a loop counter", counter_ty)
+            }
+
+            TypecheckError::EnumDeclWithTypeParams { .. } => {
+                write!(f, "enumeration types cannot have type parameters")
+            }
+
+            TypecheckError::EnumValuesMustBeAscending { prev_ident, prev_val, next_ident, next_val, .. } => {
+                write!(f, "item `{}` has lower value ({}) than previous item `{}` ({})", next_ident, next_val, prev_ident, prev_val)
             }
         }
     }
