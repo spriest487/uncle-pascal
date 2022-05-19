@@ -3,30 +3,24 @@ use pas_common::{
     span::{Span, Spanned},
     TracedError
 };
-use crate::{
-    ast::{
-        unit::{parse_unit_decl},
-        Annotation,
-        ConstDecl,
-        Expr,
-        FunctionDecl,
-        FunctionDef,
-        TypeDecl
-    },
-    IdentPath,
-    Keyword,
-    Separator,
-    parse::{
-        Matcher,
-        ParseError,
-        ParseResult,
-        TokenStream,
-        LookAheadTokenStream,
-        ParseSeq,
-    },
-    parse::MatchOneOf
-};
+use crate::{ast::{
+    unit::{parse_unit_decl},
+    Annotation,
+    ConstDecl,
+    Expr,
+    FunctionDecl,
+    FunctionDef,
+    TypeDecl
+}, IdentPath, Keyword, Separator, parse::{
+    Matcher,
+    ParseError,
+    ParseResult,
+    TokenStream,
+    LookAheadTokenStream,
+    ParseSeq,
+}, parse::MatchOneOf, Ident};
 use derivative::*;
+use crate::parse::Parse;
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Visibility {
@@ -91,22 +85,30 @@ impl UnitDecl<Span> {
             .or(Keyword::Type)
             .or(Keyword::Const)
     }
-}
 
-impl ParseSeq for UnitDecl<Span> {
-    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
-        if !prev.is_empty() {
-            tokens.match_one(Separator::Semicolon)?;
+    pub fn parse_seq(part_kw: Keyword, tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
+        let mut items = Vec::new();
+
+        loop {
+            if !Self::has_more(&items, &mut tokens.look_ahead()) {
+                break;
+            }
+
+            if !items.is_empty() {
+                tokens.match_one(Separator::Semicolon)?;
+            }
+
+            let item = parse_unit_decl(tokens, part_kw)?;
+            items.push(item);
         }
 
-        parse_unit_decl(tokens)
+        Ok(items)
     }
 
-    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+    pub fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
         if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
             return false;
         }
-
         tokens.match_one(UnitDecl::start_matcher()).is_some()
     }
 }
@@ -232,14 +234,22 @@ impl ParseSeq for UseDeclItem {
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum DeclMod<A: Annotation> {
     External { src: A::ConstStringExpr, span: Span },
+    Inline(Span),
+    Forward(Span),
 }
 
 impl<A: Annotation> DeclMod<A> {
     pub const EXTERNAL_WORD: &'static str = "external";
+    pub const FORWARD_WORD: &'static str = "forward";
+    pub const INLINE_WORD: &'static str = "inline";
+
+    pub const RESERVED_WORDS: [&'static str; 3] = [Self::EXTERNAL_WORD, Self::FORWARD_WORD, Self::INLINE_WORD];
 
     pub fn keyword(&self) -> &str {
         match self {
             DeclMod::External { .. } => Self::EXTERNAL_WORD,
+            DeclMod::Forward(..) => Self::FORWARD_WORD,
+            DeclMod::Inline(..) => Self::INLINE_WORD,
         }
     }
 }
@@ -248,7 +258,7 @@ impl ParseSeq for DeclMod<Span> {
     fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
         tokens.match_one(Separator::Semicolon)?;
 
-        let word_token = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
+        let word_token = Ident::parse(tokens)?;
 
         let new_mod = match word_token.name.as_str() {
             Self::EXTERNAL_WORD => {
@@ -258,6 +268,9 @@ impl ParseSeq for DeclMod<Span> {
                     src: Box::new(src),
                 }
             },
+
+            Self::INLINE_WORD => DeclMod::Inline(word_token.span().clone()),
+            Self::FORWARD_WORD => DeclMod::Forward(word_token.span().clone()),
 
             _ => unreachable!("bad modified contextual keyword"),
         };
@@ -274,8 +287,17 @@ impl ParseSeq for DeclMod<Span> {
     }
 
     fn has_more(_prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        tokens.match_one(Separator::Semicolon).is_some()
-            && tokens.match_one(Self::EXTERNAL_WORD).is_some()
+        if tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        let match_any_reserved = Matcher::OneOf(
+            Self::RESERVED_WORDS.iter()
+                .map(|word| Matcher::Ident(word.to_string()))
+                .collect()
+        );
+
+        tokens.match_one(match_any_reserved).is_some()
     }
 }
 
@@ -283,7 +305,9 @@ impl ParseSeq for DeclMod<Span> {
 impl<A: Annotation> fmt::Display for DeclMod<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            DeclMod::External { src, .. } => write!(f, "external '{}'", src),
+            DeclMod::External { src, .. } => write!(f, "{} '{}'", Self::EXTERNAL_WORD, src),
+            DeclMod::Inline(_) => write!(f, "{}", Self::INLINE_WORD),
+            DeclMod::Forward(_) => write!(f, "{}", Self::FORWARD_WORD)
         }
     }
 }
@@ -292,6 +316,8 @@ impl<A: Annotation> Spanned for DeclMod<A> {
     fn span(&self) -> &Span {
         match self {
             DeclMod::External { span, .. } => span,
+            DeclMod::Inline(span) => span,
+            DeclMod::Forward(span) => span,
         }
     }
 }

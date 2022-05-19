@@ -7,12 +7,9 @@ use crate::{
     TypeArgsResult::NotGeneric,
 };
 use pas_common::span::*;
-use pas_syn::{
-    ast::{self, ArrayTypeName, StructKind, IdentTypeName, Typed},
-    ident::*,
-    Operator,
-};
+use pas_syn::{ast::{self, ArrayTypeName, StructKind, IdentTypeName, Typed}, ident::*, Operator};
 use std::{fmt, rc::Rc};
+use crate::ast::Literal;
 
 #[cfg(test)]
 mod test;
@@ -91,6 +88,28 @@ impl Type {
             Type::DynArray { .. } => true,
             Type::MethodSelf => true,
             Type::Any => true,
+        }
+    }
+
+    pub fn default_val(&self) -> Option<Literal> {
+        match self {
+            | Type::Function(_)
+            | Type::Nothing
+            | Type::Record(_)
+            | Type::Class(_)
+            | Type::Interface(_)
+            | Type::Variant(_)
+            | Type::Array(_)
+            | Type::DynArray { .. }
+            | Type::MethodSelf
+            | Type::GenericParam(_)
+            | Type::Any
+            | Type::Enum(_)
+            => None,
+
+            | Type::Nil => Some(Literal::Nil),
+            | Type::Primitive(p) => Some(p.default_val()),
+            | Type::Pointer(..) => Some(Literal::Nil),
         }
     }
 

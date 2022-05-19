@@ -145,6 +145,10 @@ fn typecheck_decl_mods(
                     span: span.clone(),
                 }
             },
+
+            ast::DeclMod::Inline(span) => DeclMod::Inline(span.clone()),
+
+            ast::DeclMod::Forward(span) => DeclMod::Forward(span.clone()),
         };
 
         results.push(result);

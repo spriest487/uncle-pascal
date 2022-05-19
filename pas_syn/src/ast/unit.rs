@@ -92,7 +92,7 @@ impl Unit<Span> {
         let mut init = Vec::new();
 
         if unit_kind == UnitKind::Program {
-            let decls = UnitDecl::parse_seq(tokens)?;
+            let decls = UnitDecl::parse_seq(Keyword::Implementation, tokens)?;
 
             if !decls.is_empty() {
                 tokens.match_one(Separator::Semicolon)?;
@@ -122,10 +122,10 @@ impl Unit<Span> {
                 // allow the traditional period after the final end
                 tokens.match_one_maybe(Operator::Period);
             } else {
-                // no structured segments, it's a freeform unit - everything is in the interface
+                // no structured segments, it's a freeform unit - everything is implementation
                 // and we don't expect an end keyword after all decls/init
                 let freeform_decls = if UnitDecl::has_more(&iface_decls, &mut tokens.look_ahead()) {
-                    UnitDecl::parse_seq(tokens)?
+                    UnitDecl::parse_seq(Keyword::Implementation, tokens)?
                 } else {
                     vec![]
                 };
@@ -159,7 +159,7 @@ fn parse_decls_section(keyword: Keyword, out_decls: &mut Vec<UnitDecl<Span>>, to
         return Ok(false);
     }
 
-    let decls = UnitDecl::parse_seq(tokens)?;
+    let decls = UnitDecl::parse_seq(keyword, tokens)?;
 
     if !decls.is_empty() {
         tokens.match_one(Separator::Semicolon)?;
@@ -170,12 +170,12 @@ fn parse_decls_section(keyword: Keyword, out_decls: &mut Vec<UnitDecl<Span>>, to
     Ok(true)
 }
 
-fn parse_unit_decl(tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>> {
+fn parse_unit_decl(tokens: &mut TokenStream, part_kw: Keyword) -> ParseResult<UnitDecl<Span>> {
     let decl_start = UnitDecl::start_matcher();
 
     let decl = match tokens.look_ahead().match_one(decl_start) {
         Some(tt) if tt.is_keyword(Keyword::Function) || tt.is_keyword(Keyword::Procedure) => {
-            parse_unit_func_decl(tokens)?
+            parse_unit_func_decl(part_kw, tokens)?
         }
 
         Some(tt) if tt.is_keyword(Keyword::Type) => {
@@ -210,18 +210,31 @@ fn parse_unit_decl(tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>> {
     Ok(decl)
 }
 
-fn parse_unit_func_decl(tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>> {
+fn parse_unit_func_decl(part_kw: Keyword, tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>> {
     let func_decl = FunctionDecl::parse(tokens)?;
 
-    let body_ahead = tokens.look_ahead()
-        .match_sequence(Separator::Semicolon
-            .and_then(FunctionDef::body_start_matcher()))
-        .is_some();
+    let body_ahead = if part_kw == Keyword::Interface {
+        // interface funcs - never expect a body, unless the function is marked `inline`
+        func_decl.mods.iter().any(|decl_mod| match decl_mod {
+            DeclMod::Inline(..) => true,
+            _ => false,
+        })
+    } else {
+        // implementation funcs - always expect a body, unless the function is marked `forward`
+        !func_decl.mods.iter().any(|decl_mod| match decl_mod {
+            DeclMod::Forward(..) => true,
+            _ => false,
+        })
+    };
 
     if body_ahead {
         tokens.match_one(Separator::Semicolon)?;
 
-        let def = FunctionDef::parse_body_of_decl(func_decl, tokens)?;
+        let def = FunctionDef::parse_body_of_decl(func_decl, tokens);
+        if def.is_err() {
+            eprintln!("failed on {}", tokens.current().unwrap().span());
+        }
+        let def = def?;
 
         Ok(UnitDecl::FunctionDef {
             def,

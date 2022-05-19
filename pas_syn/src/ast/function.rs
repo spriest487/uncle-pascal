@@ -279,8 +279,9 @@ impl<A: Annotation> FunctionDecl<A> {
     pub fn external_src(&self) -> Option<&A::ConstStringExpr> {
         self.mods
             .iter()
-            .map(|decl_mod| match decl_mod {
-                DeclMod::External { src, .. } => src,
+            .filter_map(|decl_mod| match decl_mod {
+                DeclMod::External { src, .. } => Some(src),
+                _ => None,
             })
             .next()
     }

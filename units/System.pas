@@ -2,22 +2,23 @@ unit System;
 
 interface
 
-type ShortInt = Int8;
-type SmallInt = Int16;
-type Integer = Int32;
+type
+    ShortInt = Int8;
+    SmallInt = Int16;
+    Integer = Int32;
 
-type Byte = UInt8;
-type Word = UInt16;
-type Cardinal = UInt32;
+    Byte = UInt8;
+    Word = UInt16;
+    Cardinal = UInt32;
 
-type String = class
-    chars: ^Byte;
-    len: Int32;
-end;
+    String = class
+        chars: ^Byte;
+        len: Int32;
+    end;
 
-type Disposable = interface
-    function Dispose(self: Self);
-end;
+    Disposable = interface
+        function Dispose(self: Self);
+    end;
 
 function GetMem(count: Int32): ^Byte; external 'rt';
 function FreeMem(mem: ^Byte); external 'rt';
@@ -40,30 +41,68 @@ function StrToInt(s: String): Int32; external 'rt';
 
 function ArrayLengthInternal(arr: Pointer): Int32; external 'rt';
 
+function ByteToStr(i: Byte): String;
+function IntToStr(i: Integer): String;
+
 {$IFNDEF NO_STDLIB}
 
-type Box[T] = class
-    value: T
-end;
+type
+    Box[T] = class
+        value: T
+    end;
+
+    Option[T] = variant
+        Some: T;
+        None;
+    end;
+
+    Result[T, E] = variant
+        Ok: T;
+        Error: E;
+    end;
+
+    Comparable = interface
+        function Compare(self: Self; other: Self): Integer;
+    end;
+
+    Displayable = interface
+        function ToString(self: Self): String;
+    end;
 
 function Unbox[T](b: Box[T]): T;
-begin
-    b.value
-end;
-
 function NewBox[T](value: T): Box[T];
+
+function IsWhiteSpace(char: Byte): Boolean;
+
+function StringLen(s: String): Integer;
+function StringConcat(a, b: String): String;
+function StringFromBytes(bytes: ^Byte; len: Integer): String;
+function StringLenNullTerminated(chars: ^Byte): Integer;
+function SubString(s: String; from: Integer; len: Integer): String;
+function StringCharAt(s: String; at: Integer): Byte;
+function StringToBytes(s: String; bytes: ^Byte; len: Integer);
+function CompareStr(a, b: String): Integer;
+function StringTrim(s: String): String;
+
+function Max[T](a, b: T): T where T is Comparable;
+function Min[T](a, b: T): T where T is Comparable;
+
+function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer): Any; external 'rt';
+
+function Length[T](arr: array of T): Integer;
+function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);
+
+{$ENDIF}
+
+implementation
+
+function Dispose of Disposable(self: String);
 begin
-    Box(value: value)
-end;
+    if self.len > 0 then
+        FreeMem(self.chars);
 
-type Option[T] = variant
-    Some: T;
-    None;
-end;
-
-type Result[T, E] = variant
-    Ok: T;
-    Error: E;
+    self.chars := nil;
+    self.len := 0;
 end;
 
 function ByteToStr(i: Byte): String;
@@ -76,6 +115,8 @@ begin
     Int32ToStr(i)
 end;
 
+{$IFNDEF NO_STDLIB}
+
 function StringLen(s: String): Integer;
 begin
     s.len
@@ -83,37 +124,40 @@ end;
 
 function IsWhiteSpace(char: Byte): Boolean;
 begin
-    char = 9
-    or char = 10
-    or char = 12
-    or char = 13
-    or char = 32
-    or char = 133
-    or char = 160
+    case char of
+        9: true;
+        10: true;
+        12: true;
+        13: true;
+        32: true;
+        133: true;
+        160: true;
+        else false;
+    end;
 end;
 
 function StringConcat(a, b: String): String;
 begin
     if a.len = 0 and b.len = 0 then
-        String(chars: nil; len: 0)
-    else if a.len = 0 then b
-    else if b.len = 0 then a
-    else begin
-        var len := a.len + b.len;
+        exit String(chars: nil; len: 0);
 
-        var bytes := GetMem(len);
+    if a.len = 0 then exit b;
+    if b.len = 0 then exit a;
 
-        for var i := 0 to a.len - 1 do
-            bytes[i] := a.chars[i];
+    var len := a.len + b.len;
 
-        for var i := 0 to b.len - 1 do
-            bytes[a.len + i] := b.chars[i];
+    var bytes := GetMem(len);
 
-        String(
-            chars: bytes;
-            len: len
-        );
-    end
+    for var i := 0 to a.len - 1 do
+        bytes[i] := a.chars[i];
+
+    for var i := 0 to b.len - 1 do
+        bytes[a.len + i] := b.chars[i];
+
+    String(
+        chars: bytes;
+        len: len
+    );
 end;
 
 function StringFromBytes(bytes: ^Byte; len: Integer): String;
@@ -251,60 +295,15 @@ unsafe begin
     ArrayLengthInternal(arr)
 end;
 
-type Comparable = interface
-    function Compare(self: Self; other: Self): Integer;
-end;
-
-function Max[T](a, b: T): T
-where
-    T is Comparable;
+function Unbox[T](b: Box[T]): T;
 begin
-    if a.Compare(b) > 0 then a else b
+    b.value
 end;
 
-function Min[T](a, b: T): T
-where
-    T is Comparable;
+function NewBox[T](value: T): Box[T];
 begin
-    if a.Compare(b) < 0 then a else b
+    Box(value: value)
 end;
-
-type Displayable = interface
-    function ToString(self: Self): String;
-end;
-
-function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer): Any; external 'rt';
-
-function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);
-begin
-    if arr.Length() = len then exit;
-
-    // must put this in a mutable local variable to take its address (can't address immutable vars)
-    var defaultValVar := defaultVal;
-
-    unsafe begin
-        var defaultValPtr: Pointer := @defaultValVar;
-
-        arr := if ArraySetLengthInternal(arr, len, defaultValPtr) is array of T newArr
-            then newArr
-            else raise 'unreachable';
-    end;
-end;
-
-{$ENDIF}
-
-implementation
-
-function Dispose of Disposable(self: String);
-begin
-    if self.len > 0 then
-        FreeMem(self.chars);
-
-    self.chars := nil;
-    self.len := 0;
-end;
-
-{$IFNDEF NO_STDLIB}
 
 function Compare of Comparable(self: String; other: String): Integer;
 begin
@@ -374,6 +373,36 @@ end;
 function ToString of Displayable(self: String): String;
 begin
     self
+end;
+
+function Max[T](a, b: T): T
+where
+    T is Comparable;
+begin
+    if a.Compare(b) > 0 then a else b
+end;
+
+function Min[T](a, b: T): T
+where
+    T is Comparable;
+begin
+    if a.Compare(b) < 0 then a else b
+end;
+
+function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);
+begin
+    if arr.Length() = len then exit;
+
+    // must put this in a mutable local variable to take its address (can't address immutable vars)
+    var defaultValVar := defaultVal;
+
+    unsafe begin
+        var defaultValPtr: Pointer := @defaultValVar;
+
+        arr := if ArraySetLengthInternal(arr, len, defaultValPtr) is array of T newArr
+            then newArr
+            else raise 'unreachable';
+    end;
 end;
 
 {$ENDIF}

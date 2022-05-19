@@ -1,4 +1,6 @@
 use std::mem::size_of;
+use pas_syn::{IntConstant, RealConstant};
+use crate::ast::Literal;
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum Primitive {
@@ -119,6 +121,25 @@ impl Primitive {
             Primitive::NativeUInt => "NativeUInt",
             Primitive::Real32 => "Real32",
             Primitive::Pointer => "Pointer",
+        }
+    }
+
+    pub fn default_val(&self) -> Literal {
+        match self {
+            | Primitive::Boolean => Literal::Boolean(false),
+            | Primitive::Real32 => Literal::Real(RealConstant::from(0.0)),
+            | Primitive::Pointer => Literal::Nil,
+
+            | Primitive::UInt8
+            | Primitive::Int8
+            | Primitive::Int16
+            | Primitive::UInt16
+            | Primitive::Int32
+            | Primitive::UInt32
+            | Primitive::Int64
+            | Primitive::UInt64
+            | Primitive::NativeInt
+            | Primitive::NativeUInt => Literal::Integer(IntConstant::from(0)),
         }
     }
 }
