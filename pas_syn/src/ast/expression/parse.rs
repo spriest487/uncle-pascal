@@ -28,6 +28,7 @@ use crate::{
 };
 use pas_common::{span::*, TracedError};
 use std::fmt;
+use crate::ast::ObjectCtorMember;
 
 fn parse_identifier(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     // the context of an identifier expr should be the first part of the
@@ -200,13 +201,9 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         match look_ahead.match_one(Matcher::ExprOperandStart) {
             Some(TokenTree::Delimited(group)) => {
                 match group.delim {
-                    // operand is a () group: must be a sub-expr
+                    // operand is a () group: must be a sub-expr or unnamed ctor
                     DelimiterPair::Bracket => {
-                        let mut group_tokens = group.to_inner_tokens();
-                        let sub_expr = Expr::parse(&mut group_tokens)?;
-                        group_tokens.finish()?;
-                        self.tokens.advance(1);
-                        self.push_operand(sub_expr);
+                        self.parse_bracket_group(group)?;
                     },
 
                     // operand is a [] group: must be a collection ctor
@@ -325,6 +322,51 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         Ok(true)
     }
 
+    fn parse_bracket_group(&mut self, group: DelimitedGroup) -> ParseResult<()> {
+        let open_bracket = group.open.clone();
+        let close_bracket = group.close.clone();
+
+        let mut tokens = group.to_inner_tokens();
+        let mut sub_expr = Expr::parse(&mut tokens)?;
+
+        // if the group is in the format `( some_ident: some_other_expr )` then it's not just a sub-expression,
+        // it's an object constructor group without a preceding object name
+        if let Some(item_ident) = sub_expr.as_ident() {
+            if tokens.match_one_maybe(Separator::Colon).is_some() {
+                let first_item_val = Expr::parse(&mut tokens)?;
+                let mut items = vec![ObjectCtorMember {
+                    ident: item_ident.clone(),
+                    span: item_ident.span().to(first_item_val.span()),
+                    value: first_item_val,
+                }];
+
+                // parse any items following a subsequent semicolon using the normal ctor parser
+                if tokens.match_one_maybe(Separator::Semicolon).is_some() {
+                    let rest_items = ObjectCtorMember::parse_seq(&mut tokens)?;
+                    items.extend(rest_items);
+                }
+
+                sub_expr = Expr::from(ObjectCtor {
+                    ident: None,
+                    annotation: open_bracket.to(&close_bracket),
+                    args: ObjectCtorArgs {
+                        open: open_bracket,
+                        close: close_bracket,
+                        members: items,
+                    },
+                });
+            }
+        }
+
+
+        tokens.finish()?;
+
+        self.tokens.advance(1);
+        self.push_operand(sub_expr);
+
+        Ok(())
+    }
+
     fn push_operand(&mut self, expr: Expr<Span>) {
         let part = CompoundExpressionPart::Operand(expr);
         self.parts.push(part);
@@ -383,7 +425,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
             let span = ident.span().to(&args.close);
             let ctor = ObjectCtor {
-                ident: ident.into(),
+                ident: Some(ident.into()),
                 args,
                 annotation: span.clone(),
             };

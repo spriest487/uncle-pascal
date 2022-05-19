@@ -147,14 +147,17 @@ impl ParseSeq for CollectionCtorElement<Span> {
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtor<A: Annotation> {
-    pub ident: IdentPath,
+    pub ident: Option<IdentPath>,
     pub args: ObjectCtorArgs<A>,
     pub annotation: A,
 }
 
 impl<A: Annotation> fmt::Display for ObjectCtor<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}", self.ident, self.args)
+        if let Some(ident) = &self.ident {
+            write!(f, "{}", ident)?;
+        }
+        write!(f, "{}", self.args)
     }
 }
 

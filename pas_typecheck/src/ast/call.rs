@@ -172,10 +172,9 @@ pub fn typecheck_call(
         },
 
         TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
-            let ty: &Type = ty;
             let (open, close) = &func_call.args_brackets;
             let ctor = ast::ObjectCtor {
-                ident: ty.full_path().unwrap(),
+                ident: Some(ty.full_path().unwrap()),
                 annotation: call.span().clone(),
                 args: ast::ObjectCtorArgs {
                     open: open.clone(),

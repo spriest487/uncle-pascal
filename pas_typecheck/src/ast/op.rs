@@ -394,14 +394,14 @@ fn typecheck_member_of(
                 TypeAnnotation::Namespace(ns_path, ..) => {
                     assert_eq!(
                         1,
-                        ctor.ident.as_slice().len(),
+                        ctor.ident.as_ref().unwrap().as_slice().len(),
                         "parsed ctor should only have a single ident in its path until this point, but found {}",
-                        ctor.ident
+                        ctor.ident.as_ref().unwrap()
                     );
 
-                    let qualified_ident = ns_path.clone().child(ctor.ident.last().clone());
+                    let qualified_ident = ns_path.clone().child(ctor.ident.as_ref().unwrap().last().clone());
                     let qualified_ctor = ast::ObjectCtor {
-                        ident: qualified_ident,
+                        ident: Some(qualified_ident),
                         ..(**ctor).clone()
                     };
 

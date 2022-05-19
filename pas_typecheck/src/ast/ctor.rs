@@ -20,40 +20,54 @@ pub fn typecheck_object_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<ObjectCtor> {
-    let (_, raw_ty) = ctx
-        .find_type(&ctor.ident)
-        .map_err(|err| TypecheckError::NameError {
-            err,
-            span: ctor.ident.span().clone(),
-        })?;
+    let ctor_ty = match &ctor.ident {
+        Some(ctor_ident) => {
+            let (_, raw_ty) = ctx
+                .find_type(&ctor_ident)
+                .map_err(|err| TypecheckError::NameError {
+                    err,
+                    span: ctor_ident.span().clone(),
+                })?;
 
-    let ty_name = raw_ty
-        .full_path()
+            let raw_ty_name = raw_ty
+                .full_path()
+                .ok_or_else(|| TypecheckError::InvalidCtorType {
+                    ty: raw_ty.clone(),
+                    span: span.clone(),
+                })?;
+
+            // generic types can't be constructed, but if the type hint is a parameterized instance of
+            // the generic type the constructor expr refers to, use that instead
+            raw_ty
+                .infer_specialized_from_hint(expect_ty)
+                .ok_or_else(|| {
+                    let err = GenericError::CannotInferArgs {
+                        target: GenericTarget::Name(raw_ty_name.clone()),
+                        hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
+                    };
+
+                    TypecheckError::NameError {
+                        span: span.clone(),
+                        err: NameError::GenericError(err),
+                    }
+                })?
+                .clone()
+        }
+
+        None => {
+            expect_ty.clone()
+        },
+    };
+
+    let ty_name = ctor_ty.full_path()
         .ok_or_else(|| TypecheckError::InvalidCtorType {
-            ty: raw_ty.clone(),
+            ty: ctor_ty.clone(),
             span: span.clone(),
         })?;
 
-    // generic types can't be constructed, but if the type hint is a parameterized instance of
-    // the generic type the constructor expr refers to, use that instead
-    let ty = raw_ty
-        .infer_specialized_from_hint(expect_ty)
-        .ok_or_else(|| {
-            let err = GenericError::CannotInferArgs {
-                target: GenericTarget::Name(ty_name.clone()),
-                hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
-            };
-
-            TypecheckError::NameError {
-                span: span.clone(),
-                err: NameError::GenericError(err),
-            }
-        })?
-        .clone();
-
-    if ty.is_unspecialized_generic() {
+    if ctor_ty.is_unspecialized_generic() {
         let err = GenericError::CannotInferArgs {
-            target: GenericTarget::Name(ctor.ident.clone()),
+            target: GenericTarget::Name(ty_name.clone()),
             hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
         };
 
@@ -70,11 +84,11 @@ pub fn typecheck_object_ctor(
         });
     }
 
-    if !ctx.is_constructor_accessible(&ty) {
-        return Err(TypecheckError::PrivateConstructor { ty, span });
+    if !ctx.is_constructor_accessible(&ctor_ty) {
+        return Err(TypecheckError::PrivateConstructor { ty: ctor_ty, span });
     }
 
-    let ty_members: Vec<_> = ty.members(ctx).map_err(|err| TypecheckError::NameError {
+    let ty_members: Vec<_> = ctor_ty.members(ctx).map_err(|err| TypecheckError::NameError {
         err,
         span: span.clone(),
     })?;
@@ -93,7 +107,7 @@ pub fn typecheck_object_ctor(
             Some(member) => member,
             None => {
                 let err = NameError::MemberNotFound {
-                    base: NameContainer::Type(ty),
+                    base: NameContainer::Type(ctor_ty),
                     member: arg.ident.clone(),
                 };
 
@@ -117,7 +131,7 @@ pub fn typecheck_object_ctor(
         });
     }
 
-    let ty_members_len = ty
+    let ty_members_len = ctor_ty
         .members_len(ctx)
         .map_err(|err| TypecheckError::NameError {
             span: span.clone(),
@@ -143,7 +157,7 @@ pub fn typecheck_object_ctor(
     };
 
     let annotation = TypedValueAnnotation {
-        ty,
+        ty: ctor_ty,
         value_kind: ValueKind::Temporary,
         span,
         decl: None,
@@ -151,7 +165,7 @@ pub fn typecheck_object_ctor(
     .into();
 
     Ok(ObjectCtor {
-        ident: ty_name,
+        ident: Some(ty_name),
         args,
         annotation,
     })
