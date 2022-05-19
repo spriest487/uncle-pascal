@@ -1,12 +1,14 @@
 uses System;
 
-let msg := 'Hello, ';
-let who := 'world';
+var msg := 'Hello, ';
+var who := 'world';
 
-let greeting := StringConcat(msg, who);
+var greeting := StringConcat(msg, who);
 WriteLn(greeting);
 
 WriteLn(msg + who);
 
 WriteLn('Hello ' + 'again!');
 
+var stringWithNewLine := 'Hello, World!'#10;
+WriteLn(stringWithNewLine + '...and another line');

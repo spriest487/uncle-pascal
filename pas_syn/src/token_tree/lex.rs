@@ -274,6 +274,22 @@ impl Lexer {
         }
 
         self.location.col = next_col + 1;
+
+        let char_start_loc = self.location;
+        while let Some('#') = self.line.get(self.location.col) {
+            let char_token = self.literal_int(true)?;
+            match char_token.as_literal_int().and_then(|i| i.as_u32()).and_then(char::from_u32) {
+                Some(char_val) => {
+                    contents.push(char_val);
+                }
+
+                None => {
+                    let err_span = self.src_span_from(char_start_loc);
+                    return Err(TracedError::trace(TokenizeError::IllegalChar(err_span)));
+                }
+            }
+        }
+
         let span = self.src_span_from(start_loc);
 
         let str_token = TokenTree::String {

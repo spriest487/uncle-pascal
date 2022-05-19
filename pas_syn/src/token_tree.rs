@@ -271,6 +271,7 @@ pub enum TokenizeError {
         span: Span,
     },
     UnterminatedStringLiteral(Span),
+    IllegalChar(Span),
 }
 
 impl fmt::Display for TokenizeError {
@@ -284,7 +285,8 @@ impl fmt::Display for TokenizeError {
                 write!(f, "unexpected close delimiter")
             },
 
-            TokenizeError::UnterminatedStringLiteral(..) => write!(f, "unterminated string literal"),
+            TokenizeError::UnterminatedStringLiteral(..) => write!(f, "Unterminated string literal"),
+            TokenizeError::IllegalChar(..) => write!(f, "Illegal character code"),
         }
     }
 }
@@ -296,6 +298,7 @@ impl Spanned for TokenizeError {
             TokenizeError::UnmatchedDelimiter { span, .. } => span,
             TokenizeError::UnexpectedCloseDelimited { span, .. } => span,
             TokenizeError::UnterminatedStringLiteral(span) => span,
+            TokenizeError::IllegalChar(span) => span,
         }
     }
 }
@@ -304,6 +307,11 @@ impl DiagnosticOutput for TokenizeError {
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
             TokenizeError::IllegalToken(_, span) => Some(DiagnosticLabel {
+                span: span.clone(),
+                text: None,
+            }),
+
+            TokenizeError::IllegalChar(span) => Some(DiagnosticLabel {
                 span: span.clone(),
                 text: None,
             }),
