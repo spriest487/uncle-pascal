@@ -93,6 +93,11 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
+    CtorMissingMembers {
+        ctor_ty: Type,
+        members: Vec<Ident>,
+        span: Span,
+    },
     DuplicateNamedArg {
         name: Ident,
         previous: Span,
@@ -259,6 +264,7 @@ impl Spanned for TypecheckError {
             TypecheckError::ExternalGenericFunction { func, .. } => func.span(),
             TypecheckError::AmbiguousSelfType { span, .. } => span,
             TypecheckError::InvalidCtorType { span, .. } => span,
+            TypecheckError::CtorMissingMembers { span, .. } => span,
             TypecheckError::DuplicateNamedArg { span, .. } => span,
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
             TypecheckError::UnableToInferType { expr } => expr.annotation().span(),
@@ -334,6 +340,9 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::ExternalGenericFunction { .. } => "Function imported from external module may not have type parameters".to_string(),
             TypecheckError::InvalidCtorType { .. } => {
                 "Invalid constructor expr type".to_string()
+            }
+            TypecheckError::CtorMissingMembers { .. } => {
+                "Constructor is missing one or more named members".to_string()
             }
             TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
             TypecheckError::UnableToInferType { .. } => {
@@ -653,6 +662,17 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidCtorType { ty, .. } => {
                 write!(f, "type `{}` cannot be created with a constructor expr", ty)
+            }
+
+            TypecheckError::CtorMissingMembers { ctor_ty, members, .. } => {
+                write!(f, "the following members are missing from the constructor for type `{}`: ", ctor_ty)?;
+                for (i, member) in members.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", member)?;
+                }
+                Ok(())
             }
 
             TypecheckError::UndefinedSymbols { unit, .. } => {

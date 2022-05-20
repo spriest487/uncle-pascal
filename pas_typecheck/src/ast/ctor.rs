@@ -5,8 +5,10 @@ use crate::{
     ValueKind,
 };
 use pas_common::span::{Span, Spanned};
-use pas_syn::ast;
+use pas_syn::{ast, IdentPath};
 use std::rc::Rc;
+use linked_hash_map::LinkedHashMap;
+use crate::ast::Expr;
 
 pub type ObjectCtor = ast::ObjectCtor<TypeAnnotation>;
 pub type ObjectCtorMember = ast::ObjectCtorMember<TypeAnnotation>;
@@ -20,7 +22,140 @@ pub fn typecheck_object_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<ObjectCtor> {
-    let ctor_ty = match &ctor.ident {
+    let ctor_ty = find_ctor_ty(ctor.ident.as_ref(), expect_ty, &span, ctx)?;
+
+    let ty_name = ctor_ty.full_path()
+        .ok_or_else(|| TypecheckError::InvalidCtorType {
+            ty: ctor_ty.clone(),
+            span: span.clone(),
+        })?;
+
+    if ctor_ty.is_unspecialized_generic() {
+        let err = GenericError::CannotInferArgs {
+            target: GenericTarget::Name(ty_name.clone()),
+            hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
+        };
+
+        return Err(TypecheckError::NameError {
+            span: span.clone(),
+            err: NameError::GenericError(err),
+        });
+    }
+
+    if !ctx.is_accessible(&ty_name) {
+        return Err(TypecheckError::Private {
+            name: ty_name,
+            span,
+        });
+    }
+
+    if !ctx.is_constructor_accessible(&ctor_ty) {
+        return Err(TypecheckError::PrivateConstructor { ty: ctor_ty, span });
+    }
+
+    let mut expect_members: LinkedHashMap<_, _> = ctor_ty
+        .members(ctx)
+        .map_err(|err| TypecheckError::NameError {
+            err,
+            span: span.clone(),
+        })?
+        .into_iter()
+        .map(|member| (member.ident, member.ty))
+        .collect();
+
+    let mut members: Vec<ObjectCtorMember> = Vec::new();
+
+    for arg in &ctor.args.members {
+        if let Some(prev) = members.iter().find(|a| a.ident == arg.ident) {
+            // ctor has duplicate named arguments
+            return Err(TypecheckError::DuplicateNamedArg {
+                name: arg.ident.clone(),
+                span: arg.span().clone(),
+                previous: prev.span().clone(),
+            });
+        }
+
+        let member_ty = match expect_members.remove(&arg.ident) {
+            Some(member) => member,
+            None => {
+                // ctor has a named argument which doesn't exist in the type
+                let err = NameError::MemberNotFound {
+                    base: NameContainer::Type(ctor_ty),
+                    member: arg.ident.clone(),
+                };
+                return Err(TypecheckError::NameError {
+                    span: arg.span().clone(),
+                    err,
+                });
+            },
+        };
+
+        let value = implicit_conversion(
+            typecheck_expr(&arg.value, &member_ty, ctx)?,
+            &member_ty,
+            ctx,
+        )?;
+
+        members.push(ObjectCtorMember {
+            ident: arg.ident.clone(),
+            value,
+            span: arg.span.clone(),
+        });
+    }
+
+    // any remaining members must have valid default values
+    let mut missing_members = Vec::new();
+    for (member_ident, member_ty) in expect_members {
+        match member_ty.default_val() {
+            Some(default_lit) => {
+                let value = Expr::Literal(default_lit, TypedValueAnnotation {
+                    decl: None,
+                    span: ctor.annotation.clone(),
+                    ty: member_ty,
+                    value_kind: ValueKind::Temporary,
+                }.into());
+
+                members.push(ObjectCtorMember {
+                    ident: member_ident,
+                    span: ctor.annotation.clone(),
+                    value,
+                });
+            }
+            None => missing_members.push(member_ident),
+        }
+    }
+
+    if !missing_members.is_empty() {
+        return Err(TypecheckError::CtorMissingMembers {
+            ctor_ty,
+            span: ctor.annotation.clone(),
+            members: missing_members,
+        });
+    }
+
+    let args = ObjectCtorArgs {
+        open: ctor.args.open.clone(),
+        close: ctor.args.close.clone(),
+        members,
+    };
+
+    let annotation = TypedValueAnnotation {
+        ty: ctor_ty,
+        value_kind: ValueKind::Temporary,
+        span,
+        decl: None,
+    }
+    .into();
+
+    Ok(ObjectCtor {
+        ident: Some(ty_name),
+        args,
+        annotation,
+    })
+}
+
+fn find_ctor_ty(explicit_ty_name: Option<&IdentPath>, expect_ty: &Type, span: &Span, ctx: &Context) -> TypecheckResult<Type>  {
+    let ctor_ty = match explicit_ty_name {
         Some(ctor_ident) => {
             let (_, raw_ty) = ctx
                 .find_type(&ctor_ident)
@@ -59,116 +194,7 @@ pub fn typecheck_object_ctor(
         },
     };
 
-    let ty_name = ctor_ty.full_path()
-        .ok_or_else(|| TypecheckError::InvalidCtorType {
-            ty: ctor_ty.clone(),
-            span: span.clone(),
-        })?;
-
-    if ctor_ty.is_unspecialized_generic() {
-        let err = GenericError::CannotInferArgs {
-            target: GenericTarget::Name(ty_name.clone()),
-            hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
-        };
-
-        return Err(TypecheckError::NameError {
-            span: span.clone(),
-            err: NameError::GenericError(err),
-        });
-    }
-
-    if !ctx.is_accessible(&ty_name) {
-        return Err(TypecheckError::Private {
-            name: ty_name,
-            span,
-        });
-    }
-
-    if !ctx.is_constructor_accessible(&ctor_ty) {
-        return Err(TypecheckError::PrivateConstructor { ty: ctor_ty, span });
-    }
-
-    let ty_members: Vec<_> = ctor_ty.members(ctx).map_err(|err| TypecheckError::NameError {
-        err,
-        span: span.clone(),
-    })?;
-    let mut members: Vec<ObjectCtorMember> = Vec::new();
-
-    for arg in &ctor.args.members {
-        if let Some(prev) = members.iter().find(|a| a.ident == arg.ident) {
-            return Err(TypecheckError::DuplicateNamedArg {
-                name: arg.ident.clone(),
-                span: arg.span().clone(),
-                previous: prev.span().clone(),
-            });
-        }
-
-        let member = match ty_members.iter().find(|m| m.ident == arg.ident) {
-            Some(member) => member,
-            None => {
-                let err = NameError::MemberNotFound {
-                    base: NameContainer::Type(ctor_ty),
-                    member: arg.ident.clone(),
-                };
-
-                return Err(TypecheckError::NameError {
-                    span: arg.span().clone(),
-                    err,
-                });
-            },
-        };
-
-        let value = implicit_conversion(
-            typecheck_expr(&arg.value, &member.ty, ctx)?,
-            &member.ty,
-            ctx,
-        )?;
-
-        members.push(ObjectCtorMember {
-            ident: arg.ident.clone(),
-            value,
-            span: arg.span.clone(),
-        });
-    }
-
-    let ty_members_len = ctor_ty
-        .members_len(ctx)
-        .map_err(|err| TypecheckError::NameError {
-            span: span.clone(),
-            err,
-        })?;
-
-    if members.len() != ty_members_len {
-        let actual = members
-            .into_iter()
-            .map(|m| m.value.annotation().ty().into_owned())
-            .collect();
-        return Err(TypecheckError::InvalidArgs {
-            span: ctor.annotation.clone(),
-            expected: ty_members.into_iter().map(|m| m.ty).collect(),
-            actual,
-        });
-    }
-
-    let args = ObjectCtorArgs {
-        open: ctor.args.open.clone(),
-        close: ctor.args.close.clone(),
-        members,
-    };
-
-    let annotation = TypedValueAnnotation {
-        ty: ctor_ty,
-        value_kind: ValueKind::Temporary,
-        span,
-        decl: None,
-    }
-    .into();
-
-    Ok(ObjectCtor {
-        ident: Some(ty_name),
-        args,
-        annotation,
-    })
+    Ok(ctor_ty)
 }
 
 pub fn typecheck_collection_ctor(

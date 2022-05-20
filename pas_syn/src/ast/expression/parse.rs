@@ -327,36 +327,53 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         let close_bracket = group.close.clone();
 
         let mut tokens = group.to_inner_tokens();
-        let mut sub_expr = Expr::parse(&mut tokens)?;
 
-        // if the group is in the format `( some_ident: some_other_expr )` then it's not just a sub-expression,
-        // it's an object constructor group without a preceding object name
-        if let Some(item_ident) = sub_expr.as_ident() {
-            if tokens.match_one_maybe(Separator::Colon).is_some() {
-                let first_item_val = Expr::parse(&mut tokens)?;
-                let mut items = vec![ObjectCtorMember {
-                    ident: item_ident.clone(),
-                    span: item_ident.span().to(first_item_val.span()),
-                    value: first_item_val,
-                }];
+        let mut sub_expr;
 
-                // parse any items following a subsequent semicolon using the normal ctor parser
-                if tokens.match_one_maybe(Separator::Semicolon).is_some() {
-                    let rest_items = ObjectCtorMember::parse_seq(&mut tokens)?;
-                    items.extend(rest_items);
+        // if the inner group is completely empty, the only valid way to parse it is as an empty object ctor
+        if tokens.look_ahead().next().is_none() {
+            sub_expr = Expr::from(ObjectCtor {
+                ident: None,
+                annotation: open_bracket.to(&close_bracket),
+                args: ObjectCtorArgs {
+                    open: open_bracket,
+                    close: close_bracket,
+                    members: Vec::new(),
+                },
+            });
+        } else {
+            sub_expr = Expr::parse(&mut tokens)?;
+
+            // if the group is in the format `( some_ident: some_other_expr )` then it's not just a sub-expression,
+            // it's an object constructor group without a preceding object name
+            if let Some(item_ident) = sub_expr.as_ident() {
+                if tokens.match_one_maybe(Separator::Colon).is_some() {
+                    let first_item_val = Expr::parse(&mut tokens)?;
+                    let mut items = vec![ObjectCtorMember {
+                        ident: item_ident.clone(),
+                        span: item_ident.span().to(first_item_val.span()),
+                        value: first_item_val,
+                    }];
+
+                    // parse any items following a subsequent semicolon using the normal ctor parser
+                    if tokens.match_one_maybe(Separator::Semicolon).is_some() {
+                        let rest_items = ObjectCtorMember::parse_seq(&mut tokens)?;
+                        items.extend(rest_items);
+                    }
+
+                    sub_expr = Expr::from(ObjectCtor {
+                        ident: None,
+                        annotation: open_bracket.to(&close_bracket),
+                        args: ObjectCtorArgs {
+                            open: open_bracket,
+                            close: close_bracket,
+                            members: items,
+                        },
+                    });
                 }
-
-                sub_expr = Expr::from(ObjectCtor {
-                    ident: None,
-                    annotation: open_bracket.to(&close_bracket),
-                    args: ObjectCtorArgs {
-                        open: open_bracket,
-                        close: close_bracket,
-                        members: items,
-                    },
-                });
             }
         }
+
 
 
         tokens.finish()?;
