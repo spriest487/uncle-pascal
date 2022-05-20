@@ -926,7 +926,7 @@ impl Interpreter {
     }
 
     fn exec_raise(&mut self, val: &Ref) -> ExecResult<()> {
-        let msg = self.read_string(&val.clone().to_deref())?;
+        let msg = self.read_string(&val.clone())?;
 
         return Err(ExecError::Raised {
             msg,
@@ -1029,9 +1029,10 @@ impl Interpreter {
         pc: &mut usize,
         labels: &HashMap<Label, LabelLocation>,
         dest: Label,
-        test: &Value,
+        cond: &Value,
     ) -> ExecResult<()> {
-        match self.evaluate(test)? {
+        let cond_val = self.evaluate(cond)?;
+        match cond_val {
             DynValue::Bool(true) => {
                 self.exec_jump(pc, &labels[&dest])
             }
@@ -1215,7 +1216,9 @@ impl Interpreter {
         let b_val = self.evaluate(b)?;
 
         match a_val.try_eq(&b_val) {
-            Some(eq) => self.store(out, DynValue::Bool(eq)),
+            Some(eq) => {
+                self.store(out, DynValue::Bool(eq))
+            },
             None => Err(ExecError::IllegalInstruction(Instruction::Eq {
                 a: a.clone(),
                 b: b.clone(),
@@ -1229,7 +1232,9 @@ impl Interpreter {
         let b_val = self.evaluate(b)?;
 
         match a_val.try_gt(&b_val) {
-            Some(gt) => self.store(out, DynValue::Bool(gt)),
+            Some(gt) => {
+                self.store(out, DynValue::Bool(gt))
+            },
             None => Err(ExecError::IllegalInstruction(Instruction::Gt {
                 a: a.clone(),
                 b: b.clone(),
