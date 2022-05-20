@@ -337,6 +337,7 @@ dependencies = [
 name = "pas_ir"
 version = "0.1.0"
 dependencies = [
+ "bigdecimal",
  "cast",
  "linked-hash-map",
  "pas_common",

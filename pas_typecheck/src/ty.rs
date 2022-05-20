@@ -621,6 +621,15 @@ pub struct ArrayType {
     pub dim: usize,
 }
 
+impl ArrayType {
+    pub fn new(element_ty: Type, dim: usize) -> Self {
+        Self {
+            element_ty,
+            dim,
+        }
+    }
+}
+
 impl fmt::Display for ArrayType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "array[{}] of {}", self.dim, self.element_ty)

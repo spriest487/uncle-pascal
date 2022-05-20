@@ -157,6 +157,9 @@ fn translate_indexer(
 
 fn gen_bounds_check(index_val: impl Into<Value>, len_val: impl Into<Value>, builder: &mut Builder) {
     let index_val = index_val.into();
+    let len_val = len_val.into();
+
+    builder.comment(&format!("bounds check for index={}, len={}", index_val, len_val));
 
     let bounds_ok_label = builder.alloc_label();
 

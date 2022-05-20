@@ -1,4 +1,5 @@
 use std::fmt;
+use bigdecimal::BigDecimal;
 use crate::{FunctionID, StaticClosureID, StringID};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,6 +88,23 @@ impl From<GlobalRef> for Value {
 impl Value {
     pub fn deref(self) -> Ref {
         Ref::Deref(Box::new(self))
+    }
+
+    pub fn to_literal_val(&self) -> Option<BigDecimal> {
+        match self {
+            Value::LiteralU8(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralI8(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralI16(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralU16(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralI32(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralU32(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralI64(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralU64(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralISize(x) => Some(BigDecimal::from(*x as i64)),
+            Value::LiteralUSize(x) => Some(BigDecimal::from(*x as u64)),
+            Value::LiteralF32(x) => Some(BigDecimal::from(*x)),
+            _ => None,
+        }
     }
 }
 

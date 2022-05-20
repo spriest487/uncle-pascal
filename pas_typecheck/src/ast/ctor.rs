@@ -1,3 +1,4 @@
+use std::iter;
 use crate::{
     ast::{cast::implicit_conversion, typecheck_expr},
     ArrayType, Context, GenericError, GenericTarget, GenericTypeHint, NameContainer, NameError,
@@ -6,7 +7,6 @@ use crate::{
 };
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, IdentPath};
-use std::rc::Rc;
 use linked_hash_map::LinkedHashMap;
 use crate::ast::Expr;
 
@@ -202,7 +202,7 @@ pub fn typecheck_collection_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<CollectionCtor> {
-    let (elements, elem_ty) = match expect_ty.index_element_ty() {
+    let (mut elements, element_ty) = match expect_ty.index_element_ty() {
         None => {
             let elements = elements_for_inferred_ty(ctor, ctx)?;
             let elem_ty = elements[0].value.annotation().ty().into_owned();
@@ -212,6 +212,7 @@ pub fn typecheck_collection_ctor(
         Some(elem_ty) => {
             // todo: why was the true branch made to never execute previously?
             if elem_ty.contains_generic_params() {
+                // hint type has unresolved generic params and can't be used as a hint, infer from collection
                 let elements = elements_for_inferred_ty(ctor, ctx)?;
                 let elem_ty = elements[0].value.annotation().ty().into_owned();
                 (elements, elem_ty)
@@ -223,14 +224,19 @@ pub fn typecheck_collection_ctor(
     };
 
     let collection_ty = match expect_ty {
+        // known dyn array ty
         Type::DynArray { .. } => Type::DynArray {
-            element: Box::new(elem_ty),
+            element: Box::new(element_ty),
         },
 
-        _ => Type::Array(Rc::new(ArrayType {
-            element_ty: elem_ty,
-            dim: elements.len(),
-        })),
+        // known static array ty
+        Type::Array(array_ty) => {
+            default_fill_elements(array_ty.dim, &element_ty, &mut elements, ctor.annotation.span());
+            ArrayType::new(element_ty, elements.len()).into()
+        }
+
+        // unknown ty - construct a static array of these elements
+        _ => ArrayType::new(element_ty, elements.len()).into(),
     };
 
     let annotation = TypedValueAnnotation {
@@ -290,4 +296,25 @@ fn elements_for_expected_ty(
     }
 
     Ok(elements)
+}
+
+fn default_fill_elements(expect_dim: usize, element_ty: &Type, elements: &mut Vec<CollectionCtorElement>, span: &Span) {
+    if expect_dim <= elements.len() {
+        return;
+    }
+
+    if let Some(default_lit) = element_ty.default_val() {
+        let default_count = expect_dim - elements.len();
+        let default_val = Expr::Literal(default_lit, TypedValueAnnotation {
+            decl: None,
+            span: span.clone(),
+            ty: element_ty.clone(),
+            value_kind: ValueKind::Temporary,
+        }.into());
+
+        let default_elements = iter::repeat(CollectionCtorElement { value: default_val.clone() })
+            .take(default_count);
+
+        elements.extend(default_elements);
+    }
 }

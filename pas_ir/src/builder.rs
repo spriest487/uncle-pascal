@@ -422,6 +422,14 @@ impl<'m> Builder<'m> {
         });
     }
 
+    pub fn or(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Or {
+            a: a.into(),
+            b: b.into(),
+            out: out.into(),
+        });
+    }
+
     pub fn eq(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Eq {
             out: out.into(),
@@ -452,30 +460,19 @@ impl<'m> Builder<'m> {
         self.not(neq.clone(), neq.clone());
 
         // let out := out and neq
-        self.append(Instruction::And {
-            a: Value::Ref(out.clone()),
-            b: Value::Ref(neq),
-            out,
-        })
+        self.and(out.clone(), out, neq)
     }
 
     pub fn lt_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
-        match (a.into(), b.into()) {
-            (Value::LiteralI32(lit_a), Value::LiteralI32(lit_b)) => {
-                Value::LiteralBool(lit_a < lit_b)
-            },
-            (Value::LiteralU8(lit_a), Value::LiteralU8(lit_b)) => {
-                Value::LiteralBool(lit_a < lit_b)
-            },
-            (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {
-                Value::LiteralBool(lit_a < lit_b)
-            },
+        let a = a.into();
+        let b = b.into();
 
-            (a, b) => {
-                let result = self.local_temp(Type::Bool);
-                self.lt(result.clone(), a, b);
-                Value::Ref(result)
-            },
+        if let (Some(a_val), Some(b_val)) = (a.to_literal_val(), b.to_literal_val()) {
+            Value::LiteralBool(a_val < b_val)
+        } else {
+            let result = self.local_temp(Type::Bool);
+            self.lt(result.clone(), a, b);
+            Value::Ref(result)
         }
     }
 
@@ -501,37 +498,22 @@ impl<'m> Builder<'m> {
 
         // let eq := a = b
         let eq = self.local_temp(Type::Bool);
-        self.append(Instruction::Eq {
-            a,
-            b,
-            out: eq.clone(),
-        });
+        self.eq(eq.clone(), a, b);
 
         // out := out or eq
-        self.append(Instruction::Or {
-            a: Value::Ref(out.clone()),
-            b: Value::Ref(eq),
-            out,
-        })
+        self.or(out.clone(), eq, out)
     }
 
     pub fn gte_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
-        match (a.into(), b.into()) {
-            (Value::LiteralI32(lit_a), Value::LiteralI32(lit_b)) => {
-                Value::LiteralBool(lit_a >= lit_b)
-            },
-            (Value::LiteralU8(lit_a), Value::LiteralU8(lit_b)) => {
-                Value::LiteralBool(lit_a >= lit_b)
-            },
-            (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {
-                Value::LiteralBool(lit_a >= lit_b)
-            },
+        let a = a.into();
+        let b = b.into();
 
-            (a, b) => {
-                let result = self.local_temp(Type::Bool);
-                self.gte(result.clone(), a, b);
-                Value::Ref(result)
-            },
+        if let (Some(a_val), Some(b_val)) = (a.to_literal_val(), b.to_literal_val()) {
+            Value::LiteralBool(a_val >= b_val)
+        } else {
+            let result = self.local_temp(Type::Bool);
+            self.gte(result.clone(), a, b);
+            Value::Ref(result)
         }
     }
 
