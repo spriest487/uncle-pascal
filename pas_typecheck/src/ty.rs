@@ -9,6 +9,7 @@ use crate::{
 use pas_common::span::*;
 use pas_syn::{ast::{self, ArrayTypeName, StructKind, IdentTypeName, Typed}, ident::*, Operator};
 use std::{fmt, rc::Rc};
+use std::borrow::Cow;
 use crate::ast::Literal;
 
 #[cfg(test)]
@@ -537,6 +538,20 @@ impl Type {
 
             Type::Pointer(base_ty) => base_ty.substitute_type_args(args).ptr(),
 
+            Type::Function(sig) => {
+                let mut sig = (*sig).clone();
+                sig.return_ty = sig.return_ty.substitute_type_args(args);
+
+                sig.params = sig.params.into_iter()
+                    .map(|mut param| {
+                        param.ty = param.ty.substitute_type_args(args);
+                        param
+                    })
+                    .collect();
+
+                Type::Function(Rc::new(sig))
+            }
+
             other => other,
         }
     }
@@ -555,14 +570,17 @@ impl Type {
             },
 
             Type::Record(class) => specialize_generic_name(&class, args)
+                .map(Cow::into_owned)
                 .map(Box::new)
                 .map(Type::Record),
 
             Type::Class(class) => specialize_generic_name(&class, args)
+                .map(Cow::into_owned)
                 .map(Box::new)
                 .map(Type::Class),
 
             Type::Variant(variant) => specialize_generic_name(&variant, args)
+                .map(Cow::into_owned)
                 .map(Box::new)
                 .map(Type::Variant),
 
@@ -735,14 +753,9 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
     }
 }
 
-pub fn specialize_generic_name(name: &Symbol, args: &TypeList) -> GenericResult<Symbol> {
-    if !name.is_unspecialized_generic() {
-        return Ok(name.clone());
-    }
-
+pub fn specialize_generic_name<'a>(name: &'a Symbol, args: &TypeList) -> GenericResult<Cow<'a, Symbol>> {
     let type_params = match name.decl_name.type_params.as_ref() {
-        None => unreachable!("is_unspecialized_generic should have returned false"),
-
+        None => return Ok(Cow::Borrowed(name)),
         Some(type_params) => type_params,
     };
 
@@ -754,12 +767,22 @@ pub fn specialize_generic_name(name: &Symbol, args: &TypeList) -> GenericResult<
         });
     }
 
+    let type_args = if let Some(existing_args) = &name.type_args {
+        let specialized_args = existing_args.items.iter()
+            .cloned()
+            .map(|arg| arg.substitute_type_args(args));
+
+        TypeList::new(specialized_args, existing_args.span().clone())
+    } else {
+        args.clone()
+    };
+
     let name = Symbol {
-        type_args: Some(args.clone()),
+        type_args: Some(type_args),
         ..name.clone()
     };
 
-    Ok(name)
+    Ok(Cow::Owned(name))
 }
 
 pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList) -> GenericResult<StructDef> {
@@ -780,7 +803,7 @@ pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList) -> GenericRe
         .collect::<GenericResult<_>>()?;
 
     Ok(StructDef {
-        name: parameterized_name,
+        name: parameterized_name.into_owned(),
         members,
         span: class.span.clone(),
         kind: class.kind,
@@ -810,7 +833,7 @@ pub fn specialize_generic_variant(variant: &VariantDef, args: &TypeList) -> Gene
         .collect::<GenericResult<_>>()?;
 
     Ok(VariantDef {
-        name: parameterized_name,
+        name: parameterized_name.into_owned(),
         span: variant.span().clone(),
         cases,
     })
@@ -856,6 +879,10 @@ impl Specializable for Type {
             Type::Array(array_ty) => array_ty.element_ty.is_unspecialized_generic(),
 
             Type::DynArray { element } => element.is_unspecialized_generic(),
+
+            // Type::Function(sig) => {
+            //     sig.return_ty.is_unspecialized_generic() || sig.params.iter().any(|p| p.ty.is_unspecialized_generic())
+            // }
 
             _ => false,
         }

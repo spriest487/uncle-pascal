@@ -1,4 +1,5 @@
-use pas_typecheck::TypePattern;
+use std::borrow::Cow;
+use pas_typecheck::{specialize_generic_name, TypePattern};
 use crate::{Type, Value, Ref, pas_ty, Builder, Instruction};
 
 pub struct PatternMatchBinding {
@@ -82,8 +83,18 @@ pub fn translate_pattern_match(pattern: &pas_ty::TypePattern, target_val: &Ref, 
              data_binding,
              ..
          } => {
+            let variant = match builder.type_args() {
+                Some(args) => {
+                    let specialized = specialize_generic_name(variant, args)
+                        .expect("specializing name failed")
+                        .into_owned();
+                    Cow::Owned(specialized)
+                }
+                None => Cow::Borrowed(variant),
+            };
+
             let (struct_id, case_index, case_ty) =
-                builder.translate_variant_case(variant, case);
+                builder.translate_variant_case(&variant, case);
             let variant_ty = Type::Variant(struct_id);
 
             let bindings = match data_binding {

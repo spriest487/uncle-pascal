@@ -543,6 +543,8 @@ impl Parse for AnonymousFunctionDef<Span> {
             None
         };
 
+        tokens.match_one(Separator::Semicolon)?;
+
         let body = Block::parse(tokens)?;
 
         let span = func_kw.span().to(body.span());

@@ -1,9 +1,9 @@
-use std::borrow::Cow;
-use crate::metadata::ty::*;
-use crate::{InstructionFormatter, Metadata, Module, pas_ty, RawInstructionFormatter};
+use crate::{
+    metadata::ty::*, pas_ty, InstructionFormatter, Metadata, Module, RawInstructionFormatter,
+};
 use pas_syn::{self as syn, Path};
-use std::fmt;
 use pas_typecheck::Specializable;
+use std::{borrow::Cow, fmt};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath {
@@ -34,7 +34,7 @@ impl NamePath {
                     .collect();
 
                 Some(types)
-            }
+            },
 
             None => None,
         };

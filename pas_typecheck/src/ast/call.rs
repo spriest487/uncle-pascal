@@ -619,7 +619,7 @@ fn specialize_call_args(
         let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, ctx)
             .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?;
 
-        //                println!("{} -> {}, inferred: {:#?}", decl_sig, actual_sig, inferred_ty_args);
+        // eprintln!("INFERRED ARGS:\n\tdecl: {}\n\tinferred:{}\n\tfinal sig: {}", decl_sig, inferred_ty_args, actual_sig);
 
         Ok(SpecializedCallArgs {
             type_args: Some(inferred_ty_args),

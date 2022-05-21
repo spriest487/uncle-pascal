@@ -72,6 +72,8 @@ type
 function Unbox[T](b: Box[T]): T;
 function NewBox[T](value: T): Box[T];
 
+function Then[T, E](result: Result[T, E]; f: function(T): Result[T, E]): Result[T, E];
+
 function IsWhiteSpace(char: Byte): Boolean;
 
 function StringLen(s: String): Integer;
@@ -120,6 +122,14 @@ end;
 function StringLen(s: String): Integer;
 begin
     s.len
+end;
+
+function Then[T, E](result: Result[T, E]; f: function(T): Result[T, E]): Result[T, E];
+begin
+    match result of
+        Result.Ok val: f(val);
+        else result;
+    end;
 end;
 
 function IsWhiteSpace(char: Byte): Boolean;
