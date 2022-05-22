@@ -2,7 +2,10 @@ use pas_common::BuildOptions;
 use super::*;
 
 fn parse_func_decl(src: &str) -> FunctionDecl<Span> {
-    let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
+    let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())
+        .preprocess(src)
+        .unwrap();
+    let tokens = TokenTree::tokenize(test_unit).unwrap();
     let mut token_stream = TokenStream::new(tokens, Span::zero("test"));
 
     let decl = FunctionDecl::parse(&mut token_stream).unwrap();

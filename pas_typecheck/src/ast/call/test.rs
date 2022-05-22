@@ -11,7 +11,10 @@ use crate::{Context, FunctionSig, Primitive, Type};
 use std::cmp::Ordering;
 
 fn parse_expr(src: &str) -> ast::Expr<Span> {
-    let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
+    let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())
+        .preprocess(src)
+        .unwrap();
+    let tokens = TokenTree::tokenize(test_unit).unwrap();
 
     let mut tokens = TokenStream::new(tokens, Span::zero("test"));
 

@@ -17,10 +17,12 @@ fn unit_from_src(src: &'static str) -> Unit {
 
 fn classes_from_src(src: &'static str) -> Vec<Rc<StructDef>> {
     let unit = unit_from_src(src);
-    let decls = unit.type_decls().map(|(_vis, t)| match t {
-        ast::TypeDecl::Struct(c) => c.clone(),
-        _ => unreachable!(),
-    });
+    let decls = unit.type_decls()
+        .flat_map(|(_vis, decl)| decl.items.iter())
+        .map(|t| match t {
+            ast::TypeDeclItem::Struct(c) => c.clone(),
+            _ => unreachable!(),
+        });
 
     decls.collect()
 }
@@ -156,9 +158,9 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     let int_params = TypeList::new([INT32.clone()], span.clone());
 
     let a_class = unit
-        .type_decls()
+        .type_decl_items()
         .filter_map(|(_vis, d)| match d {
-            ast::TypeDecl::Composite(class) => Some(class.clone()),
+            ast::TypeDeclItem::Struct(class) => Some(class.clone()),
             _ => unreachable!(),
         })
         .next()

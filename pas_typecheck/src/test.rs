@@ -1,15 +1,8 @@
-use std::{fs::File, io::Read, iter, path::PathBuf};
-use std::collections::HashMap;
 use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
-use pas_common::{span::Span, BuildOptions, read_source_file};
+use pas_common::{read_source_file, span::Span, BuildOptions};
 use pas_pp::Preprocessor;
-use pas_syn::{
-    parse::TokenStream,
-    ast,
-    Ident,
-    IdentPath,
-    TokenTree
-};
+use pas_syn::{ast, parse::TokenStream, Ident, IdentPath, TokenTree};
+use std::{collections::HashMap, iter, path::PathBuf};
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
@@ -28,9 +21,11 @@ where
     let unit_path = PathBuf::from(env!("PASCAL2_UNITS"));
     let system_src = read_source_file(&unit_path.join("System.pas")).unwrap();
 
-    let unit_srcs = iter::once(("System", system_src))
-        .chain(unit_srcs.into_iter()
-            .map(|(unit_name, unit_src)| (unit_name, unit_src.to_string())));
+    let unit_srcs = iter::once(("System", system_src)).chain(
+        unit_srcs
+            .into_iter()
+            .map(|(unit_name, unit_src)| (unit_name, unit_src.to_string())),
+    );
 
     for (unit_name, src) in unit_srcs {
         let pp = Preprocessor::new(format!("{}.pas", unit_name), BuildOptions::default());

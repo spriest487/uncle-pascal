@@ -1,7 +1,7 @@
 edition="2018"
 merge_imports=true
 imports_layout="Vertical"
-imports_granularity="Module"
+imports_granularity="Crate"
 reorder_imports=true
 reorder_modules=true
 normalize_comments=true

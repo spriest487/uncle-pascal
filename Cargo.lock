@@ -341,6 +341,7 @@ dependencies = [
  "cast",
  "linked-hash-map",
  "pas_common",
+ "pas_pp",
  "pas_syn",
  "pas_typecheck",
 ]

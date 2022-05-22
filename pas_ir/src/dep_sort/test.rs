@@ -15,7 +15,10 @@ use crate::{
 };
 
 fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
-    let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
+    let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())
+        .preprocess(src)
+        .unwrap();
+    let tokens = TokenTree::tokenize(test_unit).unwrap();
     let mut stream = TokenStream::new(tokens, Span::zero("test"));
 
     let unit = ast::Unit::parse(&mut stream, IdentPath::from_parts(vec![Ident::new("test", Span::zero("test"))])).unwrap();

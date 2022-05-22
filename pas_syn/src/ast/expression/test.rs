@@ -7,7 +7,10 @@ use crate::{
 };
 
 fn tokenize(src: &str) -> TokenStream {
-    let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
+    let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())
+        .preprocess(src)
+        .unwrap();
+    let tokens = TokenTree::tokenize(test_unit).unwrap();
 
     TokenStream::new(tokens, Span::zero("test"))
 }

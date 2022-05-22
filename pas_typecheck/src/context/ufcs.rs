@@ -153,7 +153,7 @@ mod test {
             end",
         );
 
-        let (_, target_decl) = unit.unit.type_decls().next().unwrap();
+        let (_, target_decl) = unit.unit.type_decl_items().next().unwrap();
         let target = Type::of_decl(target_decl);
         assert_eq!(target.full_path().unwrap().last().name.as_str(), "UFCSTarget");
 
@@ -191,7 +191,7 @@ mod test {
         let a = &units["A"];
         let c = &units["C"];
 
-        let (_, target_decl) = a.unit.type_decls().next().unwrap();
+        let (_, target_decl) = a.unit.type_decl_items().next().unwrap();
         let target = Type::of_decl(target_decl);
         let methods = find_ufcs_free_functions(&target, &c.context);
 
@@ -221,7 +221,7 @@ mod test {
         let a = &units["A"];
         let c = &units["C"];
 
-        let target = Type::of_decl(&a.unit.type_decls().next().unwrap().1);
+        let target = Type::of_decl(&a.unit.type_decl_items().next().unwrap().1);
         let methods = find_ufcs_free_functions(&target, &c.context);
 
         assert_eq!(methods.len(), 0);

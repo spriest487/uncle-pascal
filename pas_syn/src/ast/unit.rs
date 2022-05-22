@@ -63,6 +63,11 @@ impl<A: Annotation> Unit<A> {
                 _ => None,
             })
     }
+
+    pub fn type_decl_items(&self) -> impl Iterator<Item = (Visibility, &TypeDeclItem<A>)> {
+        self.type_decls()
+            .flat_map(|(vis, decl)| decl.items.iter().map(move |item| (vis, item)))
+    }
 }
 
 impl Unit<Span> {
