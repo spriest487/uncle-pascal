@@ -3,20 +3,28 @@ use crate::source_map::*;
 use crate::{Location, Span};
 use std::rc::Rc;
 
+struct TestMapping {
+    start: (usize, usize),
+    end: (usize, usize),
+    src_file: &'static str,
+    src_start: (usize, usize),
+    src_end: (usize, usize),
+}
+
 fn build_with_mappings(
     filename: &'static str,
-    entries: impl IntoIterator<Item=((usize, usize), (usize, usize), &'static str, (usize, usize), (usize, usize))>
+    entries: impl IntoIterator<Item=TestMapping>
 ) -> SourceMap {
     let mut builder = SourceMapBuilder::new(Rc::new(filename.into()));
 
-    for ((start_line, start_col), (end_line, end_col), src_file, (src_start_line, src_start_col), (src_end_line, src_end_col)) in entries {
+    for mapping in entries {
         builder.add(
-            Location { line: start_line, col: start_col },
-            Location { line: end_line, col: end_col},
+            Location { line: mapping.start.0, col: mapping.start.1 },
+            Location { line: mapping.end.0, col: mapping.end.1 },
             Span::new(
-                src_file,
-                Location { line: src_start_line, col: src_start_col },
-                Location { line: src_end_line, col: src_end_col },
+                mapping.src_file,
+                Location { line: mapping.src_start.0, col: mapping.src_start.1 },
+                Location { line: mapping.src_end.0, col: mapping.src_end.1 },
             )
         )
     }
@@ -27,37 +35,36 @@ fn build_with_mappings(
 #[test]
 fn finds_single_entry() {
     let map = build_with_mappings("test_src.pas", [
-        ((2, 2), (2, 4), "test_src.pas", (0, 3), (1, 8))
+        TestMapping { start: (2, 2), end: (2, 4), src_file: "test_src.pas", src_start: (0, 3), src_end: (0, 5)}
     ]);
 
+    // look up the exact span, should have the exact mapped src location
     let span = map.lookup(
         Location { line: 2, col: 2 },
         Location { line: 2, col: 4 },
     );
 
     assert_eq!(PathBuf::from("test_src.pas"), *span.file);
-    assert_eq!(0, span.start.line);
-    assert_eq!(3, span.start.col);
-    assert_eq!(1, span.end.line);
-    assert_eq!(8, span.end.col);
+    assert_eq!(Location::new(0, 3), span.start);
+    assert_eq!(Location::new(0, 5), span.end);
 }
 
 #[test]
 fn finds_nearest_entry() {
     let map = build_with_mappings("test_src.pas", [
-        ((0, 0), (0, 10), "test_src.pas", (0, 0), (0, 10)),
-        ((1, 0), (2, 2), "test_src.pas", (0, 10), (0, 15)),
-        ((2, 2), (2, 4), "test_src.pas", (0, 16), (0, 20))
+        TestMapping { start: (0, 0), end: (0, 10), src_file: "test_src.pas", src_start: (0, 0), src_end: (0, 10) },
+        TestMapping { start: (1, 0), end: (2, 2), src_file: "test_src.pas", src_start: (0, 10), src_end: (0, 15) },
+        TestMapping { start: (2, 1), end: (2, 4), src_file: "test_src.pas", src_start: (0, 16), src_end: (0, 20) },
     ]);
 
+    // looks up a 3-character span that starts in the middle of the second mapping
     let span = map.lookup(
-        Location { line: 2, col: 1 },
-        Location { line: 2, col: 3 },
+        Location { line: 1, col: 1 },
+        Location { line: 1, col: 3 },
     );
 
+    // expect a src span of the same length offset by the same amount within the second mapping
     assert_eq!(PathBuf::from("test_src.pas"), *span.file);
-    assert_eq!(0, span.start.line);
-    assert_eq!(16, span.start.col);
-    assert_eq!(0, span.end.line);
-    assert_eq!(20, span.end.col);
+    assert_eq!(Location::new(0, 11), span.start);
+    assert_eq!(Location::new(0, 13), span.end);
 }
