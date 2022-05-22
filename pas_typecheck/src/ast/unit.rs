@@ -7,11 +7,12 @@ use crate::{
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, ast::Visibility, IdentPath};
 use std::rc::Rc;
+use pas_syn::ast::BindingDeclKind;
 
 pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
-pub type ConstDecl = ast::ConstDecl<TypeAnnotation>;
-pub type ConstDeclItem = ast::ConstDeclItem<TypeAnnotation>;
+pub type GlobalBinding = ast::GlobalBinding<TypeAnnotation>;
+pub type GlobalBindingItem = ast::GlobalBindingItem<TypeAnnotation>;
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type TypeDeclItem = ast::TypeDeclItem<TypeAnnotation>;
 
@@ -41,11 +42,11 @@ fn typecheck_unit_decl(
             typecheck_unit_type_decl(type_decl, visibility, ctx)
         },
 
-        ast::UnitDecl::Const { decl } => {
-            let decl = typecheck_const_decl(decl, visibility, ctx)?;
+        ast::UnitDecl::GlobalBinding { decl } => {
+            let decl = typecheck_global_binding(decl, visibility, ctx)?;
 
-            Ok(ast::UnitDecl::Const { decl })
-        },
+            Ok(ast::UnitDecl::GlobalBinding { decl })
+        }
     }
 }
 
@@ -261,78 +262,118 @@ fn typecheck_type_decl_body(
     Ok(type_decl)
 }
 
-fn typecheck_const_decl(
-    decl: &ast::ConstDecl<Span>,
+fn typecheck_global_binding(
+    binding: &ast::GlobalBinding<Span>,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<ConstDecl> {
-    let mut items = Vec::with_capacity(decl.items.len());
+) -> TypecheckResult<GlobalBinding> {
+    let mut items = Vec::with_capacity(binding.items.len());
 
-    for const_decl_item in &decl.items {
-        let item = typecheck_const_decl_item(const_decl_item, visibility, ctx)?;
+    for const_decl_item in &binding.items {
+        let item = typecheck_global_binding_item(binding.kind, const_decl_item, visibility, ctx)?;
         items.push(item);
     }
 
-    Ok(ConstDecl {
+    Ok(GlobalBinding {
+        kind: binding.kind,
         items,
-        span: decl.span.clone(),
+        span: binding.span.clone(),
     })
 }
 
-fn typecheck_const_decl_item(
-    decl: &ast::ConstDeclItem<Span>,
+fn typecheck_global_binding_item(
+    kind: BindingDeclKind,
+    item: &ast::GlobalBindingItem<Span>,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<ConstDeclItem> {
-    let span = decl.span().clone();
+) -> TypecheckResult<GlobalBindingItem> {
+    let span = item.span().clone();
 
-    let (ty, const_val_expr) = match &decl.ty {
-        Some(explicit_ty) => {
-            // use explicitly provided type
-            let ty = typecheck_type(explicit_ty, ctx)?;
-            let const_val_expr = typecheck_expr(&decl.val, &ty, ctx)?;
+    let (ty, val) = match kind {
+        BindingDeclKind::Const => {
+            let (ty, const_val_expr) = match (&item.ty, &item.val) {
+                (_, None) => {
+                    return Err(TypecheckError::ConstDeclWithNoValue { span });
+                }
 
-            (ty, const_val_expr)
-        },
-        None => {
-            // infer from provided value expr
-            let const_val_expr = typecheck_expr(&decl.val, &Type::Nothing, ctx)?;
-            let ty = const_val_expr.annotation().ty().into_owned();
+                (Some(explicit_ty), Some(val)) => {
+                    // use explicitly provided type
+                    let ty = typecheck_type(explicit_ty, ctx)?;
+                    let const_val_expr = typecheck_expr(val, &ty, ctx)?;
+                    (ty, const_val_expr)
+                }
 
-            (ty, const_val_expr)
-        },
+                (None, Some(val)) => {
+                    // infer from provided value expr
+                    let init_expr = typecheck_expr(val, &Type::Nothing, ctx)?;
+                    let ty = init_expr.annotation().ty().into_owned();
+                    (ty, init_expr)
+                }
+            };
+
+            let const_val_literal = match const_val_expr.const_eval(ctx) {
+                Some(const_val) => Ok(const_val),
+                None => Err(TypecheckError::InvalidConstExpr {
+                    expr: Box::new(const_val_expr),
+                }),
+            }?;
+
+            ctx.declare_const(
+                item.ident.clone(),
+                const_val_literal.clone(),
+                ty.clone(),
+                visibility,
+                span.clone(),
+            )?;
+
+            let annotation = ConstAnnotation {
+                value: const_val_literal.clone(),
+                span: span.clone(),
+                decl: Some(item.ident.clone()),
+                ty: ty.clone(),
+            };
+
+            let val = Expr::Literal(const_val_literal.clone(), annotation.into());
+            (ty, Some(Box::new(val)))
+        }
+
+        BindingDeclKind::Var => {
+            match (&item.ty, &item.val) {
+                (Some(explicit_ty), Some(val_expr)) => {
+                    let explicit_ty = typecheck_type(explicit_ty, ctx)?;
+                    let val_expr = typecheck_expr(&val_expr, &explicit_ty, ctx)?;
+
+                    (explicit_ty, Some(Box::new(val_expr)))
+                },
+
+                (Some(explicit_ty), None) => {
+                    let explicit_ty = typecheck_type(explicit_ty, ctx)?;
+                    (explicit_ty, None)
+                }
+
+                (None, Some(val_expr)) => {
+                    let val_expr = typecheck_expr(&val_expr, &Type::Nothing, ctx)?;
+                    let actual_ty = val_expr.annotation().ty().into_owned();
+
+                    (actual_ty, Some(Box::new(val_expr)))
+                }
+
+                (None, None) => (Type::Nothing, None),
+            }
+        }
     };
 
-    let const_val_literal = match const_val_expr.const_eval(ctx) {
-        Some(const_val) => Ok(const_val),
-        None => Err(TypecheckError::InvalidConstExpr {
-            expr: Box::new(const_val_expr),
-        }),
-    }?;
+    if ty == Type::Nothing {
+        return Err(TypecheckError::BindingWithNoType {
+            binding_name: item.ident.clone(),
+            span,
+        });
+    }
 
-    ctx.declare_const(
-        decl.ident.clone(),
-        const_val_literal.clone(),
-        ty.clone(),
-        visibility,
-        span.clone(),
-    )?;
-
-    let const_val = Expr::Literal(
-        const_val_literal.clone(),
-        ConstAnnotation {
-            value: const_val_literal.clone(),
-            span: span.clone(),
-            decl: Some(decl.ident.clone()),
-            ty: ty.clone(),
-        }
-        .into(),
-    );
-
-    Ok(ConstDeclItem {
+    Ok(GlobalBindingItem {
         ty: Some(ty),
-        ident: decl.ident.clone(),
-        val: Box::new(const_val),
+        ident: item.ident.clone(),
+        val,
         span,
     })
 }

@@ -264,7 +264,7 @@ fn init_function_locals(
     builder: &mut Builder,
 ) {
     for local in locals {
-        if local.kind == pas_syn::ast::FunctionLocalDeclKind::Var {
+        if local.kind == pas_syn::ast::BindingDeclKind::Var {
             let ty = builder.translate_type(&local.ty);
 
             let local_ref = builder.local_new(ty, Some(local.ident.name.to_string()));

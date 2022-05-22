@@ -7,7 +7,7 @@ use derivative::*;
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_common::TracedError;
-use crate::ast::{Annotation, TypeName};
+use crate::ast::{Annotation, BindingDeclKind, TypeName};
 use crate::parse::{Matcher, MatchOneOf, Parse, ParseError, ParseResult, ParseSeq, TokenStream};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -318,18 +318,12 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum FunctionLocalDeclKind {
-    Var,
-    Const,
-}
-
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Hash, PartialEq, Debug)]
-pub struct FunctionLocalDecl<A>
+pub struct FunctionLocalBinding<A>
     where A: Annotation
 {
-    pub kind: FunctionLocalDeclKind,
+    pub kind: BindingDeclKind,
 
     pub ident: Ident,
     pub ty: A::Type,
@@ -342,7 +336,7 @@ pub struct FunctionLocalDecl<A>
     pub span: Span,
 }
 
-impl<A: Annotation> Spanned for FunctionLocalDecl<A> {
+impl<A: Annotation> Spanned for FunctionLocalBinding<A> {
     fn span(&self) -> &Span {
         &self.span
     }
@@ -353,7 +347,7 @@ impl<A: Annotation> Spanned for FunctionLocalDecl<A> {
 pub struct FunctionDef<A: Annotation> {
     pub decl: FunctionDecl<A>,
 
-    pub locals: Vec<FunctionLocalDecl<A>>,
+    pub locals: Vec<FunctionLocalBinding<A>>,
 
     pub body: Block<A>,
 
@@ -373,14 +367,14 @@ impl FunctionDef<Span> {
                 Some(tt) if tt.is_keyword(Keyword::Var) => {
                     tokens.advance(1);
                     locals.extend(
-                        Self::parse_locals_block(tokens, FunctionLocalDeclKind::Var)?
+                        Self::parse_locals_block(tokens, BindingDeclKind::Var)?
                     );
                     tokens.match_one_maybe(Separator::Semicolon);
                 },
                 Some(tt) if tt.is_keyword(Keyword::Const) => {
                     tokens.advance(1);
                     locals.extend(
-                        Self::parse_locals_block(tokens, FunctionLocalDeclKind::Const)?
+                        Self::parse_locals_block(tokens, BindingDeclKind::Const)?
                     );
                     tokens.match_one_maybe(Separator::Semicolon);
                 }
@@ -401,7 +395,7 @@ impl FunctionDef<Span> {
         })
     }
 
-    fn parse_locals_block(tokens: &mut TokenStream, kind: FunctionLocalDeclKind) -> ParseResult<Vec<FunctionLocalDecl<Span>>> {
+    fn parse_locals_block(tokens: &mut TokenStream, kind: BindingDeclKind) -> ParseResult<Vec<FunctionLocalBinding<Span>>> {
         let mut decls = Vec::new();
         loop {
             if !decls.is_empty() {
@@ -429,7 +423,7 @@ impl FunctionDef<Span> {
             };
 
             decls.extend(idents.into_iter()
-                .map(|ident| FunctionLocalDecl {
+                .map(|ident| FunctionLocalBinding {
                     span: ident.span.clone(),
                     kind,
                     ident,
@@ -470,10 +464,7 @@ impl<A: Annotation> fmt::Display for FunctionDef<A> {
         let mut last_local_kind = None;
         for local in &self.locals {
             if Some(local.kind) != last_local_kind {
-                match local.kind {
-                    FunctionLocalDeclKind::Var => writeln!(f, "var")?,
-                    FunctionLocalDeclKind::Const => writeln!(f, "const")?,
-                };
+                write!(f, "{}", local.kind)?;
                 last_local_kind = Some(local.kind);
             }
 

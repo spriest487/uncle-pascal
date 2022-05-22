@@ -125,7 +125,8 @@ pub enum TypecheckError {
         span: Span,
     },
     BindingWithNoType {
-        binding: Box<ast::LocalBinding<Span>>,
+        binding_name: Ident,
+        span: Span,
     },
     NotInitialized {
         ident: Ident,
@@ -274,7 +275,7 @@ impl Spanned for TypecheckError {
             TypecheckError::UnableToInferFunctionExprType { func } => func.span(),
             TypecheckError::UnableToInferSpecialization { span, .. } => span,
             TypecheckError::UninitBindingWithNoType { binding } => binding.annotation.span(),
-            TypecheckError::BindingWithNoType { binding } => binding.annotation.span(),
+            TypecheckError::BindingWithNoType { span, .. } => span,
             TypecheckError::NotInitialized { usage, .. } => usage.span(),
             TypecheckError::InvalidRefExpression { expr } => expr.annotation().span(),
             TypecheckError::InvalidStatement(expr) => expr.0.annotation().span(),
@@ -702,8 +703,8 @@ impl fmt::Display for TypecheckError {
                 write!(f, "the type of `{}` cannot be inferred because it has no initial value", binding.name)
             }
 
-            TypecheckError::BindingWithNoType { binding } => {
-                write!(f, "the type of value bound to `{}` cannot be Nothing", binding.name)
+            TypecheckError::BindingWithNoType { binding_name, .. } => {
+                write!(f, "the type of value bound to `{}` cannot be Nothing", binding_name)
             }
 
             TypecheckError::NotInitialized { ident, .. } => {

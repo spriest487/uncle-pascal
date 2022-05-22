@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        Annotation, ConstDecl, FunctionDecl, FunctionDef, TypeDecl, UseDecl, unit::parse_unit_decl,
+        Annotation, GlobalBinding, FunctionDecl, FunctionDef, TypeDecl, UseDecl, unit::parse_unit_decl,
     },
     Keyword,
     parse::{
@@ -25,7 +25,7 @@ pub enum UnitDecl<A: Annotation> {
     FunctionDef { def: FunctionDef<A> },
     Type { decl: TypeDecl<A> },
     Uses { decl: UseDecl },
-    Const { decl: ConstDecl<A> },
+    GlobalBinding { decl: GlobalBinding<A> },
 }
 
 impl<A: Annotation> Spanned for UnitDecl<A> {
@@ -39,7 +39,7 @@ impl<A: Annotation> Spanned for UnitDecl<A> {
                 decl: type_decl, ..
             } => type_decl.span(),
             UnitDecl::Uses { decl: use_decl } => use_decl.span(),
-            UnitDecl::Const { decl, .. } => decl.span(),
+            UnitDecl::GlobalBinding { decl, .. } => decl.span(),
         }
     }
 }
@@ -53,7 +53,7 @@ impl<A: Annotation> fmt::Display for UnitDecl<A> {
             UnitDecl::FunctionDef { def: func_def, .. } => write!(f, "{}", func_def),
             UnitDecl::Type { decl: ty_decl, .. } => write!(f, "{}", ty_decl),
             UnitDecl::Uses { decl: uses } => write!(f, "{}", uses),
-            UnitDecl::Const { decl, .. } => write!(f, "{}", decl),
+            UnitDecl::GlobalBinding { decl, .. } => write!(f, "{}", decl),
         }
     }
 }
@@ -65,6 +65,7 @@ impl UnitDecl<Span> {
             .or(Keyword::Uses)
             .or(Keyword::Type)
             .or(Keyword::Const)
+            .or(Keyword::Var)
     }
 
     pub fn parse_seq(part_kw: Keyword, tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {

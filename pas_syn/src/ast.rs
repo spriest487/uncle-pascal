@@ -763,3 +763,18 @@ impl Spanned for TypeNamePattern {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum BindingDeclKind {
+    Const,
+    Var
+}
+
+impl fmt::Display for BindingDeclKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BindingDeclKind::Var => writeln!(f, "var"),
+            BindingDeclKind::Const => writeln!(f, "const"),
+        }
+    }
+}

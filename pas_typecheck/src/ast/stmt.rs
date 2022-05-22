@@ -80,7 +80,8 @@ pub fn typecheck_local_binding(
 
     if binding_ty == Type::Nothing {
         return Err(TypecheckError::BindingWithNoType {
-            binding: Box::new(binding.clone()),
+            binding_name: binding.name.clone(),
+            span: binding.span().clone(),
         });
     }
 

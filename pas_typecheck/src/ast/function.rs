@@ -13,7 +13,7 @@ pub type FunctionParam = ast::FunctionParam<TypeAnnotation>;
 pub type InterfaceImpl = ast::InterfaceImpl<TypeAnnotation>;
 pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<TypeAnnotation>;
 pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<TypeAnnotation>;
-pub type FunctionLocalDecl = ast::FunctionLocalDecl<TypeAnnotation>;
+pub type FunctionLocalDecl = ast::FunctionLocalBinding<TypeAnnotation>;
 
 fn typecheck_param(
     param: &ast::FunctionParam<Span>,
@@ -215,7 +215,7 @@ pub fn typecheck_func_def(
         };
 
         match local.kind {
-            ast::FunctionLocalDeclKind::Const => {
+            ast::BindingDeclKind::Const => {
                 let val = match &initial_val {
                     Some(val) => val,
                     None => {
@@ -228,7 +228,7 @@ pub fn typecheck_func_def(
                 ctx.declare_const(local.ident.clone(), val.clone(), ty.clone(), visiblity, local.span.clone())?;
             },
 
-            ast::FunctionLocalDeclKind::Var => {
+            ast::BindingDeclKind::Var => {
                 let binding_kind = match &initial_val {
                     Some(..) => ValueKind::Mutable,
                     None => ValueKind::Uninitialized,

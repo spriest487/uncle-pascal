@@ -202,8 +202,8 @@ fn parse_unit_decl(tokens: &mut TokenStream, part_kw: Keyword) -> ParseResult<Un
             decl: UseDecl::parse(tokens)?,
         },
 
-        Some(tt) if tt.is_keyword(Keyword::Const) => UnitDecl::Const {
-            decl: ConstDecl::parse(tokens)?,
+        Some(tt) if tt.is_keyword(Keyword::Const) || tt.is_keyword(Keyword::Var) => UnitDecl::GlobalBinding {
+            decl: GlobalBinding::parse(tokens)?,
         },
 
         Some(unexpected_tt) => {
