@@ -236,20 +236,23 @@ pub enum DeclMod<A: Annotation> {
     External { src: A::ConstStringExpr, span: Span },
     Inline(Span),
     Forward(Span),
+    Overload(Span),
 }
 
 impl<A: Annotation> DeclMod<A> {
     pub const EXTERNAL_WORD: &'static str = "external";
     pub const FORWARD_WORD: &'static str = "forward";
     pub const INLINE_WORD: &'static str = "inline";
+    pub const OVERLOAD_WORD: &'static str = "overload";
 
-    pub const RESERVED_WORDS: [&'static str; 3] = [Self::EXTERNAL_WORD, Self::FORWARD_WORD, Self::INLINE_WORD];
+    pub const RESERVED_WORDS: [&'static str; 4] = [Self::EXTERNAL_WORD, Self::FORWARD_WORD, Self::INLINE_WORD, Self::OVERLOAD_WORD];
 
     pub fn keyword(&self) -> &str {
         match self {
             DeclMod::External { .. } => Self::EXTERNAL_WORD,
             DeclMod::Forward(..) => Self::FORWARD_WORD,
             DeclMod::Inline(..) => Self::INLINE_WORD,
+            DeclMod::Overload(..) => Self::OVERLOAD_WORD,
         }
     }
 }
@@ -271,6 +274,7 @@ impl ParseSeq for DeclMod<Span> {
 
             Self::INLINE_WORD => DeclMod::Inline(word_token.span().clone()),
             Self::FORWARD_WORD => DeclMod::Forward(word_token.span().clone()),
+            Self::OVERLOAD_WORD => DeclMod::Overload(word_token.span().clone()),
 
             _ => unreachable!("bad modified contextual keyword"),
         };
@@ -307,7 +311,8 @@ impl<A: Annotation> fmt::Display for DeclMod<A> {
         match self {
             DeclMod::External { src, .. } => write!(f, "{} '{}'", Self::EXTERNAL_WORD, src),
             DeclMod::Inline(_) => write!(f, "{}", Self::INLINE_WORD),
-            DeclMod::Forward(_) => write!(f, "{}", Self::FORWARD_WORD)
+            DeclMod::Forward(_) => write!(f, "{}", Self::FORWARD_WORD),
+            DeclMod::Overload(_) => write!(f, "{}", Self::OVERLOAD_WORD),
         }
     }
 }
@@ -318,6 +323,7 @@ impl<A: Annotation> Spanned for DeclMod<A> {
             DeclMod::External { span, .. } => span,
             DeclMod::Inline(span) => span,
             DeclMod::Forward(span) => span,
+            DeclMod::Overload(span) => span,
         }
     }
 }

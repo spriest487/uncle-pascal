@@ -144,6 +144,10 @@ fn typecheck_decl_mods(
             ast::DeclMod::Inline(span) => DeclMod::Inline(span.clone()),
 
             ast::DeclMod::Forward(span) => DeclMod::Forward(span.clone()),
+
+            ast::DeclMod::Overload(span) => {
+                unimplemented!("function overload @ {}", span)
+            }
         };
 
         results.push(result);
