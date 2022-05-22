@@ -367,7 +367,14 @@ impl Specializable for Symbol {
 
     /// is this either a type without type args, or does it already have all the type args it needs?
     fn is_unspecialized_generic(&self) -> bool {
-        self.decl_name.type_params.is_some() && self.type_args.is_none()
+        if self.decl_name.type_params.is_none() {
+            return false;
+        }
+
+        match &self.type_args {
+            None => true,
+            Some(type_args) => type_args.items.iter().any(|arg| arg.is_unspecialized_generic())
+        }
     }
 
     fn name(&self) -> IdentPath {

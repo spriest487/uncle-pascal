@@ -157,6 +157,7 @@ impl Matcher {
                     // inline function decl
                     | Keyword::Function
                     | Keyword::Procedure
+                    | Keyword::Lambda
 
                     // literals
                     | Keyword::Nil

@@ -1,25 +1,29 @@
 pub use self::{pattern::*, primitive::*, sig::*, ty_param::*};
+use crate::ast::Literal;
 use crate::{
-    ast::{const_eval_integer, typecheck_expr, StructDef, FunctionDecl, Member, VariantDef},
+    ast::{const_eval_integer, typecheck_expr, FunctionDecl, Member, StructDef, VariantDef},
     context,
     result::*,
     Context, GenericError, GenericResult, GenericTarget, NameResult, Symbol, TypeAnnotation,
     TypeArgsResult::NotGeneric,
 };
 use pas_common::span::*;
-use pas_syn::{ast::{self, ArrayTypeName, StructKind, IdentTypeName, Typed}, ident::*, Operator};
-use std::{fmt, rc::Rc};
+use pas_syn::{
+    ast::{self, ArrayTypeName, IdentTypeName, StructKind, Typed},
+    ident::*,
+    Operator,
+};
 use std::borrow::Cow;
-use crate::ast::Literal;
+use std::{fmt, rc::Rc};
 
 #[cfg(test)]
 mod test;
 
+pub mod layout;
 pub mod pattern;
 pub mod primitive;
 pub mod sig;
 pub mod ty_param;
-pub mod layout;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum Type {
@@ -94,7 +98,7 @@ impl Type {
 
     pub fn default_val(&self) -> Option<Literal> {
         match self {
-            | Type::Function(_)
+            Type::Function(_)
             | Type::Nothing
             | Type::Record(_)
             | Type::Class(_)
@@ -105,12 +109,11 @@ impl Type {
             | Type::MethodSelf
             | Type::GenericParam(_)
             | Type::Any
-            | Type::Enum(_)
-            => None,
+            | Type::Enum(_) => None,
 
-            | Type::Nil => Some(Literal::Nil),
-            | Type::Primitive(p) => Some(p.default_val()),
-            | Type::Pointer(..) => Some(Literal::Nil),
+            Type::Nil => Some(Literal::Nil),
+            Type::Primitive(p) => Some(p.default_val()),
+            Type::Pointer(..) => Some(Literal::Nil),
         }
     }
 
@@ -128,13 +131,9 @@ impl Type {
                 Type::Interface(Box::new(iface.name.qualified.clone()))
             },
 
-            ast::TypeDeclItem::Enum(enum_decl) => {
-                Type::Enum(Box::new(enum_decl.name.clone()))
-            }
+            ast::TypeDeclItem::Enum(enum_decl) => Type::Enum(Box::new(enum_decl.name.clone())),
 
-            ast::TypeDeclItem::Alias(alias) => {
-                (*alias.ty).clone()
-            }
+            ast::TypeDeclItem::Alias(alias) => (*alias.ty).clone(),
         }
     }
 
@@ -356,44 +355,35 @@ impl Type {
                 | Operator::BitAnd
                 | Operator::BitOr
                 | Operator::Caret,
-                Type::Pointer(..)
+                Type::Pointer(..),
             ) => *self == *rhs,
 
             // integer division is valid for two of the same primitive integer type
-            (
-                Type::Primitive(a),
-                Operator::IDiv,
-                Type::Primitive(b)
-            ) => {
+            (Type::Primitive(a), Operator::IDiv, Type::Primitive(b)) => {
                 let a_valid = a.is_integer() || a.is_pointer();
                 a_valid && *a == *b
-            }
+            },
 
             // real division is valid for two of the same primitive real type
-            (
-                Type::Primitive(a),
-                Operator::FDiv,
-                Type::Primitive(b)
-            ) => {
-                a.is_real() && *a == *b
-            }
+            (Type::Primitive(a), Operator::FDiv, Type::Primitive(b)) => a.is_real() && *a == *b,
 
             // all maths ops except division are valid for primitives of the same type
             (
                 Type::Primitive(a),
                 Operator::Add | Operator::Sub | Operator::Mul | Operator::Mod,
-                Type::Primitive(b)) => {
-                a.is_numeric() && *a == *b
-            },
+                Type::Primitive(b),
+            ) => a.is_numeric() && *a == *b,
 
             // bitwise ops are valid for two identical unsigned primitive types
             (
                 Type::Primitive(lhs),
-                Operator::Shl | Operator::Shr | Operator::BitAnd | Operator::BitOr | Operator::Caret,
-                Type::Primitive(rhs)
-            ) if *lhs == *rhs => {
-                lhs.is_integer() && !lhs.is_signed()
-            },
+                Operator::Shl
+                | Operator::Shr
+                | Operator::BitAnd
+                | Operator::BitOr
+                | Operator::Caret,
+                Type::Primitive(rhs),
+            ) if *lhs == *rhs => lhs.is_integer() && !lhs.is_signed(),
 
             _ => false,
         }
@@ -481,7 +471,7 @@ impl Type {
         }
     }
 
-    fn new_class_name(name: &Symbol, args: &TypeList) -> Symbol {
+    fn new_class_name(name: &Symbol, args: &impl TypeArgsResolver) -> Symbol {
         if name.is_unspecialized_generic() {
             panic!("can't substitute types args into unspecialized name")
         }
@@ -502,14 +492,28 @@ impl Type {
         }
     }
 
+    pub fn match_constraint(&self, constraint_ty: &Type, ctx: &Context) -> bool {
+        match constraint_ty {
+            Type::Interface(constraint_iface_sym) => {
+                ctx.is_iface_impl(self, constraint_iface_sym)
+            }
+
+            // "Any" used as a constraint means all types, nothing to validate
+            Type::Any => true,
+
+            // nothing else is a valid constraint
+            _ => false,
+        }
+    }
+
     // todo: error handling
-    pub fn substitute_type_args(self, args: &TypeList) -> Self {
+    pub fn substitute_type_args(self, args: &impl TypeArgsResolver) -> Self {
         if args.len() == 0 {
             return self;
         }
 
         match self {
-            Type::GenericParam(param) => args.items[param.pos].clone(),
+            Type::GenericParam(param) => args.resolve(&param).into_owned(),
 
             Type::Class(name) if name.decl_name.type_params.is_some() => {
                 Type::Class(Box::new(Self::new_class_name(&name, args)))
@@ -539,71 +543,73 @@ impl Type {
             Type::Pointer(base_ty) => base_ty.substitute_type_args(args).ptr(),
 
             Type::Function(sig) => {
-                let mut sig = (*sig).clone();
-                sig.return_ty = sig.return_ty.substitute_type_args(args);
-
-                sig.params = sig.params.into_iter()
-                    .map(|mut param| {
-                        param.ty = param.ty.substitute_type_args(args);
-                        param
-                    })
-                    .collect();
-
+                let sig = sig.substitute_type_args(args);
                 Type::Function(Rc::new(sig))
-            }
+            },
 
             other => other,
         }
     }
 
-    pub fn specialize_generic(&self, args: &TypeList, span: &Span) -> GenericResult<Self> {
-        match self {
-            Type::GenericParam(type_param) => {
-                let arg = args.items.get(type_param.pos).unwrap_or_else(|| {
-                    panic!(
-                        "missing arg {} in type arg list {:?} for type {}",
-                        type_param, args, self
-                    )
-                });
+    pub fn specialize_generic<'s, 'a, 'res>(
+        &'s self,
+        args: &'a impl TypeArgsResolver,
+        ctx: &Context,
+    ) -> GenericResult<Cow<'res, Self>>
+    where
+        's: 'res,
+        'a: 'res,
+    {
+        let specialized = match self {
+            Type::GenericParam(type_param) => args.resolve(type_param),
 
-                Ok(arg.clone())
+            Type::Record(sym) => {
+                let sym = specialize_generic_name(&sym, args)?;
+                let record_ty = Type::Record(Box::new(sym.into_owned()));
+
+                Cow::Owned(record_ty)
             },
 
-            Type::Record(class) => specialize_generic_name(&class, args)
-                .map(Cow::into_owned)
-                .map(Box::new)
-                .map(Type::Record),
+            Type::Class(sym) => {
+                let sym = specialize_generic_name(&sym, args)?;
+                let class_ty = Type::Class(Box::new(sym.into_owned()));
 
-            Type::Class(class) => specialize_generic_name(&class, args)
-                .map(Cow::into_owned)
-                .map(Box::new)
-                .map(Type::Class),
+                Cow::Owned(class_ty)
+            },
 
-            Type::Variant(variant) => specialize_generic_name(&variant, args)
-                .map(Cow::into_owned)
-                .map(Box::new)
-                .map(Type::Variant),
+            Type::Variant(variant) => {
+                let sym = specialize_generic_name(&variant, args)?;
+                let variant_ty = Type::Variant(Box::new(sym.into_owned()));
+
+                Cow::Owned(variant_ty)
+            },
 
             Type::Array(array_ty) => {
-                array_ty
-                    .element_ty
-                    .specialize_generic(args, span)
-                    .map(|element_ty| {
-                        ArrayType {
-                            element_ty,
-                            dim: array_ty.dim,
-                        }
-                        .into()
-                    })
+                let element_ty = array_ty.element_ty.specialize_generic(args, ctx)?;
+                let arr_ty = ArrayType {
+                    element_ty: element_ty.into_owned(),
+                    dim: array_ty.dim,
+                };
+                Cow::Owned(Type::from(arr_ty))
             },
 
-            Type::DynArray { element } => element
-                .specialize_generic(args, span)
-                .map(Box::new)
-                .map(|element| Type::DynArray { element }),
+            Type::DynArray { element } => {
+                let element_ty = element.specialize_generic(args, ctx)?;
 
-            not_generic => Ok(not_generic.clone()),
-        }
+                Cow::Owned(Type::DynArray {
+                    element: Box::new(element_ty.into_owned()),
+                })
+            },
+
+            Type::Function(sig) => {
+                let specialized_sig = sig.specialize_generic(args, ctx)?;
+                Cow::Owned(Type::Function(Rc::new(specialized_sig)))
+            },
+
+            not_generic => Cow::Borrowed(not_generic),
+        };
+
+        Ok(specialized)
     }
 }
 
@@ -641,10 +647,7 @@ pub struct ArrayType {
 
 impl ArrayType {
     pub fn new(element_ty: Type, dim: usize) -> Self {
-        Self {
-            element_ty,
-            dim,
-        }
+        Self { element_ty, dim }
     }
 }
 
@@ -685,11 +688,12 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
                         checked_type_arg_items.push(arg_ty);
                     }
 
-                    let checked_type_args =
-                        TypeList::new(checked_type_arg_items, type_args.span().clone());
+                    let type_args_span = type_args.span().clone();
+                    let checked_type_args = TypeList::new(checked_type_arg_items, type_args_span);
 
-                    Type::specialize_generic(&raw_ty, &checked_type_args, span)
+                    Type::specialize_generic(&raw_ty, &checked_type_args, ctx)
                         .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?
+                        .into_owned()
                 },
 
                 None => raw_ty.clone(),
@@ -747,13 +751,16 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
             }
 
             Ok(ty)
-        }
+        },
 
         ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
     }
 }
 
-pub fn specialize_generic_name<'a>(name: &'a Symbol, args: &TypeList) -> GenericResult<Cow<'a, Symbol>> {
+pub fn specialize_generic_name<'a>(
+    name: &'a Symbol,
+    args: &impl TypeArgsResolver,
+) -> GenericResult<Cow<'a, Symbol>> {
     let type_params = match name.decl_name.type_params.as_ref() {
         None => return Ok(Cow::Borrowed(name)),
         Some(type_params) => type_params,
@@ -763,18 +770,29 @@ pub fn specialize_generic_name<'a>(name: &'a Symbol, args: &TypeList) -> Generic
         return Err(GenericError::ArgsLenMismatch {
             target: GenericTarget::Name(name.qualified.clone()),
             expected: type_params.items.len(),
-            actual: args.len(),
+            actual: type_params.len(),
         });
     }
 
     let type_args = if let Some(existing_args) = &name.type_args {
-        let specialized_args = existing_args.items.iter()
+        let specialized_args = existing_args
+            .items
+            .iter()
             .cloned()
             .map(|arg| arg.substitute_type_args(args));
 
         TypeList::new(specialized_args, existing_args.span().clone())
     } else {
-        args.clone()
+        let mut resolved_args = Vec::with_capacity(type_params.len());
+        for (i, param) in type_params.items.iter().enumerate() {
+            let arg = args.resolve(&TypeParamType {
+                name: param.clone(),
+                is_iface: None, //TODO? can't have constraints on name decls
+                pos: i,
+            });
+            resolved_args.push(arg.into_owned());
+        }
+        TypeList::new(resolved_args, name.span().clone())
     };
 
     let name = Symbol {
@@ -786,14 +804,14 @@ pub fn specialize_generic_name<'a>(name: &'a Symbol, args: &TypeList) -> Generic
 }
 
 pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList) -> GenericResult<StructDef> {
-    let parameterized_name = specialize_generic_name(&class.name, &ty_args)?;
+    let parameterized_name = specialize_generic_name(&class.name, ty_args)?;
 
     let members: Vec<_> = class
         .members
         .iter()
         .map(|member| {
             //            let ty = specialize_member(&member.ty, &args, span)?;
-            let ty = member.ty.clone().substitute_type_args(&ty_args);
+            let ty = member.ty.clone().substitute_type_args(ty_args);
 
             Ok(ast::StructMember {
                 ty,
@@ -810,8 +828,11 @@ pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList) -> GenericRe
     })
 }
 
-pub fn specialize_generic_variant(variant: &VariantDef, args: &TypeList) -> GenericResult<VariantDef> {
-    let parameterized_name = specialize_generic_name(&variant.name, &args)?;
+pub fn specialize_generic_variant(
+    variant: &VariantDef,
+    args: &TypeList,
+) -> GenericResult<VariantDef> {
+    let parameterized_name = specialize_generic_name(&variant.name, args)?;
 
     let cases: Vec<_> = variant
         .cases
@@ -820,7 +841,7 @@ pub fn specialize_generic_variant(variant: &VariantDef, args: &TypeList) -> Gene
             let data_ty = match &case.data_ty {
                 None => None,
                 Some(ty) => {
-                    let ty = ty.clone().substitute_type_args(&args);
+                    let ty = ty.clone().substitute_type_args(args);
                     Some(ty)
                 },
             };
@@ -872,17 +893,18 @@ impl Specializable for Type {
 
     fn is_unspecialized_generic(&self) -> bool {
         match self {
-            Type::Class(class) | Type::Record(class) => class.is_unspecialized_generic(),
-
-            Type::Variant(variant) => variant.is_unspecialized_generic(),
+            Type::Class(sym) | Type::Record(sym) | Type::Variant(sym) => {
+                sym.is_unspecialized_generic()
+            },
 
             Type::Array(array_ty) => array_ty.element_ty.is_unspecialized_generic(),
 
             Type::DynArray { element } => element.is_unspecialized_generic(),
 
-            // Type::Function(sig) => {
-            //     sig.return_ty.is_unspecialized_generic() || sig.params.iter().any(|p| p.ty.is_unspecialized_generic())
-            // }
+            Type::Function(sig) => {
+                sig.return_ty.is_unspecialized_generic()
+                    || sig.params.iter().any(|p| p.ty.is_unspecialized_generic())
+            },
 
             _ => false,
         }

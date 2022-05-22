@@ -9,6 +9,7 @@ pas_common = { path = "../pas_common" }
 pas_syn = { path = "../pas_syn" }
 
 linked-hash-map = "0.5.4"
+derivative = "2.2.0"
 
 [dev-dependencies]
 pas_pp = { path = "../pas_pp" }

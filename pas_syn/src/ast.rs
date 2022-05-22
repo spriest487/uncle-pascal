@@ -37,6 +37,7 @@ use crate::parse::prelude::*;
 use pas_common::TracedError;
 use std::hash::Hasher;
 use std::{fmt, hash::Hash};
+use std::ops::{Index, IndexMut};
 use derivative::*;
 
 pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
@@ -542,6 +543,20 @@ where
 
         write!(f, "]")?;
         Ok(())
+    }
+}
+
+impl<Item> Index<usize> for TypeList<Item> {
+    type Output = Item;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.items[index]
+    }
+}
+
+impl<Item> IndexMut<usize> for TypeList<Item> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.items[index]
     }
 }
 

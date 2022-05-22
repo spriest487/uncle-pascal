@@ -110,6 +110,9 @@ pub enum TypecheckError {
     UnableToInferType {
         expr: Box<ast::Expr<Span>>,
     },
+    UnableToInferFunctionExprType {
+        func: Box<ast::AnonymousFunctionDef<Span>>,
+    },
     UnableToInferSpecialization {
         generic_ty: Type,
         hint_ty: Type,
@@ -268,6 +271,7 @@ impl Spanned for TypecheckError {
             TypecheckError::DuplicateNamedArg { span, .. } => span,
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
             TypecheckError::UnableToInferType { expr } => expr.annotation().span(),
+            TypecheckError::UnableToInferFunctionExprType { func } => func.span(),
             TypecheckError::UnableToInferSpecialization { span, .. } => span,
             TypecheckError::UninitBindingWithNoType { binding } => binding.annotation.span(),
             TypecheckError::BindingWithNoType { binding } => binding.annotation.span(),
@@ -347,6 +351,9 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
             TypecheckError::UnableToInferType { .. } => {
                 "Unable to infer type of expr".to_string()
+            }
+            TypecheckError::UnableToInferFunctionExprType { .. } => {
+                "Unable to infer function type of function expression".to_string()
             }
             TypecheckError::UnableToInferSpecialization { .. } => {
                 "Unable to infer type specialization".to_string()
@@ -681,6 +688,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UnableToInferType { expr } => {
                 write!(f, "unable to infer the type of `{}`", expr)
+            }
+
+            TypecheckError::UnableToInferFunctionExprType { .. } => {
+                write!(f, "unable to infer the type of this function expression from the usage")
             }
 
             TypecheckError::UnableToInferSpecialization { generic_ty, hint_ty, .. } => {

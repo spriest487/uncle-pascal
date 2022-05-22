@@ -307,7 +307,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 self.push_operand(expr);
             },
 
-            Some(tt) if tt.is_keyword(Keyword::Function) || tt.is_keyword(Keyword::Procedure) => {
+            Some(tt) if tt.is_keyword(Keyword::Function) || tt.is_keyword(Keyword::Procedure) || tt.is_keyword(Keyword::Lambda) => {
                 let func_def = AnonymousFunctionDef::parse(self.tokens)?;
                 self.push_operand(Expr::from(func_def))
             },

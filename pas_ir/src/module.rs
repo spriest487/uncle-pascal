@@ -440,6 +440,14 @@ impl Module {
         }
     }
 
+    pub fn specialize_generic_type(
+        &self,
+        src_ty: &pas_ty::Type,
+        type_args: &pas_ty::TypeList,
+    ) -> pas_ty::Type {
+        src_ty.specialize_generic(type_args, &self.src_metadata).unwrap().into_owned()
+    }
+
     pub fn translate_type(
         &mut self,
         src_ty: &pas_ty::Type,
@@ -447,7 +455,7 @@ impl Module {
     ) -> Type {
         let src_ty = match type_args {
             Some(current_ty_args) => {
-                let src_ty = src_ty.clone().substitute_type_args(&current_ty_args);
+                let src_ty = src_ty.clone().substitute_type_args(current_ty_args);
                 src_ty
             },
 

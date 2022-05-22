@@ -6,7 +6,7 @@ use crate::{
 };
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
-use pas_syn::ast::Visibility;
+use pas_syn::ast::{Typed, Visibility};
 use pas_syn::{ast, Ident};
 use std::rc::Rc;
 use crate::ast::const_eval::ConstEval;
@@ -337,16 +337,43 @@ pub fn specialize_func_decl(
 
 pub fn typecheck_func_expr(
     src_def: &ast::AnonymousFunctionDef<Span>,
-    _expect_ty: &Type,
+    expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<AnonymousFunctionDef> {
+    let expect_sig = expect_ty.as_func().ok();
+
     let mut params = Vec::new();
-    for param in &src_def.params {
-        let param = typecheck_param(param, ctx)?;
-        params.push(param);
+    for (i, param) in src_def.params.iter().enumerate() {
+        let ty = if param.ty.is_known() {
+            typecheck_type(&param.ty, ctx)?
+        } else {
+            match expect_sig.and_then(|sig| sig.params.get(i)) {
+                Some(expect_param) if expect_param.modifier.is_none() => expect_param.ty.clone(),
+                _ => {
+                    return Err(TypecheckError::UnableToInferFunctionExprType {
+                        func: Box::new(src_def.clone()),
+                    });
+                }
+            }
+        };
+
+        params.push(FunctionParam {
+            modifier: param.modifier.clone(),
+            ident: param.ident.clone(),
+            span: param.span.clone(),
+            ty,
+        });
     }
 
     let return_ty = match &src_def.return_ty {
+        Some(ast::TypeName::Unknown(..)) => match expect_sig.map(|sig| &sig.return_ty){
+            Some(expect_return_ty) => expect_return_ty.clone(),
+            None => {
+                return Err(TypecheckError::UnableToInferFunctionExprType {
+                    func: Box::new(src_def.clone()),
+                })
+            }
+        },
         Some(src_return_ty) => typecheck_type(src_return_ty, ctx)?,
         None => Type::Nothing,
     };

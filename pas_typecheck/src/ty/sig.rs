@@ -1,12 +1,12 @@
 use crate::{
+    ast::AnonymousFunctionDef,
     ast::{FunctionDecl, FunctionParam},
-    Context, GenericError, GenericResult, GenericTarget, Type, TypeList, TypeParamList,
+    Context, GenericError, GenericResult, GenericTarget, Type, TypeArgsResolver,
+    TypeParamList,
 };
 use pas_common::span::Spanned;
 use pas_syn::ast::{self, FunctionParamMod};
-use std::fmt;
-use std::rc::Rc;
-use crate::ast::AnonymousFunctionDef;
+use std::{fmt, rc::Rc};
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionParamSig {
@@ -106,21 +106,32 @@ impl FunctionSig {
 
     pub fn of_decl(decl: &FunctionDecl) -> Self {
         let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
-        let param_sigs = decl.params.iter().cloned().map(FunctionParamSig::from).collect();
+        let param_sigs = decl
+            .params
+            .iter()
+            .cloned()
+            .map(FunctionParamSig::from)
+            .collect();
 
         Self::new(return_ty, param_sigs, decl.type_params.clone())
     }
 
     pub fn of_anonymous_func(func: &AnonymousFunctionDef) -> Rc<Self> {
         let func_ty = func.annotation.ty();
-        let sig = func_ty.as_func().expect("anonymous function must have function type");
+        let sig = func_ty
+            .as_func()
+            .expect("anonymous function must have function type");
         sig.clone()
     }
 
     /// test if a list of type args that could be used to specialize this function are applicable
     /// e.g. this sig has type params, the number of type params is the same as the number
     /// of args provided, and that each arg passes the constraints for its corresponding param
-    pub fn validate_type_args(&self, type_args: &TypeList, ctx: &Context) -> GenericResult<()> {
+    pub fn validate_type_args(
+        &self,
+        type_args: &impl TypeArgsResolver,
+        ctx: &Context,
+    ) -> GenericResult<()> {
         let expected_type_args_len = match self.type_params.as_ref() {
             Some(type_params) => type_params.len(),
             None => 0,
@@ -140,55 +151,75 @@ impl FunctionSig {
             .expect("must have type params or previous check would fail");
 
         for arg_pos in 0..type_params.len() {
-            match &type_params.items[arg_pos].is_ty {
-                Type::Any => {
-                    // nothing to validate
-                },
+            let constraint_ty = &type_params[arg_pos].is_ty;
 
-                Type::Interface(is_iface_ident) => {
-                    let actual_ty = &type_args.items[arg_pos];
-                    if !ctx.is_iface_impl(actual_ty, is_iface_ident) {
+            match type_args.get_specialized(arg_pos) {
+                Some(actual_ty) => {
+                    if !actual_ty.match_constraint(constraint_ty, ctx) {
                         return Err(GenericError::ArgConstraintNotSatisfied {
-                            is_not_ty: Type::Interface(is_iface_ident.clone()),
-                            arg_ty: actual_ty.clone(),
+                            is_not_ty: constraint_ty.clone(),
+                            actual_ty: Some(actual_ty.clone()),
                         });
                     }
                 },
 
-                bad => panic!(
-                    "unsupported type in signature type param constraint: {}",
-                    bad
-                ),
+                None => {
+                    return Err(GenericError::ArgConstraintNotSatisfied {
+                        is_not_ty: constraint_ty.clone(),
+                        actual_ty: None,
+                    });
+                },
             }
         }
 
         Ok(())
     }
 
-    pub fn specialize_generic(&self, type_args: &TypeList, ctx: &Context) -> GenericResult<Self> {
+    pub fn specialize_generic(
+        &self,
+        type_args: &impl TypeArgsResolver,
+        ctx: &Context,
+    ) -> GenericResult<Self> {
         self.validate_type_args(type_args, ctx)?;
+        let specialized_sig = self.substitute_type_args(type_args);
 
+        Ok(specialized_sig)
+    }
+
+    pub fn substitute_type_args(&self, type_args: &impl TypeArgsResolver) -> Self {
         let params = self
             .params
             .iter()
             .map(|sig_param| {
                 let ty = sig_param.ty.clone().substitute_type_args(type_args);
-                Ok(FunctionParamSig {
+                FunctionParamSig {
                     ty,
                     ..sig_param.clone()
-                })
+                }
             })
-            .collect::<GenericResult<_>>()?;
+            .collect();
 
         let return_ty = self.return_ty.clone().substitute_type_args(type_args);
 
-        let specialized_sig = FunctionSig {
-            return_ty,
-            params,
-            type_params: self.type_params.clone(),
+        let type_params = match &self.type_params {
+            Some(type_params) => {
+                let mut items = Vec::with_capacity(type_params.len());
+                for item in &type_params.items {
+                    items.push(FunctionSigTypeParam {
+                        is_ty: item.is_ty.clone().substitute_type_args(type_args),
+                    });
+                }
+                Some(ast::TypeList::new(items, type_params.span().clone()))
+            },
+            None => None,
         };
 
-        Ok(specialized_sig)
+        let sig = FunctionSig {
+            return_ty,
+            params,
+            type_params,
+        };
+        sig
     }
 
     /// replace all `Self`-typed args with `self_ty`

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use pas_common::span::Spanned;
 use std::fmt;
 
@@ -54,4 +55,27 @@ pub enum TypeArgsResult<'a> {
     Specialized(&'a TypeList),
     Unspecialized(&'a ast::TypeList<Ident>),
     NotGeneric,
+}
+
+pub trait TypeArgsResolver {
+    fn resolve(&self, param: &TypeParamType) -> Cow<Type>;
+
+    fn get_specialized(&self, pos: usize) -> Option<&Type>;
+
+    fn len(&self) -> usize;
+}
+
+impl TypeArgsResolver for TypeList {
+    fn resolve(&self, param: &TypeParamType) -> Cow<Type> {
+        let arg = self.items.get(param.pos).expect("resolving type param out of range");
+        Cow::Borrowed(arg)
+    }
+
+    fn get_specialized(&self, pos: usize) -> Option<&Type> {
+        self.items.get(pos)
+    }
+
+    fn len(&self) -> usize {
+        self.items.len()
+    }
 }

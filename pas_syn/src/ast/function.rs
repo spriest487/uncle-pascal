@@ -527,34 +527,75 @@ impl<A: Annotation> Spanned for AnonymousFunctionDef<A> {
 
 impl Parse for AnonymousFunctionDef<Span> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let func_kw = tokens.match_one(Keyword::Function.or(Keyword::Procedure))?;
-        let mut params_tokens = match tokens.match_one(DelimiterPair::Bracket)? {
-            TokenTree::Delimited(group) => group.to_inner_tokens(),
-            _ => unreachable!(),
-        };
+        let func_kw = tokens.match_one(Keyword::Function.or(Keyword::Procedure).or(Keyword::Lambda))?;
 
-        let params = FunctionDecl::parse_params(&mut params_tokens)?;
-        params_tokens.finish()?;
+        let function_def = if func_kw.is_keyword(Keyword::Lambda) {
+            let mut params = Vec::new();
+            while let Some(TokenTree::Ident(ident)) = tokens.match_one_maybe(Matcher::AnyIdent) {
+                params.push(FunctionParam {
+                    span: ident.span().clone(),
+                    ty: TypeName::Unknown(ident.span.clone()),
+                    modifier: None,
+                    ident,
+                });
 
-        let return_ty = if tokens.match_one_maybe(Separator::Colon).is_some() {
-            let ty = TypeName::parse(tokens)?;
-            Some(ty)
+                if tokens.match_one_maybe(Separator::Comma).is_none() {
+                    break;
+                }
+            }
+
+            tokens.match_one(Separator::Colon)?;
+
+            let body_expr = Expr::parse(tokens)?;
+            let body = Block {
+                annotation: body_expr.span().clone(),
+                begin: body_expr.span().clone(),
+                end: body_expr.span().clone(),
+                stmts: Vec::new(),
+                output: Some(body_expr),
+                unsafe_kw: None,
+            };
+
+            let span = func_kw.span().to(body.span());
+
+            AnonymousFunctionDef {
+                annotation: span,
+                body,
+                params,
+                return_ty: Some(TypeName::Unknown(func_kw.span().clone())),
+                captures: Default::default(),
+            }
         } else {
-            None
+            let mut params_tokens = match tokens.match_one(DelimiterPair::Bracket)? {
+                TokenTree::Delimited(group) => group.to_inner_tokens(),
+                _ => unreachable!(),
+            };
+
+            let params = FunctionDecl::parse_params(&mut params_tokens)?;
+            params_tokens.finish()?;
+
+            let return_ty = if tokens.match_one_maybe(Separator::Colon).is_some() {
+                let ty = TypeName::parse(tokens)?;
+                Some(ty)
+            } else {
+                None
+            };
+
+            tokens.match_one(Separator::Semicolon)?;
+
+            let body = Block::parse(tokens)?;
+
+            let span = func_kw.span().to(body.span());
+
+            AnonymousFunctionDef {
+                annotation: span,
+                body,
+                params,
+                return_ty,
+                captures: Default::default(),
+            }
         };
 
-        tokens.match_one(Separator::Semicolon)?;
-
-        let body = Block::parse(tokens)?;
-
-        let span = func_kw.span().to(body.span());
-
-        Ok(AnonymousFunctionDef {
-            annotation: span,
-            body,
-            params,
-            return_ty,
-            captures: Default::default(),
-        })
+        Ok(function_def)
     }
 }

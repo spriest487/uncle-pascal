@@ -65,8 +65,8 @@ pub enum GenericError {
         actual: usize,
     },
     ArgConstraintNotSatisfied {
-        arg_ty: Type,
         is_not_ty: Type,
+        actual_ty: Option<Type>, // may be unknown/not yet resolved when processing generics
     },
     CannotInferArgs {
         target: GenericTarget,
@@ -95,12 +95,22 @@ impl fmt::Display for GenericError {
 
             GenericError::ArgConstraintNotSatisfied {
                 is_not_ty,
-                arg_ty,
+                actual_ty: Some(arg_ty),
                 ..
             } => write!(
                 f,
                 "argument type {} does not meet the type constraint on this parameter: must be {}",
                 arg_ty,
+                is_not_ty,
+            ),
+
+            GenericError::ArgConstraintNotSatisfied {
+                is_not_ty,
+                actual_ty: None,
+                ..
+            } => write!(
+                f,
+                "argument does not meet the type constraint on this parameter: must be {}",
                 is_not_ty,
             ),
 

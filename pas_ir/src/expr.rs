@@ -395,7 +395,7 @@ fn build_func_call(
         // calling a function directly
         pas_ty::TypeAnnotation::Function(func) => {
             let full_name = func.ns.clone().child(func.name.clone());
-            let func = builder.translate_func(full_name, type_args, func_call.span());
+            let func = builder.translate_func(full_name, type_args);
 
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
             let func_sig = func.sig;
@@ -1254,7 +1254,7 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
     match annotation {
         TypeAnnotation::Function(func) => {
             let func_name = func.ns.clone().child(func.name.clone());
-            let func = builder.translate_func(func_name, func.type_args.clone(), &func.span);
+            let func = builder.translate_func(func_name, func.type_args.clone());
             let func_ref = GlobalRef::Function(func.id);
 
             Ref::Global(func_ref)

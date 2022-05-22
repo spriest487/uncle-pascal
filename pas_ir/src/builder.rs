@@ -158,7 +158,6 @@ impl<'m> Builder<'m> {
         &mut self,
         func_name: IdentPath,
         type_args: Option<pas_ty::TypeList>,
-        span: &Span,
     ) -> FunctionInstance {
         // specialize type args for current context
         let instance_type_args = match (type_args, self.type_args.as_ref()) {
@@ -166,7 +165,7 @@ impl<'m> Builder<'m> {
                 let items = func_ty_args
                     .items
                     .iter()
-                    .map(|arg| arg.specialize_generic(&current_ty_args, span).unwrap());
+                    .map(|arg| self.module.specialize_generic_type(arg, current_ty_args));
 
                 Some(TypeList::new(items, func_ty_args.span().clone()))
             },

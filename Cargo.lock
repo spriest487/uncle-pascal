@@ -369,6 +369,7 @@ dependencies = [
 name = "pas_typecheck"
 version = "0.1.0"
 dependencies = [
+ "derivative",
  "linked-hash-map",
  "pas_common",
  "pas_pp",
