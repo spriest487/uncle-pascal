@@ -1,44 +1,62 @@
 pub mod block;
 pub mod call;
 mod case;
-mod match_block;
+pub mod cast;
 pub mod cond;
 pub mod ctor;
 pub mod expression;
 pub mod function;
 pub mod iter;
+mod match_block;
 pub mod op;
 pub mod raise;
 pub mod statement;
 pub mod type_constraint;
 pub mod typedecl;
 pub mod unit;
-pub mod cast;
 
 pub use self::{
     block::*,
     call::*,
-    case::{CaseBranch, CaseExpr, CaseStmt, CaseBlock},
-    match_block::*,
+    case::{CaseBlock, CaseBranch, CaseExpr, CaseStmt},
+    cast::Cast,
     cond::*,
     ctor::*,
     expression::*,
     function::*,
     iter::*,
+    match_block::*,
     op::*,
     raise::*,
     statement::*,
     type_constraint::*,
     typedecl::*,
     unit::*,
-    cast::Cast,
 };
-use crate::parse::prelude::*;
-use pas_common::TracedError;
-use std::hash::Hasher;
-use std::{fmt, hash::Hash};
-use std::ops::{Index, IndexMut};
+use crate::{
+    parse::{
+        LookAheadTokenStream, Match, MatchOneOf, Matcher, Parse, ParseResult, ParseSeq, TokenStream,
+    },
+    DelimiterPair,
+    Ident,
+    IdentPath,
+    Keyword,
+    Operator,
+    Separator,
+    TokenTree
+};
 use derivative::*;
+use pas_common::{
+    span::{Span, Spanned},
+    TracedError
+};
+use std::{
+    fmt,
+    hash::Hash,
+    hash::Hasher,
+    ops::{Index, IndexMut},
+};
+use crate::parse::ParseError;
 
 pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
     fn is_known(&self) -> bool;
@@ -202,7 +220,7 @@ impl fmt::Display for FunctionTypeName {
         write!(f, ")")?;
 
         if let Some(return_ty) = &self.return_ty {
-            write!(f, ": {}",return_ty)?;
+            write!(f, ": {}", return_ty)?;
         }
 
         Ok(())
@@ -236,10 +254,7 @@ impl ParseSeq for FunctionTypeNameParam {
 
         let ty = TypeName::parse(tokens)?;
 
-        Ok(FunctionTypeNameParam {
-            ty,
-            modifier,
-        })
+        Ok(FunctionTypeNameParam { ty, modifier })
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
@@ -247,11 +262,9 @@ impl ParseSeq for FunctionTypeNameParam {
             return false;
         }
 
-        tokens.match_one(
-            Keyword::Var
-                .or(Keyword::Out)
-                .or(TypeName::start_matcher())
-        ).is_some()
+        tokens
+            .match_one(Keyword::Var.or(Keyword::Out).or(TypeName::start_matcher()))
+            .is_some()
     }
 }
 
@@ -317,19 +330,15 @@ impl Parse for TypeName {
         match tokens.match_one_maybe(Keyword::Array.or(Keyword::Function).or(Keyword::Procedure)) {
             None => Self::parse_named_type(tokens, indirection, indirection_span.as_ref()),
 
-            Some(array_kw) if array_kw.is_keyword(Keyword::Array) => Self::parse_array_type(
-                tokens,
-                array_kw.span(),
-                indirection,
-                indirection_span,
-            ),
+            Some(array_kw) if array_kw.is_keyword(Keyword::Array) => {
+                Self::parse_array_type(tokens, array_kw.span(), indirection, indirection_span)
+            },
 
-            Some(fn_kw) if fn_kw.is_keyword(Keyword::Function) || fn_kw.is_keyword(Keyword::Procedure) => Self::parse_function_type(
-                tokens,
-                fn_kw.into_span(),
-                indirection,
-                indirection_span,
-            ),
+            Some(fn_kw)
+                if fn_kw.is_keyword(Keyword::Function) || fn_kw.is_keyword(Keyword::Procedure) =>
+            {
+                Self::parse_function_type(tokens, fn_kw.into_span(), indirection, indirection_span)
+            },
 
             Some(..) => unreachable!(),
         }
@@ -367,7 +376,7 @@ impl TypeName {
                     dim_tokens.finish()?;
 
                     Some(Box::new(dim_expr))
-                }
+                },
 
                 _ => unreachable!("match failed"),
             },
@@ -451,11 +460,11 @@ impl TypeName {
                     let name_span = ident.span().to(type_args.span());
 
                     (Some(type_args), name_span)
-                }
+                },
                 None => {
                     let name_span = ident.span().clone();
                     (None, name_span)
-                }
+                },
             };
 
         let span = match indirection_span {
@@ -592,9 +601,7 @@ impl<Item> TypeList<Item> {
         Item: Spanned + Parse + Match,
     {
         let (span, mut items_tokens) = match tokens.match_one(DelimiterPair::SquareBracket)? {
-            TokenTree::Delimited(group) => {
-                (group.span.clone(), group.to_inner_tokens())
-            },
+            TokenTree::Delimited(group) => (group.span.clone(), group.to_inner_tokens()),
             _ => unreachable!(),
         };
 
@@ -681,7 +688,7 @@ impl TypeNamePattern {
                 } else {
                     None
                 }
-            }
+            },
             _ => None,
         };
 
@@ -703,7 +710,7 @@ impl TypeNamePattern {
             Some(binding) => {
                 assert!(not_kw.is_none());
                 TypeNamePatternKind::IsWithBinding(binding)
-            }
+            },
             None if not_kw.is_some() => TypeNamePatternKind::IsNot,
             None => TypeNamePatternKind::Is,
         };
@@ -732,7 +739,7 @@ impl fmt::Display for TypeNamePattern {
                     write!(f, " {}", binding)?;
                 }
                 Ok(())
-            }
+            },
 
             TypeNamePattern::ExactType { name, kind, .. } => {
                 if let TypeNamePatternKind::IsNot = kind {
@@ -743,7 +750,7 @@ impl fmt::Display for TypeNamePattern {
                     write!(f, " {}", binding)?;
                 }
                 Ok(())
-            }
+            },
         }
     }
 }

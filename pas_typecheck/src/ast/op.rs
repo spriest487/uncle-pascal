@@ -1,13 +1,21 @@
-use crate::{annotation::VariantCtorAnnotation, ast::prelude::*};
-use pas_syn::{IntConstant, Operator};
+use crate::ast::{
+    const_eval_integer, implicit_conversion, member_annotation, typecheck_expr,
+    typecheck_object_ctor, Call, Expr, MethodCall,
+};
+use crate::{
+    annotation::VariantCtorAnnotation, string_type, Context, FunctionAnnotation, FunctionSig,
+    InstanceMember, InterfaceMethodAnnotation, NameContainer, NameError, OverloadAnnotation,
+    Primitive, Symbol, Type, TypeAnnotation, TypeMember, TypecheckError, TypecheckResult,
+    TypedValueAnnotation, UFCSCallAnnotation, ValueKind, DISPLAYABLE_IFACE_NAME,
+    DISPLAYABLE_TOSTRING_METHOD, SYSTEM_UNIT_NAME,
+};
+use pas_common::span::{Span, Spanned};
+use pas_syn::{ast, Ident, IdentPath, IntConstant, Operator};
+use std::rc::Rc;
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
 
-fn invalid_bin_op(
-    bin_op: &ast::BinOp<Span>,
-    lhs: &Expr,
-    rhs: &Expr,
-) -> TypecheckError {
+fn invalid_bin_op(bin_op: &ast::BinOp<Span>, lhs: &Expr, rhs: &Expr) -> TypecheckError {
     TypecheckError::InvalidBinOp {
         lhs: lhs.annotation().ty().into_owned(),
         rhs: rhs.annotation().ty().into_owned(),
@@ -31,22 +39,22 @@ pub fn typecheck_bin_op(
         Operator::And | Operator::Or => {
             let bin_op = typecheck_logical_op(bin_op, span, ctx)?;
             Ok(Expr::from(bin_op))
-        }
+        },
 
         Operator::Equals | Operator::NotEquals => {
             let bin_op = typecheck_equality(bin_op, span, ctx)?;
             Ok(Expr::from(bin_op))
-        }
+        },
 
         Operator::Gt | Operator::Gte | Operator::Lt | Operator::Lte => {
             let bin_op = typecheck_comparison(bin_op, span, ctx)?;
             Ok(Expr::from(bin_op))
-        }
+        },
 
         Operator::BitAnd | Operator::BitOr | Operator::Shr | Operator::Shl | Operator::Caret => {
             let bin_op = typecheck_bitwise_op(bin_op, expect_ty, ctx)?;
             Ok(Expr::from(bin_op))
-        }
+        },
 
         _ => {
             let mut lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
@@ -95,7 +103,8 @@ pub fn typecheck_bin_op(
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,
-                }.into(),
+                }
+                .into(),
             };
 
             Ok(Expr::from(ast::BinOp {
@@ -104,11 +113,15 @@ pub fn typecheck_bin_op(
                 rhs,
                 annotation,
             }))
-        }
+        },
     }
 }
 
-fn typecheck_logical_op(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context) -> TypecheckResult<BinOp> {
+fn typecheck_logical_op(
+    bin_op: &ast::BinOp<Span>,
+    span: Span,
+    ctx: &mut Context,
+) -> TypecheckResult<BinOp> {
     let bool_ty = Type::Primitive(Primitive::Boolean);
 
     let lhs = typecheck_expr(&bin_op.lhs, &bool_ty, ctx)?;
@@ -122,7 +135,8 @@ fn typecheck_logical_op(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context
         value_kind: ValueKind::Temporary,
         span,
         decl: None,
-    }.into();
+    }
+    .into();
 
     Ok(BinOp {
         lhs,
@@ -132,7 +146,11 @@ fn typecheck_logical_op(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context
     })
 }
 
-fn typecheck_equality(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context) -> TypecheckResult<BinOp> {
+fn typecheck_equality(
+    bin_op: &ast::BinOp<Span>,
+    span: Span,
+    ctx: &mut Context,
+) -> TypecheckResult<BinOp> {
     let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
     let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
 
@@ -145,17 +163,22 @@ fn typecheck_equality(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context) 
         value_kind: ValueKind::Temporary,
         span,
         decl: None,
-    }.into();
+    }
+    .into();
 
     Ok(BinOp {
         lhs,
         rhs,
         op: bin_op.op,
-        annotation
+        annotation,
     })
 }
 
-fn typecheck_comparison(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context) -> TypecheckResult<BinOp> {
+fn typecheck_comparison(
+    bin_op: &ast::BinOp<Span>,
+    span: Span,
+    ctx: &mut Context,
+) -> TypecheckResult<BinOp> {
     let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
     let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
 
@@ -170,7 +193,8 @@ fn typecheck_comparison(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context
         value_kind: ValueKind::Temporary,
         span,
         decl: None,
-    }.into();
+    }
+    .into();
 
     Ok(BinOp {
         lhs,
@@ -180,7 +204,11 @@ fn typecheck_comparison(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context
     })
 }
 
-fn typecheck_bitwise_op(bin_op: &ast::BinOp<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<BinOp> {
+fn typecheck_bitwise_op(
+    bin_op: &ast::BinOp<Span>,
+    expect_ty: &Type,
+    ctx: &mut Context,
+) -> TypecheckResult<BinOp> {
     let lhs = typecheck_expr(&bin_op.lhs, expect_ty, ctx)?;
 
     // for bitwise operations to make sense the lhs and rhs must be the exact same type so insert a
@@ -204,7 +232,8 @@ fn typecheck_bitwise_op(bin_op: &ast::BinOp<Span>, expect_ty: &Type, ctx: &mut C
             span: bin_op.span().clone(),
             value_kind: ValueKind::Temporary,
             decl: None,
-        }.into(),
+        }
+        .into(),
         lhs,
         rhs,
         op: bin_op.op,
@@ -212,11 +241,7 @@ fn typecheck_bitwise_op(bin_op: &ast::BinOp<Span>, expect_ty: &Type, ctx: &mut C
 }
 
 // turn value `x` that implements System.Displayable into a call to `System.Displayable.ToString(x)`
-fn desugar_displayable_to_string(
-    expr: &Expr,
-    span: &Span,
-    ctx: &Context,
-) -> Option<Expr> {
+fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Option<Expr> {
     let src_ty = expr.annotation().ty();
 
     let system_unit_ident = Ident::new(SYSTEM_UNIT_NAME, span.clone());
@@ -224,10 +249,7 @@ fn desugar_displayable_to_string(
 
     let to_string_ident = Ident::new(DISPLAYABLE_TOSTRING_METHOD, span.clone());
 
-    let displayable_path = IdentPath::from_parts(vec![
-        system_unit_ident,
-        displayable_iface_ident
-    ]);
+    let displayable_path = IdentPath::from_parts(vec![system_unit_ident, displayable_iface_ident]);
 
     if !ctx.is_iface_impl(src_ty.as_ref(), &displayable_path) {
         return None;
@@ -251,9 +273,7 @@ fn desugar_displayable_to_string(
     let displayable_call = Call::Method(MethodCall {
         iface_type: displayable_ty.clone(),
         ident: to_string_ident.clone(),
-        args: vec![
-            expr.clone(),
-        ],
+        args: vec![expr.clone()],
         type_args: None,
         args_brackets: (span.clone(), span.clone()),
         self_type: src_ty.into_owned(),
@@ -263,7 +283,8 @@ fn desugar_displayable_to_string(
             method_ident: to_string_ident,
             span: span.clone(),
             method_sig: to_string_sig,
-        }.into(),
+        }
+        .into(),
     });
 
     Some(Expr::from(displayable_call))
@@ -282,7 +303,8 @@ fn desugar_string_concat(
         span: span.clone(),
         value_kind: ValueKind::Temporary,
         decl: None,
-    }.into();
+    }
+    .into();
 
     // if LHS and RHS are both string literals, we can concat them ahead of time
     match (&lhs, &rhs) {
@@ -297,7 +319,8 @@ fn desugar_string_concat(
         _ => {
             let system_path = IdentPath::from(Ident::new("System", span.clone()));
             let concat_path = system_path.child(Ident::new("StringConcat", span.clone()));
-            let (concat_path, concat_sig) = ctx.find_function(&concat_path)
+            let (concat_path, concat_sig) = ctx
+                .find_function(&concat_path)
                 .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
             let concat_annotation = FunctionAnnotation {
@@ -306,7 +329,8 @@ fn desugar_string_concat(
                 span: span.clone(),
                 sig: concat_sig.clone(),
                 type_args: None,
-            }.into();
+            }
+            .into();
 
             let concat_func = ast::Expr::Ident(concat_path.last().clone(), concat_annotation);
 
@@ -319,7 +343,7 @@ fn desugar_string_concat(
             });
 
             Ok(ast::Expr::from(concat_call))
-        }
+        },
     }
 }
 
@@ -340,15 +364,18 @@ fn typecheck_member_of(
             let annotation = match lhs.annotation() {
                 TypeAnnotation::Type(Type::Variant(variant_name), ..) => {
                     typecheck_variant_ctor(variant_name, &member_ident, &span, ctx)?
-                }
-
-                TypeAnnotation::TypedValue(base_val) => {
-                    typecheck_member_value(&lhs, &base_val.ty, base_val.value_kind, &member_ident, span, ctx)?
-                }
-
-                TypeAnnotation::Type(ty, _) => {
-                    typecheck_type_member(ty, &member_ident, span, ctx)?
                 },
+
+                TypeAnnotation::TypedValue(base_val) => typecheck_member_value(
+                    &lhs,
+                    &base_val.ty,
+                    base_val.value_kind,
+                    &member_ident,
+                    span,
+                    ctx,
+                )?,
+
+                TypeAnnotation::Type(ty, _) => typecheck_type_member(ty, &member_ident, span, ctx)?,
 
                 TypeAnnotation::Namespace(path, _) => {
                     let mut full_path = path.clone();
@@ -363,9 +390,9 @@ fn typecheck_member_of(
                             };
 
                             return Err(TypecheckError::from_name_err(err, span));
-                        }
+                        },
                     }
-                }
+                },
 
                 _ => {
                     let err = NameError::MemberNotFound {
@@ -374,7 +401,7 @@ fn typecheck_member_of(
                     };
 
                     return Err(TypecheckError::from_name_err(err, span));
-                }
+                },
             };
 
             let rhs = ast::Expr::Ident(member_ident, annotation.clone());
@@ -385,7 +412,7 @@ fn typecheck_member_of(
                 rhs,
                 annotation,
             }))
-        }
+        },
 
         // a.B(x: x)
         ast::Expr::ObjectCtor(ctor) => {
@@ -399,7 +426,9 @@ fn typecheck_member_of(
                         ctor.ident.as_ref().unwrap()
                     );
 
-                    let qualified_ident = ns_path.clone().child(ctor.ident.as_ref().unwrap().last().clone());
+                    let qualified_ident = ns_path
+                        .clone()
+                        .child(ctor.ident.as_ref().unwrap().last().clone());
                     let qualified_ctor = ast::ObjectCtor {
                         ident: Some(qualified_ident),
                         ..(**ctor).clone()
@@ -409,14 +438,14 @@ fn typecheck_member_of(
 
                     let ctor = typecheck_object_ctor(&qualified_ctor, span, expect_ty, ctx)?;
                     Ok(Expr::from(ctor))
-                }
+                },
 
                 _ => Err(TypecheckError::InvalidCtorType {
                     ty: lhs.annotation().ty().into_owned(),
                     span,
                 }),
             }
-        }
+        },
 
         _ => {
             let rhs = typecheck_expr(rhs, &Type::Nothing, ctx)?;
@@ -427,7 +456,7 @@ fn typecheck_member_of(
                 span,
                 op: Operator::Period,
             })
-        }
+        },
     }
 }
 
@@ -435,15 +464,16 @@ fn typecheck_type_member(
     ty: &Type,
     member_ident: &Ident,
     span: Span,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<TypeAnnotation> {
-    let type_member = ctx.find_type_member(ty, member_ident)
+    let type_member = ctx
+        .find_type_member(ty, member_ident)
         .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
     let annotation = match type_member {
         TypeMember::Method { decl } => {
             InterfaceMethodAnnotation::new(&decl, ty.clone(), span).into()
-        }
+        },
     };
 
     Ok(annotation)
@@ -455,9 +485,10 @@ pub fn typecheck_member_value(
     value_kind: ValueKind,
     member_ident: &Ident,
     span: Span,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<TypeAnnotation> {
-    let member = ctx.find_instance_member(&lhs.annotation().ty(), &member_ident)
+    let member = ctx
+        .find_instance_member(&lhs.annotation().ty(), &member_ident)
         .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
     let annotation = match member {
@@ -470,10 +501,12 @@ pub fn typecheck_member_value(
             // if it's being called through an interface, it's a virtual call
             let method = if base_ty.as_iface().is_ok() {
                 // calling the virtual method
-                let iface_decl = ctx.find_iface_def(iface_id)
+                let iface_decl = ctx
+                    .find_iface_def(iface_id)
                     .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
-                let method_decl = iface_decl.get_method(&method)
+                let method_decl = iface_decl
+                    .get_method(&method)
                     .expect("method must exist, it was found by find_instance_member");
 
                 let iface_ty = Type::Interface(iface_id.clone());
@@ -493,59 +526,60 @@ pub fn typecheck_member_value(
                                 // the implementor type is generic - so unknown during typechecking
                                 // get the declared method from the interface. we'll have to look up
                                 // which implementation to call during codegen
-                                let iface_ident = is_iface.as_iface()
+                                let iface_ident = is_iface
+                                    .as_iface()
                                     .expect("type constraint must be an interface");
-                                let method_iface = ctx.find_iface_def(iface_ident)
-                                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+                                let method_iface =
+                                    ctx.find_iface_def(iface_ident).map_err(|err| {
+                                        TypecheckError::from_name_err(err, span.clone())
+                                    })?;
 
-                                method_iface.get_method(&method)
-                                    .map(|m| m.decl.clone())
-                            }
+                                method_iface.get_method(&method).map(|m| m.decl.clone())
+                            },
                         }
-                    }
+                    },
 
-                    _ => {
-                        ctx.find_method_impl_def(iface_id, base_ty, &method)
-                            .map(|def| &def.decl)
-                            .cloned()
-                    }
+                    _ => ctx
+                        .find_method_impl_def(iface_id, base_ty, &method)
+                        .map(|def| &def.decl)
+                        .cloned(),
                 };
 
                 match method_decl {
-                    Some(method_decl) => OverloadAnnotation::method(
-                        iface_ty,
-                        lhs.clone(),
-                        method_decl,
-                        span.clone()
-                    ),
+                    Some(method_decl) => {
+                        OverloadAnnotation::method(iface_ty, lhs.clone(), method_decl, span.clone())
+                    },
 
-                    None => return Err(TypecheckError::from_name_err(NameError::MemberNotFound {
-                        base: NameContainer::Type(base_ty.clone()),
-                        member: method,
-                    }, span))
+                    None => {
+                        return Err(TypecheckError::from_name_err(
+                            NameError::MemberNotFound {
+                                base: NameContainer::Type(base_ty.clone()),
+                                member: method,
+                            },
+                            span,
+                        ))
+                    },
                 }
             };
 
             TypeAnnotation::from(method)
-        }
+        },
 
-        InstanceMember::UFCSCall { func_name, sig } => {
-            UFCSCallAnnotation {
-                function_name: func_name,
-                sig,
-                span: span.clone(),
-                self_arg: Box::new(lhs.clone()),
-            }.into()
+        InstanceMember::UFCSCall { func_name, sig } => UFCSCallAnnotation {
+            function_name: func_name,
+            sig,
+            span: span.clone(),
+            self_arg: Box::new(lhs.clone()),
         }
+        .into(),
 
-        InstanceMember::Overloaded { candidates } => {
-            OverloadAnnotation::new(
-                candidates,
-                Some(Box::new(lhs.clone())),
-                Vec::new(),
-                span.clone(),
-            ).into()
-        }
+        InstanceMember::Overloaded { candidates } => OverloadAnnotation::new(
+            candidates,
+            Some(Box::new(lhs.clone())),
+            Vec::new(),
+            span.clone(),
+        )
+        .into(),
 
         InstanceMember::Data { ty: member_ty } => {
             /* class members are always mutable because a mutable class ref is only
@@ -560,8 +594,9 @@ pub fn typecheck_member_value(
                 span: span.clone(),
                 value_kind,
                 decl: None,
-            }.into()
-        }
+            }
+            .into()
+        },
     };
 
     Ok(annotation)
@@ -571,7 +606,7 @@ pub fn typecheck_variant_ctor(
     variant_name: &Symbol,
     member_ident: &Ident,
     span: &Span,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<TypeAnnotation> {
     assert!(
         variant_name.type_args.is_none(),
@@ -581,7 +616,8 @@ pub fn typecheck_variant_ctor(
     // we check the named case exists in the unspecialized definition here, but
     // we don't want to try instantiating the actual variant type because we have
     // no information about its type args.
-    let variant_def = ctx.find_variant_def(&variant_name.qualified)
+    let variant_def = ctx
+        .find_variant_def(&variant_name.qualified)
         .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
     let case_exists = variant_def
@@ -590,10 +626,13 @@ pub fn typecheck_variant_ctor(
         .any(|case| case.ident == *member_ident);
 
     if !case_exists {
-        return Err(TypecheckError::from_name_err(NameError::MemberNotFound {
-            base: NameContainer::Type(Type::Variant(Box::new(variant_name.clone()))),
-            member: member_ident.clone(),
-        }, span.clone()));
+        return Err(TypecheckError::from_name_err(
+            NameError::MemberNotFound {
+                base: NameContainer::Type(Type::Variant(Box::new(variant_name.clone()))),
+                member: member_ident.clone(),
+            },
+            span.clone(),
+        ));
     }
 
     let ctor_annotation = VariantCtorAnnotation {
@@ -619,7 +658,7 @@ pub fn typecheck_unary_op(
             // is of the deref type
             Type::Pointer(deref_ty) => (**deref_ty).clone(),
             _ => Type::Nothing,
-        }
+        },
 
         Operator::Caret => expect_ty.clone().ptr(),
         _ => Type::Nothing,
@@ -638,44 +677,43 @@ pub fn typecheck_unary_op(
                 None
                 | Some(ValueKind::Temporary | ValueKind::Immutable | ValueKind::Uninitialized) => {
                     false
-                }
+                },
 
-                Some(ValueKind::Mutable) => {
-                    true
-                }
+                Some(ValueKind::Mutable) => true,
             };
 
             match (kind_addressable, ty.as_ref()) {
-                (false, _)
-                | (true, Type::Nothing | Type::Nil | Type::Function(..)) => {
+                (false, _) | (true, Type::Nothing | Type::Nil | Type::Function(..)) => {
                     Err(TypecheckError::NotAddressable {
                         ty: ty.into_owned(),
                         value_kind,
                         span,
                     })
-                }
-
-                (true, Type::Class(..)
-                | Type::Interface(..)
-                | Type::DynArray { .. }
-                | Type::Array { .. }
-                | Type::MethodSelf { .. }
-                | Type::Variant(..)
-                | Type::GenericParam(..)) if !ctx.allow_unsafe() => {
-                    Err(TypecheckError::UnsafeAddressoOfNotAllowed {
-                        ty: ty.into_owned(),
-                        span,
-                    })
                 },
+
+                (
+                    true,
+                    Type::Class(..)
+                    | Type::Interface(..)
+                    | Type::DynArray { .. }
+                    | Type::Array { .. }
+                    | Type::MethodSelf { .. }
+                    | Type::Variant(..)
+                    | Type::GenericParam(..),
+                ) if !ctx.allow_unsafe() => Err(TypecheckError::UnsafeAddressoOfNotAllowed {
+                    ty: ty.into_owned(),
+                    span,
+                }),
 
                 _ => Ok(TypedValueAnnotation {
                     ty: ty.into_owned().ptr(),
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,
-                }.into()),
+                }
+                .into()),
             }?
-        }
+        },
 
         // unary +, is this always a no-op?
         Operator::Add if operand_ty.valid_math_op(Operator::Add, &operand_ty) => {
@@ -684,8 +722,9 @@ pub fn typecheck_unary_op(
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            }.into()
-        }
+            }
+            .into()
+        },
 
         // unary negation - should this be disallowed for unsigned types?
         Operator::Sub if operand_ty.valid_math_op(Operator::Sub, &operand_ty) => {
@@ -694,8 +733,9 @@ pub fn typecheck_unary_op(
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            }.into()
-        }
+            }
+            .into()
+        },
 
         Operator::Caret => {
             let deref_ty = operand
@@ -715,19 +755,23 @@ pub fn typecheck_unary_op(
                 value_kind,
                 span,
                 decl: operand.annotation().decl().cloned(),
-            }.into()
-        }
+            }
+            .into()
+        },
 
         Operator::Not => {
-            operand.annotation().expect_value(&Type::Primitive(Primitive::Boolean))?;
+            operand
+                .annotation()
+                .expect_value(&Type::Primitive(Primitive::Boolean))?;
 
             TypedValueAnnotation {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: operand.annotation().decl().cloned(),
-            }.into()
-        }
+            }
+            .into()
+        },
 
         Operator::BitNot => {
             let valid_ty = match operand.annotation().ty().as_ref() {
@@ -740,7 +784,7 @@ pub fn typecheck_unary_op(
                     operand: operand.annotation().ty().into_owned(),
                     op: unary_op.op,
                     span,
-                })
+                });
             }
 
             TypedValueAnnotation {
@@ -748,8 +792,9 @@ pub fn typecheck_unary_op(
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            }.into()
-        }
+            }
+            .into()
+        },
 
         _ => {
             return Err(TypecheckError::InvalidUnaryOp {
@@ -757,7 +802,7 @@ pub fn typecheck_unary_op(
                 operand: operand.annotation().ty().into_owned(),
                 span: unary_op.annotation.clone(),
             });
-        }
+        },
     };
 
     Ok(UnaryOp {
@@ -796,7 +841,7 @@ pub fn typecheck_indexer(
             };
 
             (el_ty.clone(), base_value_kind)
-        }
+        },
 
         // not indexable
         _ => {
@@ -805,7 +850,7 @@ pub fn typecheck_indexer(
                 base: Box::new(base.clone()),
                 span: span.clone(),
             })
-        }
+        },
     };
 
     let annotation = TypedValueAnnotation {
@@ -813,7 +858,8 @@ pub fn typecheck_indexer(
         ty: el_ty,
         span: span.clone(),
         decl: None,
-    }.into();
+    }
+    .into();
 
     Ok(Expr::from(BinOp {
         lhs: base,
@@ -823,19 +869,22 @@ pub fn typecheck_indexer(
     }))
 }
 
-fn check_array_bound_static(base: &Expr, index: &Expr, ctx: &mut Context) -> TypecheckResult<()>  {
+fn check_array_bound_static(base: &Expr, index: &Expr, ctx: &mut Context) -> TypecheckResult<()> {
     fn out_of_range(dim: usize, index: IntConstant) -> bool {
         index.as_i128() < 0 || index.as_i128() >= dim as i128
     }
 
-    match (base.annotation().ty().as_ref(), const_eval_integer(index, ctx)) {
-        (Type::Array(array_ty), Ok(index_const)) if out_of_range(array_ty.dim, index_const) => Err(
-            TypecheckError::IndexOutOfBounds {
+    match (
+        base.annotation().ty().as_ref(),
+        const_eval_integer(index, ctx),
+    ) {
+        (Type::Array(array_ty), Ok(index_const)) if out_of_range(array_ty.dim, index_const) => {
+            Err(TypecheckError::IndexOutOfBounds {
                 index: index_const,
                 base_ty: Box::new(base.annotation().ty().into_owned()),
                 span: index.span().clone(),
-            }
-        ),
+            })
+        },
 
         _ => Ok(()),
     }

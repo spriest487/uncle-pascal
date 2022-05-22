@@ -1,7 +1,13 @@
 use crate::{
-    ast::{Expr, LocalBinding, Stmt},
-    parse::prelude::*,
+    ast::{Annotation, Expr, LocalBinding, Stmt},
+    parse::{Parse, ParseError, ParseResult, TokenStream},
+    Keyword,
 };
+use pas_common::{
+    span::{Span, Spanned},
+    TracedError,
+};
+use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ForLoopInit<A: Annotation> {
@@ -40,11 +46,7 @@ pub struct ForLoop<A: Annotation> {
 
 impl<A: Annotation> fmt::Display for ForLoop<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "for {} to {} do {}",
-            self.init, self.to_expr, self.body
-        )
+        write!(f, "for {} to {} do {}", self.init, self.to_expr, self.body)
     }
 }
 
@@ -59,20 +61,14 @@ impl ForLoop<Span> {
         let for_kw = tokens.match_one(Keyword::For)?;
 
         let init = match Stmt::parse(tokens)? {
-            Stmt::LocalBinding(binding) => {
-                ForLoopInit::Binding(binding)
-            }
+            Stmt::LocalBinding(binding) => ForLoopInit::Binding(binding),
 
-            Stmt::Assignment(assignment) => {
-                ForLoopInit::Assignment {
-                    counter: Box::new(assignment.lhs),
-                    value: Box::new(assignment.rhs)
-                }
-            }
+            Stmt::Assignment(assignment) => ForLoopInit::Assignment {
+                counter: Box::new(assignment.lhs),
+                value: Box::new(assignment.rhs),
+            },
 
-            stmt => {
-                return Err(TracedError::trace(ParseError::InvalidForLoopInit(stmt)))
-            }
+            stmt => return Err(TracedError::trace(ParseError::InvalidForLoopInit(stmt))),
         };
 
         tokens.match_one(Keyword::To)?;

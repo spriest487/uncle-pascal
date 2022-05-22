@@ -1,15 +1,20 @@
-mod const_decl;
 mod alias_decl;
+mod const_decl;
 mod unit_decl;
 
-use std::fmt;
-use crate::{ast::*, parse::prelude::*};
 pub use self::{
-    const_decl::{ConstDecl, ConstDeclItem},
     alias_decl::AliasDecl,
-    unit_decl::{DeclMod, Visibility, UnitDecl, UseDecl, UseDeclItem},
-    typedecl::{TypeDecl, TypeDeclItem},
+    const_decl::{ConstDecl, ConstDeclItem},
+    unit_decl::{DeclMod, UnitDecl, UseDecl, UseDeclItem, Visibility},
 };
+use crate::{
+    ast::{Annotation, Block, FunctionDecl, FunctionDef, Stmt, TypeDecl, TypeDeclItem},
+    parse::{Parse, ParseError, ParseResult, ParseSeq, TokenStream},
+    IdentPath, Keyword, Operator, Separator, TokenTree,
+};
+use pas_common::{span::Span, TracedError};
+use std::fmt;
+use crate::parse::MatchOneOf;
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum UnitKind {
@@ -30,38 +35,37 @@ pub struct Unit<A: Annotation> {
 }
 
 impl<A: Annotation> Unit<A> {
-    pub fn all_decls(&self) -> impl Iterator<Item=(Visibility, &UnitDecl<A>)> {
+    pub fn all_decls(&self) -> impl Iterator<Item = (Visibility, &UnitDecl<A>)> {
         self.iface_decls
             .iter()
             .map(|decl| (Visibility::Interface, decl))
-            .chain(self.impl_decls.iter()
-                .map(|decl| (Visibility::Implementation, decl)))
+            .chain(
+                self.impl_decls
+                    .iter()
+                    .map(|decl| (Visibility::Implementation, decl)),
+            )
     }
 
     pub fn func_decls(&self) -> impl Iterator<Item = (Visibility, &FunctionDecl<A>)> {
-        self.all_decls()
-            .filter_map(|(vis, decl)| match decl {
-                UnitDecl::FunctionDecl { decl: func, .. } => Some((vis, func)),
-                UnitDecl::FunctionDef { def: func_def, .. } => Some((vis, &func_def.decl)),
-                _ => None,
-            })
+        self.all_decls().filter_map(|(vis, decl)| match decl {
+            UnitDecl::FunctionDecl { decl: func, .. } => Some((vis, func)),
+            UnitDecl::FunctionDef { def: func_def, .. } => Some((vis, &func_def.decl)),
+            _ => None,
+        })
     }
 
     pub fn func_defs(&self) -> impl Iterator<Item = (Visibility, &FunctionDef<A>)> {
-        self.all_decls()
-            .filter_map(|(vis, decl)| match decl {
-                UnitDecl::FunctionDef { def: func_def, .. } => Some((vis, func_def)),
-                _ => None,
-            })
+        self.all_decls().filter_map(|(vis, decl)| match decl {
+            UnitDecl::FunctionDef { def: func_def, .. } => Some((vis, func_def)),
+            _ => None,
+        })
     }
 
     pub fn type_decls<'a>(&self) -> impl Iterator<Item = (Visibility, &TypeDecl<A>)> {
-        self
-            .all_decls()
-            .filter_map(|(vis, decl)| match decl {
-                UnitDecl::Type { decl: ty, .. } => Some((vis, ty)),
-                _ => None,
-            })
+        self.all_decls().filter_map(|(vis, decl)| match decl {
+            UnitDecl::Type { decl: ty, .. } => Some((vis, ty)),
+            _ => None,
+        })
     }
 
     pub fn type_decl_items(&self) -> impl Iterator<Item = (Visibility, &TypeDeclItem<A>)> {
@@ -72,9 +76,7 @@ impl<A: Annotation> Unit<A> {
 
 impl Unit<Span> {
     pub fn parse(tokens: &mut TokenStream, file_ident: IdentPath) -> ParseResult<Self> {
-        let unit_kind_kw_match = Keyword::Unit
-            .or(Keyword::Program)
-            .or(Keyword::Library);
+        let unit_kind_kw_match = Keyword::Unit.or(Keyword::Program).or(Keyword::Library);
 
         let (unit_kind, ident) = match tokens.match_one_maybe(unit_kind_kw_match) {
             Some(TokenTree::Keyword { kw, .. }) => {
@@ -112,7 +114,8 @@ impl Unit<Span> {
             tokens.match_one_maybe(Operator::Period);
         } else {
             let has_interface = parse_decls_section(Keyword::Interface, &mut iface_decls, tokens)?;
-            let has_implementation = parse_decls_section(Keyword::Implementation, &mut impl_decls, tokens)?;
+            let has_implementation =
+                parse_decls_section(Keyword::Implementation, &mut impl_decls, tokens)?;
 
             let has_initialization = tokens.match_one_maybe(Keyword::Initialization).is_some();
             if has_initialization {
@@ -154,12 +157,16 @@ impl Unit<Span> {
             ident,
             init,
             iface_decls,
-            impl_decls
+            impl_decls,
         })
     }
 }
 
-fn parse_decls_section(keyword: Keyword, out_decls: &mut Vec<UnitDecl<Span>>, tokens: &mut TokenStream) -> ParseResult<bool> {
+fn parse_decls_section(
+    keyword: Keyword,
+    out_decls: &mut Vec<UnitDecl<Span>>,
+    tokens: &mut TokenStream,
+) -> ParseResult<bool> {
     if !tokens.match_one_maybe(keyword).is_some() {
         return Ok(false);
     }
@@ -181,35 +188,33 @@ fn parse_unit_decl(tokens: &mut TokenStream, part_kw: Keyword) -> ParseResult<Un
     let decl = match tokens.look_ahead().match_one(decl_start) {
         Some(tt) if tt.is_keyword(Keyword::Function) || tt.is_keyword(Keyword::Procedure) => {
             parse_unit_func_decl(part_kw, tokens)?
-        }
+        },
 
-        Some(tt) if tt.is_keyword(Keyword::Type) => {
-            UnitDecl::Type {
-                decl: TypeDecl::parse(tokens)?,
-            }
-        }
+        Some(tt) if tt.is_keyword(Keyword::Type) => UnitDecl::Type {
+            decl: TypeDecl::parse(tokens)?,
+        },
 
-        Some(tt) if tt.is_keyword(Keyword::Uses) => {
-            UnitDecl::Uses {
-                decl: UseDecl::parse(tokens)?
-            }
-        }
+        Some(tt) if tt.is_keyword(Keyword::Uses) => UnitDecl::Uses {
+            decl: UseDecl::parse(tokens)?,
+        },
 
-        Some(tt) if tt.is_keyword(Keyword::Const) => {
-            UnitDecl::Const {
-                decl: ConstDecl::parse(tokens)?,
-            }
-        }
+        Some(tt) if tt.is_keyword(Keyword::Const) => UnitDecl::Const {
+            decl: ConstDecl::parse(tokens)?,
+        },
 
         Some(unexpected_tt) => {
-            let err = ParseError::UnexpectedToken(Box::new(unexpected_tt), Some(UnitDecl::start_matcher()));
+            let err = ParseError::UnexpectedToken(
+                Box::new(unexpected_tt),
+                Some(UnitDecl::start_matcher()),
+            );
             return Err(TracedError::trace(err));
         },
 
         None => {
-            let err = ParseError::UnexpectedEOF(UnitDecl::start_matcher(), tokens.context().clone());
+            let err =
+                ParseError::UnexpectedEOF(UnitDecl::start_matcher(), tokens.context().clone());
             return Err(TracedError::trace(err));
-        }
+        },
     };
 
     Ok(decl)
@@ -241,13 +246,9 @@ fn parse_unit_func_decl(part_kw: Keyword, tokens: &mut TokenStream) -> ParseResu
         }
         let def = def?;
 
-        Ok(UnitDecl::FunctionDef {
-            def,
-        })
+        Ok(UnitDecl::FunctionDef { def })
     } else {
-        Ok(UnitDecl::FunctionDecl {
-            decl: func_decl,
-        })
+        Ok(UnitDecl::FunctionDecl { decl: func_decl })
     }
 }
 

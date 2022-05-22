@@ -1,9 +1,15 @@
-use crate::parse::prelude::*;
-use std::{
-    fmt::{self, Write},
-    rc::Rc
+use crate::{
+    parse::{
+        Generate, LookAheadTokenStream, Match, Matcher, Parse, ParseResult, TokenStream,
+    },
+    Operator
 };
 use derivative::*;
+use pas_common::span::{Span, Spanned};
+use std::{
+    fmt::{self, Write},
+    rc::Rc,
+};
 
 #[derive(Eq, Clone, Derivative)]
 #[derivative(PartialEq, Debug, Hash)]
@@ -121,14 +127,14 @@ impl<Part: fmt::Debug> Path<Part> {
         self.parts.pop().unwrap()
     }
 
-    pub fn set(&mut self, parts: impl IntoIterator<Item=Part>) {
+    pub fn set(&mut self, parts: impl IntoIterator<Item = Part>) {
         self.parts.clear();
         self.parts.extend(parts);
 
         assert!(self.parts.len() >= 1)
     }
 
-    pub fn extend(&mut self, parts: impl IntoIterator<Item=Part>) {
+    pub fn extend(&mut self, parts: impl IntoIterator<Item = Part>) {
         self.parts.extend(parts)
     }
 
@@ -247,13 +253,15 @@ impl IdentPath {
     pub fn path_span(&self) -> Span {
         match self.parts.len() {
             1 => self.parts[0].span.clone(),
-            _ => self.parts[0].span.to(&self.parts[self.parts.len() - 1].span),
+            _ => self.parts[0]
+                .span
+                .to(&self.parts[self.parts.len() - 1].span),
         }
     }
 
     pub fn to_string_path(&self) -> Path<String> {
         Path {
-            parts: self.parts.iter().map(|p| (*p.name).clone()).collect()
+            parts: self.parts.iter().map(|p| (*p.name).clone()).collect(),
         }
     }
 }

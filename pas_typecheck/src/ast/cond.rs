@@ -1,11 +1,20 @@
+use crate::ast::{implicit_conversion, typecheck_expr, typecheck_stmt, Stmt};
+use crate::{
+    ast::Expr, Binding, Context, Primitive, Type, TypeAnnotation, TypePattern, TypecheckError,
+    TypecheckResult, TypedValueAnnotation, ValueKind,
+};
+use pas_common::span::{Span, Spanned};
+use pas_syn::ast;
 use std::borrow::Cow;
-use crate::ast::prelude::*;
 
 pub type IfCond<B> = ast::IfCond<TypeAnnotation, B>;
 pub type IfCondExpression = ast::IfCond<TypeAnnotation, Expr>;
 pub type IfCondStatement = ast::IfCond<TypeAnnotation, Stmt>;
 
-fn typecheck_cond_expr<B>(if_cond: &ast::IfCond<Span, B>, ctx: &mut Context) -> TypecheckResult<Expr> {
+fn typecheck_cond_expr<B>(
+    if_cond: &ast::IfCond<Span, B>,
+    ctx: &mut Context,
+) -> TypecheckResult<Expr> {
     // condition expr has a boolean hint if we're not doing an is-match
     let cond_expect_ty = if if_cond.is_pattern.is_some() {
         Type::Nothing
@@ -24,14 +33,14 @@ fn typecheck_cond_expr<B>(if_cond: &ast::IfCond<Span, B>, ctx: &mut Context) -> 
     Ok(cond)
 }
 
-fn typecheck_pattern_match<B>(if_cond: &ast::IfCond<Span, B>, cond: &Expr, ctx: &mut Context) -> TypecheckResult<Option<TypePattern>> {
+fn typecheck_pattern_match<B>(
+    if_cond: &ast::IfCond<Span, B>,
+    cond: &Expr,
+    ctx: &mut Context,
+) -> TypecheckResult<Option<TypePattern>> {
     let is_pattern = match &if_cond.is_pattern {
         Some(pattern) => {
-            let pattern = TypePattern::typecheck(
-                pattern,
-                &cond.annotation().ty(),
-                ctx,
-            )?;
+            let pattern = TypePattern::typecheck(pattern, &cond.annotation().ty(), ctx)?;
 
             Some(pattern)
         },
@@ -42,12 +51,16 @@ fn typecheck_pattern_match<B>(if_cond: &ast::IfCond<Span, B>, cond: &Expr, ctx: 
     Ok(is_pattern)
 }
 
-fn create_then_branch_ctx(is_pattern: Option<&TypePattern>, ctx: &mut Context) -> TypecheckResult<Context> {
+fn create_then_branch_ctx(
+    is_pattern: Option<&TypePattern>,
+    ctx: &mut Context,
+) -> TypecheckResult<Context> {
     let mut then_ctx = ctx.clone();
 
     // is-pattern binding only exists in the "then" branch, if present
     if let Some(pattern) = &is_pattern {
-        let bindings = pattern.bindings(ctx)
+        let bindings = pattern
+            .bindings(ctx)
             .map_err(|err| TypecheckError::from_name_err(err, pattern.span().clone()))?;
 
         for binding in bindings {
@@ -84,12 +97,12 @@ pub fn typecheck_if_cond_stmt(
 
             ctx.consolidate_branches(&[then_ctx, else_ctx]);
             Some(else_stmt)
-        }
+        },
 
         None => {
             ctx.consolidate_branches(&[then_ctx]);
             None
-        }
+        },
     };
 
     let annotation = TypeAnnotation::Untyped(if_cond.span().clone());
@@ -128,28 +141,28 @@ pub fn typecheck_if_cond_expr(
 
             ctx.consolidate_branches(&[then_ctx, else_ctx]);
             Some(else_expr)
-        }
+        },
 
         None => {
             ctx.consolidate_branches(&[then_ctx]);
             None
-        }
+        },
     };
 
     let span = if_cond.span().clone();
 
     let annotation = match (then_branch.annotation().ty(), else_branch.as_ref()) {
-        | (Cow::Owned(Type::Nothing) | Cow::Borrowed(Type::Nothing), _)
-        | (_, None) => TypeAnnotation::Untyped(span),
+        (Cow::Owned(Type::Nothing) | Cow::Borrowed(Type::Nothing), _) | (_, None) => {
+            TypeAnnotation::Untyped(span)
+        },
 
-        | (then_ty, Some(_else_branch)) => {
-            TypedValueAnnotation {
-                ty: then_ty.into_owned(),
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
-            }.into()
+        (then_ty, Some(_else_branch)) => TypedValueAnnotation {
+            ty: then_ty.into_owned(),
+            value_kind: ValueKind::Temporary,
+            span,
+            decl: None,
         }
+        .into(),
     };
 
     Ok(IfCond {

@@ -1,5 +1,13 @@
+use crate::{
+    ast::{IdentTypeName, TypeName, Typed},
+    parse::{LookAheadTokenStream, Matcher, Parse, ParseError, ParseResult, ParseSeq, TokenStream},
+    Ident, IdentPath, Keyword, Separator,
+};
+use pas_common::{
+    span::{Span, Spanned},
+    TracedError,
+};
 use std::fmt;
-use crate::{parse::prelude::*, ast::{Typed}};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TypeConstraint<T: Typed> {
@@ -49,22 +57,21 @@ impl WhereClause<TypeName> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let where_kw = tokens.match_one(Keyword::Where)?;
 
-        let constraints: Vec<_> = WhereClauseItem::parse_seq(tokens)?.into_iter()
+        let constraints: Vec<_> = WhereClauseItem::parse_seq(tokens)?
+            .into_iter()
             .map(|i| i.0)
             .collect();
 
-        let span = constraints.iter()
+        let span = constraints
+            .iter()
             .fold(where_kw.span().clone(), |span, constraint| {
                 span.to(constraint.span())
             });
 
-        let clause = Self {
-            constraints,
-            span,
-        };
+        let clause = Self { constraints, span };
 
         if clause.constraints.is_empty() {
-            return Err(TracedError::trace(ParseError::EmptyWhereClause(clause)))
+            return Err(TracedError::trace(ParseError::EmptyWhereClause(clause)));
         } else {
             Ok(clause)
         }

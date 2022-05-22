@@ -1,11 +1,18 @@
-use crate::ast::prelude::*;
+use crate::ast::{typecheck_expr, typecheck_stmt};
+use crate::{Context, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind};
+use pas_common::span::{Span, Spanned};
+use pas_syn::ast;
 
 pub type CaseBranch<Item> = ast::CaseBranch<TypeAnnotation, Item>;
 pub type CaseBlock<Item> = ast::CaseBlock<TypeAnnotation, Item>;
 pub type CaseExpr = ast::CaseExpr<TypeAnnotation>;
 pub type CaseStmt = ast::CaseStmt<TypeAnnotation>;
 
-pub fn typecheck_case_stmt(case: &ast::CaseStmt<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<CaseStmt> {
+pub fn typecheck_case_stmt(
+    case: &ast::CaseStmt<Span>,
+    expect_ty: &Type,
+    ctx: &mut Context,
+) -> TypecheckResult<CaseStmt> {
     let cond_expr = typecheck_expr(&case.cond_expr, &Type::Nothing, ctx)?;
     let cond_ty = cond_expr.annotation().ty();
 
@@ -27,7 +34,7 @@ pub fn typecheck_case_stmt(case: &ast::CaseStmt<Span>, expect_ty: &Type, ctx: &m
         Some(else_branch) => {
             let else_stmt = typecheck_stmt(else_branch, &expect_ty, ctx)?;
             Some(else_stmt)
-        }
+        },
 
         None => None,
     };
@@ -42,7 +49,11 @@ pub fn typecheck_case_stmt(case: &ast::CaseStmt<Span>, expect_ty: &Type, ctx: &m
     })
 }
 
-pub fn typecheck_case_expr(case: &ast::CaseExpr<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<CaseExpr> {
+pub fn typecheck_case_expr(
+    case: &ast::CaseExpr<Span>,
+    expect_ty: &Type,
+    ctx: &mut Context,
+) -> TypecheckResult<CaseExpr> {
     let span = case.span().clone();
 
     if case.branches.is_empty() || case.else_branch.is_none() {
@@ -54,9 +65,7 @@ pub fn typecheck_case_expr(case: &ast::CaseExpr<Span>, expect_ty: &Type, ctx: &m
     let mut branches = Vec::new();
 
     if case.branches.len() == 0 || case.else_branch.is_none() {
-        return Err(TypecheckError::InvalidCaseExprBlock {
-            span
-        })
+        return Err(TypecheckError::InvalidCaseExprBlock { span });
     }
 
     let mut branch_expr_ty = None;
@@ -83,19 +92,17 @@ pub fn typecheck_case_expr(case: &ast::CaseExpr<Span>, expect_ty: &Type, ctx: &m
     let result_ty = match branch_expr_ty {
         Some(Type::Nothing) | None => {
             return Err(TypecheckError::InvalidCaseExprBlock { span });
-        }
+        },
 
         Some(branch_expr_ty) => branch_expr_ty,
     };
 
     let else_expr = match &case.else_branch {
-        Some(else_branch) => {
-            typecheck_expr(else_branch, &result_ty, ctx)?
-        }
+        Some(else_branch) => typecheck_expr(else_branch, &result_ty, ctx)?,
 
         _ => {
             return Err(TypecheckError::InvalidCaseExprBlock { span });
-        }
+        },
     };
 
     let annotation = TypedValueAnnotation {
@@ -103,7 +110,8 @@ pub fn typecheck_case_expr(case: &ast::CaseExpr<Span>, expect_ty: &Type, ctx: &m
         decl: None,
         value_kind: ValueKind::Temporary,
         ty: result_ty,
-    }.into();
+    }
+    .into();
 
     Ok(CaseExpr {
         cond_expr: Box::new(cond_expr),

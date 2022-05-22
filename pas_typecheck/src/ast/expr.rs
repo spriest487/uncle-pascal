@@ -1,9 +1,16 @@
-use crate::{ast::prelude::*, ty::FunctionParamSig};
-pub use call::{Call, FunctionCall, Invocation, MethodCall, typecheck_call, VariantCtorCall};
+pub use crate::ast::call::{
+    typecheck_call, Call, FunctionCall, Invocation, MethodCall, VariantCtorCall,
+};
+use crate::{ast::{
+    cast::typecheck_cast_expr, const_eval::ConstEval, match_block::MatchExpr, typecheck_bin_op,
+    typecheck_block, typecheck_case_expr, typecheck_collection_ctor, typecheck_exit,
+    typecheck_func_expr, typecheck_if_cond_expr, typecheck_match_expr, typecheck_object_ctor,
+    typecheck_raise, typecheck_unary_op, VarBinding,
+}, string_type, ty::FunctionParamSig, typecheck_type, Context, Decl, FunctionAnnotation, Primitive, ScopeMemberRef, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind, NameError};
 use pas_common::span::*;
-use pas_syn::{ast, IntConstant};
-use crate::ast::cast::typecheck_cast_expr;
-use crate::ast::match_block::MatchExpr;
+use pas_syn::ast::FunctionParamMod;
+use pas_syn::{ast, IdentPath, IntConstant};
+use crate::ast::{Block, CaseExpr, CaseStmt, IfCond, MatchStmt, Stmt};
 
 pub type Expr = ast::Expr<TypeAnnotation>;
 pub type Literal = ast::Literal<Type>;
@@ -43,13 +50,14 @@ pub fn typecheck_expr(
                 value_kind: binding,
                 span: span.clone(),
                 decl: None,
-            }.into();
+            }
+            .into();
 
             Ok(ast::Expr::Literal(
                 ast::Literal::String(s.clone()),
                 annotation,
             ))
-        }
+        },
 
         ast::Expr::Literal(ast::Literal::Boolean(b), _) => {
             let annotation = TypedValueAnnotation {
@@ -57,17 +65,15 @@ pub fn typecheck_expr(
                 value_kind: ValueKind::Immutable,
                 span,
                 decl: None,
-            }.into();
+            }
+            .into();
 
-            Ok(ast::Expr::Literal(
-                ast::Literal::Boolean(*b),
-                annotation,
-            ))
-        }
+            Ok(ast::Expr::Literal(ast::Literal::Boolean(*b), annotation))
+        },
 
         ast::Expr::Literal(ast::Literal::Integer(i), _) => {
             typecheck_literal_int(i, expect_ty, span)
-        }
+        },
 
         ast::Expr::Literal(ast::Literal::Real(x), _) => {
             let ty = if x.as_f32().is_some() {
@@ -81,13 +87,14 @@ pub fn typecheck_expr(
                 value_kind: ValueKind::Immutable,
                 span,
                 decl: None,
-            }.into();
+            }
+            .into();
 
             Ok(ast::Expr::Literal(
                 ast::Literal::Real(x.clone()),
                 annotation,
             ))
-        }
+        },
 
         ast::Expr::Literal(ast::Literal::Nil, _) => {
             let ty = match expect_ty {
@@ -100,9 +107,10 @@ pub fn typecheck_expr(
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            }.into();
+            }
+            .into();
             Ok(ast::Expr::Literal(ast::Literal::Nil, annotation))
-        }
+        },
 
         ast::Expr::Literal(ast::Literal::SizeOf(size_of_ty), span) => {
             let ty = typecheck_type(&size_of_ty, ctx)?;
@@ -114,9 +122,10 @@ pub fn typecheck_expr(
                     span: span.clone(),
                     decl: None,
                     value_kind: ValueKind::Temporary,
-                }.into(),
+                }
+                .into(),
             ))
-        }
+        },
 
         ast::Expr::Ident(ident, _) => match ctx.find_name(&ident) {
             // const values from any scope can be transformed directly into literals
@@ -131,7 +140,8 @@ pub fn typecheck_expr(
                     decl: Some(key.clone()),
                     span: expr_node.span().clone(),
                     value_kind: ValueKind::Immutable,
-                }.into(),
+                }
+                .into(),
             )),
 
             Some(member) => {
@@ -149,12 +159,14 @@ pub fn typecheck_expr(
                 }
 
                 Ok(ast::Expr::Ident(ident.clone(), annotation))
-            }
+            },
 
             _ => {
                 let not_found_ident = ident.clone().into();
                 Err(TypecheckError::NameError {
-                    err: NameError::NotFound { ident: not_found_ident },
+                    err: NameError::NotFound {
+                        ident: not_found_ident,
+                    },
                     span: expr_node.span().clone(),
                 })
             },
@@ -165,7 +177,7 @@ pub fn typecheck_expr(
         ast::Expr::UnaryOp(unary_op) => {
             let unary_op = typecheck_unary_op(unary_op, expect_ty, ctx)?;
             Ok(ast::Expr::from(unary_op))
-        }
+        },
 
         ast::Expr::Call(call) => {
             let expr = match typecheck_call(call, expect_ty, ctx)? {
@@ -173,75 +185,97 @@ pub fn typecheck_expr(
                 Invocation::Ctor(ctor) => ast::Expr::from(*ctor),
             };
             Ok(expr)
-        }
+        },
 
         ast::Expr::ObjectCtor(ctor) => {
             let span = ctor.annotation.span().clone();
             let ctor = typecheck_object_ctor(ctor, span, expect_ty, ctx)?;
             Ok(ast::Expr::from(ctor))
-        }
+        },
 
         ast::Expr::CollectionCtor(ctor) => {
             let ctor = typecheck_collection_ctor(ctor, expect_ty, ctx)?;
             Ok(ast::Expr::from(ctor))
-        }
+        },
 
         ast::Expr::IfCond(if_cond) => {
             let if_cond = typecheck_if_cond_expr(if_cond, expect_ty, ctx)?;
             Ok(ast::Expr::from(if_cond))
-        }
+        },
 
         ast::Expr::Block(block) => {
             let block = typecheck_block(block, expect_ty, ctx)?;
             Ok(ast::Expr::from(block))
-        }
+        },
 
         ast::Expr::Raise(raise) => {
             let raise = typecheck_raise(raise, expect_ty, ctx)?;
             Ok(ast::Expr::from(raise))
-        }
+        },
 
         ast::Expr::Case(case) => {
             let case = typecheck_case_expr(case, expect_ty, ctx)?;
             Ok(ast::Expr::from(case))
-        }
+        },
 
         ast::Expr::Match(match_expr) => {
             let match_expr = typecheck_match_expr(match_expr, expect_ty, ctx)?;
             Ok(ast::Expr::from(match_expr))
-        }
+        },
 
         ast::Expr::Exit(exit) => {
             let exit = typecheck_exit(exit, expect_ty, ctx)?;
             Ok(ast::Expr::from(exit))
-        }
+        },
 
         ast::Expr::Cast(cast) => {
             let cast = typecheck_cast_expr(cast, ctx)?;
             Ok(ast::Expr::from(cast))
-        }
+        },
 
         ast::Expr::AnonymousFunction(def) => {
             let anon_func = typecheck_func_expr(def, expect_ty, ctx)?;
             Ok(ast::Expr::from(anon_func))
-        }
+        },
     }
 }
 
 fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypecheckResult<Expr> {
     let ty = match expect_ty {
-        Type::Primitive(Primitive::UInt8) => try_map_primitive_int(i, Primitive::UInt8, IntConstant::as_u8),
-        Type::Primitive(Primitive::Int8) => try_map_primitive_int(i, Primitive::Int8, IntConstant::as_i8),
-        Type::Primitive(Primitive::Int16) => try_map_primitive_int(i, Primitive::Int16, IntConstant::as_i16),
-        Type::Primitive(Primitive::UInt16) => try_map_primitive_int(i, Primitive::UInt16, IntConstant::as_u16),
-        Type::Primitive(Primitive::Int32) => try_map_primitive_int(i, Primitive::Int32, IntConstant::as_i32),
-        Type::Primitive(Primitive::UInt32) => try_map_primitive_int(i, Primitive::UInt32, IntConstant::as_u32),
-        Type::Primitive(Primitive::Int64) => try_map_primitive_int(i, Primitive::Int64, IntConstant::as_i64),
-        Type::Primitive(Primitive::UInt64) => try_map_primitive_int(i, Primitive::UInt64, IntConstant::as_u64),
-        Type::Primitive(Primitive::NativeInt) => try_map_primitive_int(i, Primitive::NativeInt, IntConstant::as_isize),
-        Type::Primitive(Primitive::NativeUInt) => try_map_primitive_int(i, Primitive::NativeUInt, IntConstant::as_usize),
+        Type::Primitive(Primitive::UInt8) => {
+            try_map_primitive_int(i, Primitive::UInt8, IntConstant::as_u8)
+        },
+        Type::Primitive(Primitive::Int8) => {
+            try_map_primitive_int(i, Primitive::Int8, IntConstant::as_i8)
+        },
+        Type::Primitive(Primitive::Int16) => {
+            try_map_primitive_int(i, Primitive::Int16, IntConstant::as_i16)
+        },
+        Type::Primitive(Primitive::UInt16) => {
+            try_map_primitive_int(i, Primitive::UInt16, IntConstant::as_u16)
+        },
+        Type::Primitive(Primitive::Int32) => {
+            try_map_primitive_int(i, Primitive::Int32, IntConstant::as_i32)
+        },
+        Type::Primitive(Primitive::UInt32) => {
+            try_map_primitive_int(i, Primitive::UInt32, IntConstant::as_u32)
+        },
+        Type::Primitive(Primitive::Int64) => {
+            try_map_primitive_int(i, Primitive::Int64, IntConstant::as_i64)
+        },
+        Type::Primitive(Primitive::UInt64) => {
+            try_map_primitive_int(i, Primitive::UInt64, IntConstant::as_u64)
+        },
+        Type::Primitive(Primitive::NativeInt) => {
+            try_map_primitive_int(i, Primitive::NativeInt, IntConstant::as_isize)
+        },
+        Type::Primitive(Primitive::NativeUInt) => {
+            try_map_primitive_int(i, Primitive::NativeUInt, IntConstant::as_usize)
+        },
 
-        Type::Primitive(Primitive::Real32) => try_map_primitive_int(i, Primitive::Real32, IntConstant::as_f32),
+        Type::Primitive(Primitive::Real32) => {
+            try_map_primitive_int(i, Primitive::Real32, IntConstant::as_f32)
+        },
 
         _ => match i.as_i32() {
             Some(_) => Type::from(Primitive::Int32),
@@ -254,16 +288,15 @@ fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> Typec
         value_kind: ValueKind::Immutable,
         span,
         decl: None,
-    }.into();
+    }
+    .into();
 
-    Ok(ast::Expr::Literal(
-        ast::Literal::Integer(*i),
-        annotation,
-    ))
+    Ok(ast::Expr::Literal(ast::Literal::Integer(*i), annotation))
 }
 
 fn try_map_primitive_int<F, T>(i: &IntConstant, primitive_ty: Primitive, f: F) -> Type
-    where F: Fn(&IntConstant) -> Option<T>
+where
+    F: Fn(&IntConstant) -> Option<T>,
 {
     match f(&i) {
         Some(..) => Type::Primitive(primitive_ty),
@@ -271,11 +304,7 @@ fn try_map_primitive_int<F, T>(i: &IntConstant, primitive_ty: Primitive, f: F) -
     }
 }
 
-pub fn member_annotation(
-    member: ScopeMemberRef,
-    span: Span,
-    ctx: &Context,
-) -> TypeAnnotation {
+pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> TypeAnnotation {
     match member {
         ScopeMemberRef::Decl {
             value: Decl::Alias(aliased),
@@ -286,7 +315,7 @@ pub fn member_annotation(
                 .unwrap_or_else(|| panic!("invalid alias to {}", aliased));
 
             member_annotation(alias_ref, span, ctx)
-        }
+        },
 
         ScopeMemberRef::Decl {
             value: Decl::BoundValue(binding),
@@ -296,7 +325,8 @@ pub fn member_annotation(
             ty: binding.ty.clone(),
             value_kind: binding.kind,
             decl: binding.def.clone(),
-        }.into(),
+        }
+        .into(),
 
         ScopeMemberRef::Decl {
             value: Decl::Function { sig, .. },
@@ -315,8 +345,9 @@ pub fn member_annotation(
                 // the named version of the function never has type args, the caller will have
                 // to specialize the expr to add some
                 type_args: None,
-            }.into()
-        }
+            }
+            .into()
+        },
 
         ScopeMemberRef::Decl {
             value: Decl::Const { ty, .. },
@@ -327,19 +358,21 @@ pub fn member_annotation(
             decl: Some(key.clone()),
             span,
             value_kind: ValueKind::Immutable,
-        }.into(),
+        }
+        .into(),
 
         ScopeMemberRef::Decl {
             value: Decl::Type { ty, .. },
             ..
         } => TypeAnnotation::Type(ty.clone(), span),
 
-        ScopeMemberRef::Decl { value: Decl::Namespace(path), .. } => {
-            TypeAnnotation::Namespace(path.clone(), span)
-        }
+        ScopeMemberRef::Decl {
+            value: Decl::Namespace(path),
+            ..
+        } => TypeAnnotation::Namespace(path.clone(), span),
         ScopeMemberRef::Scope { path } => {
             TypeAnnotation::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
-        }
+        },
     }
 }
 
@@ -355,22 +388,24 @@ pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypecheckResult<()
 
         ast::Stmt::ForLoop(for_loop) => {
             match &for_loop.init {
-                ast::ForLoopInit::Binding(init_binding) => expect_binding_initialized(init_binding, ctx)?,
+                ast::ForLoopInit::Binding(init_binding) => {
+                    expect_binding_initialized(init_binding, ctx)?
+                },
                 ast::ForLoopInit::Assignment { counter: _, value } => {
                     // only the initial value needs to be initialized - we (re)initialize the counter in the loop
                     expect_expr_initialized(value, ctx)?;
-                }
+                },
             }
             expect_expr_initialized(&for_loop.to_expr, ctx)?;
             expect_stmt_initialized(&for_loop.body, ctx)?;
             Ok(())
-        }
+        },
 
         ast::Stmt::WhileLoop(while_loop) => {
             expect_expr_initialized(&while_loop.condition, ctx)?;
             expect_stmt_initialized(&while_loop.body, ctx)?;
             Ok(())
-        }
+        },
 
         ast::Stmt::Exit(exit) => match exit.as_ref() {
             ast::Exit::WithoutValue(_) => Ok(()),
@@ -404,7 +439,7 @@ pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypecheckResult<()
                     ident: decl_ident.clone(),
                     usage: ident.span().clone(),
                 })
-            }
+            },
 
             _ => Ok(()),
         },
@@ -420,14 +455,14 @@ pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypecheckResult<()
                 expect_expr_initialized(&member.value, ctx)?;
             }
             Ok(())
-        }
+        },
 
         ast::Expr::CollectionCtor(ctor) => {
             for el in &ctor.elements {
                 expect_expr_initialized(&el.value, ctx)?;
             }
             Ok(())
-        }
+        },
 
         ast::Expr::Call(call) => expect_call_initialized(call, ctx),
 
@@ -435,7 +470,7 @@ pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypecheckResult<()
             expect_expr_initialized(&bin_op.lhs, ctx)?;
             expect_expr_initialized(&bin_op.rhs, ctx)?;
             Ok(())
-        }
+        },
 
         ast::Expr::UnaryOp(unary_op) => expect_expr_initialized(&unary_op.operand, ctx),
 
@@ -500,7 +535,7 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
                 ),
             };
             expect_args_initialized(params, &func_call.args, ctx)?;
-        }
+        },
 
         ast::Call::Method(method_call) => {
             let params = match &method_call.func_type {
@@ -512,13 +547,13 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
             };
 
             expect_args_initialized(params, &method_call.args, ctx)?;
-        }
+        },
 
         ast::Call::VariantCtor(ctor_call) => {
             if let Some(arg_expr) = &ctor_call.arg {
                 expect_expr_initialized(&arg_expr, ctx)?;
             }
-        }
+        },
     }
 
     Ok(())

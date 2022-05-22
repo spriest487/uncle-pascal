@@ -1,9 +1,4 @@
-use crate::{
-    ast::{const_eval_string, prelude::ast::TypeList, typecheck_block, typecheck_expr, InterfaceDecl},
-    string_type, typecheck_type, typecheck_type_params, Binding, Context, Environment,
-    FunctionParamSig, FunctionSig, NameContainer, NameError, NameResult, Type, TypeAnnotation,
-    TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind,
-};
+use crate::{ast::{const_eval_string, typecheck_block, typecheck_expr, InterfaceDecl}, string_type, typecheck_type, typecheck_type_params, Binding, Context, Environment, FunctionParamSig, FunctionSig, NameContainer, NameError, NameResult, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind, TypeList};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::{Typed, Visibility};
@@ -306,7 +301,7 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
 
 pub fn specialize_func_decl(
     decl: &FunctionDecl,
-    args: &TypeList<Type>,
+    args: &TypeList,
     span: &Span,
     ctx: &Context,
 ) -> TypecheckResult<FunctionDecl> {

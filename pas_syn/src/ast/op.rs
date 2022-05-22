@@ -1,4 +1,7 @@
-use crate::{ast::Expr, parse::prelude::*};
+use std::fmt;
+use pas_common::span::{Span, Spanned};
+use crate::ast::{Annotation, Expr};
+use crate::{Operator, Position};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct UnaryOp<A: Annotation> {
@@ -37,11 +40,11 @@ impl<A: Annotation> fmt::Display for BinOp<A> {
         match self.op {
             Operator::RangeInclusive | Operator::Period => {
                 write!(f, "{}{}{}", self.lhs, self.op, self.rhs)
-            }
+            },
 
             Operator::Index => {
                 write!(f, "{}[{}]", self.lhs, self.rhs)
-            }
+            },
 
             _ => write!(f, "{} {} {}", self.lhs, self.op, self.rhs),
         }

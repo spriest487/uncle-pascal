@@ -1,11 +1,16 @@
-use crate::ast::prelude::*;
+use crate::ast::typecheck_expr;
+use crate::{
+    string_type, Context, Type, TypeAnnotation, TypecheckResult, TypedValueAnnotation, ValueKind,
+};
+use pas_common::span::{Span, Spanned};
+use pas_syn::ast;
 
 pub type Raise = ast::Raise<TypeAnnotation>;
 
 pub fn typecheck_raise(
     raise: &ast::Raise<Span>,
     expect_ty: &Type,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<Raise> {
     let string_ty = string_type(ctx)?;
     let value = typecheck_expr(&raise.value, &string_ty, ctx)?;
@@ -18,7 +23,8 @@ pub fn typecheck_raise(
         span: raise.span().clone(),
         decl: None,
         value_kind: ValueKind::Temporary,
-    }.into();
+    }
+    .into();
 
     Ok(Raise {
         value: Box::new(value),

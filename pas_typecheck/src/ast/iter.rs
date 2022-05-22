@@ -1,4 +1,9 @@
-use crate::ast::prelude::*;
+use crate::ast::{typecheck_expr, typecheck_local_binding, typecheck_stmt};
+use crate::{
+    Context, Environment, Primitive, Type, TypeAnnotation, TypecheckError, TypecheckResult,
+};
+use pas_common::span::{Span, Spanned};
+use pas_syn::ast;
 
 pub type ForLoop = ast::ForLoop<TypeAnnotation>;
 pub type WhileLoop = ast::WhileLoop<TypeAnnotation>;
@@ -9,7 +14,9 @@ pub fn typecheck_for_loop(
 ) -> TypecheckResult<ForLoop> {
     let annotation = TypeAnnotation::Untyped(for_loop.annotation.clone());
 
-    let inner_scope = ctx.push_scope(Environment::Block { allow_unsafe: false });
+    let inner_scope = ctx.push_scope(Environment::Block {
+        allow_unsafe: false,
+    });
 
     let (init, counter_ty) = match &for_loop.init {
         ast::ForLoopInit::Binding(init_binding) => {
@@ -18,7 +25,7 @@ pub fn typecheck_for_loop(
 
             let init = ast::ForLoopInit::Binding(Box::new(init_binding));
             (init, counter_ty)
-        }
+        },
 
         ast::ForLoopInit::Assignment { counter, value } => {
             let counter = typecheck_expr(counter, &Primitive::Int32.into(), ctx)?;
@@ -36,14 +43,18 @@ pub fn typecheck_for_loop(
             };
 
             (init, counter_ty)
-        }
+        },
     };
 
-    if !counter_ty.as_primitive().map(|p| p.is_integer()).unwrap_or(false) {
+    if !counter_ty
+        .as_primitive()
+        .map(|p| p.is_integer())
+        .unwrap_or(false)
+    {
         return Err(TypecheckError::InvalidLoopCounterType {
             counter_ty,
             span: annotation.span().clone(),
-        })
+        });
     }
 
     let to_expr = typecheck_expr(&for_loop.to_expr, &counter_ty, ctx)?;

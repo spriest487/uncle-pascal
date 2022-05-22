@@ -1,20 +1,6 @@
 mod matcher;
 mod token_stream;
 
-pub mod prelude {
-    pub use crate::{
-        ast::{Annotation, DeclNamed, TypeName, IdentTypeName, ArrayTypeName, TypeNamePattern},
-        consts::*,
-        ident::*,
-        keyword::*,
-        operators::*,
-        parse::*,
-        token_tree::{DelimiterPair, Separator, TokenTree},
-    };
-    pub use pas_common::{span::*, TracedError};
-    pub use std::fmt;
-}
-
 use crate::{ast::*, token_tree::*, Ident};
 use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
 use std::fmt;
