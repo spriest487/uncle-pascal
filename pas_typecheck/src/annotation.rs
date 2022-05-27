@@ -1,12 +1,21 @@
-use std::{fmt, rc::Rc};
 use std::borrow::Cow;
-
+use std::{fmt, rc::Rc};
+use derivative::*;
 use pas_common::span::*;
-use pas_syn::{ast::{Annotation, DeclNamed, TypeDeclName}, ident::IdentPath, Ident, IntConstant};
 use pas_syn::ast::TypeList;
+use pas_syn::{
+    ast::{Annotation, DeclNamed, TypeDeclName},
+    ident::IdentPath,
+    Ident, IntConstant,
+};
 
-use crate::{ast::{Expr, FunctionDecl}, GenericError, GenericResult, result::*, ty::*, ValueKind};
 use crate::ast::{Literal, OverloadCandidate};
+use crate::{
+    ast::{Expr, FunctionDecl},
+    result::*,
+    ty::*,
+    GenericError, GenericResult, ValueKind,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariantCtorAnnotation {
@@ -24,8 +33,12 @@ impl From<VariantCtorAnnotation> for TypeAnnotation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Hash, Debug, PartialEq)]
 pub struct OverloadAnnotation {
+    #[derivative(Debug = "ignore")]
+    #[derivative(Hash = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub span: Span,
 
     pub candidates: Vec<OverloadCandidate>,
@@ -37,12 +50,7 @@ pub struct OverloadAnnotation {
 }
 
 impl OverloadAnnotation {
-    pub fn method(
-        iface_ty: Type,
-        self_arg: Expr,
-        decl: FunctionDecl,
-        span: Span
-    ) -> Self {
+    pub fn method(iface_ty: Type, self_arg: Expr, decl: FunctionDecl, span: Span) -> Self {
         let sig = Rc::new(FunctionSig::of_decl(&decl));
 
         Self {
@@ -50,14 +58,12 @@ impl OverloadAnnotation {
             type_args: Vec::new(), // NYI: methods can't have type args yet,
             self_arg: Some(Box::new(self_arg)),
             sig: Some(sig.clone()),
-            candidates: vec![
-                OverloadCandidate::Method {
-                    ident: decl.ident.last().clone(),
-                    decl,
-                    sig,
-                    iface_ty,
-                }
-            ],
+            candidates: vec![OverloadCandidate::Method {
+                ident: decl.ident.last().clone(),
+                decl,
+                sig,
+                iface_ty,
+            }],
         }
     }
 
@@ -65,7 +71,7 @@ impl OverloadAnnotation {
         candidates: Vec<OverloadCandidate>,
         self_arg: Option<Box<Expr>>,
         type_args: Vec<Type>,
-        span: Span
+        span: Span,
     ) -> Self {
         let sig = if candidates.len() == 1 {
             Some(candidates[0].sig().clone())
@@ -150,12 +156,17 @@ impl From<FunctionAnnotation> for TypeAnnotation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypedValueAnnotation  {
-    pub span: Span,
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Hash, Debug, PartialEq)]
+pub struct TypedValueAnnotation {
     pub ty: Type,
     pub value_kind: ValueKind,
     pub decl: Option<Ident>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(Hash = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    pub span: Span,
 }
 
 impl From<TypedValueAnnotation> for TypeAnnotation {
@@ -164,13 +175,18 @@ impl From<TypedValueAnnotation> for TypeAnnotation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Hash, Debug, PartialEq)]
 pub struct ConstAnnotation {
-    pub span: Span,
     pub decl: Option<Ident>,
-
     pub ty: Type,
+
     pub value: Literal,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(Hash = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    pub span: Span,
 }
 
 impl From<ConstAnnotation> for TypeAnnotation {
@@ -179,13 +195,17 @@ impl From<ConstAnnotation> for TypeAnnotation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Hash, Debug, PartialEq)]
 pub struct UFCSCallAnnotation {
     pub self_arg: Box<Expr>,
     pub function_name: IdentPath,
-    pub span: Span,
-
     pub sig: Rc<FunctionSig>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(Hash = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    pub span: Span,
 }
 
 impl UFCSCallAnnotation {
@@ -224,19 +244,19 @@ impl TypeAnnotation {
         assert_ne!(Type::Nothing, *expect_ty);
 
         let (actual_ty, span) = match self {
-            | TypeAnnotation::InterfaceMethod(method) => (method.func_ty(), &method.span),
-            | TypeAnnotation::Overload(overload) => (overload.func_ty(), &overload.span),
-            | TypeAnnotation::Function(func) => (func.func_ty(), &func.span),
-            | TypeAnnotation::TypedValue(val) => (val.ty.clone(), &val.span),
-            | TypeAnnotation::Const(const_val) => (const_val.ty.clone(), &const_val.span),
+            TypeAnnotation::InterfaceMethod(method) => (method.func_ty(), &method.span),
+            TypeAnnotation::Overload(overload) => (overload.func_ty(), &overload.span),
+            TypeAnnotation::Function(func) => (func.func_ty(), &func.span),
+            TypeAnnotation::TypedValue(val) => (val.ty.clone(), &val.span),
+            TypeAnnotation::Const(const_val) => (const_val.ty.clone(), &const_val.span),
 
-            | TypeAnnotation::UFCSCall(call) => (call.func_ty(), &call.span),
+            TypeAnnotation::UFCSCall(call) => (call.func_ty(), &call.span),
 
-            | TypeAnnotation::Untyped(span)
+            TypeAnnotation::Untyped(span)
             | TypeAnnotation::Namespace(_, span)
             | TypeAnnotation::Type(_, span) => (Type::Nothing, span),
 
-            | TypeAnnotation::VariantCtor(ctor) => {
+            TypeAnnotation::VariantCtor(ctor) => {
                 let variant_ty = Type::Variant(Box::new(Symbol {
                     qualified: ctor.variant_name.clone(),
                     decl_name: TypeDeclName::from(ctor.variant_name.last().clone()),
@@ -253,25 +273,35 @@ impl TypeAnnotation {
             Err(TypecheckError::TypeMismatch {
                 span: span.clone(),
                 expected: expect_ty.clone(),
-                actual: actual_ty
+                actual: actual_ty,
             })
         }
     }
 
+    pub fn new_temp_val(ty: Type, span: Span) -> Self {
+        let typed_val = TypedValueAnnotation {
+            decl: None,
+            value_kind: ValueKind::Temporary,
+            ty,
+            span,
+        };
+        typed_val.into()
+    }
+
     pub fn ty(&self) -> Cow<Type> {
         match self {
-            | TypeAnnotation::Namespace(_, _)
+            TypeAnnotation::Namespace(_, _)
             | TypeAnnotation::Untyped(_)
             | TypeAnnotation::Type(_, _)
             | TypeAnnotation::VariantCtor(..) => Cow::Owned(Type::Nothing),
 
-            | TypeAnnotation::Function(func) => Cow::Owned(func.func_ty()),
-            | TypeAnnotation::UFCSCall(call) => Cow::Owned(call.func_ty()),
-            | TypeAnnotation::InterfaceMethod(method) => Cow::Owned(method.func_ty()),
-            | TypeAnnotation::Overload(overload) => Cow::Owned(overload.func_ty()),
+            TypeAnnotation::Function(func) => Cow::Owned(func.func_ty()),
+            TypeAnnotation::UFCSCall(call) => Cow::Owned(call.func_ty()),
+            TypeAnnotation::InterfaceMethod(method) => Cow::Owned(method.func_ty()),
+            TypeAnnotation::Overload(overload) => Cow::Owned(overload.func_ty()),
 
-            | TypeAnnotation::Const(const_val) => Cow::Borrowed(&const_val.ty),
-            | TypeAnnotation::TypedValue(val) => Cow::Borrowed(&val.ty),
+            TypeAnnotation::Const(const_val) => Cow::Borrowed(&const_val.ty),
+            TypeAnnotation::TypedValue(val) => Cow::Borrowed(&val.ty),
         }
     }
 
@@ -318,15 +348,15 @@ impl fmt::Display for TypeAnnotation {
 impl Spanned for TypeAnnotation {
     fn span(&self) -> &Span {
         match self {
-            | TypeAnnotation::InterfaceMethod(method) => &method.span,
-            | TypeAnnotation::VariantCtor(ctor) => &ctor.span,
-            | TypeAnnotation::Overload(overload) => &overload.span,
-            | TypeAnnotation::TypedValue(val) => &val.span,
-            | TypeAnnotation::Const(const_val) => &const_val.span,
-            | TypeAnnotation::Function(func) => &func.span,
-            | TypeAnnotation::UFCSCall(call) => &call.span,
+            TypeAnnotation::InterfaceMethod(method) => &method.span,
+            TypeAnnotation::VariantCtor(ctor) => &ctor.span,
+            TypeAnnotation::Overload(overload) => &overload.span,
+            TypeAnnotation::TypedValue(val) => &val.span,
+            TypeAnnotation::Const(const_val) => &const_val.span,
+            TypeAnnotation::Function(func) => &func.span,
+            TypeAnnotation::UFCSCall(call) => &call.span,
 
-            | TypeAnnotation::Untyped(span)
+            TypeAnnotation::Untyped(span)
             | TypeAnnotation::Type(_, span)
             | TypeAnnotation::Namespace(_, span) => span,
         }
@@ -373,7 +403,10 @@ impl Specializable for Symbol {
 
         match &self.type_args {
             None => true,
-            Some(type_args) => type_args.items.iter().any(|arg| arg.is_unspecialized_generic())
+            Some(type_args) => type_args
+                .items
+                .iter()
+                .any(|arg| arg.is_unspecialized_generic()),
         }
     }
 

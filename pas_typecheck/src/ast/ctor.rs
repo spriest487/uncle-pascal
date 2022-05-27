@@ -134,8 +134,7 @@ pub fn typecheck_object_ctor(
     }
 
     let args = ObjectCtorArgs {
-        open: ctor.args.open.clone(),
-        close: ctor.args.close.clone(),
+        span: ctor.args.span.clone(),
         members,
     };
 

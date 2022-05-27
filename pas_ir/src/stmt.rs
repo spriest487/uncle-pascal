@@ -16,6 +16,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Stmt, builder: &mut Builder) {
     }
 
     match stmt {
+        ast::Stmt::Ident(..) => {
+            unreachable!("should be turned into no-args calls during typechecking")
+        }
+
         ast::Stmt::LocalBinding(binding) => {
             build_binding(binding, builder);
         },

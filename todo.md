@@ -1,5 +1,5 @@
+* can we get rid of different funciton call types for interfaces/functions? maybe just place that iwth methods that panic if hte expr target is the wrong kind?
 * properly initialize function local vars (IR)
-* get rid of preludes
 * type cache so we don't need to construct/pass around type objects all the time in the typechecker (This is really slow)
 * stop outputting empty releaser funcs where there's nothing ot be released
 * parser: newlines/escape chars in string literals~~~~

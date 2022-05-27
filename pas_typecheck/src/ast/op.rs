@@ -1,13 +1,14 @@
-use crate::ast::{
-    const_eval_integer, implicit_conversion, member_annotation, typecheck_expr,
-    typecheck_object_ctor, Call, Expr, MethodCall,
-};
 use crate::{
-    annotation::VariantCtorAnnotation, string_type, Context, FunctionAnnotation, FunctionSig,
-    InstanceMember, InterfaceMethodAnnotation, NameContainer, NameError, OverloadAnnotation,
-    Primitive, Symbol, Type, TypeAnnotation, TypeMember, TypecheckError, TypecheckResult,
-    TypedValueAnnotation, UFCSCallAnnotation, ValueKind, DISPLAYABLE_IFACE_NAME,
-    DISPLAYABLE_TOSTRING_METHOD, SYSTEM_UNIT_NAME,
+    annotation::VariantCtorAnnotation,
+    ast::{
+        const_eval_integer, implicit_conversion, member_annotation, typecheck_expr,
+        typecheck_object_ctor, Call, Expr, MethodCall,
+    },
+    string_type, Context, FunctionAnnotation, FunctionSig, InstanceMember,
+    InterfaceMethodAnnotation, NameContainer, NameError, OverloadAnnotation, Primitive, Symbol,
+    Type, TypeAnnotation, TypeMember, TypecheckError, TypecheckResult, TypedValueAnnotation,
+    UFCSCallAnnotation, ValueKind, DISPLAYABLE_IFACE_NAME, DISPLAYABLE_TOSTRING_METHOD,
+    SYSTEM_UNIT_NAME,
 };
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, Ident, IdentPath, IntConstant, Operator};
@@ -275,7 +276,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         ident: to_string_ident.clone(),
         args: vec![expr.clone()],
         type_args: None,
-        args_brackets: (span.clone(), span.clone()),
+        args_span: span.clone(),
         self_type: src_ty.into_owned(),
         func_type: Type::Function(to_string_sig.clone()),
         annotation: InterfaceMethodAnnotation {
@@ -339,7 +340,7 @@ fn desugar_string_concat(
                 args: vec![lhs, rhs],
                 type_args: None,
                 target: concat_func,
-                args_brackets: (span.clone(), span.clone()),
+                args_span: span.clone(),
             });
 
             Ok(ast::Expr::from(concat_call))
@@ -362,27 +363,31 @@ fn typecheck_member_of(
             let member_ident = member_ident.clone();
 
             let annotation = match lhs.annotation() {
+                // x is the name of a variant type - we are constucting that variant
                 TypeAnnotation::Type(Type::Variant(variant_name), ..) => {
                     typecheck_variant_ctor(variant_name, &member_ident, &span, ctx)?
                 },
 
+                // x is a non-variant typename - we are accessing a member of that type
+                // e.g. calling an interface method by its type-qualified name
+                TypeAnnotation::Type(ty, _) => typecheck_type_member(ty, &member_ident, span.clone(), ctx)?,
+
+                // x is a value - we are accessing a member of that value
                 TypeAnnotation::TypedValue(base_val) => typecheck_member_value(
                     &lhs,
                     &base_val.ty,
                     base_val.value_kind,
                     &member_ident,
-                    span,
+                    span.clone(),
                     ctx,
                 )?,
-
-                TypeAnnotation::Type(ty, _) => typecheck_type_member(ty, &member_ident, span, ctx)?,
 
                 TypeAnnotation::Namespace(path, _) => {
                     let mut full_path = path.clone();
                     full_path.push(member_ident.clone());
 
                     match ctx.find_path(&full_path) {
-                        Some(member) => member_annotation(member, span, ctx),
+                        Some(member) => member_annotation(member, span.clone(), ctx),
                         None => {
                             let err = NameError::MemberNotFound {
                                 member: member_ident,
@@ -406,12 +411,36 @@ fn typecheck_member_of(
 
             let rhs = ast::Expr::Ident(member_ident, annotation.clone());
 
-            Ok(Expr::from(BinOp {
+            let member_expr = Expr::from(BinOp {
                 lhs,
                 op: Operator::Period,
                 rhs,
                 annotation,
-            }))
+            });
+
+            // member operations that reference function values with no params automatically turn into a
+            // no-args call to that function, except in contexts where we expect a matching function value
+            match member_expr.annotation() {
+                TypeAnnotation::Function(func_annotation)
+                    if func_annotation
+                        .sig
+                        .should_call_noargs_in_expr(expect_ty, false) =>
+                {
+                    let no_args_call = Call::FunctionNoArgs(member_expr);
+                    Ok(Expr::from(no_args_call))
+                },
+
+                TypeAnnotation::UFCSCall(ufcs_annotation)
+                    if ufcs_annotation
+                        .sig
+                        .should_call_noargs_in_expr(expect_ty, true) =>
+                {
+                    let no_args_call = Call::FunctionNoArgs(member_expr);
+                    Ok(Expr::from(no_args_call))
+                },
+
+                _ => Ok(member_expr),
+            }
         },
 
         // a.B(x: x)

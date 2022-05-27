@@ -14,7 +14,7 @@ use crate::{
 };
 use pas_common::span::{Span, Spanned};
 use pas_syn::parse::InvalidStatement;
-use pas_syn::{ast, Operator};
+use pas_syn::{ast, Ident, Operator};
 
 pub type VarBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Stmt = ast::Stmt<TypeAnnotation>;
@@ -124,6 +124,11 @@ pub fn typecheck_stmt(
     ctx: &mut Context,
 ) -> TypecheckResult<Stmt> {
     match stmt {
+        ast::Stmt::Ident(ident, span) => {
+            // a statement consisting of a single ident MUST be a call to a function without args
+            typecheck_ident_stmt(ident, span, ctx)
+        }
+
         ast::Stmt::LocalBinding(binding) => {
             typecheck_local_binding(binding, ctx).map(|s| ast::Stmt::LocalBinding(Box::new(s)))
         },
@@ -133,7 +138,7 @@ pub fn typecheck_stmt(
             Invocation::Ctor(ctor) => {
                 let ctor_expr = Expr::from(*ctor);
                 let invalid_stmt = InvalidStatement::from(ctor_expr);
-                Err(TypecheckError::InvalidStatement(Box::new(invalid_stmt)))
+                Err(TypecheckError::InvalidStatement(invalid_stmt))
             },
         },
 
@@ -195,6 +200,28 @@ pub fn typecheck_stmt(
             let match_stmt = typecheck_match_stmt(match_stmt, expect_ty, ctx)?;
             Ok(ast::Stmt::Match(Box::new(match_stmt)))
         },
+    }
+}
+
+fn typecheck_ident_stmt(ident: &Ident, span: &Span, ctx: &mut Context) -> TypecheckResult<Stmt> {
+    let target = ast::Expr::Ident(ident.clone(), span.clone());
+
+    // an expression which appears on its own as a statement MUST be a function we call call with
+    // no args, so if the statement expression here typechecks to anything else (even another valid
+    // stmt kind), raise an error.
+    // we handle other kind of expr->stmt conversions during parsing, this is just the only
+    // case where we need type information to decide
+    match typecheck_expr(&target, &Type::Nothing, ctx)? {
+        ast::Expr::Call(call) => {
+            let call_stmt = Stmt::Call(call);
+            Ok(call_stmt)
+        },
+
+        invalid => {
+            // this would only be valid as an expression
+            let invalid_stmt = InvalidStatement(Box::new(invalid));
+            return Err(TypecheckError::InvalidStatement(invalid_stmt));
+        }
     }
 }
 

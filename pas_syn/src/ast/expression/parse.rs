@@ -336,8 +336,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 ident: None,
                 annotation: open_bracket.to(&close_bracket),
                 args: ObjectCtorArgs {
-                    open: open_bracket,
-                    close: close_bracket,
+                    span: open_bracket.to(&close_bracket),
                     members: Vec::new(),
                 },
             });
@@ -365,8 +364,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                         ident: None,
                         annotation: open_bracket.to(&close_bracket),
                         args: ObjectCtorArgs {
-                            open: open_bracket,
-                            close: close_bracket,
+                            span: open_bracket.to(&close_bracket),
                             members: items,
                         },
                     });
@@ -440,7 +438,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             let args = ObjectCtorArgs::parse(&mut self.tokens)?;
             let ident = self.pop_operand().into_ident().unwrap();
 
-            let span = ident.span().to(&args.close);
+            let span = ident.span().to(&args.span);
             let ctor = ObjectCtor {
                 ident: Some(ident.into()),
                 args,

@@ -9,11 +9,17 @@ use crate::{
 use pas_common::span::{Span, Spanned};
 use std::fmt;
 use crate::parse::Parse;
+use derivative::*;
 
-#[derive(Eq, PartialEq, Clone, Hash, Debug)]
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct ObjectCtorMember<A: Annotation> {
     pub ident: Ident,
     pub value: Expr<A>,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub span: Span,
 }
 
@@ -56,11 +62,15 @@ impl ParseSeq for ObjectCtorMember<Span> {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Hash, Debug)]
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct ObjectCtorArgs<A: Annotation> {
-    pub open: Span,
     pub members: Vec<ObjectCtorMember<A>>,
-    pub close: Span,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    pub span: Span,
 }
 
 impl ObjectCtorArgs<Span> {
@@ -83,9 +93,8 @@ impl ObjectCtorArgs<Span> {
         members_tokens.finish()?;
 
         Ok(ObjectCtorArgs {
-            open,
             members,
-            close,
+            span: open.to(&close),
         })
     }
 }

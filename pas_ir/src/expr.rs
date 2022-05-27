@@ -377,7 +377,9 @@ enum CallTarget {
 
 pub fn build_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
     match call {
-        ast::Call::Function(func_call) => build_func_call(func_call, builder),
+        ast::Call::FunctionNoArgs(expr) => build_func_call(expr, &[], None, builder),
+
+        ast::Call::Function(func_call) => build_func_call(&func_call.target, &func_call.args, func_call.type_args.as_ref(), builder),
 
         ast::Call::Method(method_call) => build_method_call(method_call, builder),
 
@@ -386,23 +388,23 @@ pub fn build_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref
 }
 
 fn build_func_call(
-    func_call: &pas_ty::ast::FunctionCall,
+    target: &pas_ty::ast::Expr,
+    args: &[pas_ty::ast::Expr],
+    type_args: Option<&pas_ty::TypeList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let type_args = func_call.type_args.clone();
-
-    match func_call.target.annotation() {
+    match target.annotation() {
         // calling a function directly
         pas_ty::TypeAnnotation::Function(func) => {
             let full_name = func.ns.clone().child(func.name.clone());
-            let func = builder.translate_func(full_name, type_args);
+            let func = builder.translate_func(full_name, type_args.cloned());
 
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
             let func_sig = func.sig;
 
             let call_target = CallTarget::Function(func_val);
 
-            translate_call_with_args(call_target, &func_call.args, &func_sig, builder)
+            translate_call_with_args(call_target, args, &func_sig, builder)
         },
 
         // invoking a closure value that refers to a function
@@ -415,7 +417,7 @@ fn build_func_call(
             );
 
             // expr that evaluates to a closure pointer
-            let target_expr_val = translate_expr(&func_call.target, builder);
+            let target_expr_val = translate_expr(target, builder);
             let func_sig = val
                 .ty
                 .as_func()
@@ -440,7 +442,7 @@ fn build_func_call(
                 closure_ptr: target_expr_val.clone().into(),
             };
 
-            translate_call_with_args(call_target, &func_call.args, &func_sig, builder)
+            translate_call_with_args(call_target, args, &func_sig, builder)
         },
 
         _ => panic!("type of function call expr must be a function or callable value"),

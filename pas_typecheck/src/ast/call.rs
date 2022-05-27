@@ -133,7 +133,16 @@ pub fn typecheck_call(
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
     };
 
-    let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
+    let target = match typecheck_expr(&func_call.target, &Type::Nothing, ctx)? {
+        Expr::Call(call) => match *call {
+            // turn no-args function calls into calls with (presumably zero) args if they
+            // appear as the target of a function call expr with an args list
+            Call::FunctionNoArgs(expr) => expr,
+            call => Expr::from(call),
+        }
+
+        target => target,
+    };
 
     let expr = match target.annotation() {
         TypeAnnotation::TypedValue(val) => match &val.ty {
@@ -157,13 +166,11 @@ pub fn typecheck_call(
         },
 
         TypeAnnotation::UFCSCall(ufcs_call) => {
-            let arg_brackets = (&func_call.args_brackets.0, &func_call.args_brackets.1);
-
             let typecheck_call = typecheck_ufcs_call(
                 &ufcs_call,
                 &func_call.args,
                 func_call.annotation.span(),
-                arg_brackets,
+                &func_call.args_span,
                 ctx,
             );
 
@@ -183,13 +190,12 @@ pub fn typecheck_call(
         },
 
         TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
-            let (open, close) = &func_call.args_brackets;
+            let args_span = func_call.args_span.clone();
             let ctor = ast::ObjectCtor {
                 ident: Some(ty.full_path().unwrap()),
                 annotation: call.span().clone(),
                 args: ast::ObjectCtorArgs {
-                    open: open.clone(),
-                    close: close.clone(),
+                    span: args_span,
                     members: Vec::new(),
                 },
             };
@@ -232,7 +238,7 @@ fn typecheck_func_overload(
         ctx,
     )?;
 
-    let args_brackets = func_call.args_brackets.clone();
+    let args_span = func_call.args_span.clone();
 
     let call = match &overloaded.candidates[overload.selected_sig] {
         OverloadCandidate::Method {
@@ -282,7 +288,7 @@ fn typecheck_func_overload(
                 self_type,
                 func_type: Type::Function(sig.clone()),
                 iface_type: iface_ty.clone(),
-                args_brackets,
+                args_span,
             };
 
             ast::Call::Method(method_call)
@@ -302,7 +308,7 @@ fn typecheck_func_overload(
                 args: overload.args,
                 type_args: overload.type_args.clone(),
                 target: target.clone(),
-                args_brackets,
+                args_span,
             };
 
             ast::Call::Function(func_call)
@@ -376,7 +382,7 @@ fn typecheck_iface_method_call(
             decl: None,
         }
         .into(),
-        args_brackets: func_call.args_brackets.clone(),
+        args_span: func_call.args_span.clone(),
         func_type: Type::Function(Rc::new(sig)),
         self_type,
         iface_type: iface_method.iface_ty.clone(),
@@ -390,7 +396,7 @@ fn typecheck_ufcs_call(
     ufcs_call: &UFCSCallAnnotation,
     rest_args: &[ast::Expr<Span>],
     span: &Span,
-    arg_brackets: (&Span, &Span),
+    args_span: &Span,
     ctx: &mut Context,
 ) -> TypecheckResult<Call> {
     let mut specialized_call_args = specialize_call_args(
@@ -430,7 +436,7 @@ fn typecheck_ufcs_call(
 
     Ok(ast::Call::Function(FunctionCall {
         args: specialized_call_args.actual_args,
-        args_brackets: (arg_brackets.0.clone(), arg_brackets.1.clone()),
+        args_span: args_span.clone(),
         annotation,
         type_args: specialized_call_args.type_args,
         target,
@@ -808,7 +814,7 @@ fn typecheck_func_call(
         args: specialized_call_args.actual_args,
         type_args: specialized_call_args.type_args,
         target,
-        args_brackets: func_call.args_brackets.clone(),
+        args_span: func_call.args_span.clone(),
     }))
 }
 

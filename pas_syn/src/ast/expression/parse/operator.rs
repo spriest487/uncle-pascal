@@ -90,11 +90,11 @@ pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> P
             let span = target.annotation().span().to(&args.close);
 
             let op_expr = Expr::from(Call::Function(FunctionCall {
-                target,
                 annotation: span.clone(),
+                args_span: args.list_span(),
                 args: args.args,
+                target,
                 type_args,
-                args_brackets: (args.open, args.close),
             }));
 
             let merged_parts: Vec<_> = vec![CompoundExpressionPart::Operand(op_expr)]

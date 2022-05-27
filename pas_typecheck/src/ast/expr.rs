@@ -1,16 +1,21 @@
 pub use crate::ast::call::{
     typecheck_call, Call, FunctionCall, Invocation, MethodCall, VariantCtorCall,
 };
-use crate::{ast::{
-    cast::typecheck_cast_expr, const_eval::ConstEval, match_block::MatchExpr, typecheck_bin_op,
-    typecheck_block, typecheck_case_expr, typecheck_collection_ctor, typecheck_exit,
-    typecheck_func_expr, typecheck_if_cond_expr, typecheck_match_expr, typecheck_object_ctor,
-    typecheck_raise, typecheck_unary_op, VarBinding,
-}, string_type, ty::FunctionParamSig, typecheck_type, Context, Decl, FunctionAnnotation, Primitive, ScopeMemberRef, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind, NameError};
+use crate::{
+    ast::{
+        cast::typecheck_cast_expr, const_eval::ConstEval, match_block::MatchExpr, typecheck_bin_op,
+        typecheck_block, typecheck_case_expr, typecheck_collection_ctor, typecheck_exit,
+        typecheck_func_expr, typecheck_if_cond_expr, typecheck_match_expr, typecheck_object_ctor,
+        typecheck_raise, typecheck_unary_op, VarBinding,
+    },
+    ast::{Block, CaseExpr, CaseStmt, IfCond, MatchStmt, Stmt},
+    string_type,
+    ty::FunctionParamSig,
+    typecheck_type, Context, Decl, FunctionAnnotation, NameError, Primitive, ScopeMemberRef, Type,
+    TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind,
+};
 use pas_common::span::*;
-use pas_syn::ast::FunctionParamMod;
-use pas_syn::{ast, IdentPath, IntConstant};
-use crate::ast::{Block, CaseExpr, CaseStmt, IfCond, MatchStmt, Stmt};
+use pas_syn::{ast, ast::FunctionParamMod, Ident, IdentPath, IntConstant};
 
 pub type Expr = ast::Expr<TypeAnnotation>;
 pub type Literal = ast::Literal<Type>;
@@ -40,137 +45,10 @@ pub fn typecheck_expr(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Expr> {
-    let span = expr_node.annotation().clone();
-
     match expr_node {
-        ast::Expr::Literal(ast::Literal::String(s), _) => {
-            let binding = ValueKind::Immutable;
-            let annotation = TypedValueAnnotation {
-                ty: string_type(ctx)?,
-                value_kind: binding,
-                span: span.clone(),
-                decl: None,
-            }
-            .into();
+        ast::Expr::Literal(lit, span) => typecheck_literal(lit, expect_ty, span, ctx),
 
-            Ok(ast::Expr::Literal(
-                ast::Literal::String(s.clone()),
-                annotation,
-            ))
-        },
-
-        ast::Expr::Literal(ast::Literal::Boolean(b), _) => {
-            let annotation = TypedValueAnnotation {
-                ty: Type::Primitive(Primitive::Boolean),
-                value_kind: ValueKind::Immutable,
-                span,
-                decl: None,
-            }
-            .into();
-
-            Ok(ast::Expr::Literal(ast::Literal::Boolean(*b), annotation))
-        },
-
-        ast::Expr::Literal(ast::Literal::Integer(i), _) => {
-            typecheck_literal_int(i, expect_ty, span)
-        },
-
-        ast::Expr::Literal(ast::Literal::Real(x), _) => {
-            let ty = if x.as_f32().is_some() {
-                Type::from(Primitive::Real32)
-            } else {
-                unimplemented!("real literal outside range of f32")
-            };
-
-            let annotation = TypedValueAnnotation {
-                ty,
-                value_kind: ValueKind::Immutable,
-                span,
-                decl: None,
-            }
-            .into();
-
-            Ok(ast::Expr::Literal(
-                ast::Literal::Real(x.clone()),
-                annotation,
-            ))
-        },
-
-        ast::Expr::Literal(ast::Literal::Nil, _) => {
-            let ty = match expect_ty {
-                ptr @ Type::Pointer(..) => ptr.clone(),
-                _ => Type::Nil,
-            };
-
-            let annotation = TypedValueAnnotation {
-                ty,
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
-            }
-            .into();
-            Ok(ast::Expr::Literal(ast::Literal::Nil, annotation))
-        },
-
-        ast::Expr::Literal(ast::Literal::SizeOf(size_of_ty), span) => {
-            let ty = typecheck_type(&size_of_ty, ctx)?;
-
-            Ok(Expr::Literal(
-                Literal::SizeOf(Box::new(ty)),
-                TypedValueAnnotation {
-                    ty: Type::Primitive(Primitive::Int32),
-                    span: span.clone(),
-                    decl: None,
-                    value_kind: ValueKind::Temporary,
-                }
-                .into(),
-            ))
-        },
-
-        ast::Expr::Ident(ident, _) => match ctx.find_name(&ident) {
-            // const values from any scope can be transformed directly into literals
-            Some(ScopeMemberRef::Decl {
-                value: Decl::Const { ty, val, .. },
-                key,
-                ..
-            }) => Ok(ast::Expr::Literal(
-                val.clone(),
-                TypedValueAnnotation {
-                    ty: ty.clone(),
-                    decl: Some(key.clone()),
-                    span: expr_node.span().clone(),
-                    value_kind: ValueKind::Immutable,
-                }
-                .into(),
-            )),
-
-            Some(member) => {
-                let annotation = member_annotation(member, ident.span().clone(), ctx);
-
-                if let Some(decl_name) = annotation.decl() {
-                    if let Some(decl_scope) = ctx.get_decl_scope(decl_name) {
-                        let decl_scope_id = decl_scope.id();
-                        if let Some(closure_scope_id) = ctx.get_closure_scope().map(|s| s.id()) {
-                            if decl_scope_id < closure_scope_id {
-                                ctx.add_closure_capture(decl_name, &annotation.ty());
-                            }
-                        }
-                    }
-                }
-
-                Ok(ast::Expr::Ident(ident.clone(), annotation))
-            },
-
-            _ => {
-                let not_found_ident = ident.clone().into();
-                Err(TypecheckError::NameError {
-                    err: NameError::NotFound {
-                        ident: not_found_ident,
-                    },
-                    span: expr_node.span().clone(),
-                })
-            },
-        },
+        ast::Expr::Ident(ident, span) => typecheck_ident(ident, expect_ty, span, ctx),
 
         ast::Expr::BinOp(bin_op) => typecheck_bin_op(bin_op, expect_ty, ctx),
 
@@ -240,6 +118,94 @@ pub fn typecheck_expr(
     }
 }
 
+fn typecheck_literal(
+    lit: &ast::Literal<ast::TypeName>,
+    expect_ty: &Type,
+    span: &Span,
+    ctx: &mut Context,
+) -> TypecheckResult<Expr> {
+    match lit {
+        ast::Literal::String(s) => {
+            let binding = ValueKind::Immutable;
+            let annotation = TypedValueAnnotation {
+                ty: string_type(ctx)?,
+                value_kind: binding,
+                span: span.clone(),
+                decl: None,
+            }
+            .into();
+
+            Ok(Expr::Literal(Literal::String(s.clone()), annotation))
+        },
+
+        ast::Literal::Boolean(b) => {
+            let annotation = TypedValueAnnotation {
+                ty: Type::Primitive(Primitive::Boolean),
+                value_kind: ValueKind::Immutable,
+                span: span.clone(),
+                decl: None,
+            }
+            .into();
+
+            Ok(Expr::Literal(Literal::Boolean(*b), annotation))
+        },
+
+        ast::Literal::Integer(i) => typecheck_literal_int(i, expect_ty, span.clone()),
+
+        ast::Literal::Real(x) => {
+            let ty = if x.as_f32().is_some() {
+                Type::from(Primitive::Real32)
+            } else {
+                unimplemented!("real literal outside range of f32")
+            };
+
+            let annotation = TypedValueAnnotation {
+                ty,
+                value_kind: ValueKind::Immutable,
+                span: span.clone(),
+                decl: None,
+            }
+            .into();
+
+            Ok(ast::Expr::Literal(
+                ast::Literal::Real(x.clone()),
+                annotation,
+            ))
+        },
+
+        ast::Literal::Nil => {
+            let ty = match expect_ty {
+                ptr @ Type::Pointer(..) => ptr.clone(),
+                _ => Type::Nil,
+            };
+
+            let annotation = TypedValueAnnotation {
+                ty,
+                value_kind: ValueKind::Temporary,
+                span: span.clone(),
+                decl: None,
+            };
+
+            Ok(ast::Expr::Literal(Literal::Nil, annotation.into()))
+        },
+
+        ast::Literal::SizeOf(size_of_ty) => {
+            let ty = typecheck_type(&size_of_ty, ctx)?;
+            let annotation = TypedValueAnnotation {
+                ty: Type::Primitive(Primitive::Int32),
+                span: span.clone(),
+                decl: None,
+                value_kind: ValueKind::Temporary,
+            };
+
+            Ok(Expr::Literal(
+                Literal::SizeOf(Box::new(ty)),
+                annotation.into(),
+            ))
+        },
+    }
+}
+
 fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypecheckResult<Expr> {
     let ty = match expect_ty {
         Type::Primitive(Primitive::UInt8) => {
@@ -301,6 +267,92 @@ where
     match f(&i) {
         Some(..) => Type::Primitive(primitive_ty),
         None => Type::Primitive(Primitive::Int32),
+    }
+}
+
+fn typecheck_ident(
+    ident: &Ident,
+    expect_ty: &Type,
+    span: &Span,
+    ctx: &mut Context,
+) -> TypecheckResult<Expr> {
+    let decl = match ctx.find_name(ident) {
+        Some(decl) => decl,
+        None => {
+            let not_found_ident = ident.clone().into();
+            return Err(TypecheckError::NameError {
+                err: NameError::NotFound {
+                    ident: not_found_ident,
+                },
+                span: span.clone(),
+            });
+        },
+    };
+
+    match decl {
+        // const values from any scope can be transformed directly into literals
+        ScopeMemberRef::Decl {
+            value: Decl::Const { ty, val, .. },
+            key,
+            ..
+        } => {
+            let annotation = TypedValueAnnotation {
+                ty: ty.clone(),
+                decl: Some(key.clone()),
+                span: span.clone(),
+                value_kind: ValueKind::Temporary,
+            };
+            Ok(ast::Expr::Literal(val.clone(), annotation.into()))
+        },
+
+        // an ident refe
+        ScopeMemberRef::Decl {
+            value: Decl::Function { sig, .. },
+            parent_path,
+            ..
+        } if sig.should_call_noargs_in_expr(expect_ty, false) => {
+            let annotation = TypedValueAnnotation {
+                decl: None,
+                span: span.clone(),
+                ty: sig.return_ty.clone(),
+                value_kind: ValueKind::Temporary,
+            };
+
+            let func_annotation = FunctionAnnotation {
+                name: ident.clone(),
+                ns: parent_path.to_namespace(),
+                sig: sig.clone(),
+                span: span.clone(),
+                type_args: None,
+            };
+
+            let call = ast::Call::Function(FunctionCall {
+                annotation: annotation.into(),
+                args: Vec::new(),
+                args_span: span.clone(),
+                target: ast::Expr::Ident(ident.clone(), func_annotation.into()),
+                type_args: None,
+            });
+
+            Ok(Expr::from(call))
+        },
+
+        member => {
+            let annotation = member_annotation(member, span.clone(), ctx);
+
+            if let Some(decl_name) = annotation.decl() {
+                if let Some(decl_scope) = ctx.get_decl_scope(decl_name) {
+                    let decl_scope_id = decl_scope.id();
+                    if let Some(closure_scope_id) = ctx.get_closure_scope().map(|s| s.id()) {
+                        if decl_scope_id < closure_scope_id {
+                            ctx.add_closure_capture(decl_name, &annotation.ty());
+                        }
+                    }
+                }
+            }
+
+            Ok(ast::Expr::Ident(ident.clone(), annotation))
+        },
     }
 }
 
@@ -378,6 +430,8 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
 
 pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypecheckResult<()> {
     match stmt {
+        ast::Stmt::Ident(ident, annotation) => expect_ident_initialized(ident, annotation, ctx),
+
         ast::Stmt::Call(call) => expect_call_initialized(call, ctx),
 
         ast::Stmt::If(if_stmt) => expect_if_stmt_initialized(if_stmt, ctx),
@@ -430,19 +484,27 @@ pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypecheckResult<()
     }
 }
 
+fn expect_ident_initialized(
+    ident: &Ident,
+    annotation: &TypeAnnotation,
+    ctx: &Context,
+) -> TypecheckResult<()> {
+    match annotation.value_kind() {
+        Some(ValueKind::Uninitialized) => {
+            let decl_ident = ctx.find_decl(ident).unwrap_or(ident);
+            Err(TypecheckError::NotInitialized {
+                ident: decl_ident.clone(),
+                usage: ident.span().clone(),
+            })
+        },
+
+        _ => Ok(()),
+    }
+}
+
 pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypecheckResult<()> {
     match expr {
-        ast::Expr::Ident(ident, ..) => match expr.annotation().value_kind() {
-            Some(ValueKind::Uninitialized) => {
-                let decl_ident = ctx.find_decl(ident).unwrap_or(ident);
-                Err(TypecheckError::NotInitialized {
-                    ident: decl_ident.clone(),
-                    usage: ident.span().clone(),
-                })
-            },
-
-            _ => Ok(()),
-        },
+        ast::Expr::Ident(ident, annotation) => expect_ident_initialized(ident, annotation, ctx),
 
         ast::Expr::Literal(..) => Ok(()),
 
@@ -522,6 +584,10 @@ fn expect_args_initialized(
 
 fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
     match call {
+        ast::Call::FunctionNoArgs(expr) => {
+            expect_expr_initialized(expr, ctx)?;
+        }
+
         ast::Call::Function(func_call) => {
             expect_expr_initialized(&func_call.target, ctx)?;
 

@@ -135,7 +135,7 @@ pub enum TypecheckError {
     InvalidRefExpression {
         expr: Box<Expr>,
     },
-    InvalidStatement(Box<InvalidStatement<TypeAnnotation>>),
+    InvalidStatement(InvalidStatement<TypeAnnotation>),
     EmptyVariant(Box<ast::VariantDef<Span>>),
     EmptyVariantCaseBinding {
         variant: Box<VariantDef>,

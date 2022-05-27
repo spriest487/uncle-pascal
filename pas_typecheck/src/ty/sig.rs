@@ -1,12 +1,8 @@
-use crate::{
-    ast::AnonymousFunctionDef,
-    ast::{FunctionDecl, FunctionParam},
-    Context, GenericError, GenericResult, GenericTarget, Type, TypeArgsResolver,
-    TypeParamList,
-};
-use pas_common::span::Spanned;
+use crate::{ast::AnonymousFunctionDef, ast::{FunctionDecl, FunctionParam}, Context, GenericError, GenericResult, GenericTarget, Type, TypeArgsResolver, TypeParamList, TypeAnnotation, TypeList};
+use pas_common::span::{Span, Spanned};
 use pas_syn::ast::{self, FunctionParamMod};
 use std::{fmt, rc::Rc};
+use crate::ast::{Expr, FunctionCall};
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionParamSig {
@@ -297,6 +293,38 @@ impl FunctionSig {
         }
 
         Some(self_type)
+    }
+
+    /// when the contextual type hint means we're expecting a function value that matches
+    /// the signature of the function, the expression evaluates to the function itself rather
+    /// than a call to the function. it could never refer to the return value of the function,
+    /// since it's impossible for a function to return a function with its own signature, which
+    /// would be a recursive type
+    pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, has_self_arg: bool) -> bool {
+        let expect_params_len = if has_self_arg { 1 } else { 0 };
+
+        if self.params.len() != expect_params_len || self.type_params.is_some() {
+            return false;
+        }
+        match expect_ty {
+            Type::Function(expect_sig) => **expect_sig != *self,
+            _ => true,
+        }
+    }
+
+    pub fn new_function_call(&self, target: Expr, span: Span, args: impl IntoIterator<Item=Expr>, args_span: Span, type_args: Option<TypeList>) -> FunctionCall {
+        let func_val_annotation = match &self.return_ty {
+            Type::Nothing => TypeAnnotation::Untyped(span),
+            return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
+        };
+
+        FunctionCall {
+            annotation: func_val_annotation,
+            args: args.into_iter().collect(),
+            args_span,
+            target,
+            type_args,
+        }
     }
 }
 

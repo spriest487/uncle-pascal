@@ -13,12 +13,13 @@ pub use self::{
 use crate::{ast::{
     case::{CaseBlock, CaseStmt},
     Block, Call, Expr, ForLoop, IfCond, Raise, WhileLoop, MatchStmt,
-}, DelimiterPair, Keyword, Operator, Separator};
-use crate::ast::Annotation;
+}, DelimiterPair, Ident, Keyword, Operator, Separator};
+use crate::ast::{Annotation};
 use crate::parse::{InvalidStatement, LookAheadTokenStream, Matcher, Parse, ParseError, ParseResult, ParseSeq, TokenStream};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Stmt<A: Annotation> {
+    Ident(Ident, A),
     LocalBinding(Box<LocalBinding<A>>),
     Call(Box<Call<A>>),
     Exit(Box<Exit<A>>),
@@ -38,6 +39,7 @@ pub enum Stmt<A: Annotation> {
 impl<A: Annotation> Stmt<A> {
     pub fn annotation(&self) -> &A {
         match self {
+            Stmt::Ident(_ident, annotation) => annotation,
             Stmt::LocalBinding(binding) => &binding.annotation,
             Stmt::Call(call) => &call.annotation(),
             Stmt::Exit(exit) => match exit.as_ref() {
@@ -69,6 +71,8 @@ impl<A: Annotation> Stmt<A> {
 impl Stmt<Span> {
     pub fn to_expr(&self) -> Option<Expr<Span>> {
         match self {
+            Stmt::Ident(ident, span) => Some(Expr::Ident(ident.clone(), span.clone())),
+
             Stmt::Call(call) => Some(Expr::Call(call.clone())),
 
             Stmt::Block(block) => {
@@ -162,8 +166,14 @@ impl Stmt<Span> {
                 })))
             },
 
-            Expr::Raise(raise) => Ok(Stmt::Raise(raise)),
+            // a single ident that appears in a statement context can only be a call to
+            // a function with zero args or type args
+            Expr::Ident(ident, span) => {
+                Ok(Stmt::Ident(ident, span))
+            }
 
+            // raise and exit are always valid in either context
+            Expr::Raise(raise) => Ok(Stmt::Raise(raise)),
             Expr::Exit(exit) => Ok(Stmt::Exit(exit)),
 
             invalid => Err(invalid),
@@ -290,6 +300,7 @@ impl ParseSeq for Stmt<Span> {
 impl<A: Annotation> fmt::Display for Stmt<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Stmt::Ident(ident, ..) => write!(f, "{}", ident),
             Stmt::LocalBinding(binding) => write!(f, "{}", binding),
             Stmt::Call(call) => write!(f, "{}", call),
             Stmt::Exit(exit) => write!(f, "{}", exit),
