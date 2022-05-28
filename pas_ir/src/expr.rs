@@ -377,7 +377,7 @@ enum CallTarget {
 
 pub fn build_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
     match call {
-        ast::Call::FunctionNoArgs(expr) => build_func_call(expr, &[], None, builder),
+        ast::Call::FunctionNoArgs(func_call) => build_func_call(&func_call.target, &[], None, builder),
 
         ast::Call::Function(func_call) => build_func_call(&func_call.target, &func_call.args, func_call.type_args.as_ref(), builder),
 
@@ -406,6 +406,20 @@ fn build_func_call(
 
             translate_call_with_args(call_target, args, &func_sig, builder)
         },
+
+        pas_ty::TypeAnnotation::UfcsFunction(func) => {
+            let func_instance = builder.translate_func(func.function_name.clone(), None);
+            let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func_instance.id)));
+            let func_sig = func_instance.sig;
+
+            let call_target = CallTarget::Function(func_val);
+
+            let mut args_with_self_arg = Vec::with_capacity(args.len() + 1);
+            args_with_self_arg.push((*func.self_arg).clone());
+            args_with_self_arg.extend(args.iter().cloned());
+
+            translate_call_with_args(call_target, &args_with_self_arg, &func_sig, builder)
+        }
 
         // invoking a closure value that refers to a function
         pas_ty::TypeAnnotation::TypedValue(val) => {
@@ -445,7 +459,7 @@ fn build_func_call(
             translate_call_with_args(call_target, args, &func_sig, builder)
         },
 
-        _ => panic!("type of function call expr must be a function or callable value"),
+        unexpected => panic!("type of function call expr must be a function or callable value got: {:#?}", unexpected),
     }
 }
 

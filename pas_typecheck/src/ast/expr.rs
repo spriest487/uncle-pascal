@@ -550,7 +550,9 @@ pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypecheckResult<()
         ast::Expr::Cast(cast) => expect_expr_initialized(&cast.expr, ctx),
 
         ast::Expr::AnonymousFunction(_) => Ok(()),
-    }
+    }?;
+
+    Ok(())
 }
 
 fn expect_binding_initialized(binding: &VarBinding, ctx: &Context) -> TypecheckResult<()> {
@@ -584,8 +586,8 @@ fn expect_args_initialized(
 
 fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
     match call {
-        ast::Call::FunctionNoArgs(expr) => {
-            expect_expr_initialized(expr, ctx)?;
+        ast::Call::FunctionNoArgs(call) => {
+            expect_expr_initialized(&call.target, ctx)?;
         }
 
         ast::Call::Function(func_call) => {

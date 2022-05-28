@@ -82,6 +82,26 @@ impl<A: Annotation> Spanned for FunctionCall<A> {
     }
 }
 
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Hash, Debug, PartialEq)]
+pub struct FunctionCallNoArgs<A: Annotation> {
+    pub target: Expr<A>,
+
+    pub annotation: A,
+}
+
+impl<A: Annotation> fmt::Display for FunctionCallNoArgs<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.target)
+    }
+}
+
+impl<A: Annotation> Spanned for FunctionCallNoArgs<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct VariantCtorCall<A: Annotation> {
     pub variant: A::Name,
@@ -112,7 +132,7 @@ pub enum Call<A: Annotation> {
     // call to a function (method or standalone) without an argument list
     // this needs to be a distinct kind of function because if it appears as the target of a function
     // call, we turn it into a function call with arguments (rather than attempting to call the result value)
-    FunctionNoArgs(Expr<A>),
+    FunctionNoArgs(FunctionCallNoArgs<A>),
 
     // call to a standalone function
     Function(FunctionCall<A>),
@@ -127,10 +147,10 @@ pub enum Call<A: Annotation> {
 impl<A: Annotation> fmt::Display for Call<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Call::Function(func_call) => write!(f, "{}", func_call),
-            Call::FunctionNoArgs(expr) => write!(f, "{}", expr),
-            Call::Method(method_call) => write!(f, "{}", method_call),
-            Call::VariantCtor(var_ctor_call) => write!(f, "{}", var_ctor_call),
+            Call::Function(call) => write!(f, "{}", call),
+            Call::FunctionNoArgs(call) => write!(f, "{}", call),
+            Call::Method(call) => write!(f, "{}", call),
+            Call::VariantCtor(call) => write!(f, "{}", call),
         }
     }
 }
@@ -138,7 +158,7 @@ impl<A: Annotation> fmt::Display for Call<A> {
 impl<A: Annotation> Spanned for Call<A> {
     fn span(&self) -> &Span {
         match self {
-            Call::FunctionNoArgs(expr) => expr.span(),
+            Call::FunctionNoArgs(call) => call.span(),
             Call::Function(call) => call.span(),
             Call::Method(call) => call.span(),
             Call::VariantCtor(call) => call.span(),
@@ -149,7 +169,7 @@ impl<A: Annotation> Spanned for Call<A> {
 impl<A: Annotation> Call<A> {
     pub fn annotation(&self) -> &A {
         match self {
-            Call::FunctionNoArgs(expr) => expr.annotation(),
+            Call::FunctionNoArgs(call) => &call.annotation,
             Call::Function(call) => &call.annotation,
             Call::Method(call) => &call.annotation,
             Call::VariantCtor(call) => &call.annotation,
@@ -158,7 +178,7 @@ impl<A: Annotation> Call<A> {
 
     pub fn annotation_mut(&mut self) -> &mut A {
         match self {
-            Call::FunctionNoArgs(expr) => expr.annotation_mut(),
+            Call::FunctionNoArgs(call) => &mut call.annotation,
             Call::Function(call) => &mut call.annotation,
             Call::Method(call) => &mut call.annotation,
             Call::VariantCtor(call) => &mut call.annotation,

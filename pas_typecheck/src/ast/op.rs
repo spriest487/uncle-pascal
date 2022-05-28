@@ -7,12 +7,13 @@ use crate::{
     string_type, Context, FunctionAnnotation, FunctionSig, InstanceMember,
     InterfaceMethodAnnotation, NameContainer, NameError, OverloadAnnotation, Primitive, Symbol,
     Type, TypeAnnotation, TypeMember, TypecheckError, TypecheckResult, TypedValueAnnotation,
-    UFCSCallAnnotation, ValueKind, DISPLAYABLE_IFACE_NAME, DISPLAYABLE_TOSTRING_METHOD,
+    UfcsFunctionAnnotation, ValueKind, DISPLAYABLE_IFACE_NAME, DISPLAYABLE_TOSTRING_METHOD,
     SYSTEM_UNIT_NAME,
 };
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, Ident, IdentPath, IntConstant, Operator};
 use std::rc::Rc;
+use pas_syn::ast::FunctionCallNoArgs;
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
 
@@ -411,6 +412,7 @@ fn typecheck_member_of(
 
             let rhs = ast::Expr::Ident(member_ident, annotation.clone());
 
+
             let member_expr = Expr::from(BinOp {
                 lhs,
                 op: Operator::Period,
@@ -426,17 +428,36 @@ fn typecheck_member_of(
                         .sig
                         .should_call_noargs_in_expr(expect_ty, false) =>
                 {
-                    let no_args_call = Call::FunctionNoArgs(member_expr);
-                    Ok(Expr::from(no_args_call))
+                    let sig = func_annotation.sig.clone();
+                    let func_val_annotation = match &sig.return_ty {
+                        Type::Nothing => TypeAnnotation::Untyped(span),
+                        return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
+                    };
+                    let call = Call::FunctionNoArgs(FunctionCallNoArgs {
+                        target: member_expr,
+                        annotation: func_val_annotation,
+                    });
+
+                    Ok(Expr::from(call))
                 },
 
-                TypeAnnotation::UFCSCall(ufcs_annotation)
+                TypeAnnotation::UfcsFunction(ufcs_annotation)
                     if ufcs_annotation
                         .sig
                         .should_call_noargs_in_expr(expect_ty, true) =>
                 {
-                    let no_args_call = Call::FunctionNoArgs(member_expr);
-                    Ok(Expr::from(no_args_call))
+                    let sig = ufcs_annotation.sig.clone();
+                    let func_val_annotation = match &sig.return_ty {
+                        Type::Nothing => TypeAnnotation::Untyped(span),
+                        return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
+                    };
+
+                    let call = Call::FunctionNoArgs(FunctionCallNoArgs {
+                        annotation: func_val_annotation,
+                        target: member_expr,
+                    });
+
+                    Ok(Expr::from(call))
                 },
 
                 _ => Ok(member_expr),
@@ -594,7 +615,7 @@ pub fn typecheck_member_value(
             TypeAnnotation::from(method)
         },
 
-        InstanceMember::UFCSCall { func_name, sig } => UFCSCallAnnotation {
+        InstanceMember::UFCSCall { func_name, sig } => UfcsFunctionAnnotation {
             function_name: func_name,
             sig,
             span: span.clone(),

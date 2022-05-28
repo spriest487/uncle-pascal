@@ -11,7 +11,7 @@ use crate::{
     typecheck_type, Context, FunctionAnnotation, FunctionParamSig, FunctionSig, GenericError,
     GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameContainer, NameError,
     OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResolver, TypeArgsResult,
-    TypeParamType, TypecheckError, TypecheckResult, TypedValueAnnotation, UFCSCallAnnotation,
+    TypeParamType, TypecheckError, TypecheckResult, TypedValueAnnotation, UfcsFunctionAnnotation,
     ValueKind,
 };
 use pas_common::span::{Span, Spanned as _};
@@ -133,11 +133,14 @@ pub fn typecheck_call(
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
     };
 
+    // if the call target is a no-args call itself and this is also a no-args call, we are just
+    // applying an empty argument list to the same call, so just unwrap it here
+    // e.g. if we call `procedure X;` with `X()`, `X` is already a valid call on its own
+    // there are edge cases here like functions that return callable types themselves, but
+    // they can be disambiguated by various means in the code
     let target = match typecheck_expr(&func_call.target, &Type::Nothing, ctx)? {
         Expr::Call(call) => match *call {
-            // turn no-args function calls into calls with (presumably zero) args if they
-            // appear as the target of a function call expr with an args list
-            Call::FunctionNoArgs(expr) => expr,
+            Call::FunctionNoArgs(call) => call.target,
             call => Expr::from(call),
         }
 
@@ -165,7 +168,7 @@ pub fn typecheck_call(
                 .map(Invocation::Call)?
         },
 
-        TypeAnnotation::UFCSCall(ufcs_call) => {
+        TypeAnnotation::UfcsFunction(ufcs_call) => {
             let typecheck_call = typecheck_ufcs_call(
                 &ufcs_call,
                 &func_call.args,
@@ -393,7 +396,7 @@ fn typecheck_iface_method_call(
 }
 
 fn typecheck_ufcs_call(
-    ufcs_call: &UFCSCallAnnotation,
+    ufcs_call: &UfcsFunctionAnnotation,
     rest_args: &[ast::Expr<Span>],
     span: &Span,
     args_span: &Span,

@@ -197,7 +197,7 @@ impl From<ConstAnnotation> for TypeAnnotation {
 
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Hash, Debug, PartialEq)]
-pub struct UFCSCallAnnotation {
+pub struct UfcsFunctionAnnotation {
     pub self_arg: Box<Expr>,
     pub function_name: IdentPath,
     pub sig: Rc<FunctionSig>,
@@ -208,15 +208,15 @@ pub struct UFCSCallAnnotation {
     pub span: Span,
 }
 
-impl UFCSCallAnnotation {
+impl UfcsFunctionAnnotation {
     pub fn func_ty(&self) -> Type {
         Type::Function(self.sig.clone())
     }
 }
 
-impl From<UFCSCallAnnotation> for TypeAnnotation {
-    fn from(a: UFCSCallAnnotation) -> Self {
-        TypeAnnotation::UFCSCall(Rc::new(a))
+impl From<UfcsFunctionAnnotation> for TypeAnnotation {
+    fn from(a: UfcsFunctionAnnotation) -> Self {
+        TypeAnnotation::UfcsFunction(Rc::new(a))
     }
 }
 
@@ -224,12 +224,14 @@ impl From<UFCSCallAnnotation> for TypeAnnotation {
 pub enum TypeAnnotation {
     Untyped(Span),
     TypedValue(Rc<TypedValueAnnotation>),
+
     Function(Rc<FunctionAnnotation>),
+    UfcsFunction(Rc<UfcsFunctionAnnotation>),
+
     // direct method reference e.g. `Interface.Method`
     InterfaceMethod(Rc<InterfaceMethodAnnotation>),
     Type(Type, Span),
     Namespace(IdentPath, Span),
-    UFCSCall(Rc<UFCSCallAnnotation>),
     VariantCtor(Rc<VariantCtorAnnotation>),
 
     // as-yet unresolved function that may refer to 1+ functions (interface methods, ufcs functions,
@@ -250,7 +252,7 @@ impl TypeAnnotation {
             TypeAnnotation::TypedValue(val) => (val.ty.clone(), &val.span),
             TypeAnnotation::Const(const_val) => (const_val.ty.clone(), &const_val.span),
 
-            TypeAnnotation::UFCSCall(call) => (call.func_ty(), &call.span),
+            TypeAnnotation::UfcsFunction(call) => (call.func_ty(), &call.span),
 
             TypeAnnotation::Untyped(span)
             | TypeAnnotation::Namespace(_, span)
@@ -296,7 +298,7 @@ impl TypeAnnotation {
             | TypeAnnotation::VariantCtor(..) => Cow::Owned(Type::Nothing),
 
             TypeAnnotation::Function(func) => Cow::Owned(func.func_ty()),
-            TypeAnnotation::UFCSCall(call) => Cow::Owned(call.func_ty()),
+            TypeAnnotation::UfcsFunction(call) => Cow::Owned(call.func_ty()),
             TypeAnnotation::InterfaceMethod(method) => Cow::Owned(method.func_ty()),
             TypeAnnotation::Overload(overload) => Cow::Owned(overload.func_ty()),
 
@@ -310,7 +312,7 @@ impl TypeAnnotation {
             TypeAnnotation::Type(..) => None,
             TypeAnnotation::Function { .. } => None, // TODO
             TypeAnnotation::InterfaceMethod(..) => None, // TODO
-            TypeAnnotation::UFCSCall { .. } => None, // TODO
+            TypeAnnotation::UfcsFunction { .. } => None, // TODO
             TypeAnnotation::Overload { .. } => None, // TODO
 
             TypeAnnotation::TypedValue(val) => val.decl.as_ref(),
@@ -354,7 +356,7 @@ impl Spanned for TypeAnnotation {
             TypeAnnotation::TypedValue(val) => &val.span,
             TypeAnnotation::Const(const_val) => &const_val.span,
             TypeAnnotation::Function(func) => &func.span,
-            TypeAnnotation::UFCSCall(call) => &call.span,
+            TypeAnnotation::UfcsFunction(call) => &call.span,
 
             TypeAnnotation::Untyped(span)
             | TypeAnnotation::Type(_, span)
