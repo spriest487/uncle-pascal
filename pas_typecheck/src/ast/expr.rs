@@ -16,6 +16,7 @@ use crate::{
 };
 use pas_common::span::*;
 use pas_syn::{ast, ast::FunctionParamMod, Ident, IdentPath, IntConstant};
+use crate::ast::FunctionCallNoArgs;
 
 pub type Expr = ast::Expr<TypeAnnotation>;
 pub type Literal = ast::Literal<Type>;
@@ -305,7 +306,9 @@ fn typecheck_ident(
             Ok(ast::Expr::Literal(val.clone(), annotation.into()))
         },
 
-        // an ident refe
+        // an ident referencing a function with no parameters is interpreted as a call to
+        // that function, but we wrap it in the NoArgs type so it can be unwrapped if this
+        // expression appears in an actual call node
         ScopeMemberRef::Decl {
             value: Decl::Function { sig, .. },
             parent_path,
@@ -325,12 +328,9 @@ fn typecheck_ident(
                 type_args: None,
             };
 
-            let call = ast::Call::Function(FunctionCall {
-                annotation: annotation.into(),
-                args: Vec::new(),
-                args_span: span.clone(),
+            let call = ast::Call::FunctionNoArgs(FunctionCallNoArgs {
                 target: ast::Expr::Ident(ident.clone(), func_annotation.into()),
-                type_args: None,
+                annotation: annotation.into(),
             });
 
             Ok(Expr::from(call))
