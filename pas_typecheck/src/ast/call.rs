@@ -24,6 +24,8 @@ use std::{borrow::Cow, fmt, rc::Rc};
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
+pub type FunctionCallNoArgs = ast::FunctionCallNoArgs<TypeAnnotation>;
+pub type MethodCallNoArgs = ast::MethodCallNoArgs<TypeAnnotation>;
 pub type VariantCtorCall = ast::VariantCtorCall<TypeAnnotation>;
 pub type Call = ast::Call<TypeAnnotation>;
 
@@ -419,8 +421,7 @@ fn typecheck_ufcs_call(
 
     let func_annotation = FunctionAnnotation {
         sig: Rc::new(specialized_call_args.sig.clone()),
-        ns: ufcs_call.function_name.clone().parent().unwrap(),
-        name: ufcs_call.function_name.last().clone(),
+        ident: ufcs_call.function_name.clone(),
         span: span.clone(),
         type_args: specialized_call_args.type_args.clone(),
     }

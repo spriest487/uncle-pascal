@@ -377,11 +377,43 @@ enum CallTarget {
 
 pub fn build_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
     match call {
-        ast::Call::FunctionNoArgs(func_call) => build_func_call(&func_call.target, &[], None, builder),
+        ast::Call::FunctionNoArgs(func_call) => {
+            build_func_call(&func_call.target, &[], None, builder)
+        },
+
+        ast::Call::MethodNoArgs(method_call) => match method_call.target.annotation() {
+            TypeAnnotation::InterfaceMethod(method) => {
+                let self_arg = method_call.self_arg.clone();
+                let self_ty = self_arg.annotation().ty().into_owned();
+                let args = vec![self_arg];
+
+                build_method_call(
+                    &method.iface_ty,
+                    &method.method_ident,
+                    &method.method_sig,
+                    &self_ty,
+                    &args,
+                    None,
+                    builder
+                )
+            }
+            _ => panic!("target of no-args method call was not a method"),
+        }
 
         ast::Call::Function(func_call) => build_func_call(&func_call.target, &func_call.args, func_call.type_args.as_ref(), builder),
 
-        ast::Call::Method(method_call) => build_method_call(method_call, builder),
+        ast::Call::Method(method_call) => {
+            let method_sig = method_call.func_type.as_func().unwrap();
+            build_method_call(
+                &method_call.iface_type,
+                &method_call.ident,
+                &method_sig,
+                &method_call.self_type,
+                &method_call.args,
+                method_call.type_args.as_ref(),
+                builder
+            )
+        },
 
         ast::Call::VariantCtor(variant_ctor) => build_variant_ctor_call(variant_ctor, builder),
     }
@@ -396,8 +428,7 @@ fn build_func_call(
     match target.annotation() {
         // calling a function directly
         pas_ty::TypeAnnotation::Function(func) => {
-            let full_name = func.ns.clone().child(func.name.clone());
-            let func = builder.translate_func(full_name, type_args.cloned());
+            let func = builder.translate_func(func.ident.clone(), type_args.cloned());
 
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
             let func_sig = func.sig;
@@ -464,37 +495,39 @@ fn build_func_call(
 }
 
 fn build_method_call(
-    method_call: &pas_ty::ast::MethodCall,
+    iface_ty: &pas_ty::Type,
+    method_ident: &Ident,
+    method_sig: &pas_ty::FunctionSig,
+    self_ty: &pas_ty::Type,
+    args: &[pas_ty::ast::Expr],
+    ty_args: Option<&pas_ty::TypeList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    if method_call.type_args.is_some() {
+    if ty_args.is_some() {
         unimplemented!("method call with type args")
     }
 
-    let iface = match method_call.iface_type.as_iface() {
+    let iface = match iface_ty.as_iface() {
         Ok(iface) => iface.clone(),
         Err(bad_ty) => unreachable!("can't have non-interface interface types in method calls (trying to call method on {})", bad_ty),
     };
 
-    let self_ty = builder.translate_type(&method_call.self_type);
-    let method_sig = method_call.func_type.as_func().unwrap();
+    let actual_self_ty = match builder.type_args() {
+        Some(builder_type_args) => self_ty.clone().substitute_type_args(builder_type_args),
+        None => self_ty.clone(),
+    };
 
-    let call_target = match &self_ty {
+    let self_ir_ty = builder.translate_type(&actual_self_ty);
+
+    let call_target = match &self_ir_ty {
         Type::RcPointer(VirtualTypeID::Interface(iface_id)) => CallTarget::Virtual {
             iface_id: *iface_id,
-            method: method_call.ident.to_string(),
+            method: method_ident.to_string(),
         },
 
         _ => {
-            let method_self_ty = method_call.self_type.clone();
-            let method_self_ty = match builder.type_args() {
-                Some(builder_type_args) => method_self_ty.substitute_type_args(builder_type_args),
-                None => method_self_ty,
-            };
-
             //            println!("translating method {}::{} of {}", iface, method_call.ident, method_call.self_type);
-            let method_decl =
-                builder.translate_method_impl(iface, method_call.ident.clone(), method_self_ty);
+            let method_decl = builder.translate_method_impl(iface, method_ident.clone(), self_ty.clone());
 
             let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
 
@@ -502,7 +535,7 @@ fn build_method_call(
         },
     };
 
-    translate_call_with_args(call_target, &method_call.args, &method_sig, builder)
+    translate_call_with_args(call_target, &args, &method_sig, builder)
 }
 
 fn build_variant_ctor_call(
@@ -1269,8 +1302,7 @@ fn translate_dyn_array_ctor(
 fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Builder) -> Ref {
     match annotation {
         TypeAnnotation::Function(func) => {
-            let func_name = func.ns.clone().child(func.name.clone());
-            let func = builder.translate_func(func_name, func.type_args.clone());
+            let func = builder.translate_func(func.ident.clone(), func.type_args.clone());
             let func_ref = GlobalRef::Function(func.id);
 
             Ref::Global(func_ref)

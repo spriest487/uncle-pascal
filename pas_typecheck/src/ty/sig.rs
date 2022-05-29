@@ -1,8 +1,14 @@
-use crate::{ast::AnonymousFunctionDef, ast::{FunctionDecl, FunctionParam}, Context, GenericError, GenericResult, GenericTarget, Type, TypeArgsResolver, TypeParamList, TypeAnnotation, TypeList};
+use crate::{
+    ast::{
+        AnonymousFunctionDef, Expr, FunctionCall, FunctionCallNoArgs, FunctionDecl, FunctionParam,
+        MethodCallNoArgs,
+    },
+    Context, GenericError, GenericResult, GenericTarget, Type, TypeAnnotation, TypeArgsResolver,
+    TypeList, TypeParamList,
+};
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::{self, FunctionParamMod};
 use std::{fmt, rc::Rc};
-use crate::ast::{Expr, FunctionCall};
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionParamSig {
@@ -300,19 +306,36 @@ impl FunctionSig {
     /// than a call to the function. it could never refer to the return value of the function,
     /// since it's impossible for a function to return a function with its own signature, which
     /// would be a recursive type
-    pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, has_self_arg: bool) -> bool {
-        let expect_params_len = if has_self_arg { 1 } else { 0 };
+    pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg_ty: Option<&Type>) -> bool {
+        let expect_params_len = match self_arg_ty {
+            Some(..) => 1,
+            None => 0,
+        };
 
         if self.params.len() != expect_params_len || self.type_params.is_some() {
             return false;
         }
         match expect_ty {
-            Type::Function(expect_sig) => **expect_sig != *self,
+            Type::Function(expect_sig) => match self_arg_ty {
+                Some(self_ty) => {
+                    let actual_sig = self.with_self(self_ty);
+                    **expect_sig != actual_sig
+                },
+
+                None => **expect_sig != *self,
+            },
             _ => true,
         }
     }
 
-    pub fn new_function_call(&self, target: Expr, span: Span, args: impl IntoIterator<Item=Expr>, args_span: Span, type_args: Option<TypeList>) -> FunctionCall {
+    pub fn new_function_call(
+        &self,
+        target: Expr,
+        span: Span,
+        args: impl IntoIterator<Item = Expr>,
+        args_span: Span,
+        type_args: Option<TypeList>,
+    ) -> FunctionCall {
         let func_val_annotation = match &self.return_ty {
             Type::Nothing => TypeAnnotation::Untyped(span),
             return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
@@ -324,6 +347,33 @@ impl FunctionSig {
             args_span,
             target,
             type_args,
+        }
+    }
+
+    pub fn new_no_args_function_call(&self, target: Expr) -> FunctionCallNoArgs {
+        let span = target.span().clone();
+        let func_val_annotation = match &self.return_ty {
+            Type::Nothing => TypeAnnotation::Untyped(span),
+            return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
+        };
+
+        FunctionCallNoArgs {
+            annotation: func_val_annotation,
+            target,
+        }
+    }
+
+    pub fn new_no_args_method_call(&self, target: Expr, self_arg: Expr) -> MethodCallNoArgs {
+        let span = target.span().clone();
+        let func_val_annotation = match &self.return_ty {
+            Type::Nothing => TypeAnnotation::Untyped(span),
+            return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
+        };
+
+        MethodCallNoArgs {
+            annotation: func_val_annotation,
+            self_arg,
+            target,
         }
     }
 }

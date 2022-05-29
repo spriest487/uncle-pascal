@@ -310,7 +310,7 @@ fn typecheck_ident(
             value: Decl::Function { sig, .. },
             parent_path,
             ..
-        } if sig.should_call_noargs_in_expr(expect_ty, false) => {
+        } if sig.should_call_noargs_in_expr(expect_ty, None) => {
             let annotation = TypedValueAnnotation {
                 decl: None,
                 span: span.clone(),
@@ -319,8 +319,7 @@ fn typecheck_ident(
             };
 
             let func_annotation = FunctionAnnotation {
-                name: ident.clone(),
-                ns: parent_path.to_namespace(),
+                ident: parent_path.to_namespace().child(ident.clone()),
                 sig: sig.clone(),
                 span: span.clone(),
                 type_args: None,
@@ -391,8 +390,7 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
 
             FunctionAnnotation {
                 span,
-                ns: IdentPath::from_parts(parent_path.keys().cloned()),
-                name: key.clone(),
+                ident: parent_path.to_namespace().child(key.clone()),
                 sig: sig.clone(),
                 // the named version of the function never has type args, the caller will have
                 // to specialize the expr to add some
@@ -588,6 +586,11 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
     match call {
         ast::Call::FunctionNoArgs(call) => {
             expect_expr_initialized(&call.target, ctx)?;
+        }
+
+        ast::Call::MethodNoArgs(call) => {
+            expect_expr_initialized(&call.target, ctx)?;
+            expect_expr_initialized(&call.self_arg, ctx)?;
         }
 
         ast::Call::Function(func_call) => {

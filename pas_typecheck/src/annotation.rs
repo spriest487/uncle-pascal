@@ -127,6 +127,10 @@ impl InterfaceMethodAnnotation {
     pub fn func_ty(&self) -> Type {
         Type::Function(self.method_sig.clone())
     }
+
+    pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg: &Type) -> bool {
+        self.method_sig.should_call_noargs_in_expr(expect_ty, Some(self_arg))
+    }
 }
 
 impl From<InterfaceMethodAnnotation> for TypeAnnotation {
@@ -137,16 +141,19 @@ impl From<InterfaceMethodAnnotation> for TypeAnnotation {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionAnnotation {
-    pub span: Span,
-    pub name: Ident,
-    pub ns: IdentPath,
+    pub ident: IdentPath,
     pub sig: Rc<FunctionSig>,
     pub type_args: Option<TypeList<Type>>,
+    pub span: Span,
 }
 
 impl FunctionAnnotation {
     pub fn func_ty(&self) -> Type {
         Type::Function(self.sig.clone())
+    }
+
+    pub fn should_call_noargs_in_expr(&self, expect_ty: &Type) -> bool {
+        self.sig.should_call_noargs_in_expr(expect_ty, None)
     }
 }
 
@@ -211,6 +218,12 @@ pub struct UfcsFunctionAnnotation {
 impl UfcsFunctionAnnotation {
     pub fn func_ty(&self) -> Type {
         Type::Function(self.sig.clone())
+    }
+
+    pub fn should_call_noargs_in_expr(&self, expect_ty: &Type) -> bool {
+        let self_arg_ty = self.self_arg.annotation().ty();
+
+        self.sig.should_call_noargs_in_expr(expect_ty, Some(self_arg_ty.as_ref()))
     }
 }
 
