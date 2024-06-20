@@ -1,3 +1,7 @@
+unit AnyRef;
+
+implementation
+
 uses System;
 
 type Dog = class
@@ -6,6 +10,8 @@ end;
 
 type Cat = class
 end;
+
+initialization
 
 let animal: Any := Dog(name: 'Rover');
 
@@ -18,3 +24,4 @@ if animal is Dog d then
 // can't assign Integer to Any
 // let a: Any := 1;
 
+end.
