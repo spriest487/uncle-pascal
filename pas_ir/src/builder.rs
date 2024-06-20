@@ -668,14 +668,14 @@ impl<'m> Builder<'m> {
     }
 
     // binds an anonymous return local in %0 with the indicated type
-    pub fn bind_return(&mut self, ty: Type) {
-        self.current_scope_mut().bind_return(ty);
+    pub fn bind_return(&mut self) {
+        self.current_scope_mut().bind_return();
     }
 
     // binds an anonymous local binding for the closure pointer of a function
-    pub fn bind_closure_ptr(&mut self, ty: Type) -> LocalID {
+    pub fn bind_closure_ptr(&mut self) -> LocalID {
         let id = self.next_local_id();
-        self.current_scope_mut().bind_temp(id, ty);
+        self.current_scope_mut().bind_temp(id);
 
         id
     }
@@ -711,7 +711,7 @@ impl<'m> Builder<'m> {
         self.instructions
             .push(Instruction::LocalAlloc(id, ty.clone()));
 
-        self.current_scope_mut().bind_temp(id, ty);
+        self.current_scope_mut().bind_temp(id);
 
         Ref::Local(id)
     }

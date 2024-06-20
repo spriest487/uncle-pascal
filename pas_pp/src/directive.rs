@@ -7,7 +7,10 @@ pub enum Directive {
     IfDef(String),
     IfOpt(String, bool),
     IfNDef(String),
-    EndIf(Option<String>),
+    EndIf {
+        #[allow(unused)]
+        comment: String 
+    },
     Else,
     ElseIf(String),
     Mode(LanguageMode),
@@ -75,8 +78,11 @@ impl DirectiveParser {
 
             Some(Directive::IfNDef(symbol))
         } else if let Some(endif_captures) = self.endif_pattern.captures(s) {
-            let condition = endif_captures.get(1).map(|m| m.as_str().trim().to_string());
-            Some(Directive::EndIf(condition))
+            Some(Directive::EndIf { 
+                comment: endif_captures.get(1)
+                    .map(|m| m.as_str().trim().to_string())
+                    .unwrap_or_else(String::new)
+            })
         } else if self.else_pattern.is_match(s) {
             Some(Directive::Else)
         } else if let Some(elseif_captures) = self.elseif_pattern.captures(s) {

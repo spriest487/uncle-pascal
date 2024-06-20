@@ -1,5 +1,5 @@
 pub use crate::ast::call::{
-    typecheck_call, Call, FunctionCall, Invocation, MethodCall, VariantCtorCall,
+    typecheck_call, Call, Invocation,
 };
 use crate::{
     ast::{

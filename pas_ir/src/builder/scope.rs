@@ -11,8 +11,7 @@ pub enum Local {
 
     // the builder created this local allocation but we don't want to track its lifetime
     Temp {
-        id: LocalID,
-        ty: Type,
+        id: LocalID
     },
 
     // function parameter slots as established by the calling convention - %1.. if the function
@@ -33,9 +32,7 @@ pub enum Local {
     // return value: always occupies local %0 if present.
     // the return value is not named and is not cleaned up on scope exit (if it's a
     // rc type, the reference is owned by the caller after the function exits)
-    Return {
-        ty: Type,
-    },
+    Return,
 }
 
 impl Local {
@@ -133,14 +130,14 @@ impl Scope {
         self.locals.push(Local::Param { id, name, ty, by_ref });
     }
 
-    pub fn bind_return(&mut self, ty: Type) {
+    pub fn bind_return(&mut self) {
         let slot_free = self.local_by_id(LocalID(0)).is_none();
         assert!(slot_free, "%0 must not already be bound in bind_return");
 
-        self.locals.push(Local::Return { ty });
+        self.locals.push(Local::Return);
     }
 
-    pub fn bind_temp(&mut self, id: LocalID, ty: Type) {
+    pub fn bind_temp(&mut self, id: LocalID) {
         assert!(
             self.local_by_id(id).is_none(),
             "scope must not already have a binding for {}: {:?}",
@@ -148,7 +145,7 @@ impl Scope {
             self
         );
 
-        self.locals.push(Local::Temp { id, ty });
+        self.locals.push(Local::Temp { id });
     }
 
     pub fn bind_new(&mut self, id: LocalID, name: Option<String>, ty: Type) {

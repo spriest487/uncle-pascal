@@ -141,7 +141,7 @@ impl Preprocessor {
         };
 
         for (col, line_char) in line.chars().enumerate() {
-            let mut src_mapping = current_src_mapping.get_or_insert_with(|| {
+            let src_mapping = current_src_mapping.get_or_insert_with(|| {
                 SourceMapEntry {
                     src: Span {
                         file: self.filename.clone(),
@@ -280,7 +280,11 @@ impl Preprocessor {
         Ok(())
     }
 
-    fn process_directive(&mut self, comment_block: CommentBlock, current_col: usize, output: &mut String) -> Result<(), PreprocessorError> {
+    fn process_directive(&mut self,
+        comment_block: CommentBlock,
+        current_col: usize,
+        output: &mut String
+    ) -> Result<(), PreprocessorError> {
         if comment_block.text.chars().nth(1) != Some('$') {
             // no directive, just an empty brace comment
             return Ok(());
@@ -289,8 +293,8 @@ impl Preprocessor {
         let directive_src_span = comment_block.src_span.clone();
         let directive_start_pos = comment_block.output_pos;
 
-        // totally remove the text of the directive from the output, if it expands to some other text
-        // like an include it needs to replace the directive comment completely
+        // totally remove the text of the directive from the output, if it expands to some other
+        // text, like an include, it needs to replace the directive comment completely
         while self.output_lines.len() > directive_start_pos.line {
             *output = self.output_lines.pop().unwrap();
         }
@@ -351,7 +355,7 @@ impl Preprocessor {
                     self.push_def_condition(&symbol, true);
                 }
 
-                Some(Directive::EndIf(_)) => {
+                Some(Directive::EndIf { .. }) => {
                     self.pop_condition(current_col)?;
                 },
 

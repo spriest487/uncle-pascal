@@ -167,7 +167,7 @@ pub fn build_closure_function_def(
 
     // the pointer to the closure is included as a param but *not* bound since it can't be
     // accessed directly from code, so allocate its id before any params
-    let closure_ptr_local_id = body_builder.bind_closure_ptr(closure_ptr_ty.clone());
+    let closure_ptr_local_id = body_builder.bind_closure_ptr();
 
     let mut bound_params = bind_function_params(&func_def.params, &mut body_builder);
 
@@ -223,7 +223,7 @@ fn bind_function_return(return_ty: Option<&pas_ty::Type>, builder: &mut Builder)
                 builder.pretty_ty_name(&return_ty),
             ));
 
-            builder.bind_return(return_ty.clone());
+            builder.bind_return();
             return_ty
         },
     }

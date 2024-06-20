@@ -227,7 +227,7 @@ fn gen_dyn_array_length_func(builder: &mut Builder, struct_id: TypeDefID) {
     let array_ref_ty = Type::RcPointer(VirtualTypeID::Class(struct_id));
 
     // bind and retain params
-    builder.bind_return(Type::I32);
+    builder.bind_return();
     builder.bind_param(LocalID(1), Type::any(), "arr_ptr", false);
     builder.retain(Ref::Local(LocalID(1)), &Type::any());
 

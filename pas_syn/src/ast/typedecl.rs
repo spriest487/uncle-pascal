@@ -15,6 +15,7 @@ use pas_common::{
     TracedError,
 };
 use std::{fmt, fmt::Debug, hash::Hash, rc::Rc};
+use crate::ast::Literal::String;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Debug, Hash)]

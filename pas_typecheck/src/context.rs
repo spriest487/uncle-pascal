@@ -1,14 +1,14 @@
 pub mod builtin;
-pub mod result;
 pub mod scope;
 pub mod value_kind;
 
+mod result;
 mod ufcs;
 mod decl;
 mod def;
 
 pub use self::{
-    builtin::*, decl::*, def::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
+    builtin::*, decl::*, def::*, scope::*, ufcs::InstanceMethod, value_kind::*, result::*,
 };
 use crate::ast::{EnumDecl, Literal};
 use crate::{ast::{StructDef, FunctionDecl, FunctionDef, InterfaceDecl, OverloadCandidate, VariantDef}, specialize_struct_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};

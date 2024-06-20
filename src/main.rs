@@ -68,10 +68,10 @@ fn parse(unit: PreprocessedUnit) -> Result<ast::Unit<Span>, CompileError> {
     let tokens = TokenTree::tokenize(unit)?;
 
     let mut token_stream = parse::TokenStream::new(tokens, file_span);
-    let unit = ast::Unit::parse(&mut token_stream, unit_ident)?;
+    let parsed_unit = ast::Unit::parse(&mut token_stream, unit_ident)?;
     token_stream.finish()?;
 
-    Ok(unit)
+    Ok(parsed_unit)
 }
 
 fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
