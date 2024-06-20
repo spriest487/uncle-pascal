@@ -5,5 +5,5 @@ authors = ["spriest487 <spriest487@googlemail.com>"]
 edition = "2018"
 
 [dependencies]
-backtrace = "0.3.13"
-encoding_rs = "0.8.30"
+backtrace = "0.3.73"
+encoding_rs = "0.8.34"
