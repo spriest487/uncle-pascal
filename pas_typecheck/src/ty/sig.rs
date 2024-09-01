@@ -307,15 +307,26 @@ impl FunctionSig {
     /// since it's impossible for a function to return a function with its own signature, which
     /// would be a recursive type
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg_ty: Option<&Type>) -> bool {
+        // functions with type params can't be called without arguments
+        if self.type_params.is_some() {
+            return false;
+        }
+        
+        // if we expect a self-param (eg the `a` in the no-args call `a.B`), it can only be a
+        // no-args call if there is exactly one param. 
+        // if there's no self-param, there must be zero actual args
         let expect_params_len = match self_arg_ty {
             Some(..) => 1,
             None => 0,
         };
 
-        if self.params.len() != expect_params_len || self.type_params.is_some() {
+        if self.params.len() != expect_params_len {
             return false;
         }
+
         match expect_ty {
+            // does the expected type of this value match the full sig (after including self, if
+            // applicable)? if so we aren't calling the function, we're referencing it
             Type::Function(expect_sig) => match self_arg_ty {
                 Some(self_ty) => {
                     let actual_sig = self.with_self(self_ty);
@@ -324,6 +335,7 @@ impl FunctionSig {
 
                 None => **expect_sig != *self,
             },
+
             _ => true,
         }
     }
