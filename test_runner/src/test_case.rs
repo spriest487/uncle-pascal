@@ -74,15 +74,33 @@ impl TestCase {
 
         let mut line_buf = String::new();
         for step in &self.script.steps {
-            if let Err(err) = Self::run_step(step, &mut stdin, &mut stdout, &mut line_buf) {
-                println!("FAILED ({err})");
-                return Ok(false);
+            match Self::run_step(step, &mut stdin, &mut stdout, &mut line_buf) {
+                Ok(true) => {},
+                Ok(false) => return Ok(false),
+                Err(err) => {
+                    println!("FAILED ({err})");
+                    return Ok(false);
+                }
             }
         }
 
         proc.stdin = Some(stdin);
         proc.stdout = Some(stdout);
         let output = proc.wait_with_output()?;
+
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        if stdout.len() > 0 {
+            for line in stdout.lines() {
+                println!("  >> {}", line.trim());
+            }
+        }
+
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        if stderr.len() > 0 {
+            for line in stderr.lines() {
+                println!("  !! {}", line.trim());
+            }
+        }
 
         let completed = if output.status.success() {
             println!("OK");
@@ -95,16 +113,6 @@ impl TestCase {
                 .unwrap_or_else(|| String::from("no return code"));
 
             println!("ERROR {}", code);
-
-            let stdout = String::from_utf8(output.stdout).unwrap();
-            if stdout.len() > 0 {
-                println!("{}", stdout.trim());
-            }
-            
-            let stderr = String::from_utf8(output.stderr).unwrap();
-            if stderr.len() > 0 {
-               println!("{}", stderr.trim()); 
-            }
 
             false
         };
@@ -143,13 +151,13 @@ impl TestCase {
 
             if line_buf.trim() != expect_output.trim() {
                 println!("ERROR: unexpected output");
-                println!("EXPECTED: {expect_output}");
-                println!("  ACTUAL: {line_buf}");
+                println!("EXPECTED: {}", expect_output.trim_end());
+                println!("  ACTUAL: {}", line_buf.trim_end());
 
                 return Ok(false);
-            } else {
-                println!("  << {}", line_buf.trim_end())
             }
+
+            println!("  << {}", line_buf.trim_end());
         }
         
         Ok(true)
