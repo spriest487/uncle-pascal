@@ -143,6 +143,26 @@ impl<A: Annotation> From<AnonymousFunctionDef<A>> for Expr<A> {
 }
 
 impl<A: Annotation> Expr<A> {
+    pub fn name(&self) -> &str {
+        match self {
+            Expr::BinOp(_) => "binary operator",
+            Expr::UnaryOp(_) => "unary operator",
+            Expr::Literal(_, _) => "literal",
+            Expr::Ident(_, _) => "identifier",
+            Expr::Call(call) => call.name(),
+            Expr::ObjectCtor(_) => "object constructor",
+            Expr::CollectionCtor(_) => "collection constructor",
+            Expr::IfCond(_) => "if expr",
+            Expr::Block(_) => "block expr",
+            Expr::Raise(_) => "raise expr",
+            Expr::Exit(_) => "exit expr",
+            Expr::Case(_) => "case expr",
+            Expr::Match(_) => "match expr",
+            Expr::Cast(_) => "cast",
+            Expr::AnonymousFunction(_) => "anonymous function",
+        }
+    }
+    
     pub fn annotation(&self) -> &A {
         match self {
             Expr::BinOp(bin_op) => &bin_op.annotation,

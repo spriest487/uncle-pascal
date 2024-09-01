@@ -195,6 +195,14 @@ impl<A: Annotation> Spanned for Call<A> {
 }
 
 impl<A: Annotation> Call<A> {
+    pub fn name(&self) -> &str {
+        match self {
+            Call::Function(_) | Call::FunctionNoArgs(_) => "function call",
+            Call::Method(_) | Call::MethodNoArgs(_) => "method call",
+            Call::VariantCtor(_) => "variant constructor",
+        }
+    }
+    
     pub fn annotation(&self) -> &A {
         match self {
             Call::FunctionNoArgs(call) => &call.annotation,
@@ -212,6 +220,15 @@ impl<A: Annotation> Call<A> {
             Call::Method(call) => &mut call.annotation,
             Call::MethodNoArgs(call) => &mut call.annotation,
             Call::VariantCtor(call) => &mut call.annotation,
+        }
+    }
+    
+    pub fn args(&self) -> &[Expr<A>] {
+        match self {
+            Call::MethodNoArgs(_) | Call::FunctionNoArgs(_) => &[],
+            Call::Function(func_call) => &func_call.args,
+            Call::Method(method_call) => &method_call.args,
+            Call::VariantCtor(ctor) => ctor.arg.as_slice(),
         }
     }
 }

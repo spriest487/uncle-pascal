@@ -582,7 +582,7 @@ impl fmt::Display for TypecheckError {
         match self {
             TypecheckError::NameError { err, .. } => write!(f, "{}", err),
             TypecheckError::NotCallable(expr) => {
-                write!(f, "expr `{}` of type `{}` is not a callable function", expr, expr.annotation().ty())
+                write!(f, "{} `{}` of type `{}` is not a callable function", expr.name(), expr, expr.annotation().ty())
             }
 
             TypecheckError::InvalidArgs { expected, actual, .. } => {

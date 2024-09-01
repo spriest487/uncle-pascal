@@ -158,8 +158,16 @@ pub fn typecheck_call(
                     .map(Invocation::Call)?
             },
 
-            _ => {
-                return Err(TypecheckError::NotCallable(Box::new(target)));
+            _ => match target {
+                // when making a function call with an empty args list, and the target is a
+                // call to a no-args function, this "inner" call replaces the outer call entirely
+                // since the extra arg list is redundant
+                ast::Expr::Call(inner_call) 
+                    if func_call.args.len() == 0 && inner_call.args().len() == 0 => {
+                    Invocation::Call(inner_call)
+                }
+                
+                _ => return Err(TypecheckError::NotCallable(Box::new(target))),
             },
         },
 
