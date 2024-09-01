@@ -1,19 +1,22 @@
-uses System;
+implementation
+    uses System;
 
-function A(name: String)
-begin
-    WriteLn('hello, ' + name);
-end;
+    function A(name: String);
+    begin
+        WriteLn('hello, ' + name);
+    end;
+    
+    function B(name: String);
+    begin
+        WriteLn('goodbye, ' + name);
+    end;
 
-function B(name: String)
-begin
-    WriteLn('goodbye, ' + name);
-end;
+    function Greet(greeting: function(String); name: String);
+    begin
+        greeting(name);
+    end;
 
-function Greet(greeting: function(String); name: String)
-begin
-    greeting(name);
-end;
-
-Greet(A, 'world');
-Greet(B, 'everyone');
+initialization
+    Greet(A, 'world');
+    Greet(B, 'everyone');
+end
