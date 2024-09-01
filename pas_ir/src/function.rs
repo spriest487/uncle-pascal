@@ -170,12 +170,9 @@ pub fn build_func_def(
 pub fn build_func_static_closure_def(
     module: &mut Module,
     target_func: &FunctionInstance,
-    target_ir_func: &Function,
-    closure_id: TypeDefID
+    target_ir_func: &Function
 ) -> FunctionDef {
     let src_span = target_ir_func.src_span().clone();
-    
-    let closure_ptr_ty = Type::RcPointer(VirtualTypeID::Class(closure_id));
 
     let params = target_func.sig.params.iter()
         .enumerate()
@@ -198,8 +195,10 @@ pub fn build_func_static_closure_def(
 
     let closure_ptr_local_id = body_builder.bind_closure_ptr();
 
+    // this method needs to be compatible with the type-erased function pointer stored in a
+    // closure struct, which has the sig "(Pointer, ...actual params)"
     let mut bound_params = bind_function_params(&params, &mut body_builder);
-    bound_params.insert(0, (closure_ptr_local_id, closure_ptr_ty.clone()));
+    bound_params.insert(0, (closure_ptr_local_id, Type::Nothing.ptr()));
     
     let func_global = Ref::Global(GlobalRef::Function(target_func.id));
     let func_args = bound_params.iter()
@@ -390,7 +389,7 @@ pub fn translate_func_params(sig: &pas_ty::FunctionSig, module: &mut Module) -> 
         .collect()
 }
 
-pub fn build_static_closure(closure: ClosureInstance, id: StaticClosureID, module: &mut Module) -> StaticClosure {
+pub fn build_static_closure_impl(closure: ClosureInstance, id: StaticClosureID, module: &mut Module) -> StaticClosure {
     let mut init_builder = Builder::new(module);
     
     let static_closure_ptr_ref = Ref::Global(GlobalRef::StaticClosure(id));

@@ -1,5 +1,5 @@
 use crate::{
-    build_closure_function_def, build_func_static_closure_def, build_func_def, build_static_closure, metadata::*, pas_ty,
+    build_closure_function_def, build_func_static_closure_def, build_func_def, build_static_closure_impl, metadata::*, pas_ty,
     translate_func_params, translate_stmt, write_instruction_list, Builder, ExternalFunctionRef,
     FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance,
     IROptions, Instruction, InstructionFormatter, Metadata, MethodDeclKey,
@@ -388,7 +388,7 @@ impl Module {
 
         // build the closure function, which is a thunk that just calls the global function
         let thunk_id = self.metadata.insert_func(None);
-        let thunk_def = build_func_static_closure_def(self, func, &ir_func, closure_id);
+        let thunk_def = build_func_static_closure_def(self, func, &ir_func);
 
         self.functions.insert(thunk_id, Function::Local(thunk_def));
         
@@ -424,7 +424,7 @@ impl Module {
         }
         
         let id = StaticClosureID(self.static_closures.len());
-        let instance = build_static_closure(closure, id, self);
+        let instance = build_static_closure_impl(closure, id, self);
 
         self.static_closures.push(instance);
 
