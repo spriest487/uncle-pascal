@@ -74,7 +74,6 @@ pub fn report_err(err: &impl DiagnosticOutput, severity: Severity) -> Result<(),
         .map(|diag| output_to_report_diag(diag, &mut code_map, LabelStyle::Primary, Severity::Note))
         .collect::<Result<_, _>>()?;
 
-
     for diag in see_also_diags {
         println!();
         codespan_reporting::term::emit(&mut out.lock(), &config, &code_map, &diag)?;

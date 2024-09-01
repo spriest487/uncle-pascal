@@ -314,7 +314,7 @@ fn main() {
     let print_bt = args.backtrace;
 
     if let Err(err) = compile(&args).and_then(|output| handle_output(output, &args)) {
-        if reporting::report_err(&err, Severity::Error).is_err() {
+        if report_err(&err, Severity::Error).is_err() {
             eprintln!("error: {}", err);
         }
 
