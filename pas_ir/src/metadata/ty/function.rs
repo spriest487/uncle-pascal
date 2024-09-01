@@ -78,8 +78,13 @@ impl FunctionSig {
 
 #[derive(Debug, Clone)]
 pub struct ClosureInstance {
+    // the function containing the closure's body
     pub func_instance: FunctionInstance,
+    
+    // ID of the function type (not the closure function but the target type)
     pub func_ty_id: TypeDefID,
+    
+    // ID of the implementation struct type of this closure
     pub closure_id: TypeDefID,
 }
 

@@ -339,6 +339,10 @@ impl Module {
             }
         }
 
+        for static_closure in module.static_closures() {
+            self.static_closures.push(static_closure.clone());
+        }
+
         for (id, func) in &module.functions {
             match func {
                 ir::Function::Local(func_def) => {
@@ -362,10 +366,6 @@ impl Module {
             for wrapper_func_def in class.gen_vcall_wrappers(self) {
                 self.functions.push(wrapper_func_def);
             }
-        }
-
-        for static_closure in module.static_closures() {
-            self.static_closures.push(static_closure.clone());
         }
 
         let init_index = self
@@ -498,6 +498,7 @@ impl fmt::Display for Module {
         for static_closure in &self.static_closures {
             let global_name = GlobalName::StaticClosure(static_closure.id);
             let decl_string = Type::DefinedType(TypeDefName::Struct(static_closure.closure_id))
+                .ptr()
                 .to_decl_string(&global_name);
 
             writeln!(f, "{};", decl_string)?;

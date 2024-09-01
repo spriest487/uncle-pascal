@@ -44,8 +44,8 @@ impl Function {
 
         let func = Function::External(FfiFunction {
             debug_name: format!("{}::{}", func_ref.src, func_ref.symbol),
-            return_ty: func_ref.return_ty.clone(),
-            param_tys: func_ref.params.clone(),
+            return_ty: func_ref.sig.return_ty.clone(),
+            param_tys: func_ref.sig.param_tys.clone(),
 
             invoker,
         });
@@ -57,7 +57,7 @@ impl Function {
         match self {
             Function::Builtin(def) => &def.return_ty,
             Function::External(def) => &def.return_ty,
-            Function::IR(def) => &def.return_ty,
+            Function::IR(def) => &def.sig.return_ty,
         }
     }
 
@@ -65,7 +65,7 @@ impl Function {
         match self {
             Function::Builtin(builtin_fn) => &builtin_fn.param_tys,
             Function::External(external_fn) => &external_fn.param_tys,
-            Function::IR(func_def) => &func_def.params,
+            Function::IR(func_def) => &func_def.sig.param_tys,
         }
     }
 

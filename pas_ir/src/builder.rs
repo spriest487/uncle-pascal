@@ -201,6 +201,12 @@ impl<'m> Builder<'m> {
             self.build_closure_instance(closure)
         }
     }
+    
+    pub fn build_function_closure(&mut self, func: &FunctionInstance) -> Ref {
+        let static_closure = self.module.build_func_static_closure_instance(func);
+
+        Ref::Global(GlobalRef::StaticClosure(static_closure.id))
+    }
 
     pub fn build_closure_instance(&mut self, closure: ClosureInstance) -> Ref {
         let closure_def = self
@@ -219,8 +225,9 @@ impl<'m> Builder<'m> {
                 struct_id: closure.closure_id,
             });
 
-            let func_ty = Type::Function(closure.func_ty_id);
-            let func_field_ptr = builder.local_new(func_ty.ptr(), None);
+            let func_ptr_ty = Type::Function(closure.func_ty_id).ptr();
+
+            let func_field_ptr = builder.local_new(func_ptr_ty, None);
             builder.field(
                 func_field_ptr.clone(),
                 closure_ref.clone(),
@@ -231,7 +238,7 @@ impl<'m> Builder<'m> {
             // initialize closure reference to function
             let func_ref = Ref::Global(GlobalRef::Function(closure.func_instance.id));
             builder.mov(func_field_ptr.clone().to_deref(), func_ref);
-
+            
             // initialize closure capture fields - copy from local scope into closure object
             for (field_id, field_def) in closure_def.fields.iter() {
                 // skip the closure pointer field
@@ -909,8 +916,10 @@ impl<'m> Builder<'m> {
             funcs.release,
             Function::Local(FunctionDef {
                 body: release_body,
-                return_ty: Type::Nothing,
-                params: vec![ty.clone().ptr()],
+                sig: FunctionSig {
+                    return_ty: Type::Nothing,
+                    param_tys: vec![ty.clone().ptr()],
+                },
                 debug_name: format!("<generated releaser for {}>", self.pretty_ty_name(ty)),
                 src_span: self.module_span.clone(),
             }),
@@ -930,8 +939,10 @@ impl<'m> Builder<'m> {
             funcs.retain,
             Function::Local(FunctionDef {
                 body: retain_body,
-                return_ty: Type::Nothing,
-                params: vec![ty.clone().ptr()],
+                sig: FunctionSig {
+                    return_ty: Type::Nothing,
+                    param_tys: vec![ty.clone().ptr()],
+                },
                 debug_name: format!("generated RC retain func for {}", self.pretty_ty_name(ty)),
                 src_span: self.module_span.clone(),
             }),

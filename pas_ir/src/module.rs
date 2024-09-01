@@ -1,5 +1,5 @@
 use crate::{
-    build_closure_function_def, build_func_def, build_static_closure, metadata::*, pas_ty,
+    build_closure_function_def, build_func_static_closure_def, build_func_def, build_static_closure, metadata::*, pas_ty,
     translate_func_params, translate_stmt, write_instruction_list, Builder, ExternalFunctionRef,
     FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance,
     IROptions, Instruction, InstructionFormatter, Metadata, MethodDeclKey,
@@ -25,8 +25,9 @@ pub struct Module {
 
     pub functions: HashMap<FunctionID, Function>,
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
-
+    
     static_closures: Vec<StaticClosure>,
+    function_static_closures: HashMap<FunctionID, StaticClosureID>,
 
     pub init: Vec<Instruction>,
 }
@@ -45,6 +46,7 @@ impl Module {
             translated_funcs: HashMap::new(),
 
             static_closures: Vec::new(),
+            function_static_closures: HashMap::new(),
 
             metadata,
         };
@@ -182,7 +184,7 @@ impl Module {
         let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
 
         let return_ty = self.translate_type(&sig.return_ty, None);
-        let params = translate_func_params(&sig, self);
+        let param_tys = translate_func_params(&sig, self);
 
         let cached_func = FunctionInstance {
             id,
@@ -199,8 +201,7 @@ impl Module {
                 src: extern_src.to_string(),
                 symbol: extern_decl.ident.last().to_string(),
 
-                return_ty,
-                params,
+                sig: FunctionSig { return_ty, param_tys },
 
                 src_span: extern_decl.span().clone(),
             }),
@@ -329,15 +330,19 @@ impl Module {
             line: func.span().start.line,
             col: func.span().start.col,
         };
-        let closure_id =
-            translate_closure_struct(closure_identity, &func.captures, type_args.as_ref(), self);
+        let closure_id = translate_closure_struct(
+            closure_identity,
+            &func.captures,
+            type_args.as_ref(),
+            self
+        );
 
         let debug_name = "<anonymous function>".to_string();
 
-        let cached_func = FunctionInstance { id, sig: sig };
+        let cached_func = FunctionInstance { id, sig };
 
-        let ir_func =
-            build_closure_function_def(self, &func, closure_id, func.span().clone(), debug_name);
+        let src_span = func.span().clone();
+        let ir_func = build_closure_function_def(self, &func, closure_id, src_span, debug_name);
 
         self.functions.insert(id, Function::Local(ir_func));
 
@@ -347,8 +352,77 @@ impl Module {
             closure_id,
         }
     }
+    
+    pub fn build_func_static_closure_instance(&mut self, func: &FunctionInstance) -> &StaticClosure {
+        if let Some(existing) = self.function_static_closures.get(&func.id) {
+            return &self.static_closures[existing.0];
+        }
+        
+        // function reference closures can never have a capture list or type args
+        let captures = LinkedHashMap::default();
+        let type_args = None;
+
+        let func_ty_id = self.translate_func_ty(func.sig.as_ref(), type_args);
+
+        let ir_func = self.functions.get(&func.id)
+            .expect("function passed to build_function_closure_instance must have been previously translated")
+            .clone();
+
+        // the span associated with the static closure should be the function definition
+        // itself, not the usage
+        let src_span = ir_func.src_span();
+        
+        let closure_identity = ClosureIdentity {
+            func_ty_id,
+            col: src_span.start.col,
+            line: src_span.end.col,
+            module: src_span.file.display().to_string(),
+        };
+
+        let closure_id = translate_closure_struct(
+            closure_identity,
+            &captures,
+            type_args,
+            self
+        );
+
+        // build the closure function, which is a thunk that just calls the global function
+        let thunk_id = self.metadata.insert_func(None);
+        let thunk_def = build_func_static_closure_def(self, func, &ir_func, closure_id);
+
+        self.functions.insert(thunk_id, Function::Local(thunk_def));
+        
+        let closure = ClosureInstance {
+            closure_id,
+            func_ty_id,
+            func_instance: FunctionInstance {
+                id: thunk_id,
+                sig: func.sig.clone(),
+            },
+        };
+
+        let static_closure_id = self.build_static_closure_instance(closure).id;
+        self.function_static_closures.insert(func.id, static_closure_id);
+
+        &self.static_closures[static_closure_id.0]
+    }
 
     pub fn build_static_closure_instance(&mut self, closure: ClosureInstance) -> &StaticClosure {
+        let existing_index = self.static_closures.iter()
+            .enumerate()
+            .filter_map(|(i, static_closure)| {
+                if static_closure.closure_id == closure.closure_id {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .next();
+
+        if let Some(existing_index) = existing_index {
+            return &self.static_closures[existing_index];
+        }
+        
         let id = StaticClosureID(self.static_closures.len());
         let instance = build_static_closure(closure, id, self);
 
@@ -598,7 +672,7 @@ impl Module {
 
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "* Structures")?;
+        writeln!(f, "* Type Definitions")?;
         let mut defs: Vec<_> = self.metadata.type_defs().collect();
         defs.sort_by_key(|(id, _)| *id);
 

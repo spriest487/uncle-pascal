@@ -253,7 +253,7 @@ impl Expr {
                             .iter()
                             .find(|x| x.func_ty_id == *func_ty_id)
                             .unwrap_or_else(|| {
-                                panic!("missing static closure type for function ID {}", func_ty_id)
+                                panic!("missing static closure type for function ID {} (field {} of type {})", func_ty_id, field_id, of_ty)
                             });
 
                         let static_closure_ty =

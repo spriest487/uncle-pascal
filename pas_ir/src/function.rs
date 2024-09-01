@@ -5,15 +5,15 @@ use std::{
 use pas_common::span::Span;
 use pas_syn::{ast, Ident, IdentPath};
 use pas_syn::ast::FunctionParamMod;
-use crate::{Builder, CLOSURE_PTR_FIELD, ClosureInstance, EXIT_LABEL, FunctionID, GlobalRef, Instruction, jmp_exists, LocalID, Module, pas_ty, Ref, RETURN_REF, translate_block, translate_literal, Type, TypeDefID, VirtualTypeID};
+use crate::{Builder, CLOSURE_PTR_FIELD, ClosureInstance, EXIT_LABEL, FunctionID, GlobalRef, Instruction, jmp_exists, LocalID, Module, pas_ty, Ref, RETURN_REF, translate_block, translate_literal, Type, TypeDefID, VirtualTypeID, Value};
+use crate::metadata::FunctionSig;
 
 #[derive(Clone, Debug)]
 pub struct ExternalFunctionRef {
     pub symbol: String,
     pub src: String,
 
-    pub return_ty: Type,
-    pub params: Vec<Type>,
+    pub sig: FunctionSig,
 
     pub src_span: Span,
 }
@@ -25,8 +25,8 @@ pub struct FunctionDef {
     pub debug_name: String,
 
     pub body: Vec<Instruction>,
-    pub return_ty: Type,
-    pub params: Vec<Type>,
+    
+    pub sig: FunctionSig,
 
     pub src_span: Span,
 }
@@ -42,6 +42,20 @@ impl Function {
         match self {
             Function::External(ExternalFunctionRef { symbol, .. }) => symbol.as_str(),
             Function::Local(FunctionDef { debug_name, .. }) => debug_name.as_str(),
+        }
+    }
+    
+    pub fn sig(&self) -> &FunctionSig {
+        match self {
+            Function::External(external_func) => &external_func.sig,
+            Function::Local(local_func) => &local_func.sig,
+        }
+    }
+    
+    pub fn src_span(&self) -> &Span {
+        match self {
+            Function::External(external_func) => &external_func.src_span,
+            Function::Local(local_func) => &local_func.src_span,
         }
     }
 }
@@ -144,10 +158,70 @@ pub fn build_func_def(
 
     FunctionDef {
         body,
-        params: bound_params.into_iter().map(|(_id, ty)| ty).collect(),
-        return_ty,
+        sig: FunctionSig {
+            param_tys: bound_params.into_iter().map(|(_id, ty)| ty).collect(),
+            return_ty,
+        },
         debug_name,
         src_span,
+    }
+}
+
+pub fn build_func_static_closure_def(
+    module: &mut Module,
+    target_func: &FunctionInstance,
+    target_ir_func: &Function,
+    closure_id: TypeDefID
+) -> FunctionDef {
+    let src_span = target_ir_func.src_span().clone();
+    
+    let closure_ptr_ty = Type::RcPointer(VirtualTypeID::Class(closure_id));
+
+    let params = target_func.sig.params.iter()
+        .enumerate()
+        .map(|(index, sig_param)| ast::FunctionParam {
+            span: src_span.clone(),
+            modifier: sig_param.modifier,
+            ty: sig_param.ty.clone(),
+            ident: Ident::new(&format!("P{index}"), src_span.clone()),
+        })
+        .collect::<Vec<_>>();
+
+    let mut body_builder = create_function_body_builder(module, None, None);
+
+    let bind_return_ty = match &target_func.sig.return_ty {
+        pas_ty::Type::Nothing => None,
+        ty => Some(ty),
+    };
+
+    let return_ty = bind_function_return(bind_return_ty, &mut body_builder);
+
+    let closure_ptr_local_id = body_builder.bind_closure_ptr();
+
+    let mut bound_params = bind_function_params(&params, &mut body_builder);
+    bound_params.insert(0, (closure_ptr_local_id, closure_ptr_ty.clone()));
+    
+    let func_global = Ref::Global(GlobalRef::Function(target_func.id));
+    let func_args = bound_params.iter()
+        .skip(1)
+        .map(|(local_id, _)| Value::Ref(Ref::Local(*local_id)))
+        .collect::<Vec<_>>();
+
+    let return_ref = match return_ty {
+        Type::Nothing => None,
+        _ => Some(RETURN_REF),
+    };
+
+    body_builder.call(func_global, func_args, return_ref);
+    
+    FunctionDef {
+        sig: FunctionSig {
+            param_tys: bound_params.into_iter().map(|(_, param_ty)| param_ty).collect(),
+            return_ty,  
+        },
+        src_span,
+        debug_name: format!("{} static closure", target_func.id),
+        body: body_builder.finish(), 
     }
 }
 
@@ -203,8 +277,10 @@ pub fn build_closure_function_def(
 
     FunctionDef {
         body,
-        params: bound_params.into_iter().map(|(_, ty)| ty).collect(),
-        return_ty,
+        sig: FunctionSig {
+            param_tys: bound_params.into_iter().map(|(_, ty)| ty).collect(),
+            return_ty,
+        },
         debug_name,
         src_span,
     }
@@ -316,9 +392,12 @@ pub fn translate_func_params(sig: &pas_ty::FunctionSig, module: &mut Module) -> 
 
 pub fn build_static_closure(closure: ClosureInstance, id: StaticClosureID, module: &mut Module) -> StaticClosure {
     let mut init_builder = Builder::new(module);
+    
+    let static_closure_ptr_ref = Ref::Global(GlobalRef::StaticClosure(id));
+    
     let closure_ref = init_builder.build_closure_instance(closure.clone());
     init_builder.retain(closure_ref.clone(), &closure.closure_ptr_ty());
-    init_builder.mov(Ref::Global(GlobalRef::StaticClosure(id)), closure_ref);
+    init_builder.mov(static_closure_ptr_ref, closure_ref);
 
     let init_body = init_builder.finish();
 
@@ -328,8 +407,10 @@ pub fn build_static_closure(closure: ClosureInstance, id: StaticClosureID, modul
         Function::Local(FunctionDef {
             body: init_body,
             debug_name: format!("static closure init for {}", closure),
-            params: Vec::new(),
-            return_ty: Type::Nothing,
+            sig: FunctionSig {
+                param_tys: Vec::new(),
+                return_ty: Type::Nothing,
+            },
             src_span: Span::zero(""),
         }),
     );

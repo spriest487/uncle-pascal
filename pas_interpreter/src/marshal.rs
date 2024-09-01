@@ -380,13 +380,14 @@ impl Marshaller {
 
         // the "nothing" type is usually not allowed by the marshaller because it can't be
         // instantiated, but here we need to map it to the void ffi type
-        let ffi_return_ty = match &func_ref.return_ty {
+        let ffi_return_ty = match &func_ref.sig.return_ty {
             Type::Nothing => ForeignType(FfiType::void()),
             return_ty => self.build_marshalled_type(return_ty, metadata)?,
         };
 
         let ffi_param_tys: Vec<_> = func_ref
-            .params
+            .sig
+            .param_tys
             .iter()
             .map(|ty| self.build_marshalled_type(ty, metadata))
             .collect::<MarshalResult<_>>()?;
@@ -416,7 +417,7 @@ impl Marshaller {
             cif,
             symbol,
             ffi_param_tys,
-            func_ref.return_ty.clone(),
+            func_ref.sig.return_ty.clone(),
             ffi_return_ty,
         ))
     }

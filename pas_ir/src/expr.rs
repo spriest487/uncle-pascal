@@ -1303,9 +1303,10 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
     match annotation {
         TypeAnnotation::Function(func) => {
             let func = builder.translate_func(func.ident.clone(), func.type_args.clone());
-            let func_ref = GlobalRef::Function(func.id);
-
-            Ref::Global(func_ref)
+            
+            // references to functions by value are turned into references to the static
+            // closure for that function
+            builder.build_function_closure(&func)
         },
 
         TypeAnnotation::TypedValue(val) => {

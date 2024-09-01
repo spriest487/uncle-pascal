@@ -73,8 +73,10 @@ fn gen_dyn_array_funcs(module: &mut Module, elem_ty: &Type, struct_id: TypeDefID
 
     module.insert_func(dyn_array_rtti.alloc, Function::Local(FunctionDef {
         debug_name: format!("dynarray alloc function for element type {}", elem_ty),
-        params: vec![Type::any(), Type::I32, Type::any(), Type::any()],
-        return_ty: Type::Nothing,
+        sig: FunctionSig {
+            param_tys: vec![Type::any(), Type::I32, Type::any(), Type::any()],
+            return_ty: Type::Nothing,
+        },
         body: alloc_body,
         src_span: module.module_span().clone(),
     }));
@@ -85,8 +87,10 @@ fn gen_dyn_array_funcs(module: &mut Module, elem_ty: &Type, struct_id: TypeDefID
 
     module.insert_func(dyn_array_rtti.length, Function::Local(FunctionDef {
         debug_name: format!("dynarray length function for element type {}", elem_ty),
-        params: vec![Type::any()],
-        return_ty: Type::I32,
+        sig: FunctionSig {
+            param_tys: vec![Type::any()],
+            return_ty: Type::I32,
+        },
         body: length_body,
         src_span: module.module_span().clone(),
     }));
@@ -325,8 +329,10 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
         rc_boilerplate.release,
         Function::Local(FunctionDef {
             debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
-            return_ty: Type::Nothing,
-            params: vec![array_struct_ty.clone().ptr()],
+            sig: FunctionSig {
+                return_ty: Type::Nothing,
+                param_tys: vec![array_struct_ty.clone().ptr()],
+            },
             body: releaser_body,
             src_span: module.module_span().clone(),
         }),
@@ -337,8 +343,10 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
         rc_boilerplate.retain,
         Function::Local(FunctionDef {
             debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
-            return_ty: Type::Nothing,
-            params: vec![array_struct_ty.clone().ptr()],
+            sig: FunctionSig {
+                return_ty: Type::Nothing,
+                param_tys: vec![array_struct_ty.clone().ptr()],
+            },
             body: Vec::new(),
             src_span: module.module_span().clone()
         }),
