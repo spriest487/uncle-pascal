@@ -289,12 +289,23 @@ begin
     end;
 
     var startAt := 0;
-    while s.StringCharAt(startAt).IsWhiteSpace() do
+    while startAt < s.len do
+    begin
+        // todo: fix short circuit evaluation so we can check this in the while condition
+        if not s.StringCharAt(startAt).IsWhiteSpace() then
+            break;
+
         startAt += 1;
+    end;
 
     var endAt := s.len - 1;
-    while endAt > startAt and s.StringCharAt(endAt).IsWhiteSpace() do
+    while endAt > startAt do
+    begin
+        if not s.StringCharAt(endAt).IsWhiteSpace() then
+            break;
+
         endAt -= 1;
+    end;
 
     var len := (endAt + 1) - startAt;
     SubString(s, startAt, len)

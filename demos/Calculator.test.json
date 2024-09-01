@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "output": "Enter an expression e.g. '2*3', '4/2' or 'exit'."
+    },
+    {
+      "input": "2 + 2\r\n",
+      "output": " => 4"
+    },
+    {
+      "input": "exit\r\n"
+    }
+  ]
+}

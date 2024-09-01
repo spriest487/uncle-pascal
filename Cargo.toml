@@ -24,5 +24,6 @@ members = [
     "pas_syn",
     "pas_typecheck",
     "pas_pp",
-    "pas_ir",
+    "pas_ir", 
+    "test_runner",
 ]
