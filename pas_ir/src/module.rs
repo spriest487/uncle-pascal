@@ -305,7 +305,7 @@ impl Module {
         let func_ty_id = match self.metadata.find_func_ty(&func_sig) {
             Some(id) => id,
             None => {
-                let ir_sig = translate_func_sig(func_sig, type_args, self);
+                let ir_sig = FunctionSig::translate(func_sig, type_args, self);
                 self.metadata.define_func_ty(func_sig.clone(), ir_sig)
             },
         };
@@ -549,7 +549,7 @@ impl Module {
                     return Type::Function(id);
                 }
 
-                let ir_sig = translate_func_sig(&func_sig, type_args, self);
+                let ir_sig = FunctionSig::translate(&func_sig, type_args, self);
                 let func_ty_id = self.metadata.define_func_ty((**func_sig).clone(), ir_sig);
 
                 let ty = Type::RcPointer(VirtualTypeID::Closure(func_ty_id));

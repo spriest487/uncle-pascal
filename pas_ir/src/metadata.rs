@@ -422,7 +422,7 @@ impl Metadata {
 
                     VirtualTypeID::Closure(func_ty_id) => {
                         Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
-                            Some(sig) => format!("closure of {}", sig),
+                            Some(sig) => format!("closure of {}", sig.to_pretty(self)),
                             None => format!("closure of {}", *func_ty_id),
                         })
                     }
@@ -437,7 +437,7 @@ impl Metadata {
 
             Type::Function(func_ty_id) => {
                 Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
-                    Some(sig) => format!("{}", sig),
+                    Some(sig) => sig.to_pretty(self),
                     None => format!("function {}", *func_ty_id),
                 })
             }
