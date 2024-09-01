@@ -605,7 +605,7 @@ impl fmt::Display for Module {
         for (id, def) in &defs {
             match def {
                 TypeDef::Struct(s) => {
-                    write!(f, "{} : ", id.0)?;
+                    write!(f, "{}: ", id.0)?;
 
                     match &s.identity {
                         StructIdentity::Class(name) | StructIdentity::Record(name) => {
@@ -676,7 +676,7 @@ impl fmt::Display for Module {
                 },
 
                 TypeDef::Function(def) => {
-                    write!(f, "{}", def)?;
+                    write!(f, "{}: {}", id.0, def.to_pretty(&self.metadata))?;
                 },
             }
 
