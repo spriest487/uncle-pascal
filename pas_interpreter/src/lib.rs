@@ -1564,6 +1564,7 @@ impl Interpreter {
             ("NativeUIntToStr", builtin::usize_to_str, Type::string_ptr(), vec![Type::USize]),
 
             ("StrToInt", builtin::str_to_int, Type::I32, vec![STRING_TYPE]),
+            ("Write", builtin::write, Type::Nothing, vec![STRING_TYPE]),
             ("WriteLn", builtin::write_ln, Type::Nothing, vec![STRING_TYPE]),
             ("ReadLn", builtin::read_ln, Type::string_ptr(), vec![]),
             ("GetMem", builtin::get_mem, Type::U8.ptr(), vec![Type::I32]),

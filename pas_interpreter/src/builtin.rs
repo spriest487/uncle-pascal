@@ -4,6 +4,8 @@ use std::{
     fmt,
     io::{self, BufRead},
 };
+use std::env::consts::OS;
+use std::io::Write;
 use pas_ir::{
     metadata::TypeDefID,
     LocalID,
@@ -96,11 +98,28 @@ pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
 }
 
 /// %0: String -> Nothing
+pub(super) fn write(state: &mut Interpreter) -> ExecResult<()> {
+    let arg_0 = Ref::Local(LocalID(0));
+    let string = state.read_string(&arg_0)?;
+
+    _ = io::stdout().lock().write_all(string.as_bytes()).unwrap();
+
+    Ok(())
+}
+
+/// %0: String -> Nothing
 pub(super) fn write_ln(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(0));
     let string = state.read_string(&arg_0)?;
 
-    println!("{}", string);
+    let mut stdout = io::stdout().lock();
+
+    _ = stdout.write_all(string.as_bytes());
+    _ = stdout.write_all(match OS {
+       "windows" => "\r\n".as_bytes(),
+        _ => "\n".as_bytes(),
+    });
+    _ = stdout.flush();
 
     Ok(())
 }
@@ -115,7 +134,9 @@ pub(super) fn read_ln(state: &mut Interpreter) -> ExecResult<()> {
     }
 
     // remove the newline
-    line.remove(line.len() - 1);
+    if line.len() > 0 {
+        line.remove(line.len() - 1);
+    }
 
     let result_str = state.create_string(&line)?;
 
