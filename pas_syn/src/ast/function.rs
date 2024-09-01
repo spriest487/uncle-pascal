@@ -508,7 +508,11 @@ impl<A: Annotation> fmt::Display for AnonymousFunctionDef<A> {
         if let Some(return_ty) = &self.return_ty {
             write!(f, ": {}", return_ty)?;
         }
-        write!(f, "end")
+        writeln!(f, "; ")?;
+
+        write!(f, "{}", self.body)?;
+        
+        Ok(())
     }
 }
 
