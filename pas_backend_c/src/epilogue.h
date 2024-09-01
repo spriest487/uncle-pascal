@@ -77,6 +77,7 @@ static void System_Write(STRING_STRUCT* str) {
 static void System_WriteLn(STRING_STRUCT* str) {
     System_Write(str);
     putchar('\n');
+    fflush(stdout);
 }
 
 static STRING_STRUCT* System_ReadLn(void) {

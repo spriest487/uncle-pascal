@@ -1,7 +1,9 @@
+use std::env;
 use std::fs::DirEntry;
-use std::io::{self, BufRead, BufReader, Stderr, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
+use crate::opts::{ExecutionMethod, Opts};
 use crate::test_script::{TestScript, TestScriptStep};
 
 #[derive(Clone)]
@@ -57,15 +59,56 @@ impl TestCase {
             .unwrap_or_else(Vec::new)
     }
     
-    fn try_run(&self, pascal2_path: &Path) -> io::Result<bool> {
-        println!("RUNNING: {}", self.path.display());
-
-        let mut proc = Command::new(pascal2_path)
+    fn run_interpreted(&self, opts: &Opts) -> io::Result<Child> {
+        Command::new(&opts.compiler)
             .arg(&self.path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()?;
+            .spawn()
+    }
+    
+    fn run_clang(&self, opts: &Opts) -> io::Result<Child> {
+        let path_as_rel = match self.path.strip_prefix(&opts.search_path) {
+            Ok(path) => path,
+            Err(err) => {
+                return Err(io::Error::new(io::ErrorKind::Other, err.to_string()));
+            }
+        };
+        
+        let mut c_file_path = opts.target_path.join(&path_as_rel);
+        c_file_path.set_extension("c");
+        
+        Self::try_run_command(Command::new(&opts.compiler)
+            .arg(&self.path)
+            .arg("-o").arg(&c_file_path))?;
+
+        let exe_ext = match env::consts::OS {
+            "windows" => "exe",
+            _ => "",
+        };
+        
+        let mut exe_path = c_file_path.clone();
+        exe_path.set_extension(exe_ext);
+
+        Self::try_run_command(Command::new("clang")
+            .arg(c_file_path)
+            .arg("-o").arg(&exe_path))?;
+        
+        Command::new(exe_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    }
+    
+    fn try_run(&self, opts: &Opts) -> io::Result<bool> {
+        println!("RUNNING: {}", self.path.display());
+
+        let mut proc = match opts.execution_method {
+            ExecutionMethod::Interpret => self.run_interpreted(opts),
+            ExecutionMethod::Clang => self.run_clang(opts),
+        }?;
 
         let mut stdin = proc.stdin.take()
             .expect("stdin was not captured for child process");
@@ -87,20 +130,7 @@ impl TestCase {
         proc.stdin = Some(stdin);
         proc.stdout = Some(stdout);
         let output = proc.wait_with_output()?;
-
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        if stdout.len() > 0 {
-            for line in stdout.lines() {
-                println!("  >> {}", line.trim());
-            }
-        }
-
-        let stderr = String::from_utf8(output.stderr).unwrap();
-        if stderr.len() > 0 {
-            for line in stderr.lines() {
-                println!("  !! {}", line.trim());
-            }
-        }
+        Self::dump_output(&output);
 
         let completed = if output.status.success() {
             println!("OK");
@@ -120,8 +150,8 @@ impl TestCase {
         Ok(completed)
     }
     
-    pub fn run(&self, pascal2_path: &Path) -> bool {
-        let ok = self.try_run(pascal2_path).unwrap_or_else(|err| {
+    pub fn run(&self, opts: &Opts) -> bool {
+        let ok = self.try_run(opts).unwrap_or_else(|err| {
             println!("FAILED ({err})");
             false
         });
@@ -161,5 +191,32 @@ impl TestCase {
         }
         
         Ok(true)
+    }
+
+    fn try_run_command(command: &mut Command) -> io::Result<()> {
+        let output = command.output()?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Self::dump_output(&output);
+        Err(io::Error::new(io::ErrorKind::Other, output.status.to_string()))
+    }
+
+    fn dump_output(output: &Output) {
+        let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+        if stdout.len() > 0 {
+            for line in stdout.lines() {
+                println!("  >> {}", line.trim());
+            }
+        }
+
+        let stderr = String::from_utf8(output.stderr.clone()).unwrap();
+        if stderr.len() > 0 {
+            for line in stderr.lines() {
+                println!("  !! {}", line.trim());
+            }
+        }
     }
 }
