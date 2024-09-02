@@ -130,6 +130,12 @@ impl Module {
                 vec![string_ty.clone()],
                 Type::Void,
             ),
+            (
+                "Write",
+                FunctionName::Write,
+                vec![string_ty.clone()],
+                Type::Void,
+            ),
             ("ReadLn", FunctionName::ReadLn, vec![], string_ty.clone()),
             (
                 "ArrayLengthInternal",

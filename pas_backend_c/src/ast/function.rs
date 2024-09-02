@@ -46,6 +46,7 @@ pub enum FunctionName {
     NativeUIntToStr,
 
     StrToInt,
+    Write,
     WriteLn,
     ReadLn,
     GetMem,
@@ -75,6 +76,7 @@ impl fmt::Display for FunctionName {
             FunctionName::Raise => write!(f, "Raise"),
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
+            FunctionName::Write => write!(f, "System_Write"),
             FunctionName::ReadLn => write!(f, "System_ReadLn"),
             FunctionName::StrToInt => write!(f, "System_StrToInt"),
             FunctionName::GetMem => write!(f, "System_GetMem"),
