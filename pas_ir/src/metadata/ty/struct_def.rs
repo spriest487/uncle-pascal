@@ -1,6 +1,6 @@
 use crate::{pas_ty, translate_name, Module, NamePath, Type, TypeDefID};
 use linked_hash_map::LinkedHashMap;
-use pas_common::span::{Span, Spanned};
+use pas_common::span::{Location, Span, Spanned};
 use pas_syn::ast::StructKind;
 use std::{collections::HashMap, fmt};
 use pas_typecheck::layout::{StructLayoutMember};
@@ -32,10 +32,20 @@ impl StructIdentity {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ClosureIdentity {
-    pub func_ty_id: TypeDefID,
+    /// the type of the closure's virtual call function alias, which has the sig of the closure's
+    /// target type plus a type-erased pointer inserted as parameter 0 
+    pub virt_func_ty: TypeDefID,
+
     pub module: String,
     pub line: usize,
     pub col: usize,
+}
+
+impl ClosureIdentity {
+    pub fn src_span(&self) -> Span {
+        let location = Location::new(self.line, self.col);
+        Span::new(self.module.clone(), location, location)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -112,7 +122,7 @@ impl fmt::Display for Struct {
             StructIdentity::Closure(identity) => write!(
                 f,
                 "closure of function type {} @ {}:{}:{}",
-                identity.func_ty_id, identity.module, identity.line, identity.col
+                identity.virt_func_ty, identity.module, identity.line, identity.col
             ),
         }
     }

@@ -25,7 +25,7 @@ pub struct Module {
 
     pub functions: HashMap<FunctionID, Function>,
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
-    
+
     static_closures: Vec<StaticClosure>,
     function_static_closures: HashMap<FunctionID, StaticClosureID>,
 
@@ -321,11 +321,15 @@ impl Module {
     ) -> ClosureInstance {
         let id = self.metadata.insert_func(None);
 
-        let sig = pas_ty::FunctionSig::of_anonymous_func(func);
-        let func_ty_id = self.translate_func_ty(&sig, type_args.as_ref());
+        // this is the signature of the *function type* of the closure, not the signature of
+        // the real method implementing the closure, which has an extra type-erased parameter
+        // for the closure itself
+        let func_ty_sig = pas_ty::FunctionSig::of_anonymous_func(func);
+
+        let func_ty_id = self.translate_func_ty(&func_ty_sig, type_args.as_ref());
 
         let closure_identity = ClosureIdentity {
-            func_ty_id,
+            virt_func_ty: func_ty_id,
             module: func.span().file.display().to_string(),
             line: func.span().start.line,
             col: func.span().start.col,
@@ -339,7 +343,7 @@ impl Module {
 
         let debug_name = "<anonymous function>".to_string();
 
-        let cached_func = FunctionInstance { id, sig };
+        let cached_func = FunctionInstance { id, sig: func_ty_sig };
 
         let src_span = func.span().clone();
         let ir_func = build_closure_function_def(self, &func, closure_id, src_span, debug_name);
@@ -373,7 +377,7 @@ impl Module {
         let src_span = ir_func.src_span();
         
         let closure_identity = ClosureIdentity {
-            func_ty_id,
+            virt_func_ty: func_ty_id,
             col: src_span.start.col,
             line: src_span.end.col,
             module: src_span.file.display().to_string(),
@@ -689,7 +693,7 @@ impl fmt::Display for Module {
                         StructIdentity::Closure(identity) => {
                             let func_ty_name = self
                                 .metadata
-                                .pretty_ty_name(&Type::Function(identity.func_ty_id));
+                                .pretty_ty_name(&Type::Function(identity.virt_func_ty));
                             write!(
                                 f,
                                 "closure of {} @ {}:{}:{}",

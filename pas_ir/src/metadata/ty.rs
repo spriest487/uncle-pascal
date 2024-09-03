@@ -119,7 +119,7 @@ impl TypeDef {
                     name.to_pretty_string(ty_format)
                 },
                 StructIdentity::Closure(identity) => {
-                    let func_ty_name = ty_format(&Type::Function(identity.func_ty_id));
+                    let func_ty_name = ty_format(&Type::Function(identity.virt_func_ty));
                     format!("closure of {} @ {}:{}:{}", func_ty_name, identity.module, identity.line, identity.col)
                 },
                 StructIdentity::Array(ty, dim) => {

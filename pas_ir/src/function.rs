@@ -1,12 +1,13 @@
-use std::{
-    fmt,
-    rc::Rc
+use crate::metadata::FunctionSig;
+use crate::{
+    jmp_exists, pas_ty, translate_block, translate_literal, Builder, ClosureInstance, FunctionID,
+    GlobalRef, Instruction, LocalID, Module, Ref, Type, TypeDefID, Value, CLOSURE_PTR_FIELD,
+    EXIT_LABEL, RETURN_REF,
 };
 use pas_common::span::Span;
-use pas_syn::{ast, Ident, IdentPath};
 use pas_syn::ast::FunctionParamMod;
-use crate::{Builder, CLOSURE_PTR_FIELD, ClosureInstance, EXIT_LABEL, FunctionID, GlobalRef, Instruction, jmp_exists, LocalID, Module, pas_ty, Ref, RETURN_REF, translate_block, translate_literal, Type, TypeDefID, VirtualTypeID, Value};
-use crate::metadata::FunctionSig;
+use pas_syn::{ast, Ident, IdentPath};
+use std::{fmt, iter, rc::Rc};
 
 #[derive(Clone, Debug)]
 pub struct ExternalFunctionRef {
@@ -25,7 +26,7 @@ pub struct FunctionDef {
     pub debug_name: String,
 
     pub body: Vec<Instruction>,
-    
+
     pub sig: FunctionSig,
 
     pub src_span: Span,
@@ -44,14 +45,14 @@ impl Function {
             Function::Local(FunctionDef { debug_name, .. }) => debug_name.as_str(),
         }
     }
-    
+
     pub fn sig(&self) -> &FunctionSig {
         match self {
             Function::External(external_func) => &external_func.sig,
             Function::Local(local_func) => &local_func.sig,
         }
     }
-    
+
     pub fn src_span(&self) -> &Span {
         match self {
             Function::External(external_func) => &external_func.src_span,
@@ -68,9 +69,7 @@ pub struct FunctionInstance {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum FunctionDeclKey {
-    Function {
-        name: IdentPath,
-    },
+    Function { name: IdentPath },
     Method(MethodDeclKey),
 }
 
@@ -170,11 +169,14 @@ pub fn build_func_def(
 pub fn build_func_static_closure_def(
     module: &mut Module,
     target_func: &FunctionInstance,
-    target_ir_func: &Function
+    target_ir_func: &Function,
 ) -> FunctionDef {
     let src_span = target_ir_func.src_span().clone();
 
-    let params = target_func.sig.params.iter()
+    let params = target_func
+        .sig
+        .params
+        .iter()
         .enumerate()
         .map(|(index, sig_param)| ast::FunctionParam {
             span: src_span.clone(),
@@ -199,9 +201,10 @@ pub fn build_func_static_closure_def(
     // closure struct, which has the sig "(Pointer, ...actual params)"
     let mut bound_params = bind_function_params(&params, &mut body_builder);
     bound_params.insert(0, (closure_ptr_local_id, Type::Nothing.ptr()));
-    
+
     let func_global = Ref::Global(GlobalRef::Function(target_func.id));
-    let func_args = bound_params.iter()
+    let func_args = bound_params
+        .iter()
         .skip(1)
         .map(|(local_id, _)| Value::Ref(Ref::Local(*local_id)))
         .collect::<Vec<_>>();
@@ -212,15 +215,18 @@ pub fn build_func_static_closure_def(
     };
 
     body_builder.call(func_global, func_args, return_ref);
-    
+
     FunctionDef {
         sig: FunctionSig {
-            param_tys: bound_params.into_iter().map(|(_, param_ty)| param_ty).collect(),
-            return_ty,  
+            param_tys: bound_params
+                .into_iter()
+                .map(|(_, param_ty)| param_ty)
+                .collect(),
+            return_ty,
         },
         src_span,
         debug_name: format!("{} static closure", target_func.id),
-        body: body_builder.finish(), 
+        body: body_builder.finish(),
     }
 }
 
@@ -232,19 +238,28 @@ pub fn build_closure_function_def(
     debug_name: String,
 ) -> FunctionDef {
     let closure_def = module.metadata.get_struct_def(closure_id).cloned().unwrap();
-    let closure_ptr_ty = Type::RcPointer(VirtualTypeID::Class(closure_id));
 
     let mut body_builder = create_function_body_builder(module, None, None);
 
     let return_ty = bind_function_return(func_def.return_ty.as_ref(), &mut body_builder);
 
-    // the pointer to the closure is included as a param but *not* bound since it can't be
-    // accessed directly from code, so allocate its id before any params
-    let closure_ptr_local_id = body_builder.bind_closure_ptr();
+    // the type-erased pointer to the closure struct is included as the 0th param but
+    // *not* bound like a normal param since it can't be named from code, so bind it in the scope
+    // of this function body now
+    let closure_ptr_param_local_id = body_builder.bind_closure_ptr();
+    let closure_ptr_param_ref = Ref::Local(closure_ptr_param_local_id);
 
-    let mut bound_params = bind_function_params(&func_def.params, &mut body_builder);
+    let bound_params = bind_function_params(&func_def.params, &mut body_builder);
 
-    bound_params.insert(0, (closure_ptr_local_id, closure_ptr_ty.clone()));
+    // cast the closure pointer param from the erased pointer passed in to its actual internal type
+    let closure_struct_ty = Type::Struct(closure_id);
+    let closure_struct_ptr_ty = closure_struct_ty.clone().ptr();
+    let closure_ptr_ref = body_builder.local_temp(closure_struct_ptr_ty.clone());
+    body_builder.cast(
+        closure_ptr_ref.clone(),
+        closure_ptr_param_ref,
+        closure_struct_ptr_ty,
+    );
 
     // copy closure members into the body scope
     // the order doesn't need to match the closure struct field order (although it probably
@@ -266,18 +281,24 @@ pub fn build_closure_function_def(
 
         body_builder.field(
             capture_val_ptr_ref.clone(),
-            Ref::Local(closure_ptr_local_id),
-            closure_ptr_ty.clone(),
+            closure_ptr_ref.clone().to_deref(),
+            closure_struct_ty.clone(),
             *field_id,
         );
     }
 
     let body = build_func_body(&func_def.body, &return_ty, body_builder);
 
+    // the 0th parameter of the function is always a type-erased pointer, which we must
+    // cast to the actual closure struct type in the body
+    let actual_params = iter::once(Type::Nothing.ptr())
+        .chain(bound_params.into_iter().map(|(_, param_ty)| param_ty))
+        .collect();
+
     FunctionDef {
         body,
         sig: FunctionSig {
-            param_tys: bound_params.into_iter().map(|(_, ty)| ty).collect(),
+            param_tys: actual_params,
             return_ty,
         },
         debug_name,
@@ -314,7 +335,7 @@ fn bind_function_params(
         let id = builder.next_local_id();
 
         let (param_ty, by_ref) = match &param.modifier {
-            Some(ast::FunctionParamMod::Var) | Some(ast::FunctionParamMod::Out) => {
+            Some(FunctionParamMod::Var) | Some(FunctionParamMod::Out) => {
                 (builder.translate_type(&param.ty).ptr(), true)
             },
 
@@ -334,10 +355,7 @@ fn bind_function_params(
     bound_params
 }
 
-fn init_function_locals(
-    locals: &[pas_ty::ast::FunctionLocalDecl],
-    builder: &mut Builder,
-) {
+fn init_function_locals(locals: &[pas_ty::ast::FunctionLocalDecl], builder: &mut Builder) {
     for local in locals {
         if local.kind == pas_syn::ast::BindingDeclKind::Var {
             let ty = builder.translate_type(&local.ty);
@@ -389,11 +407,15 @@ pub fn translate_func_params(sig: &pas_ty::FunctionSig, module: &mut Module) -> 
         .collect()
 }
 
-pub fn build_static_closure_impl(closure: ClosureInstance, id: StaticClosureID, module: &mut Module) -> StaticClosure {
+pub fn build_static_closure_impl(
+    closure: ClosureInstance,
+    id: StaticClosureID,
+    module: &mut Module,
+) -> StaticClosure {
     let mut init_builder = Builder::new(module);
-    
+
     let static_closure_ptr_ref = Ref::Global(GlobalRef::StaticClosure(id));
-    
+
     let closure_ref = init_builder.build_closure_instance(closure.clone());
     init_builder.retain(closure_ref.clone(), &closure.closure_ptr_ty());
     init_builder.mov(static_closure_ptr_ref, closure_ref);

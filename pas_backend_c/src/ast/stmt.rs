@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use pas_ir::{
     self as ir,
-    metadata::{self, ty::VirtualTypeID, StringID, TypeDefID},
+    metadata::{ty::VirtualTypeID, StringID, TypeDefID},
     Label, StaticClosureID,
 };
 use std::fmt;
@@ -425,22 +425,22 @@ impl<'a> Builder<'a> {
         let actual_class_ptr = rc_ptr.arrow(FieldName::RcClass);
 
         let is = match class_id {
-            metadata::VirtualTypeID::Class(struct_id) => {
+            VirtualTypeID::Class(struct_id) => {
                 let is_class_ptr = Expr::class_ptr(struct_id);
                 Expr::infix_op(actual_class_ptr, InfixOp::Eq, is_class_ptr)
             },
 
-            metadata::VirtualTypeID::Any => {
+            VirtualTypeID::Any => {
                 // `is Any` is true for anything!
                 Expr::LitBool(true)
             },
 
-            metadata::VirtualTypeID::Closure(_func_ty_id) => {
+            VirtualTypeID::Closure(_func_ty_id) => {
                 // TODO - can you use `is` on a function type?
                 Expr::LitBool(false)
             },
 
-            metadata::VirtualTypeID::Interface(iface_id) => {
+            VirtualTypeID::Interface(iface_id) => {
                 let is_impl_func = Expr::Function(FunctionName::IsImpl);
 
                 Expr::call(

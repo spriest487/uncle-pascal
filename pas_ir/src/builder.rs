@@ -218,25 +218,38 @@ impl<'m> Builder<'m> {
 
         let closure_ptr_ty = closure.closure_ptr_ty();
 
+        // virtual pointer to the closure
         let closure_ref = self.local_new(closure_ptr_ty.clone(), None);
+
         self.scope(|builder| {
             builder.append(Instruction::RcNew {
                 out: closure_ref.clone(),
                 struct_id: closure.closure_id,
             });
 
-            let func_ptr_ty = Type::Function(closure.func_ty_id).ptr();
+            // the closure pointer type (a virtual pointer to any closure of this function type)
+            // and the closure structure pointer type are different - we need to use the closure
+            // *structure* pointer type to set members of this specific closure instance!
+            let closure_struct_ty = Type::Struct(closure.closure_id);
+            let closure_struct_ptr_ty = closure_struct_ty.clone().ptr();
 
-            let func_field_ptr = builder.local_new(func_ptr_ty, None);
+            // downcast virtual closure ptr to the concrete closure struct
+            let closure_struct_ref = builder.local_temp(closure_struct_ptr_ty.clone());
+            builder.cast(closure_struct_ref.clone(), closure_ref.clone(), closure_struct_ptr_ty.clone());
+
+            let func_ptr_ty = closure_def.fields[&CLOSURE_PTR_FIELD].ty.clone();
+
+            let func_field_ptr = builder.local_new(func_ptr_ty.clone().ptr(), None);
             builder.field(
                 func_field_ptr.clone(),
-                closure_ref.clone(),
-                closure_ptr_ty.clone(),
+                closure_struct_ref.clone().to_deref(),
+                closure_struct_ty.clone(),
                 CLOSURE_PTR_FIELD,
             );
 
             // initialize closure reference to function
             let func_ref = Ref::Global(GlobalRef::Function(closure.func_instance.id));
+            // builder.cast(func_field_ptr.clone().to_deref(), func_ref, func_ptr_ty.clone());
             builder.mov(func_field_ptr.clone().to_deref(), func_ref);
             
             // initialize closure capture fields - copy from local scope into closure object
@@ -252,12 +265,11 @@ impl<'m> Builder<'m> {
                     Some(name) => name,
                 };
 
-
                 let capture_field_ptr = builder.local_temp(field_def.ty.clone().ptr());
                 builder.field(
                     capture_field_ptr.clone(),
-                    closure_ref.clone(),
-                    closure_ptr_ty.clone(),
+                    closure_struct_ref.clone().to_deref(),
+                    closure_struct_ty.clone(),
                     *field_id,
                 );
 

@@ -1,5 +1,5 @@
 use crate::{
-    ast::{FieldName, FunctionName, GlobalName, Module, Type, TypeDefName},
+    ast::{FieldName, FunctionName, GlobalName, Module, Type},
     ir,
 };
 use pas_ir::{
@@ -7,6 +7,7 @@ use pas_ir::{
     LocalID,
 };
 use std::fmt;
+use crate::ast::TypeDefName;
 
 #[allow(unused)]
 #[derive(Clone, Debug)]
@@ -242,27 +243,16 @@ impl Expr {
             metadata::Type::RcPointer(class_id) => {
                 // pointer to RC containing pointer to class resource
                 match class_id {
-                    // HACK: closures are of unknown type, but we don't need a full vtable to call
-                    // them. each function type has a static closure type with a function pointer,
-                    // so we can cast to that type to access the function pointer
-                    metadata::VirtualTypeID::Closure(func_ty_id)
-                        if field_id == CLOSURE_PTR_FIELD =>
-                    {
-                        let static_closure = module
-                            .static_closures
-                            .iter()
-                            .find(|x| x.func_ty_id == *func_ty_id)
-                            .unwrap_or_else(|| {
-                                panic!("missing static closure type for function ID {} (field {} of type {})", func_ty_id, field_id, of_ty)
-                            });
+                    // HACK: closures are of unknown type, but we don't need a real vtable to call
+                    // them. every closure struct starts with a Rc struct followed by a pointer
+                    // to the closure's function, so we can get the function pointer by applying
+                    // the offset manually
+                    metadata::VirtualTypeID::Closure(func_ty_id) if field_id == CLOSURE_PTR_FIELD => {
+                        let size_of_rc = Expr::SizeOf(Type::Rc);
+                        let offset_ptr = Expr::infix_op(a_expr, InfixOp::Add, size_of_rc);
 
-                        let static_closure_ty =
-                            Type::DefinedType(TypeDefName::Struct(static_closure.closure_id));
-
-                        a_expr
-                            .cast(static_closure_ty.ptr())
-                            .arrow(FieldName::ID(CLOSURE_PTR_FIELD))
-                            .addr_of()
+                        let func_ptr_ty = Type::DefinedType(TypeDefName::Alias(*func_ty_id));
+                        offset_ptr.cast(func_ptr_ty.ptr())
                     },
 
                     // normal class: it's just a field accessed through this pointer

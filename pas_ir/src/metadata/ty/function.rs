@@ -1,11 +1,8 @@
-use crate::{
-    pas_ty, ClosureIdentity, FieldID, FunctionInstance, Module, Struct, StructFieldDef,
-    StructIdentity, Type, TypeDefID, VirtualTypeID, CLOSURE_PTR_FIELD,
-};
+use crate::metadata::Metadata;
+use crate::{pas_ty, ClosureIdentity, FieldID, FunctionInstance, Module, Struct, StructFieldDef, StructIdentity, Type, TypeDefID, VirtualTypeID, CLOSURE_PTR_FIELD};
 use linked_hash_map::LinkedHashMap;
 use pas_syn::Ident;
 use std::fmt;
-use crate::metadata::Metadata;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FunctionSig {
@@ -111,6 +108,8 @@ pub fn translate_closure_struct(
     module: &mut Module,
 ) -> TypeDefID {
     let id = module.metadata.reserve_new_struct();
+    
+    let src_span = identity.src_span();
 
     let mut fields = LinkedHashMap::new();
     fields.insert(
@@ -118,7 +117,7 @@ pub fn translate_closure_struct(
         StructFieldDef {
             name: None,
             rc: false,
-            ty: Type::Function(identity.func_ty_id),
+            ty: Type::Function(identity.virt_func_ty),
         },
     );
 
@@ -143,7 +142,7 @@ pub fn translate_closure_struct(
         id,
         Struct {
             identity: StructIdentity::Closure(identity),
-            src_span: None,
+            src_span: Some(src_span),
             fields,
         },
     );

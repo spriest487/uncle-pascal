@@ -162,11 +162,11 @@ impl Type {
             },
 
             Type::Rc => {
-                left.push_str(&format!("struct Rc"));
+                left.push_str("struct Rc");
             },
 
             Type::Class => {
-                left.push_str(&format!("struct Class"));
+                left.push_str("struct Class");
             },
         }
     }

@@ -119,11 +119,11 @@ impl FunctionSig {
     }
 
     pub fn of_anonymous_func(func: &AnonymousFunctionDef) -> Rc<Self> {
-        let func_ty = func.annotation.ty();
-        let sig = func_ty
+        func.annotation
+            .ty()
             .as_func()
-            .expect("anonymous function must have function type");
-        sig.clone()
+            .cloned()
+            .expect("anonymous function must have function type")
     }
 
     /// test if a list of type args that could be used to specialize this function are applicable
