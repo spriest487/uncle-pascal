@@ -12,6 +12,12 @@ pub struct Opts {
 
     #[structopt(long = "compiler", parse(from_os_str))]
     pub compiler: PathBuf,
+    
+    #[structopt(long = "clang-debug", default_value = "false", parse(try_from_str))]
+    pub clang_debug: bool,
+
+    #[structopt(long = "clang-codeview", default_value = "false", parse(try_from_str))]
+    pub clang_codeview: bool,
 
     #[structopt(long = "error-continue", default_value = "false", parse(try_from_str))]
     pub error_continue: bool,

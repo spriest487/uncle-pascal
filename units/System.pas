@@ -23,6 +23,7 @@ type
 function GetMem(count: Int32): ^Byte; external 'rt';
 function FreeMem(mem: ^Byte); external 'rt';
 
+function Write(line: String); external 'rt';
 function WriteLn(line: String); external 'rt';
 function ReadLn(): String; external 'rt';
 

@@ -84,6 +84,7 @@ static STRING_STRUCT* System_ReadLn(void) {
     char buf[64];
     if (!fgets(buf, 64, stdin)) {
         fputs("ReadLn i/o failure\n", stderr);
+        fflush(stderr);
         abort();
     }
 
