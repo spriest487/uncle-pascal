@@ -162,7 +162,7 @@ pub fn typecheck_call(
                 // when making a function call with an empty args list, and the target is a
                 // call to a no-args function, this "inner" call replaces the outer call entirely
                 // since the extra arg list is redundant
-                ast::Expr::Call(inner_call) 
+                Expr::Call(inner_call) 
                     if func_call.args.len() == 0 && inner_call.args().len() == 0 => {
                     Invocation::Call(inner_call)
                 }
@@ -363,6 +363,7 @@ fn typecheck_iface_method_call(
         // it's just the first arg from which we can infer the self-type
         let first_self_arg =
             typecheck_expr(&func_call.args[first_self_pos], &Type::Nothing, &mut ctx)?;
+
         first_self_arg.annotation().ty().into_owned()
     };
 

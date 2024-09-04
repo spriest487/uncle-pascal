@@ -1,0 +1,21 @@
+{
+  "steps": [
+    { "output": "apple" },
+    { "output": "banana" },
+    { "output": "cookies" },
+    { "output": "lemon" },
+    { "output": "melon" },
+    { "output": "mustard" },
+    { "output": "onion" },
+    { "output": "treacle" },
+    { "output": "yogurt" },
+
+    { "output": "0" },
+    { "output": "1" },
+    { "output": "2" },
+    { "output": "5" },
+    { "output": "6" },
+    { "output": "66" },
+    { "output": "123" }
+  ]
+}

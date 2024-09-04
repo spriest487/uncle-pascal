@@ -24,7 +24,11 @@ impl Interface {
         }
     }
 
-    pub fn add_impl(&mut self, implementor: Type, method: MethodID, func_id: FunctionID) {
+    pub fn add_impl(&mut self,
+        implementor: Type,
+        method: MethodID,
+        func_id: FunctionID,
+    ) {
         assert!(method.0 < self.methods.len());
 
         let methods_len = self.methods.len();
@@ -34,10 +38,10 @@ impl Interface {
             .or_insert_with(|| InterfaceImpl::new(methods_len));
         assert!(
             !impl_entry.methods.contains_key(&method),
-            "adding duplicate impl (func {}) of method {}.{} for {}, already defined as {}",
+            "adding duplicate impl ({}) of method {}.{} for {}, already defined as {}",
             func_id,
             self.name,
-            method.0,
+            self.methods[method.0].name,
             implementor,
             impl_entry.methods[&method],
         );

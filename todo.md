@@ -6,6 +6,7 @@
 
 # critical
 
+* allow trailing comma in collection init!!
 * c codegen: escaping! can't do ""
 * better message when iface impl doens't match decl sig
 * unique compiler error codes

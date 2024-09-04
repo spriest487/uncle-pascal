@@ -114,7 +114,7 @@ impl Module {
             },
 
             FunctionDeclKey::Method(method_key) => {
-                self.instantiate_method(method_key.clone(), key.type_args)
+                self.instantiate_method(method_key.clone(), None)
             },
         }
     }
@@ -215,8 +215,12 @@ impl Module {
     fn instantiate_method(
         &mut self,
         method_key: MethodDeclKey,
-        type_args: Option<pas_ty::TypeList>,
-    ) -> FunctionInstance {
+        type_args: Option<TypeList>,
+    ) -> FunctionInstance {        
+        if method_key.self_ty.is_generic_param() {
+            panic!("instantiate_method: method ({} of {}) must not have a generic self-type ({})", method_key.method, method_key.iface, method_key.self_ty);
+        }
+        
         let method_name = method_key.method.to_string();
 
         let iface_def = match self.src_metadata.find_iface_def(&method_key.iface) {
@@ -242,22 +246,18 @@ impl Module {
             )
             .cloned()
             .unwrap_or_else(|| {
+                // typechecking should have already ensured any specialization of a method
+                // has been defined somewhere
                 panic!(
                     "missing method def: {}.{} for {}",
                     iface_def.name.qualified, method_key.method, method_key.self_ty,
                 )
             });
-
-        let specialized_decl = match type_args.as_ref() {
-            Some(key_type_args) => specialize_func_decl(
-                &method_def.decl,
-                &key_type_args,
-                &method_def.span(),
-                &self.src_metadata,
-            )
-            .expect("method specialization failed in codegen"),
-            None => method_def.decl.clone(),
-        };
+        
+        // the definition we found should already be correctly specialized - you can't pass
+        // type args when calling an interface method, so the only thing that would change the method
+        // being generated here is the self-type, which we already specialized
+        let specialized_decl = method_def.decl.clone();
 
         let id = self
             .metadata
@@ -286,7 +286,7 @@ impl Module {
             self,
             &method_def.decl.params,
             method_def.decl.type_params.as_ref(),
-            type_args,
+            None, // the definition is already specialized for this specialized call to the interface
             method_def.decl.return_ty.as_ref(),
             &method_def.locals,
             &method_def.body,
@@ -446,8 +446,15 @@ impl Module {
         &mut self,
         iface: IdentPath,
         method: Ident,
-        self_ty: pas_ty::Type,
+        mut self_ty: pas_ty::Type,
+        type_args: Option<TypeList>,
     ) -> FunctionInstance {
+        // while we can't pass type args to an interface method call, we can call one in a
+        // context where the self-type is a generic that needs resolving before codegen
+        if let Some(args) = &type_args {
+            self_ty = self.specialize_generic_type(&self_ty, args);
+        }
+        
         let key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 iface,
@@ -455,7 +462,7 @@ impl Module {
                 self_ty,
             }),
 
-            // dynamic method calls can't have type args
+            // interface method calls can't pass type args
             type_args: None,
         };
 

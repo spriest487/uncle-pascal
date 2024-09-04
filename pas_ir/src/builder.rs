@@ -151,7 +151,7 @@ impl<'m> Builder<'m> {
         method: Ident,
         self_ty: pas_ty::Type,
     ) -> FunctionInstance {
-        self.module.translate_method_impl(iface, method, self_ty)
+        self.module.translate_method_impl(iface, method, self_ty, self.type_args.clone())
     }
 
     pub fn translate_func(

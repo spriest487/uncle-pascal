@@ -404,6 +404,7 @@ pub fn build_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref
 
         ast::Call::Method(method_call) => {
             let method_sig = method_call.func_type.as_func().unwrap();
+
             build_method_call(
                 &method_call.iface_type,
                 &method_call.ident,
@@ -527,6 +528,7 @@ fn build_method_call(
 
         _ => {
             //            println!("translating method {}::{} of {}", iface, method_call.ident, method_call.self_type);
+            
             let method_decl = builder.translate_method_impl(iface, method_ident.clone(), self_ty.clone());
 
             let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
