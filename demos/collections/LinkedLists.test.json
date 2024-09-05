@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "output": "len of x: 0" },
+    { "output": "len of x: 2" },
+    { "output": "x[0]: 123" },
+    { "output": "x[1]: 456" }
+  ]
+}

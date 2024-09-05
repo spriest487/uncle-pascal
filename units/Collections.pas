@@ -1,22 +1,31 @@
+interface
+
 uses System;
 
-type Node of T = class
-    next: Option of Node of T;
+type Node[T] = class
+    next: Option[Node[T]];
     val: T;
 end;
 
-export type LinkedList of T = class
-    head: Option of Node of T;
+type LinkedList[T] = class
+    head: Option[Node[T]];
 end;
 
-export function NewLinkedList of T(): LinkedList of T
+function NewLinkedList[T](): LinkedList[T];
+function LinkedListLength[T](list: LinkedList[T]): Integer;
+function LinkedListNth[T](list: LinkedList[T]; n: Integer): Option[T];
+function LinkedListAppend[T](list: LinkedList[T]; item: T);
+
+implementation
+
+function NewLinkedList[T](): LinkedList[T];
 begin
     LinkedList(
         head: Option.None();
     )
 end;
 
-export function Length of T(list: LinkedList of T): Integer
+function LinkedListLength[T](list: LinkedList[T]): Integer;
 begin
     if list.head is Option.Some head then begin
         var current := head.next;
@@ -28,8 +37,9 @@ begin
             if current is Option.Some node then begin
                 current := node.next;
             end
-            else
+            else begin
                 break;
+            end;
         end;
 
         count;
@@ -39,7 +49,7 @@ begin
     end;
 end;
 
-function NthNode of T(list: LinkedList of T; n: Integer): Option of Node of T
+function NthNode[T](list: LinkedList[T]; n: Integer): Option[Node[T]];
 begin
     if list.head is Option.Some head then begin
         if n = 0 then
@@ -48,7 +58,7 @@ begin
             var current := head;
             var tooShort := false;
 
-            for let i := 0 to (n - 1) do begin
+            for var i := 0 to (n - 1) do begin
                 if current.next is Option.Some node then begin
                     current := node;
                 end
@@ -69,11 +79,11 @@ begin
     end
 end;
 
-export function Nth of T(list: LinkedList of T; n: Integer): Option of T
+function LinkedListNth[T](list: LinkedList[T]; n: Integer): Option[T];
 begin
-    let nth := NthNode of T(list, n);
+    var nth := NthNode[T](list, n);
 
-    let result: Option of T := if nth is Option.Some node then
+    var result: Option[T] := if nth is Option.Some node then
         Option.Some(node.val)
     else
         Option.None();
@@ -81,7 +91,7 @@ begin
     result
 end;
 
-export function Append of T(list: LinkedList of T; item: T)
+function LinkedListAppend[T](list: LinkedList[T]; item: T);
 begin
     if list.head is Option.Some head then begin
         var current := head;
@@ -103,6 +113,7 @@ begin
             next: Option.None();
             val: item;
         ));
-    end
+    end;
 end;
 
+end
