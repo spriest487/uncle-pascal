@@ -33,12 +33,7 @@ use pas_ir::{
     Value,
     metadata::ty::{VirtualTypeID, FieldID}
 };
-use std::{
-    collections::{HashMap, BTreeMap},
-    rc::Rc,
-    borrow::Cow,
-    ops::{BitAnd, BitOr, BitXor}
-};
+use std::{collections::{HashMap, BTreeMap}, rc::Rc, borrow::Cow, ops::{BitAnd, BitOr, BitXor}};
 use pas_common::span::Span;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -112,6 +107,14 @@ impl Interpreter {
             .rev()
             .map(|s| s.name().to_string())
             .collect()
+    }
+
+    fn stack_trace_formatted(&self) -> String {
+        self.stack_trace()
+            .into_iter()
+            .map(|frame| format!("\t at {}", frame))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     pub fn marshaller(&self) -> &Marshaller {
@@ -552,7 +555,7 @@ impl Interpreter {
         let mut struct_rc = struct_val.rc.as_ref()
             .cloned()
             .ok_or_else(|| {
-                let msg = format!("unable to access rc state of released structure");
+                let msg = "unable to access rc state of released structure".to_string();
                 ExecError::illegal_state(msg)
             })?;
 
@@ -561,13 +564,35 @@ impl Interpreter {
             return Ok(false);
         }
 
+        if struct_rc.strong_count == 0 {
+            panic!(
+                "releasing with no strong refs remaining @ {} (+{} weak refs remain)\n{}", 
+                ptr.to_pretty_string(&self.metadata), 
+                struct_rc.weak_count,
+                self.stack_trace_formatted(),
+            );
+        }
+        
+        struct_rc.strong_count -= 1;
+
+        if self.opts.trace_rc {
+            eprintln!(
+                "rc: release @ {} ({}+{} refs to {} remain)",
+                ptr.to_pretty_string(&self.metadata),
+                struct_rc.strong_count,
+                struct_rc.weak_count,
+                self.struct_debug_string(&struct_val),
+            )
+        }
+
         // are we releasing the last strong ref here?
-        let disposed = if struct_rc.strong_count == 1 {
+        if struct_rc.strong_count == 0 {
             if self.opts.trace_rc {
                 println!(
-                    "rc: no more strong refs to {}, disposing {}",
+                    "rc: dispose @ {} ({}+{} refs remain)",
                     ptr.to_pretty_string(&self.metadata),
-                    self.struct_debug_string(&struct_val),
+                    struct_rc.strong_count,
+                    struct_rc.weak_count,
                 );
             }
 
@@ -579,9 +604,9 @@ impl Interpreter {
             // Now release the fields of the struct as if it was a normal record
             let rc_funcs = self.find_rc_boilerplate(&Type::Struct(struct_val.type_id))?;
             self.call(rc_funcs.release, &[val.clone()], None)?;
-
-            // and finally deallocate the object
+            
             if struct_rc.weak_count == 0 {
+                // no more weak refs, free the object
                 if self.opts.trace_rc {
                     eprintln!(
                         "rc: free @ {} of {}",
@@ -593,32 +618,15 @@ impl Interpreter {
                 self.dynfree(ptr)?;
             }
 
-            true
-        } else {
-            false
-        };
-
-        // if the struct is still alive via either strong or weak ref (either ref > 0), decrement
-        // the reference count and store the result
-        if struct_rc.strong_count > 0 || struct_rc.weak_count > 0 {
-            struct_rc.strong_count -= 1;
-
-            if self.opts.trace_rc {
-                eprintln!(
-                    "rc: release @ {} ({}+{} more refs to {})",
-                    ptr.to_pretty_string(&self.metadata),
-                    struct_rc.strong_count,
-                    struct_rc.weak_count,
-                    self.struct_debug_string(&struct_val),
-                )
-            }
-
+            Ok(true)
+        } else { 
+            // update the object's ref count and store it
             struct_val.rc = Some(struct_rc);
-
+            
             self.store_indirect(&ptr, DynValue::Structure(Box::new(struct_val)))?;
+            
+            Ok(false)
         }
-
-        Ok(disposed)
     }
 
     fn retain_dyn_val(&mut self, val: &DynValue) -> ExecResult<()> {
@@ -632,7 +640,7 @@ impl Interpreter {
                         struct_rc.strong_count += 1;
 
                         if self.opts.trace_rc {
-                            eprintln!("rc: retain @ {} (ref count: {})", ptr.to_pretty_string(&self.metadata), struct_rc.strong_count);
+                            eprintln!("rc: retain @ {} ({}+{} refs)", ptr.to_pretty_string(&self.metadata), struct_rc.strong_count, struct_rc.weak_count);
                         }
                     }
 
