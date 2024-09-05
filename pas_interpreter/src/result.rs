@@ -66,17 +66,6 @@ impl ExecError {
         Pretty: InstructionFormatter
     {
         match self {
-            ExecError::Raised { .. } => write!(f, "Runtime error raised"),
-            ExecError::MarshalError(err) => err.fmt_pretty(f, pretty),
-            ExecError::StackError(err) => write!(f, "{}", err),
-            ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => {
-                write!(f, "Failed to load {}::{}", lib, symbol)
-            }
-            ExecError::IllegalDereference { .. } => write!(f, "Illegal dereference"),
-            ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
-            ExecError::NativeHeapError(..) => write!(f, "Heap error"),
-            ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
-            ExecError::IllegalInstruction(..) => write!(f, "Illegal instruction"),
             ExecError::WithDebugContext { err, stack_trace, .. } => {
                 err.fmt_pretty(f, pretty)?;
                 for stack_trace_line in stack_trace {
@@ -85,12 +74,30 @@ impl ExecError {
                 }
                 Ok(())
             },
-        }?;
+            _ => {
+                match self {
+                    ExecError::Raised { .. } => write!(f, "Runtime error raised"),
+                    ExecError::MarshalError(err) => err.fmt_pretty(f, pretty),
+                    ExecError::StackError(err) => write!(f, "{}", err),
+                    ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => {
+                        write!(f, "Failed to load {}::{}", lib, symbol)
+                    }
+                    ExecError::IllegalDereference { .. } => write!(f, "Illegal dereference"),
+                    ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
+                    ExecError::NativeHeapError(..) => write!(f, "Heap error"),
+                    ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
+                    ExecError::IllegalInstruction(..) => write!(f, "Illegal instruction"),
+                    ExecError::WithDebugContext { .. } => unreachable!(),
+                }?;
 
-        // if no spanned label will be shown, output the label text as part of the main message
-        if let (Some(label_text), None) = (self.label_text(), self.label_span()) {
-            write!(f, ": {}", label_text)?;
-        }
+                // if no spanned label will be shown, output the label text as part of the main message
+                if let (Some(label_text), None) = (self.label_text(), self.label_span()) {
+                    write!(f, ": {}", label_text)?;
+                }
+                
+                Ok(())
+            },
+        }?;
 
         Ok(())
     }
