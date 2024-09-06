@@ -1,9 +1,10 @@
 use std::env;
 use std::ffi::OsStr;
 use std::fs::DirEntry;
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Output, Stdio};
+use regex::Regex;
 use crate::opts::{ExecutionMethod, Opts};
 use crate::test_script::{TestScript, TestScriptStep};
 
@@ -127,10 +128,12 @@ impl TestCase {
             .expect("stdin was not captured for child process");
         let mut stdout = proc.stdout.take()
             .expect("stdout was not captured for child process");
+        let mut stderr = proc.stderr.take()
+            .expect("stderr was not captured for child process");
 
         let mut line_buf = Vec::new();
         for step in &self.script.steps {
-            match run_step(step, &mut stdin, &mut stdout, &mut line_buf) {
+            match run_step(step, &mut stdin, &mut stdout, &mut stderr, &mut line_buf) {
                 Ok(true) => {},
                 Ok(false) => {
                     let output = proc.wait_with_output()?;
@@ -150,10 +153,15 @@ impl TestCase {
 
         proc.stdin = Some(stdin);
         proc.stdout = Some(stdout);
+        proc.stderr = Some(stderr);
+
         let output = proc.wait_with_output()?;
         dump_output(&output);
+        
+        let expect_error = self.script.steps.iter().any(|step| step.error_regex.is_some());
+        let ok = output.status.success() || expect_error;
 
-        let completed = if output.status.success() {
+        let completed = if ok {
             println!("OK");
 
             true
@@ -189,32 +197,43 @@ fn run_step(
     step: &TestScriptStep,
     stdin: &mut ChildStdin,
     stdout: &mut ChildStdout,
+    stderr: &mut ChildStderr,
     line_buf: &mut Vec<u8>,
 ) -> io::Result<bool> {
+    line_buf.clear();
+
+    if let Some(err_pattern) = &step.error_regex {
+        let err_regex = Regex::new(&format!("(?s){}", err_pattern))
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
+        
+        // an error should be printed then the process should abort, so we can read the whole output
+        stderr.read_to_end(line_buf)?;
+        for line in line_buf.lines() {
+            println!("  !! {}", line?);
+        }
+
+        let output = buf_to_string(line_buf.clone())?;
+        if !err_regex.is_match(&output) {
+            println!("ERROR: unexpected error");
+            return Ok(false);
+        } else {
+            return Ok(true);
+        }
+    }
+    
     if let Some(input) = &step.input {
         println!("  >> {}", input.trim_end());
         stdin.write_all(input.as_bytes())?;
         stdin.flush()?;
     }
 
-    if let Some(expect_output) = &step.output {
-        line_buf.clear();
-        read_to_line_feed(stdout, line_buf)?;
-
-        let line = match String::from_utf8(line_buf.clone()) {
-            Ok(string) => string.trim_end().to_string(),
-            Err(err) => {
-                println!("ERROR: unreadable output: {}", err);
-                return Ok(false);
-            }
-        };
-
+    if let Some(output) = &step.output {
+        let line = read_to_line_feed(stdout, line_buf)?;
         println!("  << {}", line);
 
-        if line != *expect_output {
+        if line != *output {
             println!("ERROR: unexpected output");
-            println!("EXPECTED: {}", expect_output.trim_end());
-            println!("  ACTUAL: {}", line);
+            println!("EXPECTED: {}", output.trim_end());
 
             return Ok(false);
         }
@@ -223,17 +242,27 @@ fn run_step(
     Ok(true)
 }
 
-fn read_to_line_feed(src: &mut impl Read, buf: &mut Vec<u8>) -> io::Result<()> {
+fn read_to_line_feed(mut src: impl Read, buf: &mut Vec<u8>) -> io::Result<String> {
     loop {
         let mut next = [0];
         src.read_exact(&mut next)?;
 
         if next[0] == b'\n' {
-            break Ok(());
+            break buf_to_string(buf.clone());
         }
 
         if next[0] != b'\r' {
             buf.push(next[0]);
+        }
+    }
+}
+
+fn buf_to_string(buf: Vec<u8>) -> io::Result<String> {
+    match String::from_utf8(buf) {
+        Ok(string) => Ok(string.trim_end().to_string()),
+        Err(err) => {
+            let msg = format!("unreadable output: {}", err);
+            Err(io::Error::new(io::ErrorKind::InvalidData, msg))
         }
     }
 }

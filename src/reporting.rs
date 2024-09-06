@@ -53,7 +53,7 @@ fn output_to_report_diag(
 }
 
 pub fn report_err(err: &impl DiagnosticOutput, severity: Severity) -> Result<(), FileError> {
-    let out = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+    let out = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
     let config = codespan_reporting::term::Config::default();
 
     let mut code_map = CodeMap::new();

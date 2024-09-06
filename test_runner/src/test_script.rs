@@ -10,6 +10,9 @@ pub struct TestScriptStep {
 
     #[serde(default)]
     pub output: Option<String>,
+
+    #[serde(default)]
+    pub error_regex: Option<String>,
 }
 
 #[derive(Deserialize, Default, Clone)]
