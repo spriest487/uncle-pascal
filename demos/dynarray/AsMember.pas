@@ -1,19 +1,28 @@
+implementation
 uses System;
 
 type B = class
+    item: Integer;
 end;
 
 type A = record
     Items: array of B;
 end;
 
-var a := A(
-    Items: []
-);
+initialization
+    var a := A(
+        Items: [
+            B(item: 123)
+        ]
+    );
+    
+    var b2 := B(item: 456);
+    
+    var newIndex := Length(a.Items);    
+    SetLength(a.Items, newIndex + 1, b2);
+    
+    a.Items[0] := B(item: 123);
 
-var b := B();
-
-let newIndex := System.Length(a.Items);
-System.SetLength(a.Items, newIndex + 1, b);
-
-a.Items[newIndex] := b;
+    WriteLn('a.Items[0].item = ' + a.Items[0].item.ToString());
+    WriteLn('a.Items[1].item = ' + a.Items[1].item.ToString());
+end

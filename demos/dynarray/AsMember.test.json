@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "output": "a.Items[0].item = 123" },
+    { "output": "a.Items[1].item = 456" }
+  ]
+}
