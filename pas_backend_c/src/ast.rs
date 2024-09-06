@@ -480,19 +480,19 @@ impl fmt::Display for Module {
             let chars_field = FieldName::ID(STRING_CHARS_FIELD);
             let len_field = FieldName::ID(STRING_LEN_FIELD);
 
-            let string_name = TypeDefName::Struct(ir::metadata::STRING_ID);
+            let string_name = TypeDefName::Struct(STRING_ID);
             let lit_name = GlobalName::StringLiteral(*str_id);
             writeln!(f, "static struct {} {} = {{", string_name, lit_name)?;
 
             // rc state
-            writeln!(f, "  .{} = {{", FieldName::Rc)?;
+            writeln!(f, "  .{rc} = {{", rc = FieldName::Rc)?;
             writeln!(
                 f,
-                "    .{} = &{},",
-                FieldName::RcClass,
-                GlobalName::ClassInstance(ir::metadata::STRING_ID),
+                "    .{class_field} = &{class_name},",
+                class_field = FieldName::RcClass,
+                class_name = GlobalName::ClassInstance(STRING_ID),
             )?;
-            writeln!(f, "    .{} = -1,", FieldName::RcRefCount)?;
+            writeln!(f, "    .{strong_count} = -1,", strong_count = FieldName::RcRefCount)?;
             writeln!(f, "  }},")?;
 
             write!(f, "  .{} = {}", chars_field, lit)?;

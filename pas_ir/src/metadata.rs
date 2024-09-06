@@ -386,6 +386,12 @@ impl Metadata {
                 })
             })
     }
+    
+    pub fn iface_name(&self, iface_id: InterfaceID) -> String {
+        self.get_iface_def(iface_id)
+            .map(|def| def.name.to_pretty_string(|ty| self.pretty_ty_name(ty)))
+            .unwrap_or_else(|| format!("interface({})", iface_id))
+    }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
         match ty {
@@ -411,13 +417,7 @@ impl Metadata {
                     VirtualTypeID::Any => Cow::Borrowed("any"),
 
                     VirtualTypeID::Interface(iface_id) => {
-                        let iface = self.get_iface_def(*iface_id);
-
-                        Cow::Owned(
-                            iface
-                                .map(|def| def.name.to_pretty_string(|ty| self.pretty_ty_name(ty)))
-                                .unwrap_or_else(|| format!("<interface {}>", iface_id)),
-                        )
+                        Cow::Owned(self.iface_name(*iface_id))
                     },
 
                     VirtualTypeID::Closure(func_ty_id) => {
@@ -432,7 +432,7 @@ impl Metadata {
                     },
                 };
 
-                Cow::Owned(format!("rc[{}]", resource_name))
+                Cow::Owned(format!("*{}", resource_name))
             },
 
             Type::Function(func_ty_id) => {

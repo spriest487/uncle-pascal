@@ -712,7 +712,7 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::InvalidRefExpression { expr } => {
-                write!(f, "`{}` does not refer to a local variable that can be passed by reference", expr)
+                write!(f, "`{}` does not refer to a value that can be passed by reference", expr)
             }
 
             TypecheckError::InvalidStatement(invalid_stmt) => {

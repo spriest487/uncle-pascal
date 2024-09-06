@@ -708,9 +708,13 @@ impl fmt::Display for Module {
                             )?;
                         },
 
-                        StructIdentity::Array(_, _) => {}
+                        StructIdentity::Array(element, dim) => {
+                            write!(f, "array[{dim}] of {}", self.metadata.pretty_ty_name(element))?;
+                        }
 
-                        StructIdentity::DynArray(_) => {}
+                        StructIdentity::DynArray(element) => {
+                            write!(f, "array of {}", self.metadata.pretty_ty_name(element))?;
+                        }
                     }
 
                     writeln!(f)?;
@@ -738,12 +742,9 @@ impl fmt::Display for Module {
                     iface_impls.extend(self.metadata.impls(&ty_as_class));
 
                     if !iface_impls.is_empty() {
-                        writeln!(f, "interface impls:")?;
+                        writeln!(f, "  Implements:")?;
                         for iface_id in iface_impls {
-                            let iface_ty = Type::RcPointer(VirtualTypeID::Interface(iface_id));
-                            write!(f, "  * ")?;
-                            self.metadata.format_type(&iface_ty, f)?;
-                            writeln!(f)?;
+                            writeln!(f, "    {}", self.metadata.iface_name(iface_id))?;
                         }
                     }
                 },

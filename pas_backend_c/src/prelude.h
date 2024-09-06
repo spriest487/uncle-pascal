@@ -29,6 +29,7 @@ struct MethodTable {
 
 struct Class {
     size_t size;
+    const char* name;
 
     struct MethodTable* iface_methods;
 
@@ -142,6 +143,7 @@ static void* RcAlloc(struct Class* class) {
 static void RcRetain(void* instance) {
     struct Rc* rc = (struct Rc*)instance;
     if (!rc || rc->strong_count == 0) {
+        fprintf(stderr, "called RcRetain for an invalid pointer\n");
         abort();
     }
 
@@ -149,12 +151,12 @@ static void RcRetain(void* instance) {
     if (rc->strong_count < 0) {
         return;
     }
+    
+    rc->strong_count += 1;
 
 #if TRACE_RC
-    printf("rc: retained ref @ 0x%p\n", instance);
+    printf("rc: retain %s @ 0x%p (%d+%d refs)\n", rc->class->name, instance, rc->strong_count, rc->weak_count);
 #endif
-
-    rc->strong_count += 1;
 }
 
 static void RcRelease(void* instance) {
@@ -166,6 +168,7 @@ static void RcRelease(void* instance) {
     struct Rc* rc = (struct Rc*)instance;
 
     if (rc->strong_count == 0) {
+        fprintf(stderr, "called RcRelease for an invalid pointer\n");
         abort();
     }
 
@@ -174,31 +177,37 @@ static void RcRelease(void* instance) {
         return;
     }
 
+#if TRACE_RC
+    printf("rc: release %s @ 0x%p (%d+%d remain)\n", rc->class->name, instance, rc->strong_count - 1, rc->weak_count);
+#endif
+
     if (rc->strong_count > 1) {
+        // reference is still alive: don't free it yet 
         rc->strong_count -= 1;
+        return;
+    } 
 
+    // run the disposer if present
+    if (rc->class->disposer) {
 #if TRACE_RC
-        printf("rc: released ref @ 0x%p\n", instance);
+        printf("rc:   disposing %s @ 0x%p\n", rc->class->name, instance);
 #endif
-    } else {
-        // run the disposer if present
-        if (rc->class->disposer) {
-#if TRACE_RC
-            printf("rc: deleting disposable resource @ 0x%p\n", instance);
-#endif
-            rc->class->disposer(instance);
-        } else {
-#if TRACE_RC
-            printf("rc: deleting resource without disposer @ 0x%p\n", instance);
-#endif
+        rc->class->disposer(instance);
+        
+        if (rc->strong_count > 1) {
+            fprintf(stderr, "dispose function for %s added a reference to the disposed instance\n", rc->class->name);
+            abort();
         }
-
-        // invoke structural release to release struct fields
-        rc->class->cleanup(instance);
-
-        // free memory
-        Free(instance);
     }
+    
+    rc->strong_count = 0;
+
+    // invoke structural release to release struct fields
+    rc->class->cleanup(instance);
+    rc->class = NULL;
+
+    // free memory
+    Free(instance);
 }
 
 static void Raise(STRING_STRUCT* msg_str);

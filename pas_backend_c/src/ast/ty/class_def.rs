@@ -110,6 +110,8 @@ pub struct InterfaceImpl {
 
 #[derive(Clone, Debug)]
 pub struct Class {
+    name: String,
+    
     struct_id: TypeDefID,
     impls: HashMap<InterfaceID, InterfaceImpl>,
 
@@ -127,6 +129,8 @@ impl Class {
         metadata: &metadata::Metadata,
         module: &mut Module,
     ) -> Self {
+        let name = module.type_names[&metadata::Type::Struct(struct_id)].clone();
+        
         let class_ty = pas_ir::Type::RcPointer(VirtualTypeID::Class(struct_id));
 
         let mut impls = HashMap::new();
@@ -192,6 +196,7 @@ impl Class {
             .next();
 
         Class {
+            name,
             struct_id,
             impls,
             disposer,
@@ -294,10 +299,14 @@ impl Class {
         writeln!(class_init, "{{").unwrap();
         writeln!(
             class_init,
-            "  .size = sizeof(struct {}),",
-            TypeDefName::Struct(self.struct_id)
-        )
-        .unwrap();
+            "  .size = {},",
+            Expr::SizeOf(Type::DefinedType(TypeDefName::Struct(self.struct_id)))
+        ).unwrap();
+        writeln!(
+            class_init,
+            "  .name = {},",
+            Expr::LitCString(self.name.clone()),
+        ).unwrap();
 
         if let Some(..) = &self.disposer {
             let dispose_wrapper = FunctionName::MethodWrapper(

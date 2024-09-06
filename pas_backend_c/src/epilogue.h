@@ -8,7 +8,7 @@
 #endif
 
 static void Raise(STRING_STRUCT* msg_str) {
-    if (msg_str) {
+    if (msg_str && msg_str->rc.strong_count > 0) {
         int32_t msg_len = STRING_LEN(msg_str);
         char* msg_chars = (char*) STRING_CHARS(msg_str);
 
@@ -20,7 +20,8 @@ static void Raise(STRING_STRUCT* msg_str) {
 #if !NO_STDLIB
 
 static int32_t System_StrToInt(STRING_STRUCT* str) {
-    if (!str) {
+    if (!str || str->rc.strong_count == 0) {
+        fprintf(stderr, "called StrToInt for an invalid string pointer\n");
         abort();
     }
 
@@ -64,7 +65,8 @@ static void System_FreeMem(unsigned char* mem) {
 }
 
 static void System_Write(STRING_STRUCT* str) {
-    if (!str) {
+    if (!str || str->rc.strong_count == 0) {
+        fprintf(stderr, "called Write for an invalid string pointer\n");
         abort();
     }
 
@@ -99,7 +101,8 @@ static STRING_STRUCT* System_ReadLn(void) {
 
 static int32_t System_ArrayLengthInternal(void* arr) {
     struct Rc* arr_rc = (struct Rc*) arr;
-    if (!arr_rc) {
+    if (!arr_rc || arr_rc->strong_count == 0) {
+        fprintf(stderr, "called Length for an invalid array pointer\n");
         abort();
     }
 
@@ -114,7 +117,8 @@ static void* System_ArraySetLengthInternal(
     void* default_val
 ) {
     struct Rc* arr_rc = (struct Rc*) arr;
-    if (!arr_rc) {
+    if (!arr_rc || arr_rc->strong_count == 0) {
+        fprintf(stderr, "called SetLength for an invalid array pointer\n");
         abort();
     }
 

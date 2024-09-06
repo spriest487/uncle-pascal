@@ -769,17 +769,10 @@ fn validate_args(
                 },
             }
 
-            let ref_name = match &arg {
-                ast::Expr::Ident(ident, ..) => ident,
-                _ => {
-                    return Err(TypecheckError::InvalidRefExpression {
-                        expr: Box::new(arg.clone()),
-                    });
-                },
-            };
-
             if is_out_ref {
-                ctx.initialize(ref_name);
+                if let Expr::Ident(ref_ident, ..) = &arg {
+                    ctx.initialize(ref_ident);
+                }
             }
         }
     }
