@@ -1,5 +1,8 @@
+implementation
 uses System;
 
-let a: array of Integer := [];
-let aLen := Length(a);
-WriteLn(aLen.ToString());
+initialization
+    var a: array of Integer := [];
+    var aLen := Length(a);
+    WriteLn(aLen.ToString());
+end

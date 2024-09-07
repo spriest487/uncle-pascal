@@ -1,10 +1,13 @@
+implementation
 uses System;
 
 type A = record
     value: String;
 end;
 
-let as: array of A := [];
-
-let a := A(value: 'hello');
-SetLength(as, 1, a);
+initialization
+    var as: array of A := [];
+    
+    var a := A(value: 'hello');
+    SetLength(as, 1, a);
+end;
