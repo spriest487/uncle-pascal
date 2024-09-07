@@ -27,9 +27,11 @@ fn parse_expr(src: &str) -> ast::Expr<Span> {
 }
 
 fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
-    let mut module = module_from_src("overload", src);
+    let module = module_from_src("overload", src);
 
-    let unit = module.units.remove(0);
+    let unit = module.units.into_iter()
+        .find(|unit| unit.unit.ident.as_slice()[0].name.as_str() == "overload")
+        .unwrap();
 
     let candidates = unit.unit.func_defs().map(|(_vis, func)| {
         let sig = FunctionSig::of_decl(&func.decl);
@@ -55,11 +57,15 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
 #[test]
 fn resolves_overload_single() {
     let src = r"
+        implementation
+        
         function X(i: Int32);
         begin
         end;
 
-        let i: Int32 := 1;
+        initialization
+            var i: Int32 := 1;
+        end
     ";
     let (candidates, mut ctx) = candidates_from_src(src);
 
@@ -76,6 +82,9 @@ fn resolves_overload_single() {
 #[test]
 fn resolves_method_by_args() {
     let src = r"
+        implementation
+        uses System;
+        
         type I1 = interface
             function M(self: Self; i: Int32);
         end;
@@ -84,19 +93,20 @@ fn resolves_method_by_args() {
             function M(self: Self; b: Boolean);
         end;
 
-        type C = class end;
-
-        function M of I1(self: C; i: Int32);
+        function M of I1(self: String; i: Int32);
         begin
         end;
 
-        function M of I2(self: C; b: Boolean);
+        function M of I2(self: String; b: Boolean);
         begin
         end;
+        
+        var 
+            i: Int32 = 1;
+            s: String = 'something'; 
+            var b: Boolean = true;
 
-        let c := C();
-        let i: Int32 := 1;
-        let b: Boolean := true;
+        end
     ";
 
     let (mut candidates, mut ctx) = candidates_from_src(src);
@@ -115,7 +125,7 @@ fn resolves_method_by_args() {
         },
     );
 
-    let self_expr = typecheck_expr(&parse_expr("c"), &Type::Nothing, &mut ctx).unwrap();
+    let self_expr = typecheck_expr(&parse_expr("s"), &Type::Nothing, &mut ctx).unwrap();
 
     let i_expr = parse_expr("i");
     let i_span = i_expr.annotation().clone();
@@ -135,6 +145,7 @@ fn resolves_method_by_args() {
 #[test]
 fn resolves_overload_by_arg_ty() {
     let src = r"
+        implementation
         function X(i: Int32);
         begin
         end;
@@ -143,7 +154,9 @@ fn resolves_overload_by_arg_ty() {
         begin
         end;
 
-        let i: Int32 := 1;
+        initialization
+            var i: Int32 := 1;
+        end
     ";
     let (candidates, mut ctx) = candidates_from_src(src);
 

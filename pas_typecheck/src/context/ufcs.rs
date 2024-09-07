@@ -202,8 +202,12 @@ mod test {
     #[test]
     fn doesnt_find_private_ufcs_func_from_other_unit() {
         let a_src = r"
+            implementation
+            
             type UFCSTarget = class
-            end";
+            end
+            
+            end.";
 
         let b_src = r"
             implementation
@@ -214,7 +218,11 @@ mod test {
 
             end.";
 
-        let c_src = "uses A;uses B;";
+        let c_src = r"
+            implementation
+            uses A;
+            uses B;
+            end.";
 
         let units = units_from_src(vec![("A", a_src), ("B", b_src), ("C", c_src)]);
 
