@@ -1,8 +1,7 @@
 use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
-use pas_common::{read_source_file, span::Span, BuildOptions};
-use pas_pp::Preprocessor;
-use pas_syn::{ast, parse::TokenStream, Ident, IdentPath, TokenTree};
+use pas_common::read_source_file;
 use std::{collections::HashMap, iter, path::PathBuf};
+use pas_syn::ast;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
@@ -28,16 +27,7 @@ where
     );
 
     for (unit_name, src) in unit_srcs {
-        let pp = Preprocessor::new(format!("{}.pas", unit_name), BuildOptions::default());
-        let pp_unit = pp.preprocess(&src).unwrap();
-
-        let tokens = TokenTree::tokenize(pp_unit).unwrap();
-        let mut stream = TokenStream::new(tokens, Span::zero(unit_name));
-
-        let unit_ident = Ident::new(unit_name, Span::zero(unit_name));
-
-        let unit = ast::Unit::parse(&mut stream, IdentPath::from_parts(vec![unit_ident])).unwrap();
-        stream.finish().unwrap();
+        let unit = ast::util::unit_from_string(unit_name, &src);
 
         units.push(unit);
     }

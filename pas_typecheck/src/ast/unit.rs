@@ -1,9 +1,5 @@
 use crate::ast::{expect_stmt_initialized, typecheck_alias, typecheck_struct_decl, typecheck_expr, typecheck_func_decl, typecheck_func_def, typecheck_iface, typecheck_stmt, typecheck_variant, Expr, typecheck_enum_decl};
-use crate::{
-    ast::const_eval::ConstEval, typecheck_type, typecheck_type_params, ConstAnnotation, Context,
-    Environment, ExpectedKind, ModuleUnit, NameError, Named, ScopeMemberRef, Symbol, Type,
-    TypeAnnotation, TypecheckError, TypecheckResult,
-};
+use crate::{ast::const_eval::ConstEval, typecheck_type, typecheck_type_params, Binding, ConstAnnotation, Context, Environment, ExpectedKind, ModuleUnit, NameError, Named, ScopeMemberRef, Symbol, Type, TypeAnnotation, TypecheckError, TypecheckResult, ValueKind};
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, ast::Visibility, IdentPath};
 use std::rc::Rc;
@@ -338,7 +334,7 @@ fn typecheck_global_binding_item(
         }
 
         BindingDeclKind::Var => {
-            match (&item.ty, &item.val) {
+            let (ty, val) = match (&item.ty, &item.val) {
                 (Some(explicit_ty), Some(val_expr)) => {
                     let explicit_ty = typecheck_type(explicit_ty, ctx)?;
                     let val_expr = typecheck_expr(&val_expr, &explicit_ty, ctx)?;
@@ -358,8 +354,29 @@ fn typecheck_global_binding_item(
                     (actual_ty, Some(Box::new(val_expr)))
                 }
 
-                (None, None) => (Type::Nothing, None),
+                (None, None) => {
+                    return Err(TypecheckError::BindingWithNoType {
+                        binding_name: item.ident.clone(),
+                        span: item.span.clone(),
+                    })
+                },
+            };
+            
+            // global bindings must always be initialized or be of a default-able type
+            if ty.default_val().is_none() && val.is_none() {
+                return Err(TypecheckError::UninitGlobalBinding {
+                    ident: item.ident.clone(),
+                    ty,
+                });
             }
+            
+            ctx.declare_binding(item.ident.clone(), Binding {
+                ty: ty.clone(),
+                def: Some(item.ident.clone()),
+                kind: ValueKind::Mutable,
+            })?;
+
+            (ty, val)
         }
     };
 

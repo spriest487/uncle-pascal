@@ -207,3 +207,17 @@ pub trait Parse: Sized {
 pub trait Match {
     fn is_match(tokens: &mut LookAheadTokenStream) -> bool;
 }
+
+pub trait TryParse : Sized {
+    fn try_parse(tokens: &mut TokenStream) -> ParseResult<Option<Self>>;
+}
+
+impl<T> TryParse for T where T : Parse + Match {
+    fn try_parse(tokens: &mut TokenStream) -> ParseResult<Option<Self>> {
+        if Self::is_match(&mut tokens.look_ahead()) {
+            Self::parse(tokens).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}

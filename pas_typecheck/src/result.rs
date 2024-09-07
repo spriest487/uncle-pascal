@@ -118,6 +118,10 @@ pub enum TypecheckError {
         hint_ty: Type,
         span: Span,
     },
+    UninitGlobalBinding {
+        ident: Ident,
+        ty: Type,
+    },
     UninitBindingWithNoType {
         binding: Box<ast::LocalBinding<Span>>,
     },
@@ -274,6 +278,7 @@ impl Spanned for TypecheckError {
             TypecheckError::UnableToInferType { expr } => expr.annotation().span(),
             TypecheckError::UnableToInferFunctionExprType { func } => func.span(),
             TypecheckError::UnableToInferSpecialization { span, .. } => span,
+            TypecheckError::UninitGlobalBinding { ident, .. } => ident.span(),
             TypecheckError::UninitBindingWithNoType { binding } => binding.annotation.span(),
             TypecheckError::BindingWithNoType { span, .. } => span,
             TypecheckError::NotInitialized { usage, .. } => usage.span(),
@@ -359,8 +364,11 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::UnableToInferSpecialization { .. } => {
                 "Unable to infer type specialization".to_string()
             }
+            TypecheckError::UninitGlobalBinding { .. } => {
+                "Uninitialized global variable".to_string()
+            }
             TypecheckError::UninitBindingWithNoType { .. } => {
-                "Uninitialized binding must have an explicit type".to_string()
+                "Uninitialized variable must have an explicit type".to_string()
             }
             TypecheckError::BindingWithNoType { .. } => {
                 "Value bound to name must have a type".to_string()
@@ -697,6 +705,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UnableToInferSpecialization { generic_ty, hint_ty, .. } => {
                 write!(f, "unable to infer specialization of the generic type `{}` from expected type `{}`", generic_ty, hint_ty)
+            }
+
+            TypecheckError::UninitGlobalBinding { ident, ty } => {
+                write!(f, "global variable `{}` of type `{}` does not have a default value and must be initialized", ident, ty)
             }
 
             TypecheckError::UninitBindingWithNoType { binding } => {

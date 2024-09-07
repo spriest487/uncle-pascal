@@ -10,6 +10,6 @@ pub use self::{
     consts::{EnumConstant, IntConstant, RealConstant, SetConstant},
     ident::*,
     keyword::Keyword,
-    operators::{Operator, CompoundAssignmentOperator, Position},
-    token_tree::{DelimiterPair, Separator, TokenizeError, TokenizeResult, TokenTree},
+    operators::{CompoundAssignmentOperator, Operator, Position},
+    token_tree::{DelimiterPair, Separator, TokenTree, TokenizeError, TokenizeResult},
 };

@@ -14,6 +14,7 @@ pub mod statement;
 pub mod type_constraint;
 pub mod typedecl;
 pub mod unit;
+pub mod util;
 
 pub use self::{
     block::*,
