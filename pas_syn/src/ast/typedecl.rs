@@ -75,7 +75,7 @@ pub enum TypeDeclItem<A: Annotation> {
 }
 
 impl<A: Annotation> TypeDeclItem<A> {
-    pub fn ident(&self) -> &A::Name {
+    pub fn name(&self) -> &A::Name {
         match self {
             TypeDeclItem::Struct(class) => &class.name,
             TypeDeclItem::Interface(iface) => &iface.name,

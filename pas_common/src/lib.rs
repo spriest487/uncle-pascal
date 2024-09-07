@@ -119,6 +119,10 @@ impl<T> TracedError<T> {
             bt: self.bt,
         }
     }
+    
+    pub fn into_inner(self) -> T {
+        self.err
+    }
 }
 
 impl<T> Deref for TracedError<T> {

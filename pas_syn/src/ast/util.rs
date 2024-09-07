@@ -1,11 +1,11 @@
 use crate::ast::Unit;
-use crate::parse::TokenStream;
+use crate::parse::{ParseResult, TokenStream};
 use crate::{Ident, IdentPath, TokenTree};
 use pas_common::span::Span;
 use pas_common::BuildOptions;
 use pas_pp::Preprocessor;
 
-pub fn unit_from_string(unit_name: &str, src: &str) -> Unit<Span> {
+pub fn try_unit_from_string(unit_name: &str, src: &str) -> ParseResult<Unit<Span>> {
     let pp = Preprocessor::new(format!("{}.pas", unit_name), BuildOptions::default());
     let pp_unit = pp.preprocess(src).unwrap();
 
@@ -14,8 +14,12 @@ pub fn unit_from_string(unit_name: &str, src: &str) -> Unit<Span> {
 
     let unit_ident = Ident::new(unit_name, Span::zero(unit_name));
 
-    let unit = Unit::parse(&mut stream, IdentPath::from_parts(vec![unit_ident])).unwrap();
-    stream.finish().unwrap();
-    
-    unit
+    let unit = Unit::parse(&mut stream, IdentPath::from_parts(vec![unit_ident]))?;
+    stream.finish()?;
+
+    Ok(unit)
+}
+
+pub fn unit_from_string(unit_name: &str, src: &str) -> Unit<Span> {
+    try_unit_from_string(unit_name, src).unwrap()
 }

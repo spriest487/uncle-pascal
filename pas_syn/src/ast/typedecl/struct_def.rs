@@ -8,6 +8,10 @@ use crate::{
 use derivative::*;
 use pas_common::span::{Span, Spanned};
 use std::fmt;
+use crate::parse::TryParse;
+
+#[cfg(test)]
+mod test;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
@@ -61,7 +65,11 @@ fn parse_struct_members(tokens: &mut TokenStream) -> ParseResult<Vec<StructMembe
             tokens.match_one(Separator::Semicolon)?;
         }
 
-        let ident = Ident::parse(tokens)?;
+        let ident = match Ident::try_parse(tokens)? {
+            Some(ident) => ident,
+            None => break,
+        };
+
         let mut idents = vec![ident];
         while tokens.match_one_maybe(Separator::Comma).is_some() {
             let ident = Ident::parse(tokens)?;

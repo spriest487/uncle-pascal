@@ -161,7 +161,7 @@ fn typecheck_type_decl_item(
     // type decls have an inner scope
     let ty_scope = ctx.push_scope(Environment::TypeDecl);
 
-    let decl_name = type_decl.ident().clone();
+    let decl_name = type_decl.name().clone();
     let full_name = Symbol {
         qualified: ctx.qualify_name(decl_name.ident.clone()),
         decl_name,
