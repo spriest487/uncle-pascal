@@ -1112,7 +1112,6 @@ pub fn resolve_overload(
     let mut valid_candidates: Vec<_> = (0..candidates.len()).collect();
 
     let mut param_index = 0;
-    let mut arg_index = 0;
 
     // do the self-arg (which has a known type already) first
     if let Some(self_arg) = self_arg {
@@ -1136,7 +1135,8 @@ pub fn resolve_overload(
         param_index += 1;
     }
 
-    let arg_count = args.len() + self_arg.iter().len();
+    let arg_count = args.len();
+    let mut arg_index = 0;
 
     loop {
         // did we find a best match? try to typecheck args as if this is the sig to be called
