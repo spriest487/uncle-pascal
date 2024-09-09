@@ -130,23 +130,22 @@ impl TestCase {
             .expect("stdout was not captured for child process");
         let mut stderr = proc.stderr.take()
             .expect("stderr was not captured for child process");
+        
+        let mut io_error = false;
 
         let mut line_buf = Vec::new();
         for step in &self.script.steps {
             match run_step(step, &mut stdin, &mut stdout, &mut stderr, &mut line_buf) {
                 Ok(true) => {},
                 Ok(false) => {
-                    let output = proc.wait_with_output()?;
-                    dump_output(&output);
-
-                    return Ok(false);
+                    io_error = true;
+                    break;
                 }
                 Err(err) => {
-                    let output = proc.wait_with_output()?;
-                    dump_output(&output);
-
                     println!("FAILED ({err})");
-                    return Ok(false);
+
+                    io_error = false;
+                    break;
                 }
             }
         }
@@ -159,7 +158,8 @@ impl TestCase {
         dump_output(&output);
         
         let expect_error = self.script.steps.iter().any(|step| step.error_regex.is_some());
-        let ok = output.status.success() || expect_error;
+
+        let ok = !io_error && (output.status.success() || expect_error);
 
         let completed = if ok {
             println!("OK");
