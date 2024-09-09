@@ -145,8 +145,6 @@ impl Context {
         let new_id = self.next_scope_id;
         self.next_scope_id = ScopeID(self.next_scope_id.0 + 1);
 
-        // self.scopes.current_mut().insert_member()
-
         self.scopes.push_scope(Scope::new(new_id, env));
         new_id
     }
@@ -526,7 +524,7 @@ impl Context {
             sig: FunctionSig::of_decl(func_decl).into(),
             visibility,
         };
-
+        
         self.declare(name.clone(), decl)?;
 
         if func_decl.external_src().is_some() {
