@@ -217,9 +217,10 @@ fn parse_unit_func_decl(part_kw: Keyword, tokens: &mut TokenStream) -> ParseResu
             _ => false,
         })
     } else {
-        // implementation funcs - always expect a body, unless the function is marked `forward`
+        // implementation funcs - always expect a body, unless the function has the
+        // `external` (body is external) or `forward` (body to follow later) modifiers
         !func_decl.mods.iter().any(|decl_mod| match decl_mod {
-            DeclMod::Forward(..) => true,
+            DeclMod::External { .. } | DeclMod::Forward(..) => true,
             _ => false,
         })
     };
@@ -227,11 +228,7 @@ fn parse_unit_func_decl(part_kw: Keyword, tokens: &mut TokenStream) -> ParseResu
     if body_ahead {
         tokens.match_one(Separator::Semicolon)?;
 
-        let def = FunctionDef::parse_body_of_decl(func_decl, tokens);
-        if def.is_err() {
-            eprintln!("failed on {}", tokens.current().unwrap().span());
-        }
-        let def = def?;
+        let def = FunctionDef::parse_body_of_decl(func_decl, tokens)?;
 
         Ok(UnitDecl::FunctionDef { def })
     } else {
