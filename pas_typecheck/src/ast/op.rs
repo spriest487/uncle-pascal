@@ -13,7 +13,6 @@ use crate::{
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, Ident, IdentPath, IntConstant, Operator};
 use std::rc::Rc;
-use pas_syn::ast::Typed;
 use crate::ast::{OverloadCandidate};
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
