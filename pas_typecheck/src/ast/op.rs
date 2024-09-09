@@ -13,6 +13,7 @@ use crate::{
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, Ident, IdentPath, IntConstant, Operator};
 use std::rc::Rc;
+use pas_syn::ast::Typed;
 use crate::ast::{OverloadCandidate};
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
@@ -211,6 +212,12 @@ fn typecheck_bitwise_op(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<BinOp> {
+    // if there's no expected type for a bitwise op, expect UInt32
+    let expect_ty = match expect_ty {
+        Type::Nothing => &Type::Primitive(Primitive::UInt32),
+        _ => expect_ty, 
+    };
+
     let lhs = typecheck_expr(&bin_op.lhs, expect_ty, ctx)?;
 
     // for bitwise operations to make sense the lhs and rhs must be the exact same type so insert a
