@@ -342,6 +342,21 @@ impl<A: Annotation> Spanned for FunctionLocalBinding<A> {
     }
 }
 
+impl FunctionLocalBinding<Span> {
+    // matches the next token of any optional element that wasn't parsed as part of this 
+    // otherwise valid decl, e.g. the explicit init of a variable. used for better error messages
+    pub fn match_trailing(&self) -> Option<Matcher> {
+        match self.initial_val.as_ref() {
+            None => Some(Matcher::from(LOCAL_INIT_DECL_OPERATOR)),
+            Some(..) => None,
+        }
+    }
+}
+
+// note that function local init is NOT an assignment (:=), we're declaring a value
+// that it's already *equal to* at the start of the body
+const LOCAL_INIT_DECL_OPERATOR: Operator = Operator::Equals;
+
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Hash, PartialEq, Debug)]
 pub struct FunctionDef<A: Annotation> {
@@ -359,7 +374,9 @@ pub struct FunctionDef<A: Annotation> {
 
 impl FunctionDef<Span> {
     pub fn parse_body_of_decl(decl: FunctionDecl<Span>, tokens: &mut TokenStream) -> ParseResult<Self> {
-        let body_start_matcher = Self::body_start_matcher();
+        let body_start_matcher = Self::match_body_start();
+        
+        let mut trailing_semicolon = false;
 
         let mut locals = Vec::new();
         loop {
@@ -369,21 +386,26 @@ impl FunctionDef<Span> {
                     locals.extend(
                         Self::parse_locals_block(tokens, BindingDeclKind::Var)?
                     );
-                    tokens.match_one_maybe(Separator::Semicolon);
+
+                    trailing_semicolon = tokens.match_one_maybe(Separator::Semicolon).is_some();
                 },
                 Some(tt) if tt.is_keyword(Keyword::Const) => {
                     tokens.advance(1);
                     locals.extend(
                         Self::parse_locals_block(tokens, BindingDeclKind::Const)?
                     );
-                    tokens.match_one_maybe(Separator::Semicolon);
+
+                    trailing_semicolon = tokens.match_one_maybe(Separator::Semicolon).is_some();
                 }
 
                 _ => break,
             }
         }
 
-        let body = Block::parse(tokens)?;
+        let body = Block::parse(tokens)
+            .map_err(|err| {
+                Self::map_unexpected_err_after_locals(err, trailing_semicolon, &locals)
+            })?;
 
         let span = decl.span.to(body.span());
 
@@ -394,14 +416,41 @@ impl FunctionDef<Span> {
             span,
         })
     }
+    
+    fn map_unexpected_err_after_locals(
+        err: TracedError<ParseError>,
+        trailing_semicolon: bool,
+        locals: &[FunctionLocalBinding<Span>]) -> TracedError<ParseError> {       
+        err.map(|err| match err {
+            ParseError::UnexpectedToken(tt, expected) if !trailing_semicolon => {
+                let trailing_match = Self::match_trailing_for_locals(&locals);
+
+                ParseError::UnexpectedToken(tt, match (expected, trailing_match) {
+                    (Some(expected), Some(trailing)) => Some(expected.or(trailing)),
+                    (Some(expected), None) => Some(expected),
+                    (None, Some(trailing)) => Some(trailing),
+                    (None, trailing) => trailing,
+                })
+            }
+
+            _ => err,
+        })
+    }
+    
+    fn match_trailing_for_locals(locals: &[FunctionLocalBinding<Span>]) -> Option<Matcher> {
+        let last_local = locals.last()?;
+        last_local.match_trailing()
+    }
 
     fn parse_locals_block(tokens: &mut TokenStream, kind: BindingDeclKind) -> ParseResult<Vec<FunctionLocalBinding<Span>>> {
         let mut decls = Vec::new();
         loop {
+            // separator from previous item
             if !decls.is_empty() {
                 tokens.match_one(Separator::Semicolon)?;
             }
 
+            // ident list, at least one ident, separated by commas
             let first_ident = Ident::parse(tokens)?;
             let mut idents = vec![first_ident];
             while tokens.match_one_maybe(Separator::Comma).is_some() {
@@ -409,12 +458,14 @@ impl FunctionDef<Span> {
                 idents.push(ident);
             }
 
+            // if there's a colon following the names, expect an explicit type name to follow
             let ty = match tokens.match_one_maybe(Separator::Colon) {
                 None => TypeName::Unknown(Span::of_slice(&idents)),
                 Some(..) => TypeName::parse(tokens)?,
             };
 
-            let initial_val = match tokens.match_one_maybe(Operator::Equals) {
+            // equals operator indicates there's a default value
+            let initial_val = match tokens.match_one_maybe(LOCAL_INIT_DECL_OPERATOR) {
                 Some(..) => {
                     let expr = Expr::parse(tokens)?;
                     Some(Box::new(expr))
@@ -443,7 +494,7 @@ impl FunctionDef<Span> {
         Ok(decls)
     }
 
-    pub fn body_start_matcher() -> Matcher {
+    pub fn match_body_start() -> Matcher {
         Keyword::Unsafe
             .or(DelimiterPair::BeginEnd)
             .or(Keyword::Var)

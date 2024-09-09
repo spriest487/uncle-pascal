@@ -120,6 +120,13 @@ impl<T> TracedError<T> {
         }
     }
     
+    pub fn map(self, f: impl FnOnce(T) -> T) -> Self {
+        TracedError {
+            err: f(self.err),
+            bt: self.bt,
+        }
+    }
+    
     pub fn into_inner(self) -> T {
         self.err
     }
