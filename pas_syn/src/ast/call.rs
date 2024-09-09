@@ -231,6 +231,13 @@ impl<A: Annotation> Call<A> {
             Call::VariantCtor(ctor) => ctor.arg.as_slice(),
         }
     }
+    
+    pub fn as_func_call(&self) -> Option<&FunctionCall<A>> {
+        match self {
+            Call::Function(func_call) => Some(func_call),
+            _ => None,
+        }
+    }
 }
 
 struct ArgListItem(Expr<Span>);

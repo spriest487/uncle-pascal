@@ -141,7 +141,7 @@ mod test {
     fn finds_ufcs_func() {
         let unit = unit_from_src(
             "test",
-            r"interface
+            r"implementation
 
             type UFCSTarget = class
             end;
@@ -149,7 +149,7 @@ mod test {
             function TargetMethod(t: UFCSTarget);
             begin
             end;
-
+            
             end",
         );
 
@@ -166,7 +166,6 @@ mod test {
     #[test]
     fn finds_exported_ufcs_func_from_other_unit() {
         let a_src = r"
-            unit A;
             interface
 
             type UFCSTarget = class
@@ -175,8 +174,11 @@ mod test {
             end";
 
         let b_src = r"
-            unit B;
             interface
+
+            function TargetMethod(t: A.UFCSTarget);
+            
+            implementation
 
             function TargetMethod(t: A.UFCSTarget);
             begin
@@ -184,7 +186,11 @@ mod test {
 
             end";
 
-        let c_src = "uses A;uses B;";
+        let c_src = r"
+            implementation
+            uses A;
+            uses B;
+            end";
 
         let units = units_from_src(vec![("A", a_src), ("B", b_src), ("C", c_src)]);
 
@@ -205,13 +211,12 @@ mod test {
             implementation
             
             type UFCSTarget = class
-            end
+            end;
             
             end.";
 
         let b_src = r"
             implementation
-
             function TargetMethod(t: A.UFCSTarget);
             begin
             end;

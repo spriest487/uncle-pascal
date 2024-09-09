@@ -66,6 +66,13 @@ impl<A: Annotation> Stmt<A> {
             _ => None,
         }
     }
+
+    pub fn as_call(&self) -> Option<&Call<A>> {
+        match self {
+            Stmt::Call(call) => Some(call),
+            _ => None,
+        }
+    }
 }
 
 impl Stmt<Span> {

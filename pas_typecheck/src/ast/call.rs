@@ -463,7 +463,7 @@ struct SpecializedCallArgs {
 }
 
 struct PartiallySpecializedTypeArgsList<'a> {
-    items: &'a Vec<Option<Type>>,
+    items: &'a [Option<Type>],
 }
 
 impl<'a> TypeArgsResolver for PartiallySpecializedTypeArgsList<'a> {
@@ -485,7 +485,7 @@ impl<'a> TypeArgsResolver for PartiallySpecializedTypeArgsList<'a> {
 
 fn specialize_arg<ArgProducer>(
     param_ty: &Type,
-    inferred_ty_args: &mut Vec<Option<Type>>,
+    inferred_ty_args: &mut [Option<Type>],
     produce_expr: ArgProducer,
     _span: &Span,
     ctx: &mut Context,
@@ -498,18 +498,18 @@ where
         items: inferred_ty_args,
     };
 
-    let expect_ty = param_ty
+    let mut expect_ty = param_ty
         .clone()
         .substitute_type_args(&partial_args_resolver);
-
-    let actual_arg = if expect_ty.is_unspecialized_generic() {
+    
+    if expect_ty.is_generic_param() || expect_ty.is_unspecialized_generic() {
         // not enough info to resolve this generic type fully yet: arg expr ty drives param type
-        produce_expr(&Type::Nothing, ctx)?
-    } else {
-        produce_expr(&expect_ty, ctx)?
-    };
+        expect_ty = Type::Nothing;
+    }
 
+    let actual_arg =  produce_expr(&expect_ty, ctx)?;
     let actual_ty = actual_arg.annotation().ty().clone();
+    
     infer_from_structural_ty_args(param_ty, &actual_ty, inferred_ty_args);
 
     Ok(actual_arg)
@@ -518,9 +518,21 @@ where
 fn infer_from_structural_ty_args(
     param_ty: &Type,
     actual_ty: &Type,
-    inferred_ty_args: &mut Vec<Option<Type>>,
+    inferred_ty_args: &mut [Option<Type>],
 ) {
+    // in param_ty, find all the references to generic params within the type and their
+    // corresponding values in the actual type, in the order they appear.
+    // for example if the expected type is `array of T`, and the actual
+    // arg is `array of Int32`, `T` is added to the param ty args and `Int32` is added to the 
+    // actual ty args.
+    // at this point, if the types are fundamentally incompatible we should bail
     let (param_ty_args, actual_ty_args) = match (param_ty, actual_ty) {
+        // plain generic param can be substituted for anything
+        (Type::GenericParam(..), actual) => {
+            (vec![param_ty.clone()], vec![actual.clone()])
+        }
+
+        // static-length arrays can be substituted into a generic array of the same length 
         (Type::Array(param_array_ty), Type::Array(actual_array_ty)) => {
             if actual_array_ty.dim != param_array_ty.dim {
                 return;
@@ -532,11 +544,13 @@ fn infer_from_structural_ty_args(
             )
         },
 
+        // dynarrays only need element type to match
         (Type::DynArray { element: param_el }, Type::DynArray { element: actual_el }) => {
             (vec![*param_el.clone()], vec![*actual_el.clone()])
         },
 
         _ => {
+            // all other types: must be the exact same declaration (struct, enum etc)
             if !param_ty.same_decl_type(actual_ty) {
                 return;
             }

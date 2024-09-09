@@ -5,18 +5,19 @@ use crate::{
 };
 use pas_syn::{ast};
 use std::rc::Rc;
+use crate::ast::{Call, Stmt};
 use crate::test::module_from_src;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BYTE: Type = Type::Primitive(Primitive::UInt8);
 
-fn unit_from_src(src: &'static str) -> Unit {
-    let mut module = module_from_src("test", src);
+fn unit_from_src(unit_name: &'static str, src: &'static str) -> Unit {
+    let mut module = module_from_src(unit_name, src);
     module.units.pop().unwrap().unit
 }
 
-fn classes_from_src(src: &'static str) -> Vec<Rc<StructDef>> {
-    let unit = unit_from_src(src);
+fn classes_from_src(unit_name: &'static str, src: &'static str) -> Vec<Rc<StructDef>> {
+    let unit = unit_from_src(unit_name, src);
     let decls = unit.type_decls()
         .flat_map(|(_vis, decl)| decl.items.iter())
         .map(|t| match t {
@@ -30,6 +31,7 @@ fn classes_from_src(src: &'static str) -> Vec<Rc<StructDef>> {
 #[test]
 fn specialize_class_has_correct_member_types() {
     let tys = classes_from_src(
+        "specialize_class_has_correct_member_types",
         r"  type A[T] = class
                 t: T;
                 x: UInt8;
@@ -55,6 +57,7 @@ fn specialize_class_has_correct_member_types() {
 #[test]
 fn specialize_class_has_multi_correct_member_types() {
     let tys = classes_from_src(
+        "specialize_class_has_multi_correct_member_types",
         r"  type A[T1, T2] = class
                 t1: T1;
                 t2: T2;
@@ -80,7 +83,9 @@ fn specialize_class_has_multi_correct_member_types() {
 
 #[test]
 fn specialize_class_with_deep_params() {
+    const UNIT_NAME: &str ="specialize_class_with_deep_params"; 
     let tys = classes_from_src(
+        UNIT_NAME,
         r"  type A[T1, T2] = record
                 t1: T1;
                 t2: T2;
@@ -93,20 +98,21 @@ fn specialize_class_with_deep_params() {
         ",
     );
 
-    let span = Span::zero("test");
+    let span = Span::zero(UNIT_NAME);
 
     let type_args = TypeList::new(vec![INT32], span.clone());
 
     let result = specialize_struct_def(&tys[1], &type_args).unwrap();
 
     let a_name = result.members[0].ty.as_record().unwrap();
-    assert_eq!("test.A[Int32, Int32]", a_name.to_string());
+    assert_eq!(format!("{UNIT_NAME}.A[Int32, Int32]"), a_name.to_string());
     assert_eq!(INT32, result.members[1].ty);
 }
 
 #[test]
 fn specialized_fn_has_right_sig() {
     let unit = unit_from_src(
+        "specialized_fn_has_right_sig",
         r"  function A[T](t: T): T;
             begin
                 t
@@ -143,6 +149,7 @@ fn specialized_fn_has_right_sig() {
 fn specialized_fn_with_specialized_params_has_right_params() {
     let span = builtin_span();
     let unit = unit_from_src(
+        "specialized_fn_with_specialized_params_has_right_params",
         r"
             type A[AT] = record
                 a: AT;
@@ -187,4 +194,75 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     };
 
     assert_eq!(expect_sig, b_int_sig);
+}
+
+#[test]
+fn can_infer_ty_arg_from_real_record_arg() {
+    const UNIT_NAME: &str = "can_infer_ty_args_from_real_record_arg";
+    let module = module_from_src(
+        UNIT_NAME,
+        r"implementation
+        
+        type R = record
+            member: Int32;
+        end;
+        
+        function Func[T](item: T);
+        begin
+        end;
+        
+        initialization
+            Func(R());
+        end"
+    );
+    
+    let unit = &module.units.iter().last().unwrap();
+    let test_span = Span::zero(UNIT_NAME);
+
+    let (_, r_ty) = unit.context
+        .find_type(&IdentPath::from_parts(vec![
+            Ident::new(UNIT_NAME, test_span.clone()),
+            Ident::new("R", test_span.clone()),
+        ])
+        ).unwrap();
+
+    let func_call = unit.unit.init.get(0)
+        .and_then(Stmt::as_call)
+        .and_then(Call::as_func_call)
+        .unwrap_or_else(|| {
+            panic!("expected unit to have a single function call in its init block")
+        });
+
+    assert!(func_call.type_args.is_some());
+    let type_args = func_call.type_args.as_ref().unwrap();
+
+    assert_eq!(&type_args[0], r_ty);
+}
+
+#[test]
+fn can_infer_ty_arg_from_real_int_arg() {
+    let unit = unit_from_src(
+        "can_infer_ty_args_from_real_args",
+        r"implementation
+        
+        function Func[T](item: T);
+        begin
+        end;
+        
+        initialization
+            Func(123);
+        end"
+    );
+    
+    let func_call = unit.init.get(0)
+        .and_then(Stmt::as_call)
+        .and_then(Call::as_func_call)
+        .unwrap_or_else(|| {
+            panic!("expected unit to have a single function call in its init block")
+        });
+    
+    assert!(func_call.type_args.is_some());
+    let type_args = func_call.type_args.as_ref().unwrap();
+    
+    assert_eq!(type_args[0], Type::Primitive(Primitive::Int32));
 }
