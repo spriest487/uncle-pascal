@@ -571,8 +571,14 @@ fn infer_from_structural_ty_args(
     for (param_ty_arg, actual_ty_arg) in all_ty_args {
         match param_ty_arg {
             Type::GenericParam(param_generic) => {
-                let inferred = &mut inferred_ty_args[param_generic.pos];
-                assert_eq!(None, *inferred);
+                let pos = param_generic.pos;
+                let inferred = &mut inferred_ty_args[pos];
+                assert!(
+                    inferred.is_none() || inferred.as_ref().unwrap() == actual_ty_arg, 
+                    "previously inferred type for this position ({}) must either be None for the first occurrence, or the same type as this inference ({})",
+                    pos,
+                    actual_ty_arg
+                );
 
                 *inferred = Some(actual_ty_arg.clone());
             },
