@@ -82,7 +82,7 @@ impl Unit<Span> {
     pub fn parse(tokens: &mut TokenStream, file_ident: IdentPath) -> ParseResult<Self> {
         let unit_kind_kw_match = Keyword::Unit.or(Keyword::Program).or(Keyword::Library);
 
-        let (unit_kind, ident) = match tokens.match_one_maybe(unit_kind_kw_match) {
+        let (unit_kind, ident) = match tokens.match_one_maybe(unit_kind_kw_match.clone()) {
             Some(TokenTree::Keyword { kw, .. }) => {
                 let ident = IdentPath::parse(tokens)?;
                 tokens.match_one(Separator::Semicolon)?;
@@ -134,25 +134,8 @@ impl Unit<Span> {
                 // allow the traditional period after the final end
                 tokens.match_one_maybe(Operator::Period);
             } else {
-                // no structured segments, it's a freeform unit - everything is implementation
-                // and we don't expect an end keyword after all decls/init
-                let freeform_decls = if UnitDecl::has_more(&iface_decls, &mut tokens.look_ahead()) {
-                    UnitDecl::parse_seq(Keyword::Implementation, tokens)?
-                } else {
-                    vec![]
-                };
-
-                if freeform_decls.len() > 0 {
-                    iface_decls.extend(freeform_decls);
-
-                    if tokens.match_one_maybe(Separator::Semicolon).is_some() {
-                        let init_after_decls = parse_init_section(tokens)?;
-                        init.extend(init_after_decls);
-                    }
-                } else {
-                    let init_after_decls = parse_init_section(tokens)?;
-                    init.extend(init_after_decls);
-                }
+                // empty units are invalid! use this to throw an error
+                tokens.match_one(unit_kind_kw_match.or(UnitDecl::start_matcher()))?;
             }
         }
 
