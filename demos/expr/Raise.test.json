@@ -1,0 +1,7 @@
+{
+  "steps": [
+    {
+      "error_regex": "Runtime error raised: oh no"
+    }
+  ]
+}

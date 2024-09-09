@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Things = variant
@@ -6,7 +7,7 @@ type Things = variant
     ThirdThing: String;
 end;
 
-function WriteThing(thing: Things)
+function WriteThing(thing: Things);
 begin
     WriteLn(match thing of
         Things.FirstThing i: i.ToString();
@@ -15,10 +16,12 @@ begin
     end);
 end;
 
-var thing1 := Things.FirstThing(123);
-var thing2 := Things.SecondThing(true);
-var thing3 := Things.ThirdThing('hello world');
-
-WriteThing(thing1);
-WriteThing(thing2);
-WriteThing(thing3);
+initialization
+    var thing1 := Things.FirstThing(123);
+    var thing2 := Things.SecondThing(true);
+    var thing3 := Things.ThirdThing('hello world');
+    
+    WriteThing(thing1);
+    WriteThing(thing2);
+    WriteThing(thing3);
+end

@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type SomeRecord = record
@@ -6,14 +7,17 @@ type SomeRecord = record
     f3: Integer;
 end;
 
-let intSize := sizeof(Integer);
-WriteLn('int size: ' + intSize.ToString());
-
-let recordSize := sizeof(SomeRecord);
-WriteLn('SomeRecord size: ' + recordSize.ToString());
-
-let strSize := sizeof(String);
-WriteLn('string size: ' + strSize.ToString());
-
-let arrayOf20IntsSize := sizeof(array[20] of Integer);
-WriteLn('array of 20 ints size: ' + arrayOf20IntsSize.ToString());
+initialization
+    var intSize := sizeof(Integer);
+    WriteLn('int size: ' + intSize.ToString());
+    
+    var recordSize := sizeof(SomeRecord);
+    WriteLn('SomeRecord size: ' + recordSize.ToString());
+    
+    var arrayOf20IntsSize := sizeof(array[20] of Integer);
+    WriteLn('array of 20 ints size: ' + arrayOf20IntsSize.ToString());
+    
+    var strSize := sizeof(String);
+    var ptrSize := sizeof(Pointer);
+    WriteLn('string size = pointer size: ' + (strSize = ptrSize));
+end

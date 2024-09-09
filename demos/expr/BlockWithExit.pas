@@ -1,13 +1,16 @@
+implementation
 uses System;
 
-function A(): Boolean
+function A(): Boolean;
 begin
-    let a: Integer := begin
+    var a: Integer := begin
         exit true;
     end;
 
     false
 end;
 
-let result := A();
-WriteLn(result.ToString());
+initialization
+    var result := A();
+    WriteLn(result.ToString());
+end

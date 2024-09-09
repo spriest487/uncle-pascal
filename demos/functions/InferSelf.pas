@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type I = interface
@@ -9,26 +10,27 @@ end;
 type C = class
 end;
 
-function I.First(a: C; b: Integer)
+function I.First(a: C; b: Integer);
 begin
     WriteLn('first');
 end;
 
-function I.Second(a: Integer; b: C)
+function I.Second(a: Integer; b: C);
 begin
     WriteLn('second');
 end;
 
-function I.Both(a, b: C)
+function I.Both(a, b: C);
 begin
     WriteLn('both');
 end;
 
-let c := C();
-I.First(c, 123);
-I.Second(456, c);
-I.Both(c, c);
-
-c.First(123);
-c.Both(c);
-
+initialization
+    var c := C();
+    I.First(c, 123);
+    I.Second(456, c);
+    I.Both(c, c);
+    
+    c.First(123);
+    c.Both(c);
+end

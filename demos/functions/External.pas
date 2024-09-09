@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 const ExternFuncsLib: String = 'ExternFuncs.dll';
@@ -8,29 +9,31 @@ function Z(): Integer; external ExternFuncsLib;
 function ReturnsIntPtr(): ^Integer; external ExternFuncsLib;
 function PrintIntPtr(ptr: ^Integer); external ExternFuncsLib;
 
-X();
-Y(1);
-let z := Z();
+initialization
+    X();
+    Y(1);
+    var z := Z();
+    
+    WriteLn(z.ToString());
 
-WriteLn(z.ToString());
+    begin
+        var intPtr := ReturnsIntPtr();
+        PrintIntPtr(intPtr);
+    
+        WriteLn('printing value of intPtr^: ' + intPtr^.ToString());
+    end;
+    
+    // pass pointer to stack value
+    begin
+        var one := 1;
+        PrintIntPtr(@one);
+    end;
 
-begin
-    let intPtr := ReturnsIntPtr();
-    PrintIntPtr(intPtr);
-
-    WriteLn('printing value of intPtr^: ' + intPtr^.ToString());
-end;
-
-// pass pointer to stack value
-begin
-    var one := 1;
-    PrintIntPtr(@one);
-end;
-
-// pass pointer to heap value
-unsafe begin
-    var intBytes: Pointer := GetMem(sizeof(Integer));
-    var intPtr: ^Integer := intBytes;
-    intPtr^ := 999888777;
-    PrintIntPtr(intPtr);
-end;
+    // pass pointer to heap value
+    unsafe begin
+        var intBytes: Pointer := GetMem(sizeof(Integer));
+        var intPtr: ^Integer := intBytes;
+        intPtr^ := 999888777;
+        PrintIntPtr(intPtr);
+    end;
+end

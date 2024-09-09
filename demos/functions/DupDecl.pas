@@ -1,7 +1,11 @@
-function One()
+implementation
+
+function One();
 begin
 end;
 
-function One()
+function One();
 begin
 end;
+
+end

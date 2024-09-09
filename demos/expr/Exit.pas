@@ -1,10 +1,13 @@
+implementation
 uses System;
 
-function A(): Integer
+function A(): Integer;
 begin
-    let a: String := exit 1;
+    var a: String := exit 1;
     2
 end;
 
-let result := A();
-WriteLn(result.ToString());
+initialization
+    var result := A();
+    WriteLn(result.ToString());
+end

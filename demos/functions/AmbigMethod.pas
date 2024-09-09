@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type A = interface
@@ -16,21 +17,23 @@ type Impl = class
     value: Integer;
 end;
 
-function A.Greet(self: Impl)
+function Greet of A(self: Impl);
 begin
     WriteLn('hello from A');
 end;
 
-function B.Greet(self: Impl)
+function Greet of B(self: Impl);
 begin
     WriteLn('hello from B');
 end;
 
-function C.Greet(self: Impl)
+function Greet of C(self: Impl);
 begin
     WriteLn('hello from C');
 end;
 
-let i := Impl(value: 1);
-
-i.Greet();
+initialization
+    var i := Impl(value: 1);
+    
+    i.Greet();
+end

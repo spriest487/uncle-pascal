@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 function Add(a, b: Integer): Integer
@@ -6,6 +7,8 @@ begin
     result
 end;
 
-let x: Integer := Add(2, 3) + 20;
+initialization
+    var x: Integer := Add(2, 3) + 20;
 
-WriteLn(IntToStr(x));
+    WriteLn(x.ToString());
+end

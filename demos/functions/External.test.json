@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "output": "native call to X()" },
+    { "output": "native call to Y(1)" },
+    { "output": "123456" }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "output" : "123" },
+    { "output" : "true" },
+    { "output" : "something else" }
+  ]
+}

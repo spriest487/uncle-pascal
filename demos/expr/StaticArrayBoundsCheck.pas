@@ -1,2 +1,4 @@
-let x := [1, 2, 3];
-let y := x[100];
+initialization
+    var x := [1, 2, 3];
+    var y := x[100];
+end

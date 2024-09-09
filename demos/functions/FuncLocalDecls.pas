@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 function X();
@@ -6,7 +7,7 @@ const
 var
     B, C: Int32 = A;
 const
-    D: Boolean := False;
+    D: Boolean = true;
 begin
     WriteLn(A.ToString());
     WriteLn(B.ToString());
@@ -14,4 +15,6 @@ begin
     WriteLn(D.ToString());
 end;
 
-X();
+initialization
+    X();
+end

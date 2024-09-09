@@ -6,8 +6,8 @@ type A = record
 end;
 
 initialization
-    var as: array of A := [];
+    var arrayOfA: array of A := [];
     
     var a := A(value: 'hello');
-    SetLength(as, 1, a);
-end;
+    SetLength(arrayOfA, 1, a);
+end

@@ -1,7 +1,9 @@
+implementation
 uses System;
-
-let x := 255 as Byte;
-WriteLn(x.ToString());
-
-let y := x as Int8;
-WriteLn(y.ToString());
+initialization
+    var x := 255 as Byte;
+    WriteLn(x.ToString());
+    
+    var y := x as Int8;
+    WriteLn(y.ToString());
+end

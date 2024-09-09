@@ -1,5 +1,9 @@
-function SigMismatch();
+implementation
 
-function SigMismatch(i: Integer)
+function SigMismatch(); forward;
+
+function SigMismatch(i: Int32);
 begin
 end;
+
+end

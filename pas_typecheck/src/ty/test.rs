@@ -32,10 +32,13 @@ fn classes_from_src(unit_name: &'static str, src: &'static str) -> Vec<Rc<Struct
 fn specialize_class_has_correct_member_types() {
     let tys = classes_from_src(
         "specialize_class_has_correct_member_types",
-        r"  type A[T] = class
+        r"  
+            implementation
+            type A[T] = class
                 t: T;
                 x: UInt8;
             end;
+            end
         ",
     );
 
@@ -58,10 +61,13 @@ fn specialize_class_has_correct_member_types() {
 fn specialize_class_has_multi_correct_member_types() {
     let tys = classes_from_src(
         "specialize_class_has_multi_correct_member_types",
-        r"  type A[T1, T2] = class
+        r"
+            implementation
+            type A[T1, T2] = class
                 t1: T1;
                 t2: T2;
             end;
+            end
         ",
     );
 
@@ -86,15 +92,18 @@ fn specialize_class_with_deep_params() {
     const UNIT_NAME: &str ="specialize_class_with_deep_params"; 
     let tys = classes_from_src(
         UNIT_NAME,
-        r"  type A[T1, T2] = record
+        r"  
+            implementation
+            type A[T1, T2] = record
                 t1: T1;
                 t2: T2;
             end;
-
+            
             type B[T] = class
                 a: A[T, T];
                 b: T;
             end;
+            end
         ",
     );
 
@@ -113,10 +122,13 @@ fn specialize_class_with_deep_params() {
 fn specialized_fn_has_right_sig() {
     let unit = unit_from_src(
         "specialized_fn_has_right_sig",
-        r"  function A[T](t: T): T;
+        r"  
+            implementation
+            function A[T](t: T): T;
             begin
                 t
             end;
+            end
         ",
     );
 
@@ -151,6 +163,8 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     let unit = unit_from_src(
         "specialized_fn_with_specialized_params_has_right_params",
         r"
+            implementation
+
             type A[AT] = record
                 a: AT;
             end;
@@ -159,6 +173,8 @@ fn specialized_fn_with_specialized_params_has_right_params() {
             begin
                 a
             end;
+            
+            end
         ",
     );
 
@@ -201,19 +217,21 @@ fn can_infer_ty_arg_from_real_record_arg() {
     const UNIT_NAME: &str = "can_infer_ty_args_from_real_record_arg";
     let module = module_from_src(
         UNIT_NAME,
-        r"implementation
+        r"
+            implementation
         
-        type R = record
-            member: Int32;
-        end;
-        
-        function Func[T](item: T);
-        begin
-        end;
-        
-        initialization
-            Func(R());
-        end"
+            type R = record
+                member: Int32;
+            end;
+            
+            function Func[T](item: T);
+            begin
+            end;
+            
+            initialization
+                Func(R());
+            end
+        "
     );
     
     let unit = &module.units.iter().last().unwrap();
@@ -243,15 +261,17 @@ fn can_infer_ty_arg_from_real_record_arg() {
 fn can_infer_ty_arg_from_real_int_arg() {
     let unit = unit_from_src(
         "can_infer_ty_args_from_real_args",
-        r"implementation
-        
-        function Func[T](item: T);
-        begin
-        end;
-        
-        initialization
-            Func(123);
-        end"
+        r"
+            implementation
+            
+            function Func[T](item: T);
+            begin
+            end;
+            
+            initialization
+                Func(123);
+            end
+        "
     );
     
     let func_call = unit.init.get(0)

@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "output": "int size: 4" },
+    { "output": "SomeRecord size: 12" },
+    { "output": "array of 20 ints size: 80" },
+    { "output": "string size = pointer size: true" }
+  ]
+}

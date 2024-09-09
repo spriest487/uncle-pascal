@@ -1,3 +1,8 @@
-raise 'oh no';
+implementation
+uses System;
 
-let x := if true then 1 else raise 'reality violation';
+initialization
+    raise 'oh no';
+    
+    var x := if true then 1 else raise 'reality violation';
+end

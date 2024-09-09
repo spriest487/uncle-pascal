@@ -1,0 +1,7 @@
+{
+  "steps": [
+    {
+      "error_regex": "out of range for type"
+    }
+  ]
+}

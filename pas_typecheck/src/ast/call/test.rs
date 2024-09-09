@@ -62,9 +62,11 @@ fn resolves_overload_single() {
         function X(i: Int32);
         begin
         end;
+        
+        var i: Int32;
 
         initialization
-            var i: Int32 := 1;
+            i := 1;
         end
     ";
     let (candidates, mut ctx) = candidates_from_src(src);
