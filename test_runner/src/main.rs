@@ -42,11 +42,24 @@ fn main() -> Result<(), i32> {
     let test_files = TestCase::find_at_path(&opts.search_path);
     println!("found {} tests...", test_files.len());
 
+    let test_count = test_files.len();
+    let mut ok_count = 0;
+    let mut error_count = 0;
+
     for test_file in test_files {
-        if !test_file.run(&opts) && !opts.error_continue {
-            break;
+        if !test_file.run(&opts) {
+            if opts.error_continue {
+                error_count += 1;
+            } else {
+                break;
+            }
+        } else {
+            ok_count += 1;
         }
     }
+    
+    let skipped_count = test_count - (ok_count + error_count);
+        println!("OK: {ok_count}, ERRORS: {error_count}, SKIPPED: {skipped_count}");
     
     Ok(())
 }
