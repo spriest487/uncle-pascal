@@ -12,12 +12,12 @@ end;
 type Impl = class
 end;
 
-function A.Greet(self: Impl; a: Integer)
+function Greet of A(self: Impl; a: Integer);
 begin
     WriteLn('hello from A');
 end;
 
-function B.Greet(self: Impl; b: Boolean)
+function Greet of B(self: Impl; b: Boolean);
 begin
     WriteLn('hello from B');
 end;

@@ -1,4 +1,4 @@
-initialization
+implementation
 uses System;
 
 function RefHello(var s: String);
@@ -15,7 +15,7 @@ begin
 end;
 
 initialization
-    var x := '';
+    var x := 'Hi!';
     
     RefHello(x);
     WriteLn('message is now: ' + x);

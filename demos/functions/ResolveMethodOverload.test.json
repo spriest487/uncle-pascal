@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "output": "hello from A" },
+    { "output": "hello from B" }
+  ]
+}

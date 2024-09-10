@@ -1,5 +1,6 @@
 {
   "steps": [
+    { "output": "RefHello says: Hi!" },
     { "output": "message is now: Hello, world!" },
     { "output": "message is now: Hello again!" },
     { "output": "message is now: Hello again!" }
