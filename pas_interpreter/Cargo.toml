@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 pas_ir = { path = "../pas_ir" }
 pas_common = { path = "../pas_common" }
-libffi = "2.0.0"
+libffi = "3.2.0"
 dlopen = "0.1.8"
 cast = "0.3.0"
 smallvec = "1.8.0"
