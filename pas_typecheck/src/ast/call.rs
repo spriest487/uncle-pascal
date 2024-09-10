@@ -134,19 +134,25 @@ pub fn typecheck_call(
         ast::Call::Function(func_call) => func_call,
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
     };
+    
+    let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
 
     // if the call target is a no-args call itself and this is also a no-args call, we are just
     // applying an empty argument list to the same call, so just unwrap it here
     // e.g. if we call `procedure X;` with `X()`, `X` is already a valid call on its own
     // there are edge cases here like functions that return callable types themselves, but
     // they can be disambiguated by various means in the code
-    let target = match typecheck_expr(&func_call.target, &Type::Nothing, ctx)? {
-        Expr::Call(call) => match *call {
-            Call::FunctionNoArgs(call) => call.target,
-            call => Expr::from(call),
+    let (target, self_arg) = if call.args().len() == 0 {
+        match target {
+            Expr::Call(call) => match *call {
+                Call::FunctionNoArgs(call) => (call.target, None),
+                Call::MethodNoArgs(call) => (call.target, Some(call.self_arg)),
+                other_call => (Expr::from(other_call), None),
+            }
+            other => (other, None)
         }
-
-        target => target,
+    } else {
+        (target, None)
     };
 
     let expr = match target.annotation() {
@@ -197,7 +203,7 @@ pub fn typecheck_call(
         },
 
         TypeAnnotation::InterfaceMethod(iface_method) => {
-            typecheck_iface_method_call(iface_method, func_call, ctx)
+            typecheck_iface_method_call(iface_method, func_call, self_arg, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
@@ -333,9 +339,18 @@ fn typecheck_func_overload(
     Ok(call)
 }
 
+/// * `iface_method` - Method to be called
+/// * `func_call` - Source node of this call
+/// * `with_self_arg` - If present, an expression which in a previous phase has been determined
+///     to be the self-argument of this call. For example, when converting a call like `a.B` which
+///     was previously read as a no-args call and is now being converted into a full call (`a.B()`),
+///     the `a` reference is the self-arg, but isn't part of the argument list `()` of the outer
+///     call expression, so needs to be provided separately
+/// * `ctx` - current typechecking context
 fn typecheck_iface_method_call(
     iface_method: &InterfaceMethodAnnotation,
     func_call: &ast::FunctionCall<Span>,
+    with_self_arg: Option<Expr>,
     ctx: &mut Context,
 ) -> TypecheckResult<Call> {
     // not yet supported
@@ -351,22 +366,26 @@ fn typecheck_iface_method_call(
     }
 
     // branch the context to check the self-arg, because we're about to re-check it in a second
-    let self_type = {
-        let mut ctx = ctx.clone();
-        let first_self_pos = iface_method
-            .method_sig
-            .params
-            .iter()
-            .position(|param| param.ty == Type::MethodSelf)
-            .expect("method function must have at least one argument with Self type");
+    let self_type = match &with_self_arg {
+        Some(self_arg) => self_arg.annotation().ty(),
 
-        // note that this isn't the "self arg" used for typecheck_args, because we're not passing
-        // it implicitly as a separate arg (like the self-arg `x` of `x.Y()` in a UFCS call).
-        // it's just the first arg from which we can infer the self-type
-        let first_self_arg =
-            typecheck_expr(&func_call.args[first_self_pos], &Type::Nothing, &mut ctx)?;
+        None => {
+            let mut ctx = ctx.clone();
+            let first_self_pos = iface_method
+                .method_sig
+                .params
+                .iter()
+                .position(|param| param.ty == Type::MethodSelf)
+                .expect("method function must have at least one argument with Self type");
 
-        first_self_arg.annotation().ty().into_owned()
+            // note that this isn't the "self arg" used for typecheck_args, because we're not passing
+            // it implicitly as a separate arg (like the self-arg `x` of `x.Y()` in a UFCS call).
+            // it's just the first arg from which we can infer the self-type
+            let first_self_arg =
+                typecheck_expr(&func_call.args[first_self_pos], &Type::Nothing, &mut ctx)?;
+
+            Cow::Owned(first_self_arg.annotation().ty().into_owned())
+        }
     };
 
     let iface_ident = match iface_method.iface_ty.as_iface() {
@@ -381,16 +400,20 @@ fn typecheck_iface_method_call(
         return Err(TypecheckError::InterfaceNotImplemented {
             iface_ty: iface_method.iface_ty.clone(),
             span: func_call.span().clone(),
-            self_ty: self_type,
+            self_ty: self_type.into_owned(),
         });
     }
 
     let sig = iface_method.method_sig.with_self(&self_type);
 
-    let typechecked_args =
-        build_args_for_params(&sig.params, &func_call.args, None, func_call.span(), ctx)?;
+    let typechecked_args = build_args_for_params(
+        &sig.params, 
+        &func_call.args, 
+        with_self_arg.as_ref(), 
+        func_call.span(), ctx
+    )?;
 
-    Ok(ast::Call::Method(MethodCall {
+    Ok(Call::Method(MethodCall {
         annotation: TypedValueAnnotation {
             ty: sig.return_ty.clone(),
             span: func_call.span().clone(),
@@ -400,7 +423,7 @@ fn typecheck_iface_method_call(
         .into(),
         args_span: func_call.args_span.clone(),
         func_type: Type::Function(Rc::new(sig)),
-        self_type,
+        self_type: self_type.into_owned(),
         iface_type: iface_method.iface_ty.clone(),
         ident: iface_method.method_ident.clone(),
         type_args: None,

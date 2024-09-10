@@ -55,7 +55,10 @@ pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
 impl Spanned for ParseError {
     fn span(&self) -> &Span {
         match self {
-            ParseError::UnexpectedToken(tt, _) => tt.span(),
+            ParseError::UnexpectedToken(tt, _) => match tt.as_ref() {
+                TokenTree::Delimited(group) => group.open.span(),
+                _ => tt.span(),
+            },
             ParseError::UnexpectedEOF(_, tt) => tt.span(),
             ParseError::EmptyOperand { operator, .. } => operator.span(),
             ParseError::UnexpectedOperator { operator } => operator.span(),
