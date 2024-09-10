@@ -1,9 +1,9 @@
 implementation
 uses System;
 
-function Add(a, b: Integer): Integer
+function Add(a, b: Integer): Integer;
 begin
-    let result: Integer := a + b;
+    var result: Integer := a + b;
     result
 end;
 

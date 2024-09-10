@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "output": "message is now: Hello, world!" },
+    { "output": "message is now: Hello again!" },
+    { "output": "message is now: Hello again!" }
+  ]
+}

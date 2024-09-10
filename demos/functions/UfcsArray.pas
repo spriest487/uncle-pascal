@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 initialization

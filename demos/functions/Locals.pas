@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 function X();
@@ -9,4 +10,6 @@ begin
     WriteLn(i.ToString());
 end;
 
-X();
+initialization
+    X();
+end

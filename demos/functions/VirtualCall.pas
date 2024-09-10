@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type NumberSource = interface
@@ -8,12 +9,14 @@ type NumberHolder = class
     number: Integer;
 end;
 
-function GetNumber of NumberSource(self: NumberHolder): Integer
+function GetNumber of NumberSource(self: NumberHolder): Integer;
 begin
     self.number
 end;
 
-let source: NumberSource := NumberHolder(number: 123);
-
-let number := source.GetNumber();
-WriteLn(IntToStr(number));
+initialization
+    var source: NumberSource := NumberHolder(number: 123);
+    
+    var number := source.GetNumber();
+    WriteLn(IntToStr(number));
+end

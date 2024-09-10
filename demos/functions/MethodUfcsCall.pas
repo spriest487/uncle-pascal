@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Greeting = interface
@@ -7,17 +8,19 @@ end;
 type HelloWorld = class
 end;
 
-function Greeting.Greet(self: HelloWorld)
+function Greet of Greeting(self: HelloWorld);
 begin
     WriteLn('Hello, world');
 end;
 
-function Greeting.Greet(self: String)
+function Greet of Greeting(self: String);
 begin
     WriteLn('Hello, ' + self);
 end;
 
-let hw := HelloWorld();
-
-hw.Greet();
-'Alice'.Greet();
+initialization
+    var hw := HelloWorld();
+    
+    hw.Greet();
+    'Alice'.Greet();
+end

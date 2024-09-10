@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type A = interface
@@ -21,6 +22,8 @@ begin
     WriteLn('hello from B');
 end;
 
-let i := Impl();
-i.Greet(1);
-i.Greet(true);
+initialization
+    var i := Impl();
+    i.Greet(1);
+    i.Greet(true);
+end

@@ -1,6 +1,7 @@
+initialization
 uses System;
 
-function RefHello(var s: String)
+function RefHello(var s: String);
 begin
     // ok: ref param must already be initialized
     WriteLn('RefHello says: ' + s);
@@ -8,42 +9,21 @@ begin
     s := 'Hello, world!';
 end;
 
-function OutHello(out s: String)
+function OutHello(out s: String);
 begin
-    // error: not initialized
-    // WriteLn(s);
-
     s := 'Hello again!';
 end;
 
-{
-// error: not mutable
-let s := '';
-RefHello(s);
-OutHello(s);
-}
-
-{
-// error: in-ref not initialized
-var uninit: String;
-RefHello(uninit);
-}
-
-{
-var x := ['Salutations'];
-// error: not a referencable expression (yet?)
-RefHello(x[0]);
-}
-
-var x := '';
-
-OutHello(x);
-WriteLn('message is now: ' + x);
-
-
-RefHello(x);
-WriteLn('message is now: ' + x);
-
-var y: String;
-OutHello(y);
-WriteLn('message is now: ' + y);
+initialization
+    var x := '';
+    
+    RefHello(x);
+    WriteLn('message is now: ' + x);
+    
+    OutHello(x);
+    WriteLn('message is now: ' + x);
+    
+    var y: String;
+    OutHello(y);
+    WriteLn('message is now: ' + y);
+end
