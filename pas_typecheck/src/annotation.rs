@@ -129,7 +129,7 @@ impl InterfaceMethodAnnotation {
     }
 
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg: &Type) -> bool {
-        self.method_sig.should_call_noargs_in_expr(expect_ty, Some(self_arg))
+        self.method_sig.should_call_noargs_in_expr(expect_ty, self_arg)
     }
 }
 
@@ -153,7 +153,7 @@ impl FunctionAnnotation {
     }
 
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type) -> bool {
-        self.sig.should_call_noargs_in_expr(expect_ty, None)
+        self.sig.should_call_noargs_in_expr(expect_ty, &Type::Nothing)
     }
 }
 
@@ -223,7 +223,7 @@ impl UfcsFunctionAnnotation {
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type) -> bool {
         let self_arg_ty = self.self_arg.annotation().ty();
 
-        self.sig.should_call_noargs_in_expr(expect_ty, Some(self_arg_ty.as_ref()))
+        self.sig.should_call_noargs_in_expr(expect_ty, self_arg_ty.as_ref())
     }
 }
 

@@ -406,6 +406,13 @@ impl Type {
         }
     }
 
+    pub fn as_something(&self) -> Option<&Self> {
+        match self {
+            Type::Nothing => None,
+            ty => Some(ty),
+        }
+    }
+
     pub fn expect_something(self, msg: &str) -> Self {
         match self {
             Type::Nothing => panic!("expected a type: {}", msg),

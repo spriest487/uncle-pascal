@@ -231,7 +231,9 @@ pub fn typecheck_call(
         .map(Box::new)
         .map(Invocation::Call)?,
 
-        _ => return Err(TypecheckError::NotCallable(Box::new(target))),
+        _ => {
+            return Err(TypecheckError::NotCallable(Box::new(target)))
+        },
     };
 
     Ok(expr)

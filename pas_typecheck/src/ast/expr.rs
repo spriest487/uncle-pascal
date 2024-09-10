@@ -313,7 +313,7 @@ fn typecheck_ident(
             value: Decl::Function { sig, .. },
             parent_path,
             ..
-        } if sig.should_call_noargs_in_expr(expect_ty, None) => {
+        } if sig.should_call_noargs_in_expr(expect_ty, &Type::Nothing) => {
             let annotation = TypedValueAnnotation {
                 decl: None,
                 span: span.clone(),

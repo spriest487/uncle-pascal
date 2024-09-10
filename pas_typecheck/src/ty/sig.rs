@@ -306,7 +306,7 @@ impl FunctionSig {
     /// than a call to the function. it could never refer to the return value of the function,
     /// since it's impossible for a function to return a function with its own signature, which
     /// would be a recursive type
-    pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg_ty: Option<&Type>) -> bool {
+    pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg_ty: &Type) -> bool {
         // functions with type params can't be called without arguments
         if self.type_params.is_some() {
             return false;
@@ -315,12 +315,12 @@ impl FunctionSig {
         // if we expect a self-param (eg the `a` in the no-args call `a.B`), it can only be a
         // no-args call if there is exactly one param. 
         // if there's no self-param, there must be zero actual args
-        let expect_params_len = match self_arg_ty {
-            Some(..) => 1,
-            None => 0,
+        let with_params_len = match self_arg_ty {
+            Type::Nothing => 0,
+            _ => 1,
         };
 
-        if self.params.len() != expect_params_len {
+        if self.params.len() != with_params_len {
             return false;
         }
 
@@ -328,12 +328,12 @@ impl FunctionSig {
             // does the expected type of this value match the full sig (after including self, if
             // applicable)? if so we aren't calling the function, we're referencing it
             Type::Function(expect_sig) => match self_arg_ty {
-                Some(self_ty) => {
-                    let actual_sig = self.with_self(self_ty);
-                    **expect_sig != actual_sig
-                },
+                Type::Nothing => **expect_sig != *self,
 
-                None => **expect_sig != *self,
+                ty => {
+                    let actual_sig = self.with_self(ty);
+                    **expect_sig != actual_sig
+                }
             },
 
             _ => true,
@@ -381,7 +381,7 @@ impl FunctionSig {
             Type::Nothing => TypeAnnotation::Untyped(span),
             return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
         };
-
+        
         MethodCallNoArgs {
             annotation: func_val_annotation,
             self_arg,

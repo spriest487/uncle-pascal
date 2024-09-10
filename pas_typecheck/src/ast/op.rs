@@ -549,12 +549,12 @@ fn resolve_no_args_overload<'a>(overloaded: &'a OverloadAnnotation, expect_ty: &
     for candidate in &overloaded.candidates {
         let should_call_no_args = match candidate {
             OverloadCandidate::Function { sig, .. } => {
-                sig.should_call_noargs_in_expr(expect_ty, None)
+                sig.should_call_noargs_in_expr(expect_ty, &Type::Nothing)
             }
 
             OverloadCandidate::Method { sig, .. } => {
                 let self_arg_ty = self_arg.annotation().ty();
-                sig.should_call_noargs_in_expr(expect_ty, Some(&self_arg_ty))
+                sig.should_call_noargs_in_expr(expect_ty, &self_arg_ty)
             }
         };
 
