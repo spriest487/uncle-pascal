@@ -951,6 +951,13 @@ impl Context {
             None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
+    
+    pub fn is_iface_callable(&self, self_ty: &Type, iface_name: &IdentPath) -> bool {
+        match self_ty {
+            Type::Interface(ident_path) => ident_path.as_ref() == iface_name,
+            _ => self.is_iface_impl(self_ty, iface_name), 
+        }
+    }
 
     pub fn is_iface_impl(&self, self_ty: &Type, iface_name: &IdentPath) -> bool {
         match self_ty {

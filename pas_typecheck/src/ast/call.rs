@@ -396,7 +396,7 @@ fn typecheck_iface_method_call(
         ),
     };
 
-    if !ctx.is_iface_impl(&self_type, iface_ident) {
+    if !ctx.is_iface_callable(&self_type, iface_ident) {
         return Err(TypecheckError::InterfaceNotImplemented {
             iface_ty: iface_method.iface_ty.clone(),
             span: func_call.span().clone(),
@@ -1112,7 +1112,7 @@ pub fn resolve_overload(
                 let iface_name = iface_ty.as_iface().expect(
                     "can't be a self-less method if the iface type isn't a declared interface!",
                 );
-                if !ctx.is_iface_impl(self_ty, iface_name) {
+                if !ctx.is_iface_callable(self_ty, iface_name) {
                     return Err(TypecheckError::InterfaceNotImplemented {
                         iface_ty: iface_ty.clone(),
                         self_ty: self_ty.clone(),
