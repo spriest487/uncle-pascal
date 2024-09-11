@@ -40,11 +40,11 @@ pub fn typecheck_func_decl(
             .find(|m| m.keyword() == DeclMod::EXTERNAL_WORD)
         {
             if let Some(decl_type_params) = &decl.type_params {
-                let ty_args_span = decl_type_params.items[0].ident.span().to(decl_type_params
+                let ty_args_span = decl_type_params.items[0].name.span().to(decl_type_params
                     .items
                     .last()
                     .unwrap()
-                    .ident
+                    .name
                     .span());
                 return Err(TypecheckError::ExternalGenericFunction {
                     func: decl.ident.last().clone(),
@@ -196,6 +196,7 @@ pub fn typecheck_func_def(
     
     let body_env = Environment::FunctionBody {
         result_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
+        ty_params: decl.type_params.clone(),
     }; 
     
     ctx.scope(body_env, |ctx| {

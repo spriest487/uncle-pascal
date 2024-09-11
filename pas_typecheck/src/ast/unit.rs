@@ -175,7 +175,7 @@ fn typecheck_type_decl_item(
                 .iter()
                 .map(|p| {
                     ast::TypeParam {
-                        ident: p.clone(),
+                        name: p.clone(),
 
                         // todo: support type constraints for type decls
                         constraint: None,

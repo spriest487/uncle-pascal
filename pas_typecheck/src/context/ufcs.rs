@@ -86,7 +86,7 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
         let self_param = &sig.params[0];
 
         if self_param.ty == *ty
-            || (self_param.ty.contains_generic_params() && self_param.ty.same_decl_type(ty))
+            || (self_param.ty.contains_generic_params(ctx) && self_param.ty.same_decl_type(ty))
         {
             methods.push(InstanceMethod::FreeFunction {
                 func_name: decl_path.clone(),

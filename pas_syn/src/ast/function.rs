@@ -159,7 +159,7 @@ impl FunctionDecl<Span> {
                     };
 
                     type_params.push(TypeParam {
-                        ident: type_param_ident.clone(),
+                        name: type_param_ident.clone(),
                         constraint,
                     })
                 }
@@ -168,7 +168,7 @@ impl FunctionDecl<Span> {
                 if !where_clause.constraints.is_empty() {
                     let first_bad = where_clause.constraints.remove(0);
                     // just error on the first one
-                    let is_duplicate = type_params.iter().any(|p| p.ident == first_bad.param_ident);
+                    let is_duplicate = type_params.iter().any(|p| p.name == first_bad.param_ident);
                     return Err(TracedError::trace(if is_duplicate {
                         ParseError::TypeConstraintAlreadySpecified(first_bad)
                     } else {
@@ -196,7 +196,7 @@ impl FunctionDecl<Span> {
                     .items
                     .iter()
                     .map(|ident| TypeParam {
-                        ident: ident.clone(),
+                        name: ident.clone(),
                         constraint: None,
                     })
                     .collect();

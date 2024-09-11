@@ -941,7 +941,7 @@ pub fn typecheck_indexer(
 
     let base_ty = base.annotation().ty();
 
-    let (el_ty, value_kind) = match (base_ty.index_element_ty(), base.annotation().value_kind()) {
+    let (el_ty, value_kind) = match (base_ty.element_ty(), base.annotation().value_kind()) {
         (Some(el_ty), Some(base_value_kind)) => {
             let base_value_kind = if base.annotation().ty().is_by_ref() {
                 // on heap e.g. dynamic array, always mutable

@@ -192,17 +192,28 @@ impl Type {
 
     /// is this type, or any of the type parameters that it contains, a generic param type?
     /// e.g. in the sig `X[T](a: Box[T])`, the type of param `a` is "Box of type param 0".
-    pub fn contains_generic_params(&self) -> bool {
-        if self.is_generic_param() {
-            return true;
+    /// if this type appears in a context where the params already refer to specific types, 
+    /// for example in the body of a function where this type refers to one of the function's type
+    /// params, we ignore those types since they'll be real types when actually used
+    pub fn contains_generic_params(&self, ctx: &Context) -> bool {
+        if let Type::GenericParam(ty_param_ty) = self {
+            return if let Some(ctx_ty_params) = ctx.current_func_ty_params() {
+                let is_param_defined_in_scope = ctx_ty_params.iter()
+                    .find(|p| ty_param_ty.name == p.name)
+                    .is_some();
+
+                !is_param_defined_in_scope
+            } else {
+                true
+            }
         }
 
         if let TypeArgsResult::Specialized(type_args) = &self.type_args() {
-            return type_args.items.iter().any(|a| a.contains_generic_params());
+            return type_args.items.iter().any(|a| a.contains_generic_params(ctx));
         }
 
         if let Some(array_el) = self.array_element_ty() {
-            return array_el.contains_generic_params();
+            return array_el.contains_generic_params(ctx);
         }
 
         false
@@ -420,7 +431,7 @@ impl Type {
         }
     }
 
-    pub fn index_element_ty(&self) -> Option<&Type> {
+    pub fn element_ty(&self) -> Option<&Type> {
         match self {
             Type::Array(array_ty) => Some(&array_ty.element_ty),
             Type::DynArray { element } => Some(element.as_ref()),

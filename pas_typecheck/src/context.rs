@@ -75,7 +75,7 @@ pub enum Environment {
     Namespace { namespace: IdentPath },
     TypeDecl,
     FunctionDecl,
-    FunctionBody { result_ty: Type },
+    FunctionBody { result_ty: Type, ty_params: Option<TypeParamList> },
     ClosureBody { result_ty: Type, captures: LinkedHashMap<Ident, Type> },
     Block { allow_unsafe: bool },
 }
@@ -305,8 +305,19 @@ impl Context {
     pub fn current_func_return_ty(&self) -> Option<&Type> {
         for scope in self.scopes.iter().rev() {
             match scope.env() {
-                Environment::FunctionBody { result_ty } => return Some(result_ty),
+                Environment::FunctionBody { result_ty, .. } => return Some(result_ty),
                 Environment::ClosureBody { result_ty, .. } => return Some(result_ty),
+                _ => continue,
+            }
+        }
+
+        None
+    }
+
+    pub fn current_func_ty_params(&self) -> Option<&TypeParamList> {
+        for scope in self.scopes.iter().rev() {
+            match scope.env() {
+                Environment::FunctionBody { ty_params, .. } => return ty_params.as_ref(),
                 _ => continue,
             }
         }
@@ -486,9 +497,9 @@ impl Context {
                 .map(Box::new);
 
             self.declare_type(
-                param.ident.clone(),
+                param.name.clone(),
                 Type::GenericParam(Box::new(TypeParamType {
-                    name: param.ident.clone(),
+                    name: param.name.clone(),
                     is_iface,
                     pos,
                 })),

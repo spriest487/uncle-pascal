@@ -201,24 +201,16 @@ pub fn typecheck_collection_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<CollectionCtor> {
-    let (mut elements, element_ty) = match expect_ty.index_element_ty() {
-        None => {
+    let (mut elements, element_ty) = match expect_ty.element_ty() {
+        Some(elem_ty) if !elem_ty.contains_generic_params(ctx) => {
+            let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
+            (elements, elem_ty.clone())
+        },
+
+        _ => {
             let elements = elements_for_inferred_ty(ctor, ctx)?;
             let elem_ty = elements[0].value.annotation().ty().into_owned();
             (elements, elem_ty)
-        },
-
-        Some(elem_ty) => {
-            // todo: why was the true branch made to never execute previously?
-            if elem_ty.contains_generic_params() {
-                // hint type has unresolved generic params and can't be used as a hint, infer from collection
-                let elements = elements_for_inferred_ty(ctor, ctx)?;
-                let elem_ty = elements[0].value.annotation().ty().into_owned();
-                (elements, elem_ty)
-            } else {
-                let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
-                (elements, elem_ty.clone())
-            }
         },
     };
 

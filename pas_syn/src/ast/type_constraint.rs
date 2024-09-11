@@ -116,13 +116,13 @@ impl ParseSeq for WhereClauseItem {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TypeParam<T: Typed> {
-    pub ident: Ident,
+    pub name: Ident,
     pub constraint: Option<TypeConstraint<T>>,
 }
 
 impl<T: Typed> fmt::Display for TypeParam<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.ident)?;
+        write!(f, "{}", self.name)?;
         if let Some(constraint) = &self.constraint {
             write!(f, ": {}", constraint.is_ty)?;
         }

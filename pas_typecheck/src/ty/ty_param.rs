@@ -21,7 +21,7 @@ pub fn typecheck_type_params(
             Some(constraint) => {
                 let is_ty = typecheck_type(&constraint.is_ty, ctx)?;
                 Some(ast::TypeConstraint {
-                    param_ident: ty_param.ident.clone(),
+                    param_ident: ty_param.name.clone(),
                     span: constraint.span.clone(),
                     is_ty,
                 })
@@ -30,7 +30,7 @@ pub fn typecheck_type_params(
         };
 
         items.push(ast::TypeParam {
-            ident: ty_param.ident.clone(),
+            name: ty_param.name.clone(),
             constraint,
         });
     }
