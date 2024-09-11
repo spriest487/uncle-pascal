@@ -1,21 +1,26 @@
-type Box[T] = class
+implementation
+uses System;
+
+type TestBox[T] = class
     val: T;
 end;
 
-function BoxUp[T](val: T): Box[T]
+function BoxUp[T](val: T): TestBox[T];
 begin
-    Box(val: val)
+    TestBox(val: val)
 end;
 
-let i := 1;
-let iBox: Box[Integer] := BoxUp(i);
-
-let i2: Integer := iBox.val;
-
-System.WriteLn(System.IntToStr(i2));
-
-let s1 := 'test';
-let sBox: Box[System.String] := BoxUp(s1);
-let s2 := sBox.val;
-
-System.WriteLn(s2);
+initialization
+    var i := 1;
+    var iBox: TestBox[Integer] := BoxUp(i);
+    
+    var i2: Integer := iBox.val;
+    
+    System.WriteLn(System.IntToStr(i2));
+    
+    var s1 := 'test';
+    var sBox: TestBox[System.String] := BoxUp(s1);
+    var s2 := sBox.val;
+    
+    System.WriteLn(s2);
+end

@@ -1,11 +1,16 @@
-function GenFunc of T(t: T)
+implementation
+uses System;
+
+function GenFunc[T](t: T);
 begin
-    if t is System.String s then
-        System.WriteLn('called GenFunc with a string')
+    if t is String s then
+        WriteLn('called GenFunc with a string')
     else
-        System.WriteLn('called GenFunc with something else');
+        WriteLn('called GenFunc with something else');
 end;
 
-GenFunc(1);
-GenFunc('a');
-GenFunc(true);
+initialization
+    GenFunc(1);
+    GenFunc('a');
+    GenFunc(true);
+end

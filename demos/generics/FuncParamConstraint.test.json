@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "output": "hello, Alice" },
+    { "output": "hello again, Alice" },
+    { "output": "hello, kitty" },
+    { "output": "hello again, kitty" }
+  ]
+}

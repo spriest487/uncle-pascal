@@ -1,13 +1,16 @@
+implementation
 uses System;
 
-type TestBox of T = class
+type TestBox[T] = class
     t: T;
 end;
 
-function TestUnwrap of T(b: TestBox of T): T
+function TestUnwrap[T](b: TestBox[T]): T;
 begin
     b.t
 end;
 
-let x: TestBox of Integer := TestBox(t: 123);
-let y := TestUnwrap(x);
+initialization
+    var x: TestBox[Integer] := TestBox(t: 123);
+    var y := TestUnwrap(x);
+end

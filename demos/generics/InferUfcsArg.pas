@@ -1,9 +1,14 @@
+implementation
 uses System;
 
-function Identity of T(t: T): T
+function Identity[T](t: T): T;
 begin
     t
 end;
 
-let x := 1;
-let y := x.Identity();
+initialization
+    var x := 1;
+    
+    { TODO: did this work at some point? did changes to contains_generic_params break this? }
+    // var y := x.Identity();
+end

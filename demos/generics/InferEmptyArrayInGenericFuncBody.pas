@@ -1,7 +1,9 @@
+implementation
 uses System;
 
-function SomeFunc of T(t: T)
+function SomeFunc[T](t: T);
 begin
-    let x: array of Option of T := [];
+    var x: array of Option[T] := [];
 end;
 
+end
