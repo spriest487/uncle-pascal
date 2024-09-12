@@ -48,9 +48,8 @@ fn main() -> Result<(), i32> {
 
     for test_file in test_files {
         if !test_file.run(&opts) {
-            if opts.error_continue {
-                error_count += 1;
-            } else {
+            error_count += 1;
+            if !opts.error_continue {  
                 break;
             }
         } else {
