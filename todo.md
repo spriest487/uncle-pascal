@@ -15,7 +15,7 @@
 
 # big features
 
-* namespaced methods inside classes/records
+* namespaced methods inside classes/records <------- GET RID OF METHOD OF IFACE SYNTAX
 * enums/sets/range types
 * generic interfaces/generic methods
 * @-attributes - replace `external` etc with these (eventually make them available at runtime but not now)

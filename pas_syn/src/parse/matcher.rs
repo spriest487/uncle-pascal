@@ -96,15 +96,21 @@ impl fmt::Display for Matcher {
             Matcher::AnyLiteralBoolean => write!(f, "boolean literal"),
             Matcher::Exact(exact_token) => write!(f, "{}", exact_token),
             Matcher::OneOf(matchers) => {
-                write!(
-                    f,
-                    "one of: {}",
-                    matchers
-                        .iter()
-                        .map(|matcher| format!("{}", matcher))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
+                write!(f, "one of:")?;
+                
+                for i in 0..matchers.len() {
+                    if self.is_multiline_display() {
+                        writeln!(f)?;
+                        write!(f, "or {}", matchers[i])?
+                    } else {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", matchers[i])?;
+                    }
+                }
+                
+                Ok(())
             },
             Matcher::ExprOperandStart => {
                 write!(f, "expression")
@@ -220,6 +226,13 @@ impl Matcher {
     pub fn and_then(self, next_matcher: impl Into<Matcher>) -> SequenceMatcher {
         SequenceMatcher {
             sequence: vec![self, next_matcher.into()],
+        }
+    }
+
+    pub fn is_multiline_display(&self) -> bool {
+        match self {
+            Matcher::OneOf(matchers) => matchers.len() > 2,
+            _ => false,
         }
     }
 }

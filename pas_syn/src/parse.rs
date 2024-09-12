@@ -109,7 +109,11 @@ impl DiagnosticOutput for ParseError {
     fn label(&self) -> Option<DiagnosticLabel> {
         let text = match self {
             ParseError::UnexpectedToken(tt, Some(expected)) => {
-                format!("expected {}, found {}", expected, tt)
+                if expected.is_multiline_display() {
+                    format!("expected {}\nfound {}", expected, tt)
+                } else {
+                    format!("expected {}, found {}", expected, tt)
+                }
             }
 
             ParseError::UnexpectedToken(tt, None) => format!("unexpected {}", tt),

@@ -127,17 +127,19 @@ impl Unit<Span> {
                 init.extend(init_section);
             }
 
-            if has_interface || has_implementation || has_initialization {
-                // it's a structured unit, we expect nothing after the defined sections
-                tokens.match_one(Keyword::End)?;
-
-                // allow the traditional period after the final end
-                tokens.match_one_maybe(Operator::Period);
-            } else {
+            if !(has_interface || has_implementation || has_initialization) {
                 // empty units are invalid! use this to throw an error
-                tokens.match_one(unit_kind_kw_match.or(UnitDecl::start_matcher()))?;
+                tokens.match_one(unit_kind_kw_match
+                    .or(Keyword::Interface)
+                    .or(Keyword::Implementation)
+                    .or(Keyword::Initialization))?;
             }
         }
+
+        tokens.match_one(Keyword::End)?;
+
+        // allow the traditional period after the final end
+        tokens.match_one_maybe(Operator::Period);
 
         Ok(Unit {
             kind: unit_kind,
