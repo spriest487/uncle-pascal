@@ -1,8 +1,21 @@
-use crate::{
-    ast::Literal, Decl, Environment, ScopeMemberRef, ScopeStack, Primitive, Scope, ScopeID, Type,
-};
+use crate::ast::Literal;
+use crate::Decl;
+use crate::Environment;
+use crate::Primitive;
+use crate::Scope;
+use crate::ScopeMemberKind;
+use crate::ScopeMemberRef;
+use crate::ScopeStack;
+use crate::Type;
+use crate::ScopeID;
 use pas_common::span::Span;
-use pas_syn::{ast::Visibility, Ident, IdentPath};
+use pas_syn::ast::Visibility;
+use pas_syn::Ident;
+use pas_syn::IdentPath;
+
+fn new_global_scope() -> ScopeStack {
+    ScopeStack::new(Scope::new(ScopeID(0), Environment::Global))
+}
 
 fn new_scope(name: &str) -> Scope {
     let namespace = IdentPath::from_parts(vec![ident(name)]);
@@ -30,6 +43,13 @@ fn const_decl(val: i32) -> Decl {
         val: Literal::Integer(val.into()),
         visibility: Visibility::Interface,
     }
+}
+
+fn resolve_path<'a>(namespaces: &ScopeStack, path: impl IntoIterator<Item=&'a str>) -> ScopeMemberRef {
+    let path_parts = path.into_iter()
+        .map(ident);
+
+    namespaces.resolve_path(&IdentPath::from_parts(path_parts)).unwrap()
 }
 
 #[test]
@@ -418,12 +438,32 @@ fn find_fully_qualified_in_current_scope() {
     namespaces.push_scope(new_scope("A"));
     namespaces.push_scope(new_scope("B"));
     namespaces.insert_decl(ident("x"), const_decl(987)).unwrap();
-
-    let found = namespaces.resolve_path(&IdentPath::from_parts([
-        ident("A"),
-        ident("B"),
-        ident("x")
-    ])).unwrap();
+    
+    let found = resolve_path(&namespaces, ["A", "B", "x"]);
 
     assert_eq!(Some(const_decl(987)).as_ref(), found.as_value())
+}
+
+#[test]
+fn allow_decl_with_same_name_as_enclosing_scope() {
+    let mut namespaces = new_global_scope();
+    namespaces.push_scope(new_scope("Test1"));
+    let declare_const = namespaces.insert_decl(ident("Test1"), const_decl(123));
+    
+    assert!(declare_const.is_ok());
+}
+
+#[test]
+fn finds_decl_before_current_path() {
+    let mut namespaces = new_global_scope();
+    namespaces.push_scope(new_scope("Test1"));
+    namespaces.insert_decl(ident("Test1"), const_decl(123)).unwrap();
+    namespaces.pop_scope();
+
+    let test1_scope = resolve_path(&namespaces, ["Test1"]);
+    assert_eq!(ScopeMemberKind::Scope, test1_scope.kind());
+    
+    let test1_decl = test1_scope.as_scope().unwrap().find(&ident("Test1"));
+    assert!(test1_decl.is_some());
+    assert_eq!(ScopeMemberKind::Decl, test1_decl.unwrap().kind());
 }

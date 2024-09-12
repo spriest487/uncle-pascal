@@ -1,9 +1,13 @@
+use crate::scope::*;
+use crate::Decl;
+use crate::NameError;
+use crate::NameResult;
+use crate::ScopeMember;
+use crate::ScopeMemberRef;
+use pas_syn::ast::Visibility;
+use pas_syn::Ident;
+use pas_syn::IdentPath;
 use std::mem;
-use pas_syn::{
-    ast::Visibility,
-    Ident, IdentPath
-};
-use crate::{Decl, ScopeMember, ScopeMemberRef, NameError, ScopeMemberKind, NameResult, scope::*};
 
 #[derive(Debug, Clone)]
 pub struct ScopeStack {
@@ -53,15 +57,6 @@ impl ScopeStack {
     ) -> NameResult<()> {
         let member_key = member_key.into();
         let top = self.current_mut();
-
-        // trying to insert a key with the same name as the namespace
-        if top.key() == Some(&member_key) {
-            return Err(NameError::AlreadyDeclared {
-                new: member_key,
-                existing: IdentPath::from_parts(top.keys()),
-                existing_kind: ScopeMemberKind::Scope,
-            });
-        }
 
         top.insert_member(member_key.clone(), ScopeMember::Decl(decl))
     }

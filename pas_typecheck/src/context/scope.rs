@@ -129,9 +129,12 @@ impl Scope {
         for _ in 0..indent {
             write!(debug_str, "  ")?;
         }
+
+        write!(debug_str, "{}", self.env.kind_name())?;
+
         match self.env.namespace() {
-            Some(ns) => writeln!(debug_str, "Namespace scope: {}", ns)?,
-            None => writeln!(debug_str, "Anonymous scope")?,
+            Some(ns) => writeln!(debug_str, ": {}", ns)?,
+            None => writeln!(debug_str)?,
         }
 
         let mut members: Vec<_> = self.members().collect();
@@ -229,6 +232,13 @@ impl<'s> ScopeMemberRef<'s> {
         match self {
             ScopeMemberRef::Decl { value, .. } => Some(value),
             ScopeMemberRef::Scope { .. } => None,
+        }
+    }
+    
+    pub fn as_scope(&self) -> Option<&'s ScopePathRef> {
+        match self {
+            ScopeMemberRef::Decl { .. } => None,
+            ScopeMemberRef::Scope { path } => Some(path),
         }
     }
 

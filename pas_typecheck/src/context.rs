@@ -106,6 +106,18 @@ impl Environment {
             _ => None,
         }
     }
+    
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            Environment::Global => "Global",
+            Environment::Namespace { .. } => "Namespace",
+            Environment::TypeDecl => "TypeDecl",
+            Environment::FunctionDecl => "FunctionDecl",
+            Environment::FunctionBody { .. } => "FunctionBody",
+            Environment::ClosureBody { .. } => "ClosureBody",
+            Environment::Block { .. } => "Block",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -287,39 +299,68 @@ impl Context {
     }
 
     pub fn find_path(&self, path: &IdentPath) -> Option<ScopeMemberRef> {
+        // start by assuming any path we are searching for might be relative
+        self.find_path_rec(path, true)
+    }
+    
+    fn find_path_rec(&self, path: &IdentPath, path_is_relative: bool) -> Option<ScopeMemberRef> {
         match self.scopes.resolve_path(path) {
+            // found an alias - resolve using its real name
             Some(ScopeMemberRef::Decl {
-                     value: Decl::Alias(aliased),
-                     ..
-                 }) => self.find_path(aliased),
+                value: Decl::Alias(aliased),
+                ..
+            }) => self.find_path(aliased),
+            
+            // matches a decl
+            decl_ref @ Some(ScopeMemberRef::Decl { .. }) => decl_ref,
 
-            Some(member_ref) => Some(member_ref),
+            // matches a scope - does any decl match from a used unit though?
+            scope_ref @ Some(ScopeMemberRef::Scope { .. }) => {
+                if path_is_relative {
+                    // always resolve to a decl if one matches in any using, rather than a scope
+                    // even if the scope with this name is in this unit
+                    match self.find_path_in_used_units(path) {
+                        used_decl_ref @ Some(ScopeMemberRef::Decl { .. }) => used_decl_ref,
+                        None => scope_ref,
+                        used_scope_ref @ Some(ScopeMemberRef::Scope { .. }) => used_scope_ref,
+                    }
+                } else {
+                    scope_ref
+                }
+            },
 
-            None if path.len() == 1 => {
-                let current_path = self.scopes.current_path();
-
-                // try it as a qualified name in a used namespaces
-                // there can be multiple used units that declare the same name - if there's one
-                // result, we use that, otherwise it's ambiguous
-                let results: Vec<_> = current_path.all_used_units()
-                    .into_iter()
-                    .filter_map(|use_unit| {
-                        let mut path_in_unit = use_unit.clone();
-                        path_in_unit.extend(path.iter().cloned());
-
-                        self.find_path(&path_in_unit)
-                    })
-                    .collect();
-
-                // the last `uses` import always wins
-                results.into_iter().last()
-            }
-
+            // nothing matched in this scope, maybe in one of the used units
             None => {
-                None
+                if path_is_relative {
+                    self.find_path_in_used_units(path)
+                } else {
+                    None
+                }
             },
         }
     }
+    
+    
+    fn find_path_in_used_units(&self, path: &IdentPath) -> Option<ScopeMemberRef> {
+        let current_path = self.scopes.current_path();
+
+        // try it as a qualified name in a used namespaces
+        // there can be multiple used units that declare the same name - if there's one
+        // result, we use that, otherwise it's ambiguous
+        let results: Vec<_> = current_path.all_used_units()
+            .into_iter()
+            .filter_map(|use_unit| {
+                let mut path_in_unit = use_unit.clone();
+                path_in_unit.extend(path.iter().cloned());
+
+                // this should only be treated as an absolute path
+                self.find_path_rec(&path_in_unit, false)
+            })
+            .collect();
+
+        // the last `uses` import always wins
+        results.into_iter().last()
+    } 
 
     pub fn current_func_return_ty(&self) -> Option<&Type> {
         for scope in self.scopes.iter().rev() {

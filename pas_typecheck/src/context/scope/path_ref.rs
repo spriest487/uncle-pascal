@@ -22,12 +22,6 @@ impl<'s> ScopePathRef<'s> {
             let scope = &self.namespaces[current];
             let path = &self.namespaces[0..=current];
 
-            if scope.key() == Some(key) {
-                return Some(ScopeMemberRef::Scope {
-                    path: ScopePathRef { namespaces: path.to_vec() },
-                });
-            }
-
             if let Some((key, member)) = scope.get_member(key) {
                 return match member {
                     ScopeMember::Scope(ns) => {
@@ -49,6 +43,12 @@ impl<'s> ScopePathRef<'s> {
                         })
                     },
                 }
+            }
+
+            if scope.key() == Some(key) {
+                return Some(ScopeMemberRef::Scope {
+                    path: ScopePathRef { namespaces: path.to_vec() },
+                });
             }
 
             if current == 0 {
