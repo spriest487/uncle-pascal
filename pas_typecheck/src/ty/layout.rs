@@ -1,5 +1,5 @@
 use crate::ast::{StructDef, VARIANT_TAG_TYPE};
-use crate::{Context, GenericError, NameError, NameResult, Primitive, Type, TypeAnnotation};
+use crate::{Context, GenericError, NameError, NameResult, Primitive, Type, Typed};
 use pas_syn::ast::{StructKind, StructMember};
 use std::mem::size_of;
 
@@ -195,7 +195,7 @@ impl StructLayout {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StructLayoutMember<'a> {
     Data {
-        member: &'a StructMember<TypeAnnotation>,
+        member: &'a StructMember<Typed>,
         size: usize,
     },
     PaddingByte,

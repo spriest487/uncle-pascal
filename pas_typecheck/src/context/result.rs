@@ -1,4 +1,4 @@
-use crate::{context::Decl, Type, FunctionSig, TypeAnnotation, ScopeMemberKind};
+use crate::{context::Decl, Type, FunctionSig, Typed, ScopeMemberKind};
 use pas_common::{span::*};
 use pas_syn::{Ident, IdentPath};
 use std::{fmt};
@@ -177,9 +177,9 @@ pub enum NameContainer {
 }
 
 impl NameContainer {
-    pub fn for_annotated(a: &TypeAnnotation) -> Self {
+    pub fn for_annotated(a: &Typed) -> Self {
         match a {
-            TypeAnnotation::Namespace(ns, ..) => NameContainer::Namespace(ns.clone()),
+            Typed::Namespace(ns, ..) => NameContainer::Namespace(ns.clone()),
             _ => NameContainer::Type(a.ty().into_owned()),
         }
     }

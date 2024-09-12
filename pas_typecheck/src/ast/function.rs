@@ -1,19 +1,41 @@
-use crate::{ast::{const_eval_string, typecheck_block, typecheck_expr, InterfaceDecl}, string_type, typecheck_type, typecheck_type_params, Binding, Context, Environment, FunctionParamSig, FunctionSig, NameContainer, NameError, NameResult, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind, TypeList};
+use crate::ast::const_eval_string;
+use crate::ast::typecheck_block;
+use crate::ast::typecheck_expr;
+use crate::ast::InterfaceDecl;
+use crate::string_type;
+use crate::typecheck_type;
+use crate::typecheck_type_params;
+use crate::Binding;
+use crate::Context;
+use crate::Environment;
+use crate::FunctionParamSig;
+use crate::FunctionSig;
+use crate::NameContainer;
+use crate::NameError;
+use crate::NameResult;
+use crate::Type;
+use crate::Typed;
+use crate::TypecheckError;
+use crate::TypecheckResult;
+use crate::TypedValue;
+use crate::ValueKind;
+use crate::TypeList;
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
-use pas_syn::ast::{Typed, Visibility};
+use pas_syn::ast::Visibility;
+use pas_syn::ast::TypeAnnotation;
 use pas_syn::{ast, Ident};
 use std::rc::Rc;
 use crate::ast::const_eval::ConstEval;
 
-pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
-pub type DeclMod = ast::DeclMod<TypeAnnotation>;
-pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
-pub type FunctionParam = ast::FunctionParam<TypeAnnotation>;
-pub type InterfaceImpl = ast::InterfaceImpl<TypeAnnotation>;
-pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<TypeAnnotation>;
-pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<TypeAnnotation>;
-pub type FunctionLocalDecl = ast::FunctionLocalBinding<TypeAnnotation>;
+pub type FunctionDecl = ast::FunctionDecl<Typed>;
+pub type DeclMod = ast::DeclMod<Typed>;
+pub type FunctionDef = ast::FunctionDef<Typed>;
+pub type FunctionParam = ast::FunctionParam<Typed>;
+pub type InterfaceImpl = ast::InterfaceImpl<Typed>;
+pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Typed>;
+pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<Typed>;
+pub type FunctionLocalDecl = ast::FunctionLocalBinding<Typed>;
 
 fn typecheck_param(
     param: &ast::FunctionParam<Span>,
@@ -402,7 +424,7 @@ pub fn typecheck_func_expr(
     
     let body = body_result?;
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         decl: None,
         span: src_def.span().clone(),
         ty: Type::Function(sig),

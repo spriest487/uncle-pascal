@@ -1,5 +1,5 @@
 use crate::{
-    ast::{IdentTypeName, TypeName, Typed},
+    ast::{IdentTypeName, TypeName, TypeAnnotation},
     parse::{LookAheadTokenStream, Matcher, Parse, ParseError, ParseResult, ParseSeq, TokenStream},
     Ident, IdentPath, Keyword, Separator,
 };
@@ -10,31 +10,31 @@ use pas_common::{
 use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct TypeConstraint<T: Typed> {
+pub struct TypeConstraint<T: TypeAnnotation> {
     pub param_ident: Ident,
     pub is_ty: T,
     pub span: Span,
 }
 
-impl<T: Typed> fmt::Display for TypeConstraint<T> {
+impl<T: TypeAnnotation> fmt::Display for TypeConstraint<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} is {}", self.param_ident, self.is_ty)
     }
 }
 
-impl<T: Typed> Spanned for TypeConstraint<T> {
+impl<T: TypeAnnotation> Spanned for TypeConstraint<T> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct WhereClause<T: Typed> {
+pub struct WhereClause<T: TypeAnnotation> {
     pub constraints: Vec<TypeConstraint<T>>,
     pub span: Span,
 }
 
-impl<T: Typed> fmt::Display for WhereClause<T> {
+impl<T: TypeAnnotation> fmt::Display for WhereClause<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "where ")?;
         for (i, constraint) in self.constraints.iter().enumerate() {
@@ -47,7 +47,7 @@ impl<T: Typed> fmt::Display for WhereClause<T> {
     }
 }
 
-impl<T: Typed> Spanned for WhereClause<T> {
+impl<T: TypeAnnotation> Spanned for WhereClause<T> {
     fn span(&self) -> &Span {
         &self.span
     }
@@ -115,12 +115,12 @@ impl ParseSeq for WhereClauseItem {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct TypeParam<T: Typed> {
+pub struct TypeParam<T: TypeAnnotation> {
     pub name: Ident,
     pub constraint: Option<TypeConstraint<T>>,
 }
 
-impl<T: Typed> fmt::Display for TypeParam<T> {
+impl<T: TypeAnnotation> fmt::Display for TypeParam<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(constraint) = &self.constraint {

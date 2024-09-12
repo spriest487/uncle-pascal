@@ -3,7 +3,7 @@ use crate::{
         AnonymousFunctionDef, Expr, FunctionCall, FunctionCallNoArgs, FunctionDecl, FunctionParam,
         MethodCallNoArgs,
     },
-    Context, GenericError, GenericResult, GenericTarget, Type, TypeAnnotation, TypeArgsResolver,
+    Context, GenericError, GenericResult, GenericTarget, Type, Typed, TypeArgsResolver,
     TypeList, TypeParamList,
 };
 use pas_common::span::{Span, Spanned};
@@ -349,8 +349,8 @@ impl FunctionSig {
         type_args: Option<TypeList>,
     ) -> FunctionCall {
         let func_val_annotation = match &self.return_ty {
-            Type::Nothing => TypeAnnotation::Untyped(span),
-            return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
+            Type::Nothing => Typed::Untyped(span),
+            return_ty => Typed::new_temp_val(return_ty.clone(), span),
         };
 
         FunctionCall {
@@ -365,8 +365,8 @@ impl FunctionSig {
     pub fn new_no_args_function_call(&self, target: Expr) -> FunctionCallNoArgs {
         let span = target.span().clone();
         let func_val_annotation = match &self.return_ty {
-            Type::Nothing => TypeAnnotation::Untyped(span),
-            return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
+            Type::Nothing => Typed::Untyped(span),
+            return_ty => Typed::new_temp_val(return_ty.clone(), span),
         };
 
         FunctionCallNoArgs {
@@ -378,8 +378,8 @@ impl FunctionSig {
     pub fn new_no_args_method_call(&self, target: Expr, self_arg: Expr) -> MethodCallNoArgs {
         let span = target.span().clone();
         let func_val_annotation = match &self.return_ty {
-            Type::Nothing => TypeAnnotation::Untyped(span),
-            return_ty => TypeAnnotation::new_temp_val(return_ty.clone(), span),
+            Type::Nothing => Typed::Untyped(span),
+            return_ty => Typed::new_temp_val(return_ty.clone(), span),
         };
         
         MethodCallNoArgs {

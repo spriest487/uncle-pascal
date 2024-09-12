@@ -1,16 +1,16 @@
 use crate::ast::{expect_stmt_initialized, typecheck_alias, typecheck_struct_decl, typecheck_expr, typecheck_func_decl, typecheck_func_def, typecheck_iface, typecheck_stmt, typecheck_variant, Expr, typecheck_enum_decl};
-use crate::{ast::const_eval::ConstEval, typecheck_type, typecheck_type_params, Binding, ConstAnnotation, Context, Environment, ExpectedKind, ModuleUnit, NameError, Named, ScopeMemberRef, Symbol, Type, TypeAnnotation, TypecheckError, TypecheckResult, ValueKind};
+use crate::{ast::const_eval::ConstEval, typecheck_type, typecheck_type_params, Binding, ConstTyped, Context, Environment, ExpectedKind, ModuleUnit, NameError, Named, ScopeMemberRef, Symbol, Type, Typed, TypecheckError, TypecheckResult, ValueKind};
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, ast::Visibility, IdentPath};
 use std::rc::Rc;
 use pas_syn::ast::BindingDeclKind;
 
-pub type Unit = ast::Unit<TypeAnnotation>;
-pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
-pub type GlobalBinding = ast::GlobalBinding<TypeAnnotation>;
-pub type GlobalBindingItem = ast::GlobalBindingItem<TypeAnnotation>;
-pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
-pub type TypeDeclItem = ast::TypeDeclItem<TypeAnnotation>;
+pub type Unit = ast::Unit<Typed>;
+pub type UnitDecl = ast::UnitDecl<Typed>;
+pub type GlobalBinding = ast::GlobalBinding<Typed>;
+pub type GlobalBindingItem = ast::GlobalBindingItem<Typed>;
+pub type TypeDecl = ast::TypeDecl<Typed>;
+pub type TypeDeclItem = ast::TypeDeclItem<Typed>;
 
 fn typecheck_unit_decl(
     decl: &ast::UnitDecl<Span>,
@@ -322,7 +322,7 @@ fn typecheck_global_binding_item(
                 span.clone(),
             )?;
 
-            let annotation = ConstAnnotation {
+            let annotation = ConstTyped {
                 value: const_val_literal.clone(),
                 span: span.clone(),
                 decl: Some(item.ident.clone()),

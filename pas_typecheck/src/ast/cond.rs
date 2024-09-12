@@ -1,15 +1,15 @@
 use crate::ast::{implicit_conversion, typecheck_expr, typecheck_stmt, Stmt};
 use crate::{
-    ast::Expr, Binding, Context, Primitive, Type, TypeAnnotation, TypePattern, TypecheckError,
-    TypecheckResult, TypedValueAnnotation, ValueKind,
+    ast::Expr, Binding, Context, Primitive, Type, Typed, TypePattern, TypecheckError,
+    TypecheckResult, TypedValue, ValueKind,
 };
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
 use std::borrow::Cow;
 
-pub type IfCond<B> = ast::IfCond<TypeAnnotation, B>;
-pub type IfCondExpression = ast::IfCond<TypeAnnotation, Expr>;
-pub type IfCondStatement = ast::IfCond<TypeAnnotation, Stmt>;
+pub type IfCond<B> = ast::IfCond<Typed, B>;
+pub type IfCondExpression = ast::IfCond<Typed, Expr>;
+pub type IfCondStatement = ast::IfCond<Typed, Stmt>;
 
 fn typecheck_cond_expr<B>(
     if_cond: &ast::IfCond<Span, B>,
@@ -105,7 +105,7 @@ pub fn typecheck_if_cond_stmt(
         },
     };
 
-    let annotation = TypeAnnotation::Untyped(if_cond.span().clone());
+    let annotation = Typed::Untyped(if_cond.span().clone());
 
     Ok(IfCond {
         cond,
@@ -153,10 +153,10 @@ pub fn typecheck_if_cond_expr(
 
     let annotation = match (then_branch.annotation().ty(), else_branch.as_ref()) {
         (Cow::Owned(Type::Nothing) | Cow::Borrowed(Type::Nothing), _) | (_, None) => {
-            TypeAnnotation::Untyped(span)
+            Typed::Untyped(span)
         },
 
-        (then_ty, Some(_else_branch)) => TypedValueAnnotation {
+        (then_ty, Some(_else_branch)) => TypedValue {
             ty: then_ty.into_owned(),
             value_kind: ValueKind::Temporary,
             span,

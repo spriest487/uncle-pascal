@@ -1,13 +1,13 @@
 use crate::{
-    annotation::VariantCtorAnnotation,
+    annotation::VariantCtorTyped,
     ast::{
         const_eval_integer, implicit_conversion, member_annotation, typecheck_expr,
         typecheck_object_ctor, Call, Expr, MethodCall,
     },
-    string_type, Context, FunctionAnnotation, FunctionSig, InstanceMember,
-    InterfaceMethodAnnotation, NameContainer, NameError, OverloadAnnotation, Primitive, Symbol,
-    Type, TypeAnnotation, TypeMember, TypecheckError, TypecheckResult, TypedValueAnnotation,
-    UfcsFunctionAnnotation, ValueKind, DISPLAYABLE_IFACE_NAME, DISPLAYABLE_TOSTRING_METHOD,
+    string_type, Context, FunctionTyped, FunctionSig, InstanceMember,
+    MethodTyped, NameContainer, NameError, OverloadTyped, Primitive, Symbol,
+    Type, Typed, TypeMember, TypecheckError, TypecheckResult, TypedValue,
+    UfcsTyped, ValueKind, DISPLAYABLE_IFACE_NAME, DISPLAYABLE_TOSTRING_METHOD,
     SYSTEM_UNIT_NAME,
 };
 use pas_common::span::{Span, Spanned};
@@ -15,7 +15,7 @@ use pas_syn::{ast, Ident, IdentPath, IntConstant, Operator};
 use std::rc::Rc;
 use crate::ast::{OverloadCandidate};
 
-pub type BinOp = ast::BinOp<TypeAnnotation>;
+pub type BinOp = ast::BinOp<Typed>;
 
 fn invalid_bin_op(bin_op: &ast::BinOp<Span>, lhs: &Expr, rhs: &Expr) -> TypecheckError {
     TypecheckError::InvalidBinOp {
@@ -99,8 +99,8 @@ pub fn typecheck_bin_op(
             let result_ty = lhs.annotation().ty().into_owned();
 
             let annotation = match result_ty {
-                Type::Nothing => TypeAnnotation::Untyped(span.clone()),
-                ty => TypedValueAnnotation {
+                Type::Nothing => Typed::Untyped(span.clone()),
+                ty => TypedValue {
                     ty,
                     value_kind: ValueKind::Temporary,
                     span,
@@ -132,7 +132,7 @@ fn typecheck_logical_op(
     let rhs = typecheck_expr(&bin_op.rhs, &bool_ty, ctx)?;
     rhs.annotation().expect_value(&bool_ty)?;
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: bool_ty,
         value_kind: ValueKind::Temporary,
         span,
@@ -160,7 +160,7 @@ fn typecheck_equality(
         return Err(invalid_bin_op(bin_op, &lhs, &rhs));
     }
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: Type::Primitive(Primitive::Boolean),
         value_kind: ValueKind::Temporary,
         span,
@@ -190,7 +190,7 @@ fn typecheck_comparison(
         return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
     }
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: Type::Primitive(Primitive::Boolean),
         value_kind: ValueKind::Temporary,
         span,
@@ -235,7 +235,7 @@ fn typecheck_bitwise_op(
     }
 
     Ok(BinOp {
-        annotation: TypedValueAnnotation {
+        annotation: TypedValue {
             ty: lhs.annotation().ty().into_owned(),
             span: bin_op.span().clone(),
             value_kind: ValueKind::Temporary,
@@ -286,7 +286,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         args_span: span.clone(),
         self_type: src_ty.into_owned(),
         func_type: Type::Function(to_string_sig.clone()),
-        annotation: InterfaceMethodAnnotation {
+        annotation: MethodTyped {
             iface_ty: displayable_ty,
             method_ident: to_string_ident,
             span: span.clone(),
@@ -306,7 +306,7 @@ fn desugar_string_concat(
     ctx: &Context,
 ) -> TypecheckResult<Expr> {
     let span = lhs.annotation().span().to(rhs.annotation().span());
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: string_ty.clone(),
         span: span.clone(),
         value_kind: ValueKind::Temporary,
@@ -331,7 +331,7 @@ fn desugar_string_concat(
                 .find_function(&concat_path)
                 .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
-            let concat_annotation = FunctionAnnotation {
+            let concat_annotation = FunctionTyped {
                 ident: concat_path.clone(),
                 span: span.clone(),
                 sig: concat_sig.clone(),
@@ -370,16 +370,16 @@ fn typecheck_member_of(
 
             let annotation = match lhs.annotation() {
                 // x is the name of a variant type - we are constucting that variant
-                TypeAnnotation::Type(Type::Variant(variant_name), ..) => {
+                Typed::Type(Type::Variant(variant_name), ..) => {
                     typecheck_variant_ctor(variant_name, &member_ident, &span, ctx)?
                 },
 
                 // x is a non-variant typename - we are accessing a member of that type
                 // e.g. calling an interface method by its type-qualified name
-                TypeAnnotation::Type(ty, _) => typecheck_type_member(ty, &member_ident, span.clone(), ctx)?,
+                Typed::Type(ty, _) => typecheck_type_member(ty, &member_ident, span.clone(), ctx)?,
 
                 // x is a value - we are accessing a member of that value
-                TypeAnnotation::TypedValue(base_val) => typecheck_member_value(
+                Typed::TypedValue(base_val) => typecheck_member_value(
                     &lhs,
                     &base_val.ty,
                     base_val.value_kind,
@@ -388,7 +388,7 @@ fn typecheck_member_of(
                     ctx,
                 )?,
 
-                TypeAnnotation::Namespace(path, _) => {
+                Typed::Namespace(path, _) => {
                     let mut full_path = path.clone();
                     full_path.push(member_ident.clone());
 
@@ -429,7 +429,7 @@ fn typecheck_member_of(
             // member operations that reference function values with no params automatically turn into a
             // no-args call to that function, except in contexts where we expect a matching function value
             match &member_op.annotation {
-                TypeAnnotation::Function(func_annotation)
+                Typed::Function(func_annotation)
                     if func_annotation.should_call_noargs_in_expr(expect_ty) =>
                 {
                     let sig = func_annotation.sig.clone();
@@ -438,7 +438,7 @@ fn typecheck_member_of(
                     Ok(Expr::from(call))
                 },
 
-                TypeAnnotation::UfcsFunction(ufcs_annotation)
+                Typed::UfcsFunction(ufcs_annotation)
                     if ufcs_annotation.should_call_noargs_in_expr(expect_ty) =>
                 {
                     let sig = ufcs_annotation.sig.clone();
@@ -447,7 +447,7 @@ fn typecheck_member_of(
                     Ok(Expr::from(call))
                 },
 
-                TypeAnnotation::InterfaceMethod(method) if method.should_call_noargs_in_expr(expect_ty, &lhs_ty) => {
+                Typed::InterfaceMethod(method) if method.should_call_noargs_in_expr(expect_ty, &lhs_ty) => {
                     let sig = method.method_sig.clone();
                     let self_arg = member_op.lhs.clone();
                     let call = Call::MethodNoArgs(sig.new_no_args_method_call(Expr::from(member_op), self_arg));
@@ -455,13 +455,13 @@ fn typecheck_member_of(
                     Ok(Expr::from(call))
                 }
 
-                TypeAnnotation::Overload(overloaded) => {
+                Typed::Overload(overloaded) => {
                     // if any of the possible overloads can be called with no args, assume this expression
                     // is a no-args call - if arguments are applied later we'll re-resolve the overload
                     match resolve_no_args_overload(overloaded, expect_ty, &member_op.lhs) {
                         Some(OverloadCandidate::Function { decl_name, sig }) => {
                             let sig = sig.clone();
-                            member_op.annotation = TypeAnnotation::from(FunctionAnnotation {
+                            member_op.annotation = Typed::from(FunctionTyped {
                                 ident: decl_name.clone(),
                                 sig: sig.clone(),
                                 span: member_op.span().clone(),
@@ -473,7 +473,7 @@ fn typecheck_member_of(
 
                         Some(OverloadCandidate::Method { sig, ident, iface_ty, .. }) => {
                             let sig = sig.clone();
-                            member_op.annotation = TypeAnnotation::from(InterfaceMethodAnnotation {
+                            member_op.annotation = Typed::from(MethodTyped {
                                 iface_ty: iface_ty.clone(),
                                 method_ident: ident.clone(),
                                 method_sig: sig.clone(),
@@ -501,7 +501,7 @@ fn typecheck_member_of(
         ast::Expr::ObjectCtor(ctor) => {
             match lhs.annotation() {
                 // a must be a namespace qualifier before the constructed object name
-                TypeAnnotation::Namespace(ns_path, ..) => {
+                Typed::Namespace(ns_path, ..) => {
                     assert_eq!(
                         1,
                         ctor.ident.as_ref().unwrap().as_slice().len(),
@@ -543,7 +543,7 @@ fn typecheck_member_of(
     }
 }
 
-fn resolve_no_args_overload<'a>(overloaded: &'a OverloadAnnotation, expect_ty: &Type, self_arg: &Expr) -> Option<&'a OverloadCandidate> {
+fn resolve_no_args_overload<'a>(overloaded: &'a OverloadTyped, expect_ty: &Type, self_arg: &Expr) -> Option<&'a OverloadCandidate> {
     let mut result = None;
 
     for candidate in &overloaded.candidates {
@@ -576,14 +576,14 @@ fn typecheck_type_member(
     member_ident: &Ident,
     span: Span,
     ctx: &mut Context,
-) -> TypecheckResult<TypeAnnotation> {
+) -> TypecheckResult<Typed> {
     let type_member = ctx
         .find_type_member(ty, member_ident)
         .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
     let annotation = match type_member {
         TypeMember::Method { decl } => {
-            InterfaceMethodAnnotation::new(&decl, ty.clone(), span).into()
+            MethodTyped::new(&decl, ty.clone(), span).into()
         },
     };
 
@@ -597,7 +597,7 @@ pub fn typecheck_member_value(
     member_ident: &Ident,
     span: Span,
     ctx: &mut Context,
-) -> TypecheckResult<TypeAnnotation> {
+) -> TypecheckResult<Typed> {
     let member = ctx
         .find_instance_member(&lhs.annotation().ty(), &member_ident)
         .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
@@ -622,7 +622,7 @@ pub fn typecheck_member_value(
 
                 let iface_ty = Type::Interface(iface_id.clone());
 
-                OverloadAnnotation::method(
+                OverloadTyped::method(
                     iface_ty,
                     lhs.clone(),
                     method_decl.decl.clone(),
@@ -658,7 +658,7 @@ pub fn typecheck_member_value(
 
                 match method_decl {
                     Some(method_decl) => {
-                        OverloadAnnotation::method(iface_ty, lhs.clone(), method_decl, span.clone())
+                        OverloadTyped::method(iface_ty, lhs.clone(), method_decl, span.clone())
                     },
 
                     None => {
@@ -673,10 +673,10 @@ pub fn typecheck_member_value(
                 }
             };
 
-            TypeAnnotation::from(method)
+            Typed::from(method)
         },
 
-        InstanceMember::UFCSCall { func_name, sig } => UfcsFunctionAnnotation {
+        InstanceMember::UFCSCall { func_name, sig } => UfcsTyped {
             function_name: func_name,
             sig,
             span: span.clone(),
@@ -684,7 +684,7 @@ pub fn typecheck_member_value(
         }
         .into(),
 
-        InstanceMember::Overloaded { candidates } => OverloadAnnotation::new(
+        InstanceMember::Overloaded { candidates } => OverloadTyped::new(
             candidates,
             Some(Box::new(lhs.clone())),
             Vec::new(),
@@ -700,7 +700,7 @@ pub fn typecheck_member_value(
                 _ => value_kind,
             };
 
-            TypedValueAnnotation {
+            TypedValue {
                 ty: member_ty.clone(),
                 span: span.clone(),
                 value_kind,
@@ -718,7 +718,7 @@ pub fn typecheck_variant_ctor(
     member_ident: &Ident,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<TypeAnnotation> {
+) -> TypecheckResult<Typed> {
     assert!(
         variant_name.type_args.is_none(),
         "shouldn't be possible to have explicit type args for a variant constructor expr"
@@ -746,7 +746,7 @@ pub fn typecheck_variant_ctor(
         ));
     }
 
-    let ctor_annotation = VariantCtorAnnotation {
+    let ctor_annotation = VariantCtorTyped {
         variant_name: variant_name.qualified.clone(),
         case: member_ident.clone(),
         span: member_ident.span().clone(),
@@ -755,7 +755,7 @@ pub fn typecheck_variant_ctor(
     Ok(ctor_annotation.into())
 }
 
-pub type UnaryOp = ast::UnaryOp<TypeAnnotation>;
+pub type UnaryOp = ast::UnaryOp<Typed>;
 
 pub fn typecheck_unary_op(
     unary_op: &ast::UnaryOp<Span>,
@@ -816,7 +816,7 @@ pub fn typecheck_unary_op(
                     span,
                 }),
 
-                _ => Ok(TypedValueAnnotation {
+                _ => Ok(TypedValue {
                     ty: ty.into_owned().ptr(),
                     value_kind: ValueKind::Temporary,
                     span,
@@ -828,7 +828,7 @@ pub fn typecheck_unary_op(
 
         // unary +, is this always a no-op?
         Operator::Add if operand_ty.valid_math_op(Operator::Add, &operand_ty) => {
-            TypedValueAnnotation {
+            TypedValue {
                 ty: operand_ty.into_owned(),
                 value_kind: ValueKind::Temporary,
                 span,
@@ -839,7 +839,7 @@ pub fn typecheck_unary_op(
 
         // unary negation - should this be disallowed for unsigned types?
         Operator::Sub if operand_ty.valid_math_op(Operator::Sub, &operand_ty) => {
-            TypedValueAnnotation {
+            TypedValue {
                 ty: operand_ty.into_owned(),
                 value_kind: ValueKind::Temporary,
                 span,
@@ -861,7 +861,7 @@ pub fn typecheck_unary_op(
 
             let value_kind = ValueKind::Mutable;
 
-            TypedValueAnnotation {
+            TypedValue {
                 ty: deref_ty,
                 value_kind,
                 span,
@@ -875,7 +875,7 @@ pub fn typecheck_unary_op(
                 .annotation()
                 .expect_value(&Type::Primitive(Primitive::Boolean))?;
 
-            TypedValueAnnotation {
+            TypedValue {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Temporary,
                 span,
@@ -898,7 +898,7 @@ pub fn typecheck_unary_op(
                 });
             }
 
-            TypedValueAnnotation {
+            TypedValue {
                 ty: operand.annotation().ty().into_owned(),
                 value_kind: ValueKind::Temporary,
                 span,
@@ -964,7 +964,7 @@ pub fn typecheck_indexer(
         },
     };
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         value_kind,
         ty: el_ty,
         span: span.clone(),

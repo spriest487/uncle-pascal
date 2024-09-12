@@ -1,6 +1,6 @@
 use crate::{
     ast::{const_eval_integer, typecheck_expr, typecheck_func_decl, InterfaceMethodDecl},
-    typecheck_type, Context, NameError, Primitive, Symbol, Type, TypeAnnotation, TypecheckError,
+    typecheck_type, Context, NameError, Primitive, Symbol, Type, Typed, TypecheckError,
     TypecheckResult,
 };
 use pas_common::span::{Span, Spanned};
@@ -10,13 +10,13 @@ use pas_syn::{
     Ident, IntConstant,
 };
 
-pub type StructDef = ast::StructDef<TypeAnnotation>;
-pub type Member = ast::StructMember<TypeAnnotation>;
-pub type InterfaceDecl = ast::InterfaceDecl<TypeAnnotation>;
-pub type VariantDef = ast::VariantDef<TypeAnnotation>;
-pub type AliasDecl = ast::AliasDecl<TypeAnnotation>;
-pub type EnumDecl = ast::EnumDecl<TypeAnnotation>;
-pub type EnumDeclItem = ast::EnumDeclItem<TypeAnnotation>;
+pub type StructDef = ast::StructDef<Typed>;
+pub type Member = ast::StructMember<Typed>;
+pub type InterfaceDecl = ast::InterfaceDecl<Typed>;
+pub type VariantDef = ast::VariantDef<Typed>;
+pub type AliasDecl = ast::AliasDecl<Typed>;
+pub type EnumDecl = ast::EnumDecl<Typed>;
+pub type EnumDeclItem = ast::EnumDeclItem<Typed>;
 
 pub const VARIANT_TAG_TYPE: Type = Type::Primitive(Primitive::Int32);
 

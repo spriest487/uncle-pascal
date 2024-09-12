@@ -1,12 +1,12 @@
 use crate::ast::{typecheck_expr, typecheck_stmt, Expr, implicit_conversion, Stmt};
-use crate::{Binding, Context, Environment, Type, TypeAnnotation, TypePattern, TypecheckError, TypecheckResult, ValueKind, TypedValueAnnotation};
+use crate::{Binding, Context, Environment, Type, Typed, TypePattern, TypecheckError, TypecheckResult, ValueKind, TypedValue};
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
 
-pub type MatchBlock<B> = ast::MatchBlock<TypeAnnotation, B>;
+pub type MatchBlock<B> = ast::MatchBlock<Typed, B>;
 pub type MatchExpr = MatchBlock<Expr>;
 pub type MatchStmt = MatchBlock<Stmt>;
-pub type MatchBlockBranch<B> = ast::MatchBlockBranch<TypeAnnotation, B>;
+pub type MatchBlockBranch<B> = ast::MatchBlockBranch<Typed, B>;
 
 fn typecheck_match_cond<B>(
     match_block: &ast::MatchBlock<Span, B>,
@@ -114,7 +114,7 @@ pub fn typecheck_match_stmt(
             None => None,
         };
 
-        let annotation = TypeAnnotation::Untyped(match_stmt.span().clone());
+        let annotation = Typed::Untyped(match_stmt.span().clone());
 
         Ok(MatchStmt {
             cond_expr,
@@ -205,7 +205,7 @@ pub fn typecheck_match_expr(
             }
         }
 
-        let annotation = TypedValueAnnotation {
+        let annotation = TypedValue {
             ty: result_ty,
             span: match_expr.span().clone(),
             decl: None,

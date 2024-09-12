@@ -6,9 +6,9 @@ use crate::{ast::{
     expect_stmt_initialized,
     typecheck_expr,
     typecheck_stmt,
-}, Context, Environment, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind};
+}, Context, Environment, Type, Typed, TypecheckError, TypecheckResult, TypedValue, ValueKind};
 
-pub type Block = ast::Block<TypeAnnotation>;
+pub type Block = ast::Block<Typed>;
 
 pub fn typecheck_block(
     block: &ast::Block<Span>,
@@ -83,10 +83,10 @@ pub fn typecheck_block(
         let annotation = match &output {
             Some(out_expr) => {
                 if *out_expr.annotation().ty() == Type::Nothing {
-                    TypeAnnotation::Untyped(span)
+                    Typed::Untyped(span)
                 } else {
                     let out_ty = out_expr.annotation().ty().into_owned();
-                    TypedValueAnnotation {
+                    TypedValue {
                         ty: out_ty,
                         value_kind: ValueKind::Temporary,
                         span,
@@ -95,7 +95,7 @@ pub fn typecheck_block(
                         .into()
                 }
             },
-            None => TypeAnnotation::Untyped(span),
+            None => Typed::Untyped(span),
         };
 
         let block = Block {

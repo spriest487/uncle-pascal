@@ -11,14 +11,14 @@ use crate::{
     ast::{Block, CaseExpr, CaseStmt, IfCond, MatchStmt, Stmt},
     string_type,
     ty::FunctionParamSig,
-    typecheck_type, Context, Decl, FunctionAnnotation, NameError, Primitive, ScopeMemberRef, Type,
-    TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind,
+    typecheck_type, Context, Decl, FunctionTyped, NameError, Primitive, ScopeMemberRef, Type,
+    Typed, TypecheckError, TypecheckResult, TypedValue, ValueKind,
 };
 use pas_common::span::*;
 use pas_syn::{ast, ast::FunctionParamMod, Ident, IdentPath, IntConstant};
 use crate::ast::FunctionCallNoArgs;
 
-pub type Expr = ast::Expr<TypeAnnotation>;
+pub type Expr = ast::Expr<Typed>;
 pub type Literal = ast::Literal<Type>;
 
 pub fn const_eval_string(expr: &Expr, ctx: &Context) -> TypecheckResult<String> {
@@ -128,7 +128,7 @@ fn typecheck_literal(
     match lit {
         ast::Literal::String(s) => {
             let binding = ValueKind::Immutable;
-            let annotation = TypedValueAnnotation {
+            let annotation = TypedValue {
                 ty: string_type(ctx)?,
                 value_kind: binding,
                 span: span.clone(),
@@ -140,7 +140,7 @@ fn typecheck_literal(
         },
 
         ast::Literal::Boolean(b) => {
-            let annotation = TypedValueAnnotation {
+            let annotation = TypedValue {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Immutable,
                 span: span.clone(),
@@ -160,7 +160,7 @@ fn typecheck_literal(
                 unimplemented!("real literal outside range of f32")
             };
 
-            let annotation = TypedValueAnnotation {
+            let annotation = TypedValue {
                 ty,
                 value_kind: ValueKind::Immutable,
                 span: span.clone(),
@@ -180,7 +180,7 @@ fn typecheck_literal(
                 _ => Type::Nil,
             };
 
-            let annotation = TypedValueAnnotation {
+            let annotation = TypedValue {
                 ty,
                 value_kind: ValueKind::Temporary,
                 span: span.clone(),
@@ -192,7 +192,7 @@ fn typecheck_literal(
 
         ast::Literal::SizeOf(size_of_ty) => {
             let ty = typecheck_type(&size_of_ty, ctx)?;
-            let annotation = TypedValueAnnotation {
+            let annotation = TypedValue {
                 ty: Type::Primitive(Primitive::Int32),
                 span: span.clone(),
                 decl: None,
@@ -250,7 +250,7 @@ fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> Typec
         },
     };
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty,
         value_kind: ValueKind::Immutable,
         span,
@@ -297,7 +297,7 @@ fn typecheck_ident(
             key,
             ..
         } => {
-            let annotation = TypedValueAnnotation {
+            let annotation = TypedValue {
                 ty: ty.clone(),
                 decl: Some(key.clone()),
                 span: span.clone(),
@@ -314,14 +314,14 @@ fn typecheck_ident(
             parent_path,
             ..
         } if sig.should_call_noargs_in_expr(expect_ty, &Type::Nothing) => {
-            let annotation = TypedValueAnnotation {
+            let annotation = TypedValue {
                 decl: None,
                 span: span.clone(),
                 ty: sig.return_ty.clone(),
                 value_kind: ValueKind::Temporary,
             };
 
-            let func_annotation = FunctionAnnotation {
+            let func_annotation = FunctionTyped {
                 ident: parent_path.to_namespace().child(ident.clone()),
                 sig: sig.clone(),
                 span: span.clone(),
@@ -355,7 +355,7 @@ fn typecheck_ident(
     }
 }
 
-pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> TypeAnnotation {
+pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> Typed {
     match member {
         ScopeMemberRef::Decl {
             value: Decl::Alias(aliased),
@@ -371,7 +371,7 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
         ScopeMemberRef::Decl {
             value: Decl::BoundValue(binding),
             ..
-        } => TypedValueAnnotation {
+        } => TypedValue {
             span,
             ty: binding.ty.clone(),
             value_kind: binding.kind,
@@ -388,7 +388,7 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
                 panic!("empty path for decl {}", key);
             }
 
-            FunctionAnnotation {
+            FunctionTyped {
                 span,
                 ident: parent_path.to_namespace().child(key.clone()),
                 sig: sig.clone(),
@@ -403,7 +403,7 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
             value: Decl::Const { ty, .. },
             key,
             ..
-        } => TypedValueAnnotation {
+        } => TypedValue {
             ty: ty.clone(),
             decl: Some(key.clone()),
             span,
@@ -414,14 +414,14 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
         ScopeMemberRef::Decl {
             value: Decl::Type { ty, .. },
             ..
-        } => TypeAnnotation::Type(ty.clone(), span),
+        } => Typed::Type(ty.clone(), span),
 
         ScopeMemberRef::Decl {
             value: Decl::Namespace(path),
             ..
-        } => TypeAnnotation::Namespace(path.clone(), span),
+        } => Typed::Namespace(path.clone(), span),
         ScopeMemberRef::Scope { path } => {
-            TypeAnnotation::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
+            Typed::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
         },
     }
 }
@@ -484,7 +484,7 @@ pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypecheckResult<()
 
 fn expect_ident_initialized(
     ident: &Ident,
-    annotation: &TypeAnnotation,
+    annotation: &Typed,
     ctx: &Context,
 ) -> TypecheckResult<()> {
     match annotation.value_kind() {

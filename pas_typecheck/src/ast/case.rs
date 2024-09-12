@@ -1,12 +1,12 @@
 use crate::ast::{typecheck_expr, typecheck_stmt};
-use crate::{Context, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind};
+use crate::{Context, Type, Typed, TypecheckError, TypecheckResult, TypedValue, ValueKind};
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
 
-pub type CaseBranch<Item> = ast::CaseBranch<TypeAnnotation, Item>;
-pub type CaseBlock<Item> = ast::CaseBlock<TypeAnnotation, Item>;
-pub type CaseExpr = ast::CaseExpr<TypeAnnotation>;
-pub type CaseStmt = ast::CaseStmt<TypeAnnotation>;
+pub type CaseBranch<Item> = ast::CaseBranch<Typed, Item>;
+pub type CaseBlock<Item> = ast::CaseBlock<Typed, Item>;
+pub type CaseExpr = ast::CaseExpr<Typed>;
+pub type CaseStmt = ast::CaseStmt<Typed>;
 
 pub fn typecheck_case_stmt(
     case: &ast::CaseStmt<Span>,
@@ -39,7 +39,7 @@ pub fn typecheck_case_stmt(
         None => None,
     };
 
-    let annotation = TypeAnnotation::Untyped(case.span().clone());
+    let annotation = Typed::Untyped(case.span().clone());
 
     Ok(CaseStmt {
         cond_expr: Box::new(cond_expr),
@@ -105,7 +105,7 @@ pub fn typecheck_case_expr(
         },
     };
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         span,
         decl: None,
         value_kind: ValueKind::Temporary,

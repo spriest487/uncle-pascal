@@ -1,9 +1,9 @@
-use crate::{Context, Primitive, Type, TypeAnnotation, typecheck_type, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind};
+use crate::{Context, Primitive, Type, Typed, typecheck_type, TypecheckError, TypecheckResult, TypedValue, ValueKind};
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
 use crate::ast::{Expr, typecheck_expr};
 
-pub type Cast = ast::Cast<TypeAnnotation>;
+pub type Cast = ast::Cast<Typed>;
 
 enum Conversion {
     Blittable,
@@ -136,7 +136,7 @@ pub fn typecheck_cast_expr(cast: &ast::Cast<Span>, ctx: &mut Context) -> Typeche
 }
 
 fn create_cast(expr: Expr, cast_ty: Type, span: Span) -> Cast {
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: cast_ty.clone(),
         span,
         value_kind: ValueKind::Temporary,

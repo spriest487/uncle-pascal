@@ -6,7 +6,7 @@ use crate::{
 use pas_common::span::*;
 use pas_syn as syn;
 use pas_syn::Ident;
-use pas_ty::{TypeAnnotation, ValueKind};
+use pas_ty::{Typed, ValueKind};
 use pas_typecheck as pas_ty;
 use std::convert::TryFrom;
 use syn::ast;
@@ -382,7 +382,7 @@ pub fn build_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref
         },
 
         ast::Call::MethodNoArgs(method_call) => match method_call.target.annotation() {
-            TypeAnnotation::InterfaceMethod(method) => {
+            Typed::InterfaceMethod(method) => {
                 let self_arg = method_call.self_arg.clone();
                 let self_ty = self_arg.annotation().ty().into_owned();
                 let args = vec![self_arg];
@@ -428,7 +428,7 @@ fn build_func_call(
 ) -> Option<Ref> {
     match target.annotation() {
         // calling a function directly
-        pas_ty::TypeAnnotation::Function(func) => {
+        pas_ty::Typed::Function(func) => {
             let func = builder.translate_func(func.ident.clone(), type_args.cloned());
 
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
@@ -439,7 +439,7 @@ fn build_func_call(
             translate_call_with_args(call_target, args, &func_sig, builder)
         },
 
-        pas_ty::TypeAnnotation::UfcsFunction(func) => {
+        pas_ty::Typed::UfcsFunction(func) => {
             let func_instance = builder.translate_func(func.function_name.clone(), None);
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func_instance.id)));
             let func_sig = func_instance.sig;
@@ -454,7 +454,7 @@ fn build_func_call(
         }
 
         // invoking a closure value that refers to a function
-        pas_ty::TypeAnnotation::TypedValue(val) => {
+        pas_ty::Typed::TypedValue(val) => {
             // it's impossible to invoke a closure with type args, so the typechecker should
             // ensure this never happens
             assert!(
@@ -1301,9 +1301,9 @@ fn translate_dyn_array_ctor(
     arr
 }
 
-fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Builder) -> Ref {
+fn translate_ident(ident: &Ident, annotation: &Typed, builder: &mut Builder) -> Ref {
     match annotation {
-        TypeAnnotation::Function(func) => {
+        Typed::Function(func) => {
             let func = builder.translate_func(func.ident.clone(), func.type_args.clone());
             
             // references to functions by value are turned into references to the static
@@ -1311,7 +1311,7 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
             builder.build_function_closure(&func)
         },
 
-        TypeAnnotation::TypedValue(val) => {
+        Typed::TypedValue(val) => {
             let local_ref = builder
                 .find_local(&ident.to_string())
                 .map(|local| {

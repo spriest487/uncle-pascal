@@ -9,16 +9,16 @@ use crate::{
         typecheck_block, typecheck_case_stmt, typecheck_expr, typecheck_for_loop,
         typecheck_if_cond_stmt, typecheck_match_stmt, typecheck_raise, typecheck_while_loop, Expr,
     },
-    typecheck_type, Binding, Context, GenericError, Specializable, Type, TypeAnnotation,
-    TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind,
+    typecheck_type, Binding, Context, GenericError, Specializable, Type, Typed,
+    TypecheckError, TypecheckResult, TypedValue, ValueKind,
 };
 use pas_common::span::{Span, Spanned};
 use pas_syn::parse::InvalidStatement;
 use pas_syn::{ast, Ident, Operator};
 
-pub type VarBinding = ast::LocalBinding<TypeAnnotation>;
-pub type Stmt = ast::Stmt<TypeAnnotation>;
-pub type Exit = ast::Exit<TypeAnnotation>;
+pub type VarBinding = ast::LocalBinding<Typed>;
+pub type Stmt = ast::Stmt<Typed>;
+pub type Exit = ast::Exit<Typed>;
 
 pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
@@ -106,7 +106,7 @@ pub fn typecheck_local_binding(
 
     ctx.declare_binding(name.clone(), binding)?;
 
-    let annotation = TypeAnnotation::Untyped(span);
+    let annotation = Typed::Untyped(span);
 
     let local_binding = VarBinding {
         name,
@@ -171,13 +171,13 @@ pub fn typecheck_stmt(
 
         ast::Stmt::Break(span) => {
             expect_in_loop(stmt, ctx)?;
-            let annotation = TypeAnnotation::Untyped(span.clone());
+            let annotation = Typed::Untyped(span.clone());
             Ok(ast::Stmt::Break(annotation))
         },
 
         ast::Stmt::Continue(span) => {
             expect_in_loop(stmt, ctx)?;
-            let annotation = TypeAnnotation::Untyped(span.clone());
+            let annotation = Typed::Untyped(span.clone());
             Ok(ast::Stmt::Continue(annotation))
         },
 
@@ -251,8 +251,8 @@ pub fn typecheck_exit(
     // `let x := if true then 1 else exit;`
     // since no value will ever be assigned to `x` if the exit expr is reached
     let make_annotation = |span: &Span| match expect_ty {
-        Type::Nothing => TypeAnnotation::Untyped(span.clone()),
-        _ => TypedValueAnnotation {
+        Type::Nothing => Typed::Untyped(span.clone()),
+        _ => TypedValue {
             span: span.clone(),
             value_kind: ValueKind::Temporary,
             ty: expect_ty.clone(),

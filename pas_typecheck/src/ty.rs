@@ -4,12 +4,12 @@ use crate::{
     ast::{const_eval_integer, typecheck_expr, FunctionDecl, Member, StructDef, VariantDef},
     context,
     result::*,
-    Context, GenericError, GenericResult, GenericTarget, NameResult, Symbol, TypeAnnotation,
+    Context, GenericError, GenericResult, GenericTarget, NameResult, Symbol, Typed,
     TypeArgsResult::NotGeneric,
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast::{self, ArrayTypeName, IdentTypeName, StructKind, Typed},
+    ast::{self, ArrayTypeName, IdentTypeName, StructKind, TypeAnnotation},
     ident::*,
     Operator,
 };
@@ -117,7 +117,7 @@ impl Type {
         }
     }
 
-    pub fn of_decl(type_decl: &ast::TypeDeclItem<TypeAnnotation>) -> Self {
+    pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>) -> Self {
         match type_decl {
             ast::TypeDeclItem::Struct(class) if class.kind == StructKind::Record => {
                 Type::Record(Box::new(class.name.clone()))
@@ -651,7 +651,7 @@ impl fmt::Display for Type {
     }
 }
 
-impl Typed for Type {
+impl TypeAnnotation for Type {
     fn is_known(&self) -> bool {
         true
     }

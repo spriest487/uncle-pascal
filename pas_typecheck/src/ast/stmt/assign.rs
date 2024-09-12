@@ -1,11 +1,11 @@
 use crate::ast::{typecheck_expr, Expr};
-use crate::{Context, Type, TypeAnnotation, TypecheckError, TypecheckResult};
+use crate::{Context, Type, Typed, TypecheckError, TypecheckResult};
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, Operator};
 use crate::ast::cast::implicit_conversion;
 
-pub type Assignment = ast::Assignment<TypeAnnotation>;
-pub type CompoundAssignment = ast::CompoundAssignment<TypeAnnotation>;
+pub type Assignment = ast::Assignment<Typed>;
+pub type CompoundAssignment = ast::CompoundAssignment<Typed>;
 
 pub fn typecheck_assignment(
     assignment: &ast::Assignment<Span>,
@@ -22,7 +22,7 @@ pub fn typecheck_assignment(
     Ok(Assignment {
         lhs,
         rhs,
-        annotation: TypeAnnotation::Untyped(assignment.annotation.clone()),
+        annotation: Typed::Untyped(assignment.annotation.clone()),
     })
 }
 
@@ -44,7 +44,7 @@ pub fn typecheck_compound_assignment(
     Ok(CompoundAssignment {
         lhs,
         rhs,
-        annotation: TypeAnnotation::Untyped(assignment.annotation.clone()),
+        annotation: Typed::Untyped(assignment.annotation.clone()),
         op: assignment.op,
     })
 }
@@ -58,7 +58,7 @@ fn typecheck_operands(
 
     // lhs must evaluate to a mutable typed value
     match lhs.annotation() {
-        TypeAnnotation::TypedValue(val) => {
+        Typed::TypedValue(val) => {
             if !val.value_kind.mutable() {
                 return Err(TypecheckError::NotMutable {
                     decl: val.decl.clone(),

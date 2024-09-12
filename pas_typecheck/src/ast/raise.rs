@@ -1,11 +1,11 @@
 use crate::ast::typecheck_expr;
 use crate::{
-    string_type, Context, Type, TypeAnnotation, TypecheckResult, TypedValueAnnotation, ValueKind,
+    string_type, Context, Type, Typed, TypecheckResult, TypedValue, ValueKind,
 };
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
 
-pub type Raise = ast::Raise<TypeAnnotation>;
+pub type Raise = ast::Raise<Typed>;
 
 pub fn typecheck_raise(
     raise: &ast::Raise<Span>,
@@ -18,7 +18,7 @@ pub fn typecheck_raise(
 
     // the "raise" expr just aborts, so it has whatever type is expected of it, so we
     // can use it in any expr position
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: expect_ty.clone(),
         span: raise.span().clone(),
         decl: None,

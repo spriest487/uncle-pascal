@@ -2,7 +2,7 @@ use std::iter;
 use crate::{
     ast::{cast::implicit_conversion, typecheck_expr},
     ArrayType, Context, GenericError, GenericTarget, GenericTypeHint, NameContainer, NameError,
-    Specializable, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation,
+    Specializable, Type, Typed, TypecheckError, TypecheckResult, TypedValue,
     ValueKind,
 };
 use pas_common::span::{Span, Spanned};
@@ -10,11 +10,11 @@ use pas_syn::{ast, IdentPath};
 use linked_hash_map::LinkedHashMap;
 use crate::ast::Expr;
 
-pub type ObjectCtor = ast::ObjectCtor<TypeAnnotation>;
-pub type ObjectCtorMember = ast::ObjectCtorMember<TypeAnnotation>;
-pub type ObjectCtorArgs = ast::ObjectCtorArgs<TypeAnnotation>;
-pub type CollectionCtor = ast::CollectionCtor<TypeAnnotation>;
-pub type CollectionCtorElement = ast::CollectionCtorElement<TypeAnnotation>;
+pub type ObjectCtor = ast::ObjectCtor<Typed>;
+pub type ObjectCtorMember = ast::ObjectCtorMember<Typed>;
+pub type ObjectCtorArgs = ast::ObjectCtorArgs<Typed>;
+pub type CollectionCtor = ast::CollectionCtor<Typed>;
+pub type CollectionCtorElement = ast::CollectionCtorElement<Typed>;
 
 pub fn typecheck_object_ctor(
     ctor: &ast::ObjectCtor<Span>,
@@ -108,7 +108,7 @@ pub fn typecheck_object_ctor(
     for (member_ident, member_ty) in expect_members {
         match member_ty.default_val() {
             Some(default_lit) => {
-                let value = Expr::Literal(default_lit, TypedValueAnnotation {
+                let value = Expr::Literal(default_lit, TypedValue {
                     decl: None,
                     span: ctor.annotation.clone(),
                     ty: member_ty,
@@ -138,7 +138,7 @@ pub fn typecheck_object_ctor(
         members,
     };
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: ctor_ty,
         value_kind: ValueKind::Temporary,
         span,
@@ -230,7 +230,7 @@ pub fn typecheck_collection_ctor(
         _ => ArrayType::new(element_ty, elements.len()).into(),
     };
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: collection_ty,
         span: ctor.annotation.clone(),
         value_kind: ValueKind::Temporary,
@@ -296,7 +296,7 @@ fn default_fill_elements(expect_dim: usize, element_ty: &Type, elements: &mut Ve
 
     if let Some(default_lit) = element_ty.default_val() {
         let default_count = expect_dim - elements.len();
-        let default_val = Expr::Literal(default_lit, TypedValueAnnotation {
+        let default_val = Expr::Literal(default_lit, TypedValue {
             decl: None,
             span: span.clone(),
             ty: element_ty.clone(),

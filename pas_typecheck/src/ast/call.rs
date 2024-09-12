@@ -8,10 +8,10 @@ use crate::{
         ObjectCtor,
     },
     context::InstanceMethod,
-    typecheck_type, Context, FunctionAnnotation, FunctionParamSig, FunctionSig, GenericError,
-    GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameContainer, NameError,
-    OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResolver, TypeArgsResult,
-    TypeParamType, TypecheckError, TypecheckResult, TypedValueAnnotation, UfcsFunctionAnnotation,
+    typecheck_type, Context, FunctionTyped, FunctionParamSig, FunctionSig, GenericError,
+    GenericTarget, GenericTypeHint, MethodTyped, NameContainer, NameError,
+    OverloadTyped, Specializable, Type, Typed, TypeArgsResolver, TypeArgsResult,
+    TypeParamType, TypecheckError, TypecheckResult, TypedValue, UfcsTyped,
     ValueKind,
 };
 use pas_common::span::{Span, Spanned as _};
@@ -22,12 +22,12 @@ use pas_syn::{
 };
 use std::{borrow::Cow, fmt, rc::Rc};
 
-pub type MethodCall = ast::MethodCall<TypeAnnotation>;
-pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
-pub type FunctionCallNoArgs = ast::FunctionCallNoArgs<TypeAnnotation>;
-pub type MethodCallNoArgs = ast::MethodCallNoArgs<TypeAnnotation>;
-pub type VariantCtorCall = ast::VariantCtorCall<TypeAnnotation>;
-pub type Call = ast::Call<TypeAnnotation>;
+pub type MethodCall = ast::MethodCall<Typed>;
+pub type FunctionCall = ast::FunctionCall<Typed>;
+pub type FunctionCallNoArgs = ast::FunctionCallNoArgs<Typed>;
+pub type MethodCallNoArgs = ast::MethodCallNoArgs<Typed>;
+pub type VariantCtorCall = ast::VariantCtorCall<Typed>;
+pub type Call = ast::Call<Typed>;
 
 // it's possible that during typechecking we discover what was parsed as a call with zero args
 // is actually the ctor for a class with no fields
@@ -156,7 +156,7 @@ pub fn typecheck_call(
     };
 
     let expr = match target.annotation() {
-        TypeAnnotation::TypedValue(val) => match &val.ty {
+        Typed::TypedValue(val) => match &val.ty {
             Type::Function(sig) => {
                 let sig = sig.clone();
                 typecheck_func_call(target, &func_call, &sig, ctx)
@@ -177,14 +177,14 @@ pub fn typecheck_call(
             },
         },
 
-        TypeAnnotation::Function(func) => {
+        Typed::Function(func) => {
             let sig = func.sig.clone();
             typecheck_func_call(target, &func_call, &sig, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
 
-        TypeAnnotation::UfcsFunction(ufcs_call) => {
+        Typed::UfcsFunction(ufcs_call) => {
             let typecheck_call = typecheck_ufcs_call(
                 &ufcs_call,
                 &func_call.args,
@@ -196,19 +196,19 @@ pub fn typecheck_call(
             typecheck_call.map(Box::new).map(Invocation::Call)?
         },
 
-        TypeAnnotation::Overload(overloaded) => {
+        Typed::Overload(overloaded) => {
             typecheck_func_overload(ctx, func_call, &target, &overloaded)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
 
-        TypeAnnotation::InterfaceMethod(iface_method) => {
+        Typed::InterfaceMethod(iface_method) => {
             typecheck_iface_method_call(iface_method, func_call, self_arg, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
 
-        TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
+        Typed::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
             let args_span = func_call.args_span.clone();
             let ctor = ast::ObjectCtor {
                 ident: Some(ty.full_path().unwrap()),
@@ -226,7 +226,7 @@ pub fn typecheck_call(
                 .map(Invocation::Ctor)?
         },
 
-        TypeAnnotation::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
+        Typed::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
             &variant.variant_name,
             &variant.case,
             &func_call.args,
@@ -249,7 +249,7 @@ fn typecheck_func_overload(
     ctx: &mut Context,
     func_call: &ast::FunctionCall<Span>,
     target: &Expr,
-    overloaded: &OverloadAnnotation,
+    overloaded: &OverloadTyped,
 ) -> TypecheckResult<Call> {
     let overload = resolve_overload(
         &overloaded.candidates,
@@ -293,7 +293,7 @@ fn typecheck_func_overload(
 
             let sig = Rc::new(sig.with_self(&self_type));
 
-            let return_annotation = TypedValueAnnotation {
+            let return_annotation = TypedValue {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
                 decl: Some(ident.clone()),
@@ -316,7 +316,7 @@ fn typecheck_func_overload(
         },
 
         OverloadCandidate::Function { decl_name, sig } => {
-            let return_annotation = TypedValueAnnotation {
+            let return_annotation = TypedValue {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
                 decl: Some(decl_name.last().clone()),
@@ -348,7 +348,7 @@ fn typecheck_func_overload(
 ///     call expression, so needs to be provided separately
 /// * `ctx` - current typechecking context
 fn typecheck_iface_method_call(
-    iface_method: &InterfaceMethodAnnotation,
+    iface_method: &MethodTyped,
     func_call: &ast::FunctionCall<Span>,
     with_self_arg: Option<Expr>,
     ctx: &mut Context,
@@ -414,7 +414,7 @@ fn typecheck_iface_method_call(
     )?;
 
     Ok(Call::Method(MethodCall {
-        annotation: TypedValueAnnotation {
+        annotation: TypedValue {
             ty: sig.return_ty.clone(),
             span: func_call.span().clone(),
             value_kind: ValueKind::Temporary,
@@ -432,7 +432,7 @@ fn typecheck_iface_method_call(
 }
 
 fn typecheck_ufcs_call(
-    ufcs_call: &UfcsFunctionAnnotation,
+    ufcs_call: &UfcsTyped,
     rest_args: &[ast::Expr<Span>],
     span: &Span,
     args_span: &Span,
@@ -453,7 +453,7 @@ fn typecheck_ufcs_call(
         ctx,
     )?;
 
-    let func_annotation = FunctionAnnotation {
+    let func_annotation = FunctionTyped {
         sig: Rc::new(specialized_call_args.sig.clone()),
         ident: ufcs_call.function_name.clone(),
         span: span.clone(),
@@ -464,7 +464,7 @@ fn typecheck_ufcs_call(
     // todo: this should construct a fully qualified path expr instead
     let target = ast::Expr::Ident(ufcs_call.function_name.last().clone(), func_annotation);
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         ty: specialized_call_args.sig.return_ty.clone(),
         span: span.clone(),
         decl: None,
@@ -850,8 +850,8 @@ fn typecheck_func_call(
     let return_ty = specialized_call_args.sig.return_ty.clone();
 
     let annotation = match return_ty {
-        Type::Nothing => TypeAnnotation::Untyped(span),
-        return_ty => TypedValueAnnotation {
+        Type::Nothing => Typed::Untyped(span),
+        return_ty => TypedValue {
             ty: return_ty,
             value_kind: ValueKind::Temporary,
             span,
@@ -969,7 +969,7 @@ fn typecheck_variant_ctor_call(
 
     let case = variant_def.cases[case_index].ident.clone();
 
-    let annotation = TypedValueAnnotation {
+    let annotation = TypedValue {
         decl: None,
         span,
         ty: Type::Variant(variant_sym.clone().into()),

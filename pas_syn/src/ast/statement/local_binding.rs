@@ -3,7 +3,7 @@ use pas_common::span::{Span, Spanned};
 use crate::{
     ast::{Annotation, TypeName},
     ast::{
-        Expr, Typed,
+        Expr, TypeAnnotation,
     },
     Ident,
     Keyword,

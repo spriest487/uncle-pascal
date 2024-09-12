@@ -6,7 +6,7 @@ use crate::{
     ast::{
         expression::parse::CompoundExpressionParser, match_block::MatchExpr, Annotation,
         AnonymousFunctionDef, BinOp, Block, Call, CaseExpr, Cast, CollectionCtor, Exit, IfCond,
-        ObjectCtor, Raise, Typed, UnaryOp,
+        ObjectCtor, Raise, TypeAnnotation, UnaryOp,
     },
     consts::*,
     ident::*,
@@ -16,7 +16,7 @@ use pas_common::span::*;
 use std::{fmt, rc::Rc};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum Literal<T: Typed> {
+pub enum Literal<T: TypeAnnotation> {
     Nil,
     Integer(IntConstant),
     Real(RealConstant),
@@ -25,7 +25,7 @@ pub enum Literal<T: Typed> {
     SizeOf(Box<T>),
 }
 
-impl<T: Typed> fmt::Display for Literal<T> {
+impl<T: TypeAnnotation> fmt::Display for Literal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Literal::Nil => write!(f, "nil"),

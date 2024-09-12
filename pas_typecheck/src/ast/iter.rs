@@ -1,18 +1,18 @@
 use crate::ast::{typecheck_expr, typecheck_local_binding, typecheck_stmt};
 use crate::{
-    Context, Environment, Primitive, Type, TypeAnnotation, TypecheckError, TypecheckResult,
+    Context, Environment, Primitive, Type, Typed, TypecheckError, TypecheckResult,
 };
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
 
-pub type ForLoop = ast::ForLoop<TypeAnnotation>;
-pub type WhileLoop = ast::WhileLoop<TypeAnnotation>;
+pub type ForLoop = ast::ForLoop<Typed>;
+pub type WhileLoop = ast::WhileLoop<Typed>;
 
 pub fn typecheck_for_loop(
     for_loop: &ast::ForLoop<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<ForLoop> {
-    let annotation = TypeAnnotation::Untyped(for_loop.annotation.clone());
+    let annotation = Typed::Untyped(for_loop.annotation.clone());
 
     let inner_scope = ctx.push_scope(Environment::Block {
         allow_unsafe: false,
@@ -81,7 +81,7 @@ pub fn typecheck_while_loop(
     while_loop: &ast::WhileLoop<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<WhileLoop> {
-    let annotation = TypeAnnotation::Untyped(while_loop.span().clone());
+    let annotation = Typed::Untyped(while_loop.span().clone());
 
     let bool_ty = Type::Primitive(Primitive::Boolean);
     let condition = typecheck_expr(&while_loop.condition, &bool_ty, ctx)?;

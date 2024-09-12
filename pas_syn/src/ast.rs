@@ -59,7 +59,7 @@ use std::{
 };
 use crate::parse::ParseError;
 
-pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
+pub trait TypeAnnotation: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
     fn is_known(&self) -> bool;
 }
 
@@ -69,7 +69,7 @@ pub trait DeclNamed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
 }
 
 pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
-    type Type: Typed;
+    type Type: TypeAnnotation;
     type Name: DeclNamed;
     type Pattern: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
 
@@ -307,7 +307,7 @@ impl Spanned for TypeName {
     }
 }
 
-impl Typed for TypeName {
+impl TypeAnnotation for TypeName {
     fn is_known(&self) -> bool {
         match self {
             TypeName::Unknown(_) => false,
