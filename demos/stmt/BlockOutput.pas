@@ -1,4 +1,7 @@
-function A(): Integer
+implementation
+uses System;
+
+function A(): Integer;
 begin
     var x := 1;
 
@@ -12,3 +15,5 @@ begin
 
     123
 end;
+
+end

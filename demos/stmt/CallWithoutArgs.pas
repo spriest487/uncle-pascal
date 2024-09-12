@@ -1,9 +1,4 @@
-unit CallWithoutArgsDemo;
-
-interface
-
 implementation
-
 uses System;
 
 function One: Int32;
@@ -31,8 +26,6 @@ begin
 end;
 
 initialization
-
-begin
     // direct call to function
     var a := One;
     WriteLn('a: ' + a);
@@ -45,6 +38,4 @@ begin
     // method call
     var c := (2 as Int32).M;
     WriteLn('c: ' + c);
-end;
-
 end.

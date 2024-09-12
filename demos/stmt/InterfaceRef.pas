@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Animal = interface
@@ -8,25 +9,26 @@ type Cat = class
     name: String;
 end;
 
-function Animal.Say(self: Cat)
+function Say of Animal(self: Cat);
 begin
-    WriteLn(self.name + ' says nya!');
+    WriteLn(self.name + ' says meow!');
 end;
 
 type Dog = class
     name: String;
 end;
 
-function Animal.Say(self: Dog)
+function Say of Animal(self: Dog);
 begin
-    WriteLn(self.name + ' says wan!');
+    WriteLn(self.name + ' says woof!');
 end;
 
-var animal: Animal;
-
-animal := Cat(name: 'Blake');
-animal.Say();
-
-animal := Dog(name: 'Yang');
-animal.Say();
-
+initialization
+    var animal: Animal;
+    
+    animal := Cat(name: 'Jesse');
+    animal.Say();
+    
+    animal := Dog(name: 'James');
+    animal.Say();
+end

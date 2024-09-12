@@ -1,6 +1,9 @@
+implementation
 uses System;
 
-type Box = class
+type MyBox = class
 end;
 
-let box := Box();
+initialization
+    var box := MyBox();
+end

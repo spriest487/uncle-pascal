@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Greeting = class
@@ -5,12 +6,14 @@ type Greeting = class
     num: Integer;
 end;
 
-var greeting := Greeting(
-    msg: 'Hi';
-    num: 123;
-);
+initialization
+    var greeting := Greeting(
+        msg: 'Hi';
+        num: 123;
+    );
 
-greeting.msg := 'Hello';
-greeting.num := 456;
-
-WriteLn(greeting.msg + ', World! ' + IntToStr(greeting.num));
+    greeting.msg := 'Hello';
+    greeting.num := 456;
+    
+    WriteLn(greeting.msg + ', World! ' + IntToStr(greeting.num));
+end

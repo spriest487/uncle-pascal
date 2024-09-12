@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Things = variant
@@ -5,7 +6,7 @@ type Things = variant
     SecondThing: Boolean;
 end;
 
-function WriteThing(thing: Things)
+function WriteThing(thing: Things);
 begin
     match thing of
         Things.FirstThing i: WriteLn(i.ToString());
@@ -13,8 +14,10 @@ begin
     end;
 end;
 
-var thing1 := Things.FirstThing(123);
-var thing2 := Things.SecondThing(true);
-
-WriteThing(thing1);
-WriteThing(thing2);
+initialization
+    var thing1 := Things.FirstThing(123);
+    var thing2 := Things.SecondThing(true);
+    
+    WriteThing(thing1);
+    WriteThing(thing2);
+end
