@@ -18,7 +18,7 @@ use crate::{
 };
 use pas_common::{span::Span, TracedError};
 use std::fmt;
-use crate::parse::MatchOneOf;
+use crate::parse::{MatchOneOf};
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum UnitKind {

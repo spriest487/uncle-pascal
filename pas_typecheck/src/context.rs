@@ -7,17 +7,36 @@ mod ufcs;
 mod decl;
 mod def;
 
-pub use self::{
-    builtin::*, decl::*, def::*, scope::*, ufcs::InstanceMethod, value_kind::*, result::*,
-};
-use crate::ast::{EnumDecl, Literal};
-use crate::{ast::{StructDef, FunctionDecl, FunctionDef, InterfaceDecl, OverloadCandidate, VariantDef}, specialize_struct_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
+pub use self::decl::*;
+pub use self::builtin::*;
+pub use self::def::*;
+pub use self::scope::*;
+pub use self::ufcs::InstanceMethod;
+pub use self::value_kind::*;
+pub use self::result::*;
+use crate::ast::EnumDecl;
+use crate::ast::Literal;
+use crate::specialize_struct_def;
+use crate::ast::VariantDef;
+use crate::ast::OverloadCandidate;
+use crate::ast::InterfaceDecl;
+use crate::ast::FunctionDef;
+use crate::ast::FunctionDecl;
+use crate::ast::StructDef;
+use crate::specialize_generic_variant;
+use crate::FunctionSig;
+use crate::Primitive;
+use crate::Symbol;
+use crate::Type;
+use crate::TypeParamList;
+use crate::TypeParamType;
+use crate::TypecheckResult;
+use crate::TypecheckError;
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
-use std::{
-    collections::hash_map::{Entry, HashMap},
-    rc::Rc,
-};
+use std::collections::hash_map::Entry;
+use std::collections::hash_map::HashMap;
+use std::rc::Rc;
 use linked_hash_map::LinkedHashMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -804,17 +823,21 @@ impl Context {
                 Ok((parent_path, ty))
             }
 
-            Some(ScopeMemberRef::Decl { value: other, .. }) => Err(NameError::Unexpected {
-                ident: name.clone(),
-                expected: ExpectedKind::AnyType,
-                actual: other.clone().into(),
-            }),
+            Some(ScopeMemberRef::Decl { value: other, .. }) => {
+                Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    expected: ExpectedKind::AnyType,
+                    actual: other.clone().into(),
+                })
+            }
 
-            Some(ScopeMemberRef::Scope { path }) => Err(NameError::Unexpected {
-                ident: name.clone(),
-                actual: Named::Namespace(IdentPath::from_parts(path.keys().cloned())),
-                expected: ExpectedKind::AnyType,
-            }),
+            Some(ScopeMemberRef::Scope { path }) => {
+                Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    actual: Named::Namespace(IdentPath::from_parts(path.keys().cloned())),
+                    expected: ExpectedKind::AnyType,
+                })
+            }
 
             None => Err(NameError::NotFound { ident: name.clone() }),
         }
@@ -921,11 +944,13 @@ impl Context {
                 Ok(parent_path)
             }
 
-            Some(ScopeMemberRef::Decl { value: other, .. }) => Err(NameError::Unexpected {
-                ident: name.clone(),
-                actual: other.clone().into(),
-                expected: ExpectedKind::Interface,
-            }),
+            Some(ScopeMemberRef::Decl { value: other, .. }) => {
+                Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    actual: other.clone().into(),
+                    expected: ExpectedKind::Interface,
+                })
+            }
 
             Some(ScopeMemberRef::Scope { path }) => {
                 Err(NameError::Unexpected {
@@ -1022,11 +1047,13 @@ impl Context {
                 Ok((func_path, sig.clone()))
             }
 
-            Some(ScopeMemberRef::Decl { value: other, .. }) => Err(NameError::Unexpected {
-                ident: name.clone(),
-                actual: other.clone().into(),
-                expected: ExpectedKind::Function,
-            }),
+            Some(ScopeMemberRef::Decl { value: other, .. }) => {
+                Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    actual: other.clone().into(),
+                    expected: ExpectedKind::Function,
+                })
+            }
 
             Some(ScopeMemberRef::Scope { path }) => {
                 Err(NameError::Unexpected {

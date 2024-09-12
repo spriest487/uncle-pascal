@@ -1,21 +1,26 @@
+mod symbol;
+
+pub use symbol::*;
+
 use std::borrow::Cow;
 use std::{fmt, rc::Rc};
 use derivative::*;
 use pas_common::span::*;
 use pas_syn::ast::TypeList;
-use pas_syn::{
-    ast::{Annotation, DeclNamed, TypeDeclName},
-    ident::IdentPath,
-    Ident, IntConstant,
-};
-
+use pas_syn::ast::Annotation;
+use pas_syn::ast::DeclNamed;
+use pas_syn::ast::TypeDeclName;
+use pas_syn::ident::IdentPath;
+use pas_syn::Ident;
+use pas_syn::IntConstant;
 use crate::ast::{Literal, OverloadCandidate};
-use crate::{
-    ast::{Expr, FunctionDecl},
-    result::*,
-    ty::*,
-    GenericError, GenericResult, ValueKind,
-};
+use crate::ast::Expr;
+use crate::ast::FunctionDecl;
+use crate::result::*;
+use crate::ty::*;
+use crate::GenericError;
+use crate::GenericResult;
+use crate::ValueKind;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariantCtorAnnotation {
@@ -385,80 +390,4 @@ impl Annotation for TypeAnnotation {
     type ConstStringExpr = String;
     type ConstIntegerExpr = IntConstant;
     type ConstExpr = Literal;
-}
-
-#[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub struct Symbol {
-    pub decl_name: TypeDeclName,
-    pub qualified: IdentPath,
-
-    pub type_args: Option<TypeList<Type>>,
-}
-
-impl Symbol {
-    pub fn expect_not_unspecialized(&self) -> GenericResult<()> {
-        if !self.is_unspecialized_generic() {
-            Ok(())
-        } else {
-            Err(GenericError::IllegalUnspecialized {
-                ty: Type::Class(Box::new(self.clone())),
-            })
-        }
-    }
-}
-
-impl Specializable for Symbol {
-    type GenericID = IdentPath;
-
-    /// is this either a type without type args, or does it already have all the type args it needs?
-    fn is_unspecialized_generic(&self) -> bool {
-        if self.decl_name.type_params.is_none() {
-            return false;
-        }
-
-        match &self.type_args {
-            None => true,
-            Some(type_args) => type_args
-                .items
-                .iter()
-                .any(|arg| arg.is_unspecialized_generic()),
-        }
-    }
-
-    fn name(&self) -> IdentPath {
-        self.qualified.clone()
-    }
-}
-
-impl DeclNamed for Symbol {
-    fn as_local(&self) -> &TypeDeclName {
-        &self.decl_name
-    }
-
-    fn decl_ty_params(&self) -> &[Ident] {
-        match self.decl_name.type_params.as_ref() {
-            Some(type_params) => &type_params.items,
-            None => &[],
-        }
-    }
-}
-
-impl Spanned for Symbol {
-    fn span(&self) -> &Span {
-        self.decl_name.span()
-    }
-}
-
-impl fmt::Display for Symbol {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(type_args) = &self.type_args {
-            write!(f, "{}{}", self.qualified, type_args)?;
-        } else if let Some(type_params) = &self.decl_name.type_params {
-            write!(f, "{}{}", self.qualified, type_params)?;
-        } else {
-            write!(f, "{}", self.qualified)?;
-        }
-
-        Ok(())
-    }
 }
