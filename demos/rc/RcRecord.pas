@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type IntBox = class
@@ -13,19 +14,21 @@ type BigWrapper = record
     wrapper2: Wrapper
 end;
 
-function DoNothing(wrapper: Wrapper): Wrapper
+function DoNothing(wrapper: Wrapper): Wrapper;
 begin
     wrapper
 end;
 
-begin
-    let wrapped := IntBox(val: 123);
-    let wrapper := Wrapper(box: wrapped);
-
-    DoNothing(wrapper);
-end;
-
-begin
-    let wrapper := Wrapper(box: IntBox(val: 123));
-    let wrapper2 := BigWrapper(wrapper1: wrapper; wrapper2: wrapper);
-end;
+initialization
+    begin
+        var wrapped := IntBox(val: 123);
+        var wrapper := Wrapper(box: wrapped);
+    
+        DoNothing(wrapper);
+    end;
+    
+    begin
+        var wrapper := Wrapper(box: IntBox(val: 123));
+        var wrapper2 := BigWrapper(wrapper1: wrapper; wrapper2: wrapper);
+    end;
+end

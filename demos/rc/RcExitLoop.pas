@@ -1,11 +1,14 @@
+implementation
 uses System;
 
-function Greet(name: String)
+function Greet(name: String);
 begin
-    for let i := 1 to 5 do begin
-        let tmpStr := 'hello' + name;
+    for var i := 1 to 5 do begin
+        var tmpStr := 'hello' + name;
         exit;
     end;
 end;
 
-Greet('world');
+initialization
+    Greet('world');
+end

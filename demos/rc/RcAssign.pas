@@ -1,5 +1,7 @@
+implementation
 uses System;
 
-var box1 := NewBox of Integer(123);
-
-box1 := NewBox of Integer(456);
+initialization
+    var box1 := NewBox[Integer](123);
+    box1 := NewBox[Integer](456);
+end

@@ -1,21 +1,26 @@
-type Box = class
+implementation
+uses System;
+
+type IntBox = class
     val: Integer;
 end;
 
-function Id(box: Box): Box
+function Id(box: IntBox): IntBox;
 begin
     box
 end;
 
-function New(): Box
+function New(): IntBox;
 begin
-    Box(val:456)
+    IntBox(val:456)
 end;
 
-New();
-
-let box := Box(val: 1);
-Id(box);
-
-var box2 := Box(val: 1);
-box2 := New();
+initialization
+    New();
+    
+    var box := IntBox(val: 1);
+    Id(box);
+    
+    var box2 := IntBox(val: 1);
+    box2 := New();
+end

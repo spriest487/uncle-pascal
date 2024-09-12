@@ -1,14 +1,17 @@
+implementation
 uses System;
 
-function PrintNth(xs: array[2] of String; n: Integer)
+function PrintNth(xs: array[2] of String; n: Integer);
 begin
-    let first := xs[n];
+    var first := xs[n];
     WriteLn(first);
 end;
 
-let x := ['Hello, ' + 'World', 'Hello, ' + 'Everyone'];
-
-let y := x;
-
-PrintNth(y, 0);
-PrintNth(y, 1);
+initialization
+    var x := ['Hello, ' + 'World', 'Hello, ' + 'Everyone'];
+    
+    var y := x;
+    
+    PrintNth(y, 0);
+    PrintNth(y, 1);
+end
