@@ -21,6 +21,7 @@ pub fn expr_to_val(expr: &pas_ty::ast::Expr, builder: &mut Builder) -> Value {
 }
 
 pub fn translate_expr(expr: &pas_ty::ast::Expr, builder: &mut Builder) -> Ref {
+    builder.comment(&expr);
     builder.push_debug_context(expr.annotation().span().clone());
 
     let result_ref = match expr {
@@ -1297,8 +1298,7 @@ fn translate_dyn_array_ctor(
         // allocate array storage
         if len > 0 {
             let alloc_size = builder.local_temp(Type::I32);
-            builder.size_of(alloc_size.clone(), elem_ty.clone());
-            builder.mul(alloc_size.clone(), alloc_size.clone(), Value::LiteralI32(len));
+            builder.mul(alloc_size.clone(), Value::SizeOf(elem_ty.clone()), Value::LiteralI32(len));
 
             let elements_mem = builder.local_temp(Type::U8.ptr());
             builder.get_mem(alloc_size, elements_mem.clone());

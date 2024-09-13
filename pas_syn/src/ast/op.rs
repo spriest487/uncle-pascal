@@ -12,11 +12,16 @@ pub struct UnaryOp<A: Annotation> {
 
 impl<A: Annotation> fmt::Display for UnaryOp<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let space_between = match self.op {
+            Operator::Not | Operator::As => " ",
+            _ => "",
+        };
+        
         // operators are only valid in either prefix or postfix position, never both
         if self.op.is_valid_in_pos(Position::Prefix) {
-            write!(f, "{}{}", self.op, self.operand)
+            write!(f, "{}{}{}", self.op, space_between, self.operand)
         } else {
-            write!(f, "{}{}", self.operand, self.op)
+            write!(f, "{}{}{}", self.operand, space_between, self.op)
         }
     }
 }

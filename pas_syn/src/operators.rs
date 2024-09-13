@@ -232,10 +232,10 @@ impl fmt::Display for Operator {
 impl fmt::Display for CompoundAssignmentOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op_str = match self {
-            CompoundAssignmentOperator::AddAssign => "+=",
-            CompoundAssignmentOperator::SubAssign => "-=",
-            CompoundAssignmentOperator::MulAssign => "*=",
-            CompoundAssignmentOperator::FDivAssign => "/=",
+            CompoundAssignmentOperator::AddAssign => "+",
+            CompoundAssignmentOperator::SubAssign => "-",
+            CompoundAssignmentOperator::MulAssign => "*",
+            CompoundAssignmentOperator::FDivAssign => "/",
         };
         write!(f, "{}", op_str)
     }

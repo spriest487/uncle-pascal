@@ -11,10 +11,8 @@ use pas_typecheck as pas_ty;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Stmt, builder: &mut Builder) {
     builder.push_debug_context(stmt.annotation().span().clone());
-    if builder.opts().debug_info {
-        builder.comment(&stmt);
-    }
-
+    builder.comment(stmt);
+    
     match stmt {
         ast::Stmt::Ident(..) => {
             unreachable!("should be turned into no-args calls during typechecking")
@@ -187,6 +185,7 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
     let loop_instructions = builder.scope(|builder| {
         let not_cond = builder.local_temp(Type::Bool);
 
+        builder.comment("while-loop top");
         builder.label(top_label);
 
         // evaluate condition
@@ -204,6 +203,7 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
         });
 
         if jmp_exists(body_instructions, continue_label) {
+            builder.comment("while-loop continue");
             builder.label(continue_label);
         }
 
@@ -212,6 +212,7 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
     });
 
     if jmp_exists(loop_instructions, break_label) {
+        builder.comment("while-loop break");
         builder.label(break_label);
     }
 }
