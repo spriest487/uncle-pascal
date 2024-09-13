@@ -220,7 +220,7 @@ end;
 function StringCharAt(s: String; at: Integer): Byte;
 begin
     if at < 0 or at >= s.len then
-        raise 'invalid index: ' + IntToStr(at);
+        raise 'invalid index ' + IntToStr(at) + ' in string of length ' + IntToStr(s.len);
 
     s.chars[at]
 end;
