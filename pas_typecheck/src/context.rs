@@ -1168,7 +1168,7 @@ impl Context {
         match ty {
             Type::Nothing | Type::MethodSelf => Ok(true),
 
-            Type::Class(class) | Type::Record(class) => {
+            Type::Record(class) => {
                 match self.find_struct_def(&class.qualified) {
                     Ok(..) => Ok(false),
                     Err(NameError::NotFound { .. }) => Ok(true),
@@ -1185,6 +1185,7 @@ impl Context {
             Type::Array(array_ty) => self.is_unsized_ty(&array_ty.element_ty),
 
             Type::Any
+            | Type::Class(..)
             | Type::GenericParam(_)
             | Type::Interface(..)
             | Type::Pointer(..)
