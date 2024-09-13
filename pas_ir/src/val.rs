@@ -1,6 +1,6 @@
 use std::fmt;
 use bigdecimal::BigDecimal;
-use crate::{FunctionID, StaticClosureID, StringID};
+use crate::{FunctionID, StaticClosureID, StringID, Type};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ref {
@@ -44,6 +44,7 @@ pub enum Value {
     LiteralF32(f32),
     LiteralISize(isize),
     LiteralUSize(usize),
+    SizeOf(Type),
 }
 
 impl fmt::Display for Value {
@@ -63,6 +64,7 @@ impl fmt::Display for Value {
             Value::LiteralBool(b) => write!(f, "{}", b),
             Value::LiteralF32(x) => write!(f, "{:.6}", x),
             Value::LiteralNull => write!(f, "NULL"),
+            Value::SizeOf(ty) => write!(f, "SizeOf({ty})"),
         }
     }
 }
@@ -82,6 +84,12 @@ impl From<LocalID> for Value {
 impl From<GlobalRef> for Value {
     fn from(global_ref: GlobalRef) -> Self {
         Self::from(Ref::Global(global_ref))
+    }
+}
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Self::LiteralBool(value)
     }
 }
 

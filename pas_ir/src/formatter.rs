@@ -339,12 +339,6 @@ pub trait InstructionFormatter {
                 write!(f, "{:>width$} {}", "raise", val, width = IX_WIDTH)
             }
 
-            Instruction::SizeOf { out, ty } => {
-                write!(f, "{:>width$} {} := sizeof(", "sizeof", out, width = IX_WIDTH)?;
-                self.format_type(ty, f)?;
-                write!(f, ")")
-            }
-
             Instruction::Cast { out, ty, a } => {
                 write!(f, "{:>width$} {} := {} as ", "cast", out, a, width = IX_WIDTH)?;
                 self.format_type(ty, f)

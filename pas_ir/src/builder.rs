@@ -533,10 +533,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn size_of(&mut self, out: impl Into<Ref>, ty: Type) {
-        self.append(Instruction::SizeOf {
-            out: out.into(),
-            ty,
-        });
+        self.mov(out, Value::SizeOf(ty));
     }
 
     pub fn field(

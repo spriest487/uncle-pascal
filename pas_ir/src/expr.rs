@@ -716,10 +716,7 @@ pub fn literal_to_val(
 
         ast::Literal::SizeOf(ty) => {
             let ty = builder.translate_type(ty);
-            builder.append(Instruction::SizeOf {
-                out: out.clone(),
-                ty,
-            });
+            Value::SizeOf(ty)
         },
     }
 }

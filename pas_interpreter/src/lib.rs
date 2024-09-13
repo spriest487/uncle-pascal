@@ -322,6 +322,15 @@ impl Interpreter {
                 let ref_val = self.load(r)?;
                 Ok(ref_val.into_owned())
             },
+            
+            Value::SizeOf(ty) => {
+                let marshal_ty = self.marshaller.get_ty(ty)?;
+                let size = cast::i32(marshal_ty.size()).map_err(|_| {
+                    ExecError::illegal_state(format!("type has illegal size: {}", marshal_ty.size()))
+                })?;
+
+                Ok(DynValue::I32(size))
+            }
 
             Value::LiteralU8(i) => Ok(DynValue::U8(*i)),
             Value::LiteralI8(i) => Ok(DynValue::I8(*i)),
@@ -852,7 +861,6 @@ impl Interpreter {
             Instruction::Retain { at } => self.exec_retain(at)?,
 
             Instruction::Raise { val } => self.exec_raise(&val)?,
-            Instruction::SizeOf { out, ty } => self.exec_size_of(out, ty)?,
 
             Instruction::Cast { out, ty, a } => self.exec_cast(out, ty, a)?,
         }
@@ -936,20 +944,9 @@ impl Interpreter {
     fn exec_raise(&mut self, val: &Ref) -> ExecResult<()> {
         let msg = self.read_string(&val.clone())?;
 
-        return Err(ExecError::Raised {
+        Err(ExecError::Raised {
             msg,
-        });
-    }
-
-    fn exec_size_of(&mut self, out: &Ref, ty: &Type) -> ExecResult<()> {
-        let marshal_ty = self.marshaller.get_ty(ty)?;
-        let size = cast::i32(marshal_ty.size()).map_err(|_| {
-            ExecError::illegal_state(format!("type has illegal size: {}", marshal_ty.size()))
-        })?;
-
-        self.store(out, DynValue::I32(size))?;
-
-        Ok(())
+        })
     }
 
     fn exec_cast(&mut self, out: &Ref, ty: &Type, a: &Value) -> ExecResult<()> {

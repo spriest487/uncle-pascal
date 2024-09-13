@@ -177,11 +177,6 @@ pub enum Instruction {
         val: Ref,
     },
 
-    SizeOf {
-        out: Ref,
-        ty: Type,
-    },
-
     Cast {
         out: Ref,
         ty: Type,
@@ -245,8 +240,7 @@ impl Instruction {
             | Instruction::Field { out, .. }
             | Instruction::ClassIs { out, .. }
             | Instruction::RcNew { out, .. }
-            | Instruction::Cast { out, .. }
-            | Instruction::SizeOf { out, .. } => *out == Ref::Discard,
+            | Instruction::Cast { out, .. } => *out == Ref::Discard,
         }
     }
 }
