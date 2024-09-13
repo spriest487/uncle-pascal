@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Numbers = variant
@@ -6,9 +7,11 @@ type Numbers = variant
     Three: String;
 end;
 
-let n := Numbers.Three('three');
-
-if n is Numbers.Three three then
-begin
-    WriteLn('Three is ' + three);
-end;
+initialization
+    var n := Numbers.Three('three');
+    
+    if n is Numbers.Three three then
+    begin
+        WriteLn('Three is ' + three);
+    end;
+end

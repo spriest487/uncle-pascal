@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Greetable = interface
@@ -8,10 +9,12 @@ type Person = record
     name: String;
 end;
 
-function Greetable.Name(self: Person): String
+function Name of Greetable(self: Person): String;
 begin
     self.name
 end;
 
-let alice := Person(name: 'Alice');
-WriteLn('hello, ' + alice.Name());
+initialization
+    var alice := Person(name: 'Alice');
+    WriteLn('hello, ' + alice.Name());
+end

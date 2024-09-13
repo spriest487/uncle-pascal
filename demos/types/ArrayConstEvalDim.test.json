@@ -1,0 +1,5 @@
+{
+  "steps": [
+    { "error_regex": "index value `\\d+` is out of range for type" }
+  ]
+}

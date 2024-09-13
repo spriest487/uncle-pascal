@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Speaker = interface
@@ -12,21 +13,23 @@ type Cat = class
     name: String;
 end;
 
-function Speaker.Speak(self: Dog): String
+function Speak of Speaker(self: Dog): String;
 begin
-    'wan!'
+    'woof!'
 end;
 
-function Speaker.Speak(self: Cat): String
+function Speak of Speaker(self: Cat): String;
 begin
-    'yang!'
+    'meow!'
 end;
 
-WriteLn('Hello: ');
-
-let rex := Dog(name: 'Rex');
-WriteLn(Speaker.Speak(rex));
-
-let blake := Cat(name: 'Blake');
-WriteLn(blake.Speak());
-WriteLn(rex.Speak());
+initialization
+    WriteLn('Hello: ');
+    
+    var rex := Dog(name: 'Rex');
+    WriteLn(Speaker.Speak(rex));
+    
+    var ginger := Cat(name: 'Ginger');
+    WriteLn(ginger.Speak());
+    WriteLn(rex.Speak());
+end

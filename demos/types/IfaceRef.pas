@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type Animal = interface
@@ -7,11 +8,13 @@ end;
 type Dog = class
 end;
 
-function Animal.Speak(self: Dog; i: Integer)
+function Speak of Animal(self: Dog; i: Integer);
 begin
     WriteLn('woof!')
 end;
 
-let dog: Animal := Dog();
-
-dog.Speak(1);
+initialization
+    var dog: Animal := Dog();
+    
+    dog.Speak(1);
+end

@@ -1,13 +1,16 @@
+implementation
 uses System;
 
-function SayHello()
+function SayHello();
 begin
-    let msg := StringConcat('hello,', ' world!');
+    var msg := StringConcat('hello,', ' world!');
     WriteLn(msg);
 end;
 
-SayHello();
-Uses.SayHello();
-
-// todo: improve error message
-// Uses.Uses.SayHello();
+initialization
+    SayHello();
+    Uses.SayHello();
+    
+    // todo: improve error message
+    // Uses.Uses.SayHello();
+end

@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 type MaybeInt = variant
@@ -5,5 +6,7 @@ type MaybeInt = variant
     None;
 end;
 
-let x := MaybeInt.Some(1);
-let y := MaybeInt.None();
+initialization
+    var x := MaybeInt.Some(1);
+    var y := MaybeInt.None();
+end

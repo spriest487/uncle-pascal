@@ -13,7 +13,7 @@ end;
 
 initialization
 
-let animal: Any := Dog(name: 'Rover');
+var animal: Any := Dog(name: 'Rover');
 
 if animal is not Cat then
     WriteLn('not a cat');
@@ -22,6 +22,6 @@ if animal is Dog d then
     WriteLn(d.name);
 
 // can't assign Integer to Any
-// let a: Any := 1;
+// var a: Any := 1;
 
 end.

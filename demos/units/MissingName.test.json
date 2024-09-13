@@ -1,0 +1,5 @@
+{
+  "steps": [
+    { "error_regex": "namespace `System` does not have a member named `FooBar`" }
+  ]
+}

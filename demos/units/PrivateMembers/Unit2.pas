@@ -1,10 +1,15 @@
-export type R = record
+interface
+uses System; 
+
+type R = record
     value: Integer;
 end;
 
-export type C = class
+type C = class
     value: Integer;
 end;
+
+implementation
 
 type R2 = record
     value: Integer;
@@ -14,3 +19,5 @@ type V = variant
     Left;
     Right;
 end;
+
+end

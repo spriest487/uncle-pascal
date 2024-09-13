@@ -1,3 +1,4 @@
+implementation
 uses System;
 
 { can't construct without an instance of itself }
@@ -11,6 +12,8 @@ type Rec = class
     self2: ^Self;
 end;
 
-var uninit: ValidButImpossible;
-
-let rec: Rec := Rec(self: nil; self2: nil);
+initialization
+    var uninit: ValidButImpossible;
+    
+    var rec: Rec := Rec(self: nil; self2: nil);
+end

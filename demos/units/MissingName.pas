@@ -1,1 +1,6 @@
-System.FooBar();
+implementation
+uses System;
+
+initialization
+    System.FooBar();
+end

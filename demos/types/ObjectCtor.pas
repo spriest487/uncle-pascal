@@ -17,26 +17,24 @@ begin
 end;
 
 initialization
-
-// named
-var someA := SomeObject(field1: 123; field2: true);
-
-// inferred
-var someB: SomeObject := (field1: 456; field2: false);
-
-// empty
-var someC := SomeObject();
-
-// empty, inferred
-var someD: SomeObject := ();
-
-// partially inferred
-var someE := SomeObject(field2: true);
-
-DisplaySomeObject('someA', someA);
-DisplaySomeObject('someB', someB);
-DisplaySomeObject('someC', someC);
-DisplaySomeObject('someD', someD);
-DisplaySomeObject('someE', someE);
-
+    // named
+    var someA := SomeObject(field1: 123; field2: true);
+    
+    // inferred
+    var someB: SomeObject := (field1: 456; field2: false);
+    
+    // empty
+    var someC := SomeObject();
+    
+    // empty, inferred
+    var someD: SomeObject := ();
+    
+    // partially inferred
+    var someE := SomeObject(field2: true);
+    
+    DisplaySomeObject('someA', someA);
+    DisplaySomeObject('someB', someB);
+    DisplaySomeObject('someC', someC);
+    DisplaySomeObject('someD', someD);
+    DisplaySomeObject('someE', someE);
 end.
