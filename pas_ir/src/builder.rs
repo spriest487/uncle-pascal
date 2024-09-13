@@ -359,6 +359,10 @@ impl<'m> Builder<'m> {
     }
 
     pub fn comment(&mut self, content: &(impl fmt::Display + ?Sized)) {
+        if !self.opts().debug_info {
+            return;
+        }
+
         self.append(Instruction::Comment(content.to_string()));
     }
 
