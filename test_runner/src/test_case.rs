@@ -98,13 +98,13 @@ impl TestCase {
         let mut exe_path = c_file_path.clone();
         exe_path.set_extension(exe_ext);
         
-        if is_target_outdated(&exe_path, &self.path) {
+        if is_target_outdated(&exe_path, &self.path, opts) {
             try_run_command(Command::new(&opts.compiler)
                 .arg(&self.path)
                 .arg("-o").arg(&c_file_path))?;
             
             let mut clang_args = Vec::new();
-            if opts.clang_debug {
+            if opts.clang_debug || opts.clang_codeview {
                 clang_args.push(OsStr::new("-g"));
                 clang_args.push(OsStr::new("-O0"));
             }
@@ -129,7 +129,7 @@ impl TestCase {
     fn try_run(&self, opts: &Opts) -> io::Result<bool> {
         println!("RUNNING: {}", self.path.display());
 
-        let mut proc = match opts.execution_method {
+        let mut proc = match opts.exec {
             ExecutionMethod::Interpret => self.run_interpreted(opts),
             ExecutionMethod::Clang => self.run_clang(opts),
         }?;
@@ -288,7 +288,11 @@ fn try_run_command(command: &mut Command) -> io::Result<()> {
     Err(io::Error::new(io::ErrorKind::Other, output.status.to_string()))
 }
 
-fn is_target_outdated(target: &Path, source: &Path) -> bool {
+fn is_target_outdated(target: &Path, source: &Path, opts: &Opts) -> bool {
+    if opts.clean {
+        return true;
+    }
+    
     if !target.exists() {
         return true;
     }

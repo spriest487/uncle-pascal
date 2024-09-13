@@ -10,20 +10,23 @@ pub struct Opts {
     #[structopt(long = "target", parse(from_os_str))]
     pub target_path: PathBuf,
 
-    #[structopt(long = "compiler", parse(from_os_str))]
+    #[structopt(long, short, parse(from_os_str))]
     pub compiler: PathBuf,
-    
-    #[structopt(long = "clang-debug", default_value = "false", parse(try_from_str))]
+
+    #[structopt(long)]
+    pub clean: bool,
+
+    #[structopt(long)]
     pub clang_debug: bool,
 
-    #[structopt(long = "clang-codeview", default_value = "false", parse(try_from_str))]
+    #[structopt(long)]
     pub clang_codeview: bool,
 
-    #[structopt(long = "error-continue", default_value = "false", parse(try_from_str))]
+    #[structopt(long = "continue")]
     pub error_continue: bool,
 
-    #[structopt(long = "exec", default_value = "interpret", parse(try_from_str))]
-    pub execution_method: ExecutionMethod, 
+    #[structopt(long, short, default_value = "interpret", parse(try_from_str))]
+    pub exec: ExecutionMethod, 
 }
 
 #[derive(Debug, Copy, Clone)]
