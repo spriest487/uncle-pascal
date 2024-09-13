@@ -1,11 +1,13 @@
-use crate::{
-    ast::{FieldName, FunctionName, GlobalName, Module, Type},
-    ir,
-};
-use pas_ir::{
-    metadata::{self, TypeDefID, CLOSURE_PTR_FIELD},
-    LocalID,
-};
+use crate::ast::FieldName;
+use crate::ast::FunctionName;
+use crate::ast::GlobalName;
+use crate::ast::Module;
+use crate::ast::Type;
+use crate::ir;
+use pas_ir::metadata;
+use pas_ir::metadata::TypeDefID;
+use pas_ir::metadata::CLOSURE_PTR_FIELD;
+use pas_ir::LocalID;
 use std::fmt;
 use crate::ast::TypeDefName;
 
@@ -110,7 +112,7 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn translate_val(v: &ir::Value, module: &Module) -> Self {
+    pub fn translate_val(v: &ir::Value, module: &mut Module) -> Self {
         match v {
             ir::Value::LiteralBool(b) => Expr::LitBool(*b),
             ir::Value::LiteralNull => Expr::Null,
@@ -126,10 +128,14 @@ impl Expr {
             ir::Value::LiteralUSize(i) => Expr::LitInt(*i as i128),
             ir::Value::LiteralF32(f) => Expr::LitFloat(f64::from(*f)),
             ir::Value::Ref(r) => Expr::translate_ref(r, module),
+            ir::Value::SizeOf(ty) => {
+                let ty = Type::from_metadata(&ty, module);
+                Expr::SizeOf(ty)
+            }
         }
     }
 
-    pub fn translate_ref(r: &ir::Ref, module: &Module) -> Self {
+    pub fn translate_ref(r: &ir::Ref, module: &mut Module) -> Self {
         match r {
             ir::Ref::Discard => {
                 panic!("can't translate a discard ref, it should only be used in assignments")
@@ -197,7 +203,7 @@ impl Expr {
         lhs: &ir::Value,
         op: InfixOp,
         rhs: &ir::Value,
-        module: &Module,
+        module: &mut Module,
     ) -> Self {
         let lhs_expr = Expr::translate_val(lhs, module);
         let rhs_expr = Expr::translate_val(rhs, module);
@@ -205,7 +211,7 @@ impl Expr {
         Self::infix_op(lhs_expr, op, rhs_expr)
     }
 
-    pub fn translate_assign(out: &ir::Ref, val: Self, module: &Module) -> Self {
+    pub fn translate_assign(out: &ir::Ref, val: Self, module: &mut Module) -> Self {
         match out {
             ir::Ref::Discard => val,
             _ => {
@@ -215,7 +221,7 @@ impl Expr {
         }
     }
 
-    pub fn translate_element(arr: &ir::Ref, index: &ir::Value, module: &Module) -> Self {
+    pub fn translate_element(arr: &ir::Ref, index: &ir::Value, module: &mut Module) -> Self {
         let array_expr = Expr::translate_ref(arr, module);
         let elements_expr = Expr::Field {
             base: Box::new(array_expr),
@@ -235,7 +241,7 @@ impl Expr {
         a: &ir::Ref,
         of_ty: &metadata::Type,
         field_id: metadata::FieldID,
-        module: &Module,
+        module: &mut Module,
     ) -> Self {
         let a_expr = Expr::translate_ref(a, module);
 

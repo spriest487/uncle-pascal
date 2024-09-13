@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use crate::expr::translate_raise;
+use crate::expr::{expr_to_val, translate_raise};
 use crate::pattern::translate_pattern_match;
 use crate::{
     jmp_exists, translate_block, build_call, translate_exit, translate_expr,
@@ -87,9 +87,9 @@ fn build_binding(binding: &pas_ty::ast::VarBinding, builder: &mut Builder) {
 
     if let Some(init_expr) = &binding.val {
         builder.scope(|builder| {
-            let val_ref = translate_expr(init_expr, builder);
+            let val = expr_to_val(init_expr, builder);
 
-            builder.mov(binding_ref.clone(), val_ref);
+            builder.mov(binding_ref.clone(), val);
             builder.retain(binding_ref, &bound_ty);
         });
     };
@@ -111,10 +111,10 @@ pub fn build_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder) {
 
         let (counter_val, counter_init_val) = match &for_loop.init {
             ast::ForLoopInit::Assignment { counter, value } => {
-                let counter_val = translate_expr(counter, builder);
-                let init_val = translate_expr(&value, builder);
+                let counter_ref = translate_expr(counter, builder);
+                let init_val = expr_to_val(&value, builder);
 
-                (counter_val, init_val)
+                (counter_ref, init_val)
             }
 
             ast::ForLoopInit::Binding(counter_binding) => {
@@ -125,7 +125,7 @@ pub fn build_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder) {
 
                 let counter_binding_name = counter_binding.name.to_string();
                 let counter_val = builder.local_new(counter_ty.clone(), Some(counter_binding_name));
-                let init_val = translate_expr(&counter_init_val, builder);
+                let init_val = expr_to_val(&counter_init_val, builder);
 
                 (counter_val, init_val)
             }
@@ -147,7 +147,7 @@ pub fn build_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder) {
 
         // temp value to store the result of evaluating the break condition
         let break_cond_val = builder.local_temp(Type::Bool);
-        let to_val = translate_expr(&for_loop.to_expr, builder);
+        let to_val = expr_to_val(&for_loop.to_expr, builder);
 
         builder.mov(counter_val.clone(), counter_init_val);
 
@@ -191,7 +191,7 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
 
         // evaluate condition
         builder.scope(|builder| {
-            let cond_val = translate_expr(&while_loop.condition, builder);
+            let cond_val = expr_to_val(&while_loop.condition, builder);
             builder.not(not_cond.clone(), cond_val);
         });
 
@@ -247,7 +247,7 @@ pub fn translate_compound_assignment(
 ) {
     builder.scope(|builder| {
         let lhs = translate_expr(&assignment.lhs, builder);
-        let rhs = translate_expr(&assignment.rhs, builder);
+        let rhs = expr_to_val(&assignment.rhs, builder);
 
         // result type must be the same as the lhs ty, that's where we're storing it
         let lhs_ty = builder.translate_type(&assignment.lhs.annotation().ty());
@@ -291,7 +291,7 @@ pub fn build_case_block<Item, ItemFn>(
     ItemFn: FnMut(&Item, &mut Builder),
 {
     builder.scope(|builder| {
-        let cond_expr_val = translate_expr(&case.cond_expr, builder);
+        let cond_expr_val = expr_to_val(&case.cond_expr, builder);
 
         let break_label = builder.alloc_label();
 
@@ -308,7 +308,7 @@ pub fn build_case_block<Item, ItemFn>(
         // jump to the branch stmt where the actual value is equal to the branch value
         for (branch, branch_label) in case.branches.iter().zip(branch_labels.iter()) {
             builder.scope(|builder| {
-                let branch_val = translate_expr(&branch.value, builder);
+                let branch_val = expr_to_val(&branch.value, builder);
 
                 let cond_eq = builder.local_temp(Type::Bool);
 

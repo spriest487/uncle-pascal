@@ -472,17 +472,10 @@ impl<'m> Builder<'m> {
         let out = out.into();
         let a = a.into();
         let b = b.into();
-
-        // let out := a lte b
-        self.lte(out.clone(), a.clone(), b.clone());
-
-        // let neq := !(a = b)
-        let neq = self.local_temp(Type::Bool);
-        self.eq(neq.clone(), a, b);
-        self.not(neq.clone(), neq.clone());
-
-        // let out := out and neq
-        self.and(out.clone(), out, neq)
+        
+        // out := not (a >= b)
+        let gte = self.gte_to_val(a, b);
+        self.not(out, gte);
     }
 
     pub fn lt_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
