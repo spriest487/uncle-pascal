@@ -1,0 +1,15 @@
+{
+  "steps": [
+    { "output": "part 1" },
+    { "output": "called A" },
+
+    { "output": "part 2" },
+    { "output": "called A" },
+    { "output": "called B" },
+
+    { "output": "part 3" },
+    { "output": "called B" },
+    { "output": "called A" },
+    { "output": "here!" }
+  ]
+}
