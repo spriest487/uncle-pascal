@@ -5,18 +5,28 @@ use crate::{
 };
 use pas_common::BuildOptions;
 
+fn try_parse_case<Item>(s: &str) -> Result<CaseBlock<Span, Item>, String>
+where
+    Item: Parse + Spanned
+{
+    let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())
+        .preprocess(s)
+        .map_err(|err| err.to_string())?;
+
+    let src_tokens = TokenTree::tokenize(test_unit)
+        .map_err(|err| err.to_string())?;
+
+    let mut token_stream = TokenStream::new(src_tokens, Span::zero("test"));
+
+    CaseBlock::parse(&mut token_stream)
+        .map_err(|err| err.to_string())
+}
+
 fn parse_case<Item>(s: &str) -> CaseBlock<Span, Item>
     where
         Item: Parse + Spanned
 {
-    let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())
-        .preprocess(s)
-        .unwrap();
-
-    let src_tokens = TokenTree::tokenize(test_unit).unwrap();
-    let mut token_stream = TokenStream::new(src_tokens, Span::zero("test"));
-
-    CaseBlock::parse(&mut token_stream).unwrap()
+    try_parse_case(s).unwrap()
 }
 
 fn parse_case_stmt(s: &str) -> CaseStmt<Span> {
@@ -32,15 +42,13 @@ fn empty_case_parses() {
 }
 
 #[test]
-#[should_panic]
 fn case_with_garbage_is_err() {
-    parse_case_stmt("case 1 of cat dog horse end");
+    assert!(try_parse_case::<Stmt<Span>>("case 1 of cat dog horse end").is_err());
 }
 
 #[test]
-#[should_panic]
 fn case_unterminated_is_err() {
-    parse_case_stmt("case 1 of 1: a()");
+    assert!(try_parse_case::<Stmt<Span>>("case 1 of 1: a()").is_err())
 }
 
 #[test]
