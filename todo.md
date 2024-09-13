@@ -6,6 +6,7 @@
 
 # critical
 
+* debug context should be per scope so we can display stack traces with line numbers
 * move string cleanup from a disposer to a release callback
 * allow trailing comma in collection init!!
 * c codegen: escaping! can't do ""

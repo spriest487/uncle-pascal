@@ -16,7 +16,11 @@ WriteLn('Enter an expression e.g. ''2*3'', ''4/2'' or ''exit''.');
 while true do begin
     var command := ReadLn().StringTrim();
 
-    if command.CompareStr('exit') = 0 then break;
+    if command.CompareStr('exit') = 0 then 
+        break;
+
+    if command.StringLen() = 0 then
+        continue;
 
     var opIndex := -1;
     for var i := 0 to command.StringLen() - 1 do begin

@@ -290,21 +290,15 @@ begin
     end;
 
     var startAt := 0;
-    while startAt < s.len do
-    begin
-        // todo: fix short circuit evaluation so we can check this in the while condition
-        if not s.StringCharAt(startAt).IsWhiteSpace() then
-            break;
+    var endAt := s.len - 1;
 
+    while startAt < endAt and s.StringCharAt(startAt).IsWhiteSpace() do
+    begin
         startAt += 1;
     end;
 
-    var endAt := s.len - 1;
-    while endAt > startAt do
+    while endAt >= startAt and s.StringCharAt(endAt).IsWhiteSpace() do
     begin
-        if not s.StringCharAt(endAt).IsWhiteSpace() then
-            break;
-
         endAt -= 1;
     end;
 
