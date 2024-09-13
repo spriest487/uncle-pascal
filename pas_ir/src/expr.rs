@@ -13,6 +13,13 @@ use syn::ast;
 
 use crate::ty::VirtualTypeID;
 
+pub fn expr_to_val(expr: &pas_ty::ast::Expr, builder: &mut Builder) -> Value {
+    match expr {
+        ast::Expr::Literal(lit, typed) => literal_to_val(lit, typed.ty().as_ref(), builder),
+        _ => Value::Ref(translate_expr(expr, builder)),
+    }
+}
+
 pub fn translate_expr(expr: &pas_ty::ast::Expr, builder: &mut Builder) -> Ref {
     builder.push_debug_context(expr.annotation().span().clone());
 
@@ -965,21 +972,42 @@ fn translate_bin_op(
         },
 
         syn::Operator::And => {
-            let b = translate_expr(&bin_op.rhs, builder);
-            builder.append(Instruction::And {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            let short_circuit = builder.alloc_label();
+            let exit = builder.alloc_label();
+
+            // if lhs is false, short circuit
+            let is_short_circuit = builder.not_to_val(lhs_val.clone());
+            builder.jmp_if(short_circuit, is_short_circuit);
+
+            // eval both sides
+            let rhs = expr_to_val(&bin_op.rhs, builder);
+            builder.and(out_val.clone(), lhs_val, rhs);
+            builder.jmp(exit);
+            
+            // short circuit: out := false
+            builder.label(short_circuit);
+            builder.mov(out_val.clone(), false);
+            
+            builder.label(exit);
         },
 
         syn::Operator::Or => {
-            let b = translate_expr(&bin_op.rhs, builder);
-            builder.append(Instruction::Or {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            let short_circuit = builder.alloc_label();
+            let exit = builder.alloc_label();
+            
+            // if lhs is true, short circuit
+            builder.jmp_if(short_circuit, lhs_val.clone());
+
+            // eval both sides
+            let rhs = expr_to_val(&bin_op.rhs, builder);
+            builder.or(out_val.clone(), lhs_val, rhs);
+            builder.jmp(exit);
+
+            // short circuit: out := true
+            builder.label(short_circuit);
+            builder.mov(out_val.clone(), true);
+            
+            builder.label(exit);
         },
 
         syn::Operator::BitAnd => {
