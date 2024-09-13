@@ -8,7 +8,7 @@ use pas_ir::metadata::Metadata;
 use pas_ir::Type;
 
 /// pointer to native memory that is marshalled to/from value cells when accessed
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq)]
 pub struct Pointer {
     pub addr: usize,
     pub ty: Type,
@@ -85,5 +85,11 @@ impl Ord for Pointer {
         match (self, other) {
             (a, b) => a.addr.cmp(&b.addr),
         }
+    }
+}
+
+impl PartialEq for Pointer {
+    fn eq(&self, other: &Self) -> bool {
+        self.addr == other.addr 
     }
 }
