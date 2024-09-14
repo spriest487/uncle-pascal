@@ -12,7 +12,7 @@ static void Raise(STRING_STRUCT* msg_str) {
         int32_t msg_len = STRING_LEN(msg_str);
         char* msg_chars = (char*) STRING_CHARS(msg_str);
 
-        fprintf(stderr, "%.*s\n", (int) msg_len, msg_chars);
+        fprintf(stderr, "Runtime error raised: %.*s\n", (int) msg_len, msg_chars);
     }
     abort();
 }
