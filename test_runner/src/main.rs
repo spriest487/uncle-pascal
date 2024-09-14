@@ -1,14 +1,13 @@
-use chrono::{DateTime, Utc};
-use std::process::Command;
-use structopt::StructOpt;
-
 mod opts;
 mod test_script;
-
-use opts::Opts;
-use test_case::TestCase;
-
+mod concat_reader;
 mod test_case;
+
+use chrono::{DateTime, Utc};
+use opts::Opts;
+use std::process::Command;
+use structopt::StructOpt;
+use test_case::TestCase;
 
 fn main() -> Result<(), i32> {
     let opts = Opts::from_args();

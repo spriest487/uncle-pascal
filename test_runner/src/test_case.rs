@@ -1,12 +1,14 @@
-use std::env;
-use std::ffi::OsStr;
-use std::fs::DirEntry;
-use std::io::{self, BufRead, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Output, Stdio};
-use regex::Regex;
+use crate::concat_reader::ConcatReader;
 use crate::opts::{ExecutionMethod, Opts};
 use crate::test_script::{TestScript, TestScriptStep};
+use regex::Regex;
+use std::env;
+use std::ffi::{OsStr, OsString};
+use std::fs::DirEntry;
+use std::io::{self, BufRead, BufWriter, Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Output, Stdio};
+use std::time::SystemTime;
 
 #[derive(Clone)]
 pub struct TestCase {
@@ -61,25 +63,82 @@ impl TestCase {
             .unwrap_or_else(Vec::new)
     }
     
-    fn run_interpreted(&self, opts: &Opts) -> io::Result<Child> {
+    fn run_interpreted<RunFn>(&self, opts: &Opts, run: RunFn) -> io::Result<ExitStatus> 
+        where RunFn: FnOnce(&mut dyn Write, &mut dyn Read, &mut dyn Read)
+    {
         let cwd = self.working_dir();
         let script_rel_path = Path::strip_prefix(&self.path, cwd)
             .unwrap_or_else(|_| panic!("failed to strip working dir {} from script path {}", cwd.display(), self.path.display()));
 
-        Command::new(&opts.compiler)
-            .arg(script_rel_path)
-            .current_dir(self.working_dir())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+        try_run_interactive(
+            Command::new(&opts.compiler)
+                .arg(script_rel_path)
+                .current_dir(self.working_dir())
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped()),
+            |stdin, stdout, stderr| {
+                run(stdin, stdout, stderr)
+            })
     }
     
     fn working_dir(&self) -> &Path {
         self.path.parent().expect("source file must have a parent directory")
     }
     
-    fn run_clang(&self, opts: &Opts) -> io::Result<Child> {
+    fn build_clang(&self,
+        exe_path: &PathBuf,
+        build_stdout: &mut Vec<u8>,
+        build_stderr: &mut Vec<u8>,
+        opts: &Opts
+    ) -> io::Result<Option<ExitStatus>> {
+        if !is_target_outdated(&exe_path, &self.path, opts) {
+            return Ok(None);
+        }
+        
+        let mut c_file_path = exe_path.clone();
+        c_file_path.set_extension("c");
+
+        let compile_status = try_run_command(
+            Command::new(&opts.compiler)
+                .arg(&self.path)
+                .arg("-o").arg(&c_file_path),
+            build_stdout,
+            build_stderr
+        )?;
+
+        if !compile_status.success() {
+            return Ok(Some(compile_status)); 
+        }
+        
+        let mut clang_args = Vec::new();
+        if opts.clang_debug || opts.clang_codeview {
+            clang_args.push(OsStr::new("-g"));
+            clang_args.push(OsStr::new("-O0"));
+        }
+        if opts.clang_codeview {
+            clang_args.push(OsStr::new("-gcodeview"));
+        }
+
+        let clang_status = try_run_command(
+            Command::new("clang")
+                .arg(c_file_path)
+                .arg("-o").arg(&exe_path)
+                .args(clang_args),
+            build_stdout,
+            build_stderr
+        )?;
+        
+        if !clang_status.success() {
+            return Ok(Some(clang_status));
+        }
+
+        Ok(None)
+    }
+
+    fn run_clang<RunFn>(&self, opts: &Opts, run: RunFn) -> io::Result<ExitStatus>
+        where RunFn: FnOnce(&mut dyn Write, &mut dyn Read, &mut dyn Read)
+    {
         let path_as_rel = match self.path.strip_prefix(&opts.search_path) {
             Ok(path) => path,
             Err(err) => {
@@ -87,96 +146,75 @@ impl TestCase {
             }
         };
         
-        let mut c_file_path = opts.target_path.join(&path_as_rel);
-        c_file_path.set_extension("c");
-
-        let exe_ext = match env::consts::OS {
+        let mut exe_path = opts.target_path.join(&path_as_rel);
+        exe_path.set_extension(match env::consts::OS {
             "windows" => "exe",
             _ => "",
-        };
+        });
 
-        let mut exe_path = c_file_path.clone();
-        exe_path.set_extension(exe_ext);
-        
-        if is_target_outdated(&exe_path, &self.path, opts) {
-            try_run_command(Command::new(&opts.compiler)
-                .arg(&self.path)
-                .arg("-o").arg(&c_file_path))?;
+        let mut build_stdout = Vec::new();
+        let mut build_stderr = Vec::new();
+                
+        if let Some(build_status) = self.build_clang(&exe_path, &mut build_stdout, &mut build_stderr, opts)? {
+            let mut no_write = BufWriter::new(Vec::new());
+            run(&mut no_write, &mut build_stdout.as_slice(), &mut build_stderr.as_slice());
             
-            let mut clang_args = Vec::new();
-            if opts.clang_debug || opts.clang_codeview {
-                clang_args.push(OsStr::new("-g"));
-                clang_args.push(OsStr::new("-O0"));
-            }
-            if opts.clang_codeview {
-                clang_args.push(OsStr::new("-gcodeview"));   
-            }
-
-            try_run_command(Command::new("clang")
-                .arg(c_file_path)
-                .arg("-o").arg(&exe_path)
-                .args(clang_args))?;
+            dump_output_buffers(&build_stdout, &build_stderr);
+            
+            return Ok(build_status);
         }
-        
-        Command::new(exe_path)
-            .current_dir(self.working_dir())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+
+        try_run_interactive(
+            Command::new(exe_path)
+                .current_dir(self.working_dir()),
+            |stdin, stdout, stderr| {
+                let mut concat_stdout = ConcatReader::new(build_stdout.as_slice(), stdout);
+                let mut concat_stderr = ConcatReader::new(build_stderr.as_slice(), stderr);
+
+                run(stdin, &mut concat_stdout, &mut concat_stderr);
+            }
+        )
     }
     
     fn try_run(&self, opts: &Opts) -> io::Result<bool> {
         println!("RUNNING: {}", self.path.display());
 
-        let mut proc = match opts.exec {
-            ExecutionMethod::Interpret => self.run_interpreted(opts),
-            ExecutionMethod::Clang => self.run_clang(opts),
-        }?;
-
-        let mut stdin = proc.stdin.take()
-            .expect("stdin was not captured for child process");
-        let mut stdout = proc.stdout.take()
-            .expect("stdout was not captured for child process");
-        let mut stderr = proc.stderr.take()
-            .expect("stderr was not captured for child process");
-        
         let mut io_error = false;
+        
+        let runner = match opts.exec {
+            ExecutionMethod::Interpret => Self::run_interpreted,
+            ExecutionMethod::Clang => Self::run_clang,
+        };
+        
+        let status = runner(self, opts, |stdin: &mut dyn Write, stdout: &mut dyn Read, stderr: &mut dyn Read| {
+            let mut line_buf = Vec::new();
+            for step in &self.script.steps {
+                match run_step(step, &mut *stdin, stdout, stderr, &mut line_buf) {
+                    Ok(true) => {},
+                    Ok(false) => {
+                        io_error = true;
+                        break;
+                    }
+                    Err(err) => {
+                        println!("FAILED ({err})");
 
-        let mut line_buf = Vec::new();
-        for step in &self.script.steps {
-            match run_step(step, &mut stdin, &mut stdout, &mut stderr, &mut line_buf) {
-                Ok(true) => {},
-                Ok(false) => {
-                    io_error = true;
-                    break;
-                }
-                Err(err) => {
-                    println!("FAILED ({err})");
-
-                    io_error = false;
-                    break;
+                        io_error = false;
+                        break;
+                    }
                 }
             }
-        }
-
-        proc.stdin = Some(stdin);
-        proc.stdout = Some(stdout);
-        proc.stderr = Some(stderr);
-
-        let output = proc.wait_with_output()?;
-        dump_output(&output);
+        })?;
         
         let expect_error = self.script.steps.iter().any(|step| step.error_regex.is_some());
 
-        let ok = !io_error && (output.status.success() || expect_error);
+        let ok = !io_error && (status.success() || expect_error);
 
         let completed = if ok {
             println!("OK");
 
             true
         } else {
-            let code = output.status
+            let code = status
                 .code()
                 .map(|code| code.to_string())
                 .unwrap_or_else(|| String::from("no return code"));
@@ -201,13 +239,11 @@ impl TestCase {
     }
 }
 
-
-
 fn run_step(
     step: &TestScriptStep,
-    stdin: &mut ChildStdin,
-    stdout: &mut ChildStdout,
-    stderr: &mut ChildStderr,
+    stdin: &mut dyn Write,
+    stdout: &mut dyn Read,
+    stderr: &mut dyn Read,
     line_buf: &mut Vec<u8>,
 ) -> io::Result<bool> {
     line_buf.clear();
@@ -223,12 +259,13 @@ fn run_step(
         }
 
         let output = buf_to_string(line_buf.clone())?;
-        if !err_regex.is_match(&output) {
-            println!("ERROR: unexpected error");
-            return Ok(false);
-        } else {
-            return Ok(true);
+        
+        let expected_err = err_regex.is_match(&output);
+        if !expected_err {
+            println!("ERROR: unexpected error (expected pattern: {})", err_regex);
         }
+        
+        return Ok(expected_err);
     }
     
     if let Some(input) = &step.input {
@@ -277,15 +314,41 @@ fn buf_to_string(buf: Vec<u8>) -> io::Result<String> {
     }
 }
 
-fn try_run_command(command: &mut Command) -> io::Result<()> {
-    let output = command.output()?;
+fn try_run_command(command: &mut Command, stdout: &mut Vec<u8>, stderr: &mut Vec<u8>) -> io::Result<ExitStatus> {
+    let mut output = command.output()?;
 
-    if output.status.success() {
-        return Ok(());
-    }
+    stdout.append(&mut output.stdout);
+    stderr.append(&mut output.stderr);
 
+    Ok(output.status)
+}
+
+fn try_run_interactive<RunFn>(command: &mut Command, f: RunFn) -> io::Result<ExitStatus> 
+    where RunFn: FnOnce(&mut ChildStdin, &mut ChildStdout, &mut ChildStderr)
+{
+    let mut proc = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let mut stdin = proc.stdin.take()
+        .expect("stdin was not captured for child process");
+    let mut stdout = proc.stdout.take()
+        .expect("stdout was not captured for child process");
+    let mut stderr = proc.stderr.take()
+        .expect("stderr was not captured for child process");
+
+    f(&mut stdin, &mut stdout, &mut stderr);
+
+    proc.stdin = Some(stdin);
+    proc.stdout = Some(stdout);
+    proc.stderr = Some(stderr);
+
+    let output = proc.wait_with_output()?;
     dump_output(&output);
-    Err(io::Error::new(io::ErrorKind::Other, output.status.to_string()))
+
+    Ok(output.status)
 }
 
 fn is_target_outdated(target: &Path, source: &Path, opts: &Opts) -> bool {
@@ -296,31 +359,47 @@ fn is_target_outdated(target: &Path, source: &Path, opts: &Opts) -> bool {
     if !target.exists() {
         return true;
     }
+    
+    let compiler_path = OsString::from(Command::new(&opts.compiler).get_program());
 
-    let get_target_modified = target.metadata()
+    let target_timestamp = target.metadata()
         .and_then(|meta| meta.modified()).ok();
+
+    let compiler_modified = Path::new(&compiler_path).metadata()
+        .and_then(|meta| meta.modified()).ok();
+
     let get_source_modified = source.metadata()
         .and_then(|meta| meta.modified()).ok();
+    
+    let modified_timestamp = match (compiler_modified, get_source_modified) {
+        (Some(compiler_time), Some(src_time)) => Some(SystemTime::max(compiler_time, src_time)),
+        (Some(time), None) | (None, Some(time)) => Some(time),
+        (None, None) => None,
+    };
 
-    match (get_target_modified, get_source_modified) {
+    match (target_timestamp, modified_timestamp) {
         (Some(target_modified), Some(source_modified)) =>
             source_modified > target_modified,
         _ => true,
     }
 }
 
-fn dump_output(output: &Output) {
-    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+fn dump_output_buffers(stdout: &[u8], stderr: &[u8]) {
+    let stdout = String::from_utf8_lossy(stdout);
     if stdout.len() > 0 {
         for line in stdout.lines() {
             println!("  << {}", line.trim());
         }
     }
 
-    let stderr = String::from_utf8(output.stderr.clone()).unwrap();
+    let stderr = String::from_utf8_lossy(stderr);
     if stderr.len() > 0 {
         for line in stderr.lines() {
             println!("  !! {}", line.trim());
         }
     }
+}
+
+fn dump_output(output: &Output) {
+    dump_output_buffers(&output.stdout, &output.stderr);
 }
