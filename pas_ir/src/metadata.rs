@@ -312,7 +312,7 @@ impl Metadata {
 
     pub fn declare_runtime_type(&mut self, ty: &Type) -> RuntimeType {
         if self.runtime_types.contains_key(ty) {
-            panic!("duplicate rc boilerplate declaration for type {}", ty);
+            panic!("duplicate rc boilerplate declaration for type {}", self.pretty_ty_name(ty));
         }
 
         let pair = RuntimeType {
@@ -327,7 +327,7 @@ impl Metadata {
 
     pub fn declare_dynarray_runtime_type(&mut self, element_ty: &Type) -> DynArrayRuntimeType {
         if self.dyn_array_runtime_types.contains_key(element_ty) {
-            panic!("duplicate rc boilerplate declaration for type {}", element_ty);
+            panic!("duplicate rc boilerplate declaration for type {}", self.pretty_ty_name(element_ty));
         }
 
         let runtime_type = DynArrayRuntimeType {

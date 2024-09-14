@@ -1,10 +1,4 @@
-use crate::{
-    build_closure_function_def, build_func_static_closure_def, build_func_def, build_static_closure_impl, metadata::*, pas_ty,
-    translate_func_params, translate_stmt, write_instruction_list, Builder, ExternalFunctionRef,
-    FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance,
-    IROptions, Instruction, InstructionFormatter, Metadata, MethodDeclKey,
-    StaticClosure, StaticClosureID, Type, TypeDef, TypeDefID, VirtualTypeID,
-};
+use crate::{build_closure_function_def, build_func_static_closure_def, build_func_def, build_static_closure_impl, metadata::*, pas_ty, translate_func_params, translate_stmt, write_instruction_list, Builder, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, Metadata, MethodDeclKey, StaticClosure, StaticClosureID, Type, TypeDef, TypeDefID, VirtualTypeID, LocalID, Ref};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::{Ident, IdentPath};
@@ -652,10 +646,73 @@ impl Module {
                 ty
             },
         };
+        
+        // ensure the runtime type info exists for all referenced types
+        self.runtime_type(&ty);
 
         // println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
 
         ty
+    }
+
+    // get or generate runtime type for a given type, which contains the function IDs etc
+    // used for RC operations at runtime
+    pub fn runtime_type(&mut self, ty: &Type) -> RuntimeType {
+        if let Some(boilerplate) = self.metadata.get_runtime_type(ty) {
+            return boilerplate.clone();
+        }
+
+        // declare new func IDs then define them here
+        let funcs = self.metadata.declare_runtime_type(ty);
+
+        let release_body = {
+            let mut release_builder = Builder::new(self);
+            release_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
+            let target_ref = Ref::Local(LocalID(0)).to_deref();
+
+            release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
+                builder.release(el_ref, el_ty)
+            });
+            release_builder.finish()
+        };
+
+        self.insert_func(
+            funcs.release,
+            Function::Local(FunctionDef {
+                body: release_body,
+                sig: FunctionSig {
+                    return_ty: Type::Nothing,
+                    param_tys: vec![ty.clone().ptr()],
+                },
+                debug_name: format!("<generated releaser for {}>", self.metadata.pretty_ty_name(ty)),
+                src_span: self.module_span().clone(),
+            }),
+        );
+
+        let retain_body = {
+            let mut retain_builder = Builder::new(self);
+            retain_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
+            let target_ref = Ref::Local(LocalID(0)).to_deref();
+            retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
+                builder.retain(el_ref, el_ty)
+            });
+            retain_builder.finish()
+        };
+
+        self.insert_func(
+            funcs.retain,
+            Function::Local(FunctionDef {
+                body: retain_body,
+                sig: FunctionSig {
+                    return_ty: Type::Nothing,
+                    param_tys: vec![ty.clone().ptr()],
+                },
+                debug_name: format!("generated RC retain func for {}", self.metadata.pretty_ty_name(ty)),
+                src_span: self.module_span().clone(),
+            }),
+        );
+
+        funcs
     }
 
     pub fn translate_dyn_array_struct(

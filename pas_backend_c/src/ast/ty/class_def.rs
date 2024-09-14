@@ -178,7 +178,7 @@ impl Class {
             .map(|funcs| FunctionName::ID(funcs.release))
             .unwrap_or_else(|| {
                 panic!(
-                    "missing rc cleanup func for resource struct of IR class {}",
+                    "missing runtime type for resource struct of IR class {}",
                     metadata.pretty_ty_name(&resource_ty),
                 )
             });

@@ -377,8 +377,7 @@ fn gen_class_rc_boilerplate(module: &mut Module, class_ty: &Type) {
         .and_then(|class_id| class_id.as_class())
         .expect("resource class of translated class type was not a struct");
 
-    let mut builder = Builder::new(module);
-    builder.gen_rc_boilerplate(&Type::Struct(resource_struct));
+    module.runtime_type(&Type::Struct(resource_struct));
 }
 
 pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
@@ -421,10 +420,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
         };
 
         ir_module.metadata.define_struct(STRING_ID, string_def);
-
-        let mut rc_builder = Builder::new(&mut ir_module);
-        rc_builder.gen_rc_boilerplate(&Type::Struct(STRING_ID));
-        rc_builder.finish();
+        ir_module.runtime_type(&Type::Struct(STRING_ID));
     }
 
     for unit in &module.units {
@@ -452,8 +448,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
         gen_class_rc_boilerplate(&mut ir_module, &class_ty);
     }
     for closure_id in ir_module.closure_types().collect::<Vec<_>>() {
-        let mut builder = Builder::new(&mut ir_module);
-        builder.gen_rc_boilerplate(&Type::Struct(closure_id));
+        ir_module.runtime_type(&Type::Struct(closure_id));
     }
 
     ir_module.metadata.sort_type_defs_by_deps();

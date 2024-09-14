@@ -1,35 +1,29 @@
 pub mod scope;
 
 use self::scope::*;
-use crate::{
-    ty::{FieldID, Interface, Struct},
-    metadata::*,
-    Function,
-    FunctionDeclKey,
-    FunctionDef,
-    FunctionDefKey,
-    FunctionInstance,
-    GlobalRef,
-    IROptions,
-    IdentPath,
-    Instruction,
-    Label,
-    LocalID,
-    Module,
-    RuntimeType,
-    Ref,
-    Type,
-    Value,
-    EXIT_LABEL
-};
+use crate::metadata::*;
+use crate::ty::FieldID;
+use crate::ty::Interface;
+use crate::ty::Struct;
+use crate::FunctionDeclKey;
+use crate::FunctionDefKey;
+use crate::FunctionInstance;
+use crate::GlobalRef;
+use crate::IROptions;
+use crate::IdentPath;
+use crate::Instruction;
+use crate::Label;
+use crate::LocalID;
+use crate::Module;
+use crate::Ref;
+use crate::Type;
+use crate::Value;
+use crate::EXIT_LABEL;
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast::TypeList, Ident};
 use pas_typecheck::{self as pas_ty, Specializable, SYSTEM_UNIT_NAME};
-use
-std::{
-    borrow::Cow,
-    fmt
-};
+use std::borrow::Cow;
+use std::fmt;
 
 #[derive(Debug)]
 pub struct Builder<'m> {
@@ -43,8 +37,6 @@ pub struct Builder<'m> {
     next_label: Label,
 
     loop_stack: Vec<LoopScope>,
-
-    module_span: Span,
 }
 
 impl<'m> Builder<'m> {
@@ -69,8 +61,6 @@ impl<'m> Builder<'m> {
             scopes: vec![Scope::new()],
 
             loop_stack: Vec::new(),
-
-            module_span,
         }
     }
 
@@ -898,65 +888,6 @@ impl<'m> Builder<'m> {
         }
     }
 
-    // generate deep (retain, release) funcs for complex types
-    pub fn gen_rc_boilerplate(&mut self, ty: &Type) -> RuntimeType {
-        if let Some(boilerplate) = self.module.metadata.get_runtime_type(ty) {
-            return boilerplate.clone();
-        }
-
-        // declare new func IDs then define them here
-        let funcs = self.module.metadata.declare_runtime_type(ty);
-
-        let release_body = {
-            let mut release_builder = Builder::new(&mut self.module);
-            release_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
-            let target_ref = Ref::Local(LocalID(0)).to_deref();
-
-            release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
-                builder.release(el_ref, el_ty)
-            });
-            release_builder.finish()
-        };
-
-        self.module.insert_func(
-            funcs.release,
-            Function::Local(FunctionDef {
-                body: release_body,
-                sig: FunctionSig {
-                    return_ty: Type::Nothing,
-                    param_tys: vec![ty.clone().ptr()],
-                },
-                debug_name: format!("<generated releaser for {}>", self.pretty_ty_name(ty)),
-                src_span: self.module_span.clone(),
-            }),
-        );
-
-        let retain_body = {
-            let mut retain_builder = Builder::new(&mut self.module);
-            retain_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
-            let target_ref = Ref::Local(LocalID(0)).to_deref();
-            retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
-                builder.retain(el_ref, el_ty)
-            });
-            retain_builder.finish()
-        };
-
-        self.module.insert_func(
-            funcs.retain,
-            Function::Local(FunctionDef {
-                body: retain_body,
-                sig: FunctionSig {
-                    return_ty: Type::Nothing,
-                    param_tys: vec![ty.clone().ptr()],
-                },
-                debug_name: format!("generated RC retain func for {}", self.pretty_ty_name(ty)),
-                src_span: self.module_span.clone(),
-            }),
-        );
-
-        funcs
-    }
-
     pub fn retain(&mut self, at: Ref, ty: &Type) -> bool {
         if self.opts().annotate_rc {
             self.comment(&format!("retain: {}", self.pretty_ty_name(ty)));
@@ -964,7 +895,7 @@ impl<'m> Builder<'m> {
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.gen_rc_boilerplate(ty);
+                let rc_funcs = self.module.runtime_type(ty);
 
                 let at_ptr = self.local_temp(ty.clone().ptr());
                 self.append(Instruction::AddrOf {
@@ -1001,7 +932,7 @@ impl<'m> Builder<'m> {
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.gen_rc_boilerplate(ty);
+                let rc_funcs = self.module.runtime_type(ty);
 
                 let at_ptr = self.local_temp(ty.clone().ptr());
                 self.append(Instruction::AddrOf {
