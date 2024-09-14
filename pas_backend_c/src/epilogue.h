@@ -45,15 +45,15 @@ static STRING_STRUCT* FuncName(DataType i) { \
     return str; \
 }
 
-INT_TO_STR_IMPL(System_Int8ToStr, int8_t, PRId8, 4)
+INT_TO_STR_IMPL(System_Int8ToStr, int8_t, PRId8, 5)
 INT_TO_STR_IMPL(System_ByteToStr, uint8_t, PRIu8, 4)
-INT_TO_STR_IMPL(System_Int16ToStr, int16_t, PRId16, 8)
+INT_TO_STR_IMPL(System_Int16ToStr, int16_t, PRId16, 9)
 INT_TO_STR_IMPL(System_UInt16ToStr, uint16_t, PRIu16, 8)
-INT_TO_STR_IMPL(System_IntToStr, int32_t, PRId32, 12)
+INT_TO_STR_IMPL(System_IntToStr, int32_t, PRId32, 13)
 INT_TO_STR_IMPL(System_UInt32ToStr, uint32_t, PRIu32, 12)
-INT_TO_STR_IMPL(System_Int64ToStr, int64_t, PRId64, 24)
+INT_TO_STR_IMPL(System_Int64ToStr, int64_t, PRId64, 25)
 INT_TO_STR_IMPL(System_UInt64ToStr, uint64_t, PRIu64, 24)
-INT_TO_STR_IMPL(System_NativeIntToStr, ptrdiff_t, "zd", 24)
+INT_TO_STR_IMPL(System_NativeIntToStr, ptrdiff_t, "zd", 25)
 INT_TO_STR_IMPL(System_NativeUIntToStr, size_t, "zu", 24)
 
 static unsigned char* System_GetMem(int32_t len) {
