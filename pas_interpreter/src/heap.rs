@@ -41,6 +41,11 @@ pub struct NativeHeap {
     allocs: BTreeMap<usize, Box<[u8]>>,
 
     trace_allocs: bool,
+    
+    // usage stats for trace output
+    alloc_count: usize,
+    free_count: usize,
+    peak_alloc: usize,
 }
 
 impl NativeHeap {
@@ -49,6 +54,10 @@ impl NativeHeap {
             marshaller,
             trace_allocs,
             allocs: BTreeMap::new(),
+            
+            alloc_count: 0,
+            free_count: 0,
+            peak_alloc: 0,
         }
     }
 
@@ -71,7 +80,13 @@ impl NativeHeap {
 
         if self.trace_allocs {
             eprintln!("NativeHeap: alloc {} bytes @ {}", total_len, addr);
+            self.alloc_count += 1;
+            
+            self.peak_alloc = usize::max(self.peak_alloc, self.allocs.iter()
+                .map(|(_, mem)| mem.len())
+                .sum())
         }
+        
 
         Ok(Pointer { addr, ty })
     }
@@ -79,6 +94,7 @@ impl NativeHeap {
     pub fn free(&mut self, ptr: &Pointer) -> NativeHeapResult<()> {
         if self.trace_allocs {
             eprintln!("NativeHeap: free @ {}", ptr);
+            self.free_count += 1;
         }
 
         if self.allocs.remove(&ptr.addr).is_none() {
@@ -106,5 +122,11 @@ impl NativeHeap {
         self.marshaller.marshal_into(&val, addr)?;
 
         Ok(())
+    }
+    
+    pub fn print_trace_stats(&self) {
+        eprintln!("NativeHeap: alloc count = {}", self.alloc_count);
+        eprintln!("NativeHeap: free count = {}", self.free_count);
+        eprintln!("NativeHeap: peak alloc size = {}", self.peak_alloc);
     }
 }

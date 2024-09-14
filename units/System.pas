@@ -99,15 +99,6 @@ function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);
 
 implementation
 
-function Dispose of Disposable(self: String);
-begin
-    if self.len > 0 then
-        FreeMem(self.chars);
-
-    self.chars := nil;
-    self.len := 0;
-end;
-
 function ByteToStr(i: Byte): String;
 begin
     UInt8ToStr(i)

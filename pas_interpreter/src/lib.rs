@@ -1779,6 +1779,10 @@ impl Interpreter {
                 self.release_dyn_val(&value)?;
             }
         }
+        
+        if self.opts.trace_heap {
+            self.native_heap.print_trace_stats();
+        }
 
         Ok(())
     }

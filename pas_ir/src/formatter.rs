@@ -278,7 +278,7 @@ pub trait InstructionFormatter {
                 of_ty,
                 field,
             } => {
-                write!(f, "{:>width$} ", "fld", width = IX_WIDTH)?;
+                write!(f, "{:>width$} ", "field", width = IX_WIDTH)?;
 
                 self.format_ref(out, f)?;
                 write!(f, " := @(")?;

@@ -7,7 +7,6 @@
 # critical
 
 * init code should be stored in separate functions with their own stack trace entries
-* move string cleanup from a disposer to a release callback
 * allow trailing comma in collection init!!
 * c codegen: escaping! can't do ""
 * better message when iface impl doens't match decl sig

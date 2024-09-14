@@ -1,11 +1,48 @@
-use crate::{build_closure_function_def, build_func_static_closure_def, build_func_def, build_static_closure_impl, metadata::*, pas_ty, translate_func_params, translate_stmt, write_instruction_list, Builder, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, Metadata, MethodDeclKey, StaticClosure, StaticClosureID, Type, TypeDef, TypeDefID, VirtualTypeID, LocalID, Ref};
+use crate::build_closure_function_def;
+use crate::build_func_def;
+use crate::build_func_static_closure_def;
+use crate::build_static_closure_impl;
+use crate::metadata::*;
+use crate::pas_ty;
+use crate::translate_func_params;
+use crate::translate_stmt;
+use crate::write_instruction_list;
+use crate::Builder;
+use crate::ExternalFunctionRef;
+use crate::FieldID;
+use crate::Function;
+use crate::FunctionDeclKey;
+use crate::FunctionDef;
+use crate::FunctionDefKey;
+use crate::FunctionID;
+use crate::FunctionInstance;
+use crate::IROptions;
+use crate::Instruction;
+use crate::InstructionFormatter;
+use crate::LocalID;
+use crate::Metadata;
+use crate::MethodDeclKey;
+use crate::Ref;
+use crate::StaticClosure;
+use crate::StaticClosureID;
+use crate::Type;
+use crate::TypeDef;
+use crate::TypeDefID;
+use crate::VirtualTypeID;
 use linked_hash_map::LinkedHashMap;
-use pas_common::span::{Span, Spanned};
-use pas_syn::{Ident, IdentPath};
-use pas_typecheck::{ast::specialize_func_decl, builtin_string_name, TypeList};
-use std::{collections::HashMap, fmt, rc::Rc};
+use pas_common::span::Span;
+use pas_common::span::Spanned;
 use pas_syn::ast::StructKind;
-use pas_typecheck::layout::{StructLayout, StructLayoutMember};
+use pas_syn::Ident;
+use pas_syn::IdentPath;
+use pas_typecheck::ast::specialize_func_decl;
+use pas_typecheck::builtin_string_name;
+use pas_typecheck::layout::StructLayout;
+use pas_typecheck::layout::StructLayoutMember;
+use pas_typecheck::TypeList;
+use std::collections::HashMap;
+use std::fmt;
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct Module {
@@ -44,8 +81,6 @@ impl Module {
 
             metadata,
         };
-
-        // module.insert_func()
 
         module
     }
@@ -664,15 +699,27 @@ impl Module {
 
         // declare new func IDs then define them here
         let funcs = self.metadata.declare_runtime_type(ty);
+        
+        // special handling for System.String, which has magic cleanup behaviour for its
+        // allocated memory
 
         let release_body = {
             let mut release_builder = Builder::new(self);
             release_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = Ref::Local(LocalID(0)).to_deref();
 
-            release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
-                builder.release(el_ref, el_ty)
-            });
+            match ty {
+                Type::Struct(STRING_ID) => {
+                    let chars_field_ref = release_builder.local_temp(Type::U8.ptr().ptr());
+                    release_builder.field(chars_field_ref.clone(), target_ref, ty.clone(), STRING_CHARS_FIELD);
+                    release_builder.free_mem(chars_field_ref.to_deref());
+                },
+                _ => {
+                    release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
+                        builder.release(el_ref, el_ty)
+                    });
+                }
+            }
             release_builder.finish()
         };
 
