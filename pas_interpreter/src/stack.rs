@@ -1,9 +1,19 @@
+mod trace;
+
+use std::borrow::Cow;
+pub use self::trace::*;
+use crate::marshal::MarshalError;
+use crate::marshal::MarshalResult;
+use crate::marshal::Marshaller;
+use crate::DynValue;
+use crate::Pointer;
+use pas_common::span::Span;
+use pas_ir::LocalID;
+use pas_ir::Type;
 use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
 use std::rc::Rc;
-use pas_ir::{LocalID, Type};
-use crate::{DynValue, marshal::{Marshaller, MarshalError, MarshalResult}, Pointer};
 
 const SENTINEL: usize = 12345678;
 
@@ -42,6 +52,8 @@ pub(super) struct StackFrame {
     stack_offset: usize,
 
     marshaller: Rc<Marshaller>,
+
+    debug_ctx_stack: Vec<Span>,
 }
 
 impl StackFrame {
@@ -58,6 +70,8 @@ impl StackFrame {
                 decls: Vec::new(),
                 initial_stack_offset: 0,
             }],
+            
+            debug_ctx_stack: Vec::new(),
 
             marshaller,
 
@@ -153,6 +167,12 @@ impl StackFrame {
     pub fn name(&self) -> &str {
         &self.name
     }
+    
+    pub fn debug_location(&self) -> Cow<Span> {
+        self.debug_ctx_stack.last()
+            .map(|span| Cow::Borrowed(span))
+            .unwrap_or_else(|| Cow::Owned(Span::zero("<unknown>")))
+    }
 
     pub fn get_local_ptr(&self, id: LocalID) -> StackResult<Pointer> {
         match self.locals.get(id.0) {
@@ -217,6 +237,16 @@ impl StackFrame {
         self.locals.retain(|l| l.stack_offset < new_stack_offset);
 
         Ok(())
+    }
+    
+    pub fn debug_push(&mut self, ctx: Span) {
+        self.debug_ctx_stack.push(ctx);
+    }
+    
+    pub fn debug_pop(&mut self) {
+        if !self.debug_ctx_stack.pop().is_some() {
+            eprintln!("Interpreter: unbalanced debug context instructions, ignoring pop on empty stack")
+        }
     }
 }
 

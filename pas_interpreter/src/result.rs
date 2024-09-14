@@ -1,8 +1,15 @@
-use crate::{heap::NativeHeapError, marshal::MarshalError, Pointer};
-use pas_common::{span::Span, DiagnosticLabel, DiagnosticOutput};
-use std::fmt;
-use pas_ir::{Instruction, InstructionFormatter, RawInstructionFormatter};
+use crate::heap::NativeHeapError;
+use crate::marshal::MarshalError;
 use crate::stack::StackError;
+use crate::stack::StackTrace;
+use crate::Pointer;
+use pas_common::span::Span;
+use pas_common::DiagnosticLabel;
+use pas_common::DiagnosticOutput;
+use pas_ir::Instruction;
+use pas_ir::InstructionFormatter;
+use pas_ir::RawInstructionFormatter;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum ExecError {
@@ -25,10 +32,9 @@ pub enum ExecError {
     },
     NativeHeapError(NativeHeapError),
     ZeroLengthAllocation,
-    WithDebugContext {
+    WithStackTrace {
         err: Box<ExecError>,
-        span: Option<Span>,
-        stack_trace: Vec<String>,
+        stack_trace: StackTrace,
     }
 }
 
@@ -50,13 +56,13 @@ impl ExecError {
             ExecError::ZeroLengthAllocation => None,
             ExecError::StackError(err) => Some(err.to_string()),
             ExecError::IllegalInstruction(i) => Some(i.to_string()),
-            ExecError::WithDebugContext { err, .. } => err.label_text(),
+            ExecError::WithStackTrace { err, .. } => err.label_text(),
         }
     }
 
     fn label_span(&self) -> Option<&Span> {
         match self {
-            ExecError::WithDebugContext { span, .. } => span.as_ref(),
+            ExecError::WithStackTrace { stack_trace, .. } => Some(&stack_trace.top().location),
             _ => None,
         }
     }
@@ -66,7 +72,7 @@ impl ExecError {
         Pretty: InstructionFormatter
     {
         match self {
-            ExecError::WithDebugContext { err, stack_trace, .. } => {
+            ExecError::WithStackTrace { err, stack_trace, .. } => {
                 err.fmt_pretty(f, pretty)?;
                 for stack_trace_line in stack_trace {
                     writeln!(f)?;
@@ -87,7 +93,7 @@ impl ExecError {
                     ExecError::NativeHeapError(..) => write!(f, "Heap error"),
                     ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
                     ExecError::IllegalInstruction(..) => write!(f, "Illegal instruction"),
-                    ExecError::WithDebugContext { .. } => unreachable!(),
+                    ExecError::WithStackTrace { .. } => unreachable!(),
                 }?;
 
                 // if no spanned label will be shown, output the label text as part of the main message
@@ -112,12 +118,12 @@ impl fmt::Display for ExecError {
 impl DiagnosticOutput for ExecError {
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
-            ExecError::WithDebugContext { err, span: Some(span), .. } => {
+            ExecError::WithStackTrace { err, stack_trace } => {
                 let label_text = err.label_text();
 
                 Some(DiagnosticLabel {
                     text: label_text,
-                    span: span.clone()
+                    span: stack_trace.top().location.clone()
                 })
             },
 
@@ -127,7 +133,7 @@ impl DiagnosticOutput for ExecError {
 
     fn notes(&self) -> Vec<String> {
         match self {
-            ExecError::WithDebugContext { .. } => Vec::new(),
+            ExecError::WithStackTrace { .. } => Vec::new(),
             _ => self.label_text().map(|text| vec![text]).unwrap_or_else(Vec::new),
         }
     }

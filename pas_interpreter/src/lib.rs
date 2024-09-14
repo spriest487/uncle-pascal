@@ -7,34 +7,37 @@ mod stack;
 mod marshal;
 pub mod result;
 
-pub use self::{
-    ptr::Pointer,
-    dyn_value::*,
-};
-use crate::{
-    func::{BuiltinFn, BuiltinFunction, Function},
-    marshal::Marshaller,
-    stack::StackFrame,
-    result::{ExecError, ExecResult},
-    heap::NativeHeap
-};
-use pas_ir::{
-    BUILTIN_SRC,
-    Function as IRFunction,
-    GlobalRef,
-    Instruction,
-    InstructionFormatter,
-    Label,
-    LocalID,
-    metadata::*,
-    Module,
-    Ref,
-    Type,
-    Value,
-    metadata::ty::{VirtualTypeID, FieldID}
-};
-use std::{collections::{HashMap, BTreeMap}, rc::Rc, borrow::Cow, ops::{BitAnd, BitOr, BitXor}};
-use pas_common::span::Span;
+pub use self::dyn_value::*;
+pub use self::ptr::Pointer;
+use crate::func::BuiltinFn;
+use crate::func::BuiltinFunction;
+use crate::func::Function;
+use crate::heap::NativeHeap;
+use crate::marshal::Marshaller;
+use crate::result::ExecError;
+use crate::result::ExecResult;
+use crate::stack::{StackFrame, StackTrace, StackTraceFrame};
+use pas_ir::metadata::ty::FieldID;
+use pas_ir::metadata::ty::VirtualTypeID;
+use pas_ir::metadata::*;
+use pas_ir::Function as IRFunction;
+use pas_ir::GlobalRef;
+use pas_ir::Instruction;
+use pas_ir::InstructionFormatter;
+use pas_ir::Label;
+use pas_ir::LocalID;
+use pas_ir::Module;
+use pas_ir::Ref;
+use pas_ir::Type;
+use pas_ir::Value;
+use pas_ir::BUILTIN_SRC;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::ops::BitAnd;
+use std::ops::BitOr;
+use std::ops::BitXor;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct InterpreterOpts {
@@ -61,8 +64,6 @@ pub struct Interpreter {
 
     opts: InterpreterOpts,
 
-    debug_ctx_stack: Vec<Span>,
-
     functions: BTreeMap<FunctionID, Rc<Function>>,
 }
 
@@ -85,28 +86,31 @@ impl Interpreter {
 
             opts,
 
-            debug_ctx_stack: Vec::new(),
-
             functions: BTreeMap::new(),
         }
     }
 
-    fn add_debug_ctx(&self, err: ExecError) -> ExecError {
+    fn add_stack_trace(&self, err: ExecError) -> ExecError {
         match err {
-            err @ ExecError::WithDebugContext { .. } => err,
-            err => ExecError::WithDebugContext {
+            err@ ExecError::WithStackTrace { .. } => err,
+            err => ExecError::WithStackTrace {
                 err: Box::new(err),
-                span: self.debug_ctx_stack.last().cloned(),
                 stack_trace: self.stack_trace(),
             },
         }
     }
 
-    fn stack_trace(&self) -> Vec<String> {
-        self.stack.iter()
+    fn stack_trace(&self) -> StackTrace {
+        let frames = self.stack.iter()
             .rev()
-            .map(|s| s.name().to_string())
-            .collect()
+            .map(|s| {
+                StackTraceFrame {
+                    name: s.name().to_string(),
+                    location: s.debug_location().into_owned(),
+                }
+            });
+        
+        StackTrace::new(frames)
     }
 
     fn stack_trace_formatted(&self) -> String {
@@ -229,7 +233,7 @@ impl Interpreter {
     fn store_local(&mut self, id: LocalID, val: DynValue) -> ExecResult<()> {
         let current_frame = self.current_frame_mut()?;
         let local_ptr = current_frame.get_local_ptr(id)
-            .map_err(|err| self.add_debug_ctx(err.into()))?;
+            .map_err(|err| self.add_stack_trace(err.into()))?;
 
         self.marshaller.marshal_into(&val, &local_ptr)?;
 
@@ -239,7 +243,7 @@ impl Interpreter {
     fn load_local(&self, id: LocalID) -> ExecResult<DynValue> {
         let current_frame = self.current_frame()?;
         let local_ptr = current_frame.get_local_ptr(id)
-            .map_err(|err| self.add_debug_ctx(err.into()))?;
+            .map_err(|err| self.add_stack_trace(err.into()))?;
 
         let value = self.marshaller.unmarshal_from_ptr(&local_ptr)?;
 
@@ -746,7 +750,7 @@ impl Interpreter {
             }
 
             self.exec_instruction(&instructions[pc], &mut pc, &labels)
-                .map_err(|err| self.add_debug_ctx(err))?;
+                .map_err(|err| self.add_stack_trace(err))?;
 
             pc += 1;
         }
@@ -766,13 +770,11 @@ impl Interpreter {
             }
 
             Instruction::DebugPush(ctx) => {
-                self.debug_ctx_stack.push(ctx.clone());
+                self.current_frame_mut()?.debug_push(ctx.clone());
             }
 
             Instruction::DebugPop => {
-                if !self.debug_ctx_stack.pop().is_some() {
-                    eprintln!("Interpreter: unbalanced debug context instructions, ignoring pop on empty stack")
-                }
+                self.current_frame_mut()?.debug_pop();
             }
 
             Instruction::LocalAlloc(id, ty) => {
@@ -873,7 +875,7 @@ impl Interpreter {
 
         let current_frame = self.current_frame_mut()?;
         current_frame.declare_local(id, ty.clone(), &uninit_val, pc)
-            .map_err(|err| self.add_debug_ctx(err.into()))?;
+            .map_err(|err| self.add_stack_trace(err.into()))?;
 
         Ok(())
     }
@@ -889,7 +891,7 @@ impl Interpreter {
             f.pop_block()?;
             Ok(())
         })
-            .map_err(|err| self.add_debug_ctx(err.into()))?;
+            .map_err(|err| self.add_stack_trace(err.into()))?;
 
         Ok(())
     }
@@ -1596,10 +1598,6 @@ impl Interpreter {
     pub fn load_module(&mut self, module: &Module) -> ExecResult<()> {
         self.metadata.extend(&module.metadata);
 
-        if module.opts.debug_info {
-            self.debug_ctx_stack.push(module.module_span().clone());
-        }
-
         let mut marshaller = (*self.marshaller).clone();
 
         for (id, type_def) in module.metadata.type_defs() {
@@ -1616,7 +1614,7 @@ impl Interpreter {
                 }
             };
 
-            def_result.map_err(|err| self.add_debug_ctx(err.into()))?;
+            def_result.map_err(|err| self.add_stack_trace(err.into()))?;
         }
 
         for (func_id, ir_func) in &module.functions {
@@ -1634,9 +1632,8 @@ impl Interpreter {
 
                 IRFunction::External(external_ref) => {
                     let ffi_func = Function::new_ffi(external_ref, &mut marshaller, &self.metadata)
-                        .map_err(|err| ExecError::WithDebugContext {
+                        .map_err(|err| ExecError::WithStackTrace {
                             err: Box::new(ExecError::MarshalError(err)),
-                            span: Some(external_ref.src_span.clone()),
                             stack_trace: self.stack_trace(),
                         })?;
                     Some(ffi_func)
@@ -1661,9 +1658,8 @@ impl Interpreter {
 
         for (id, literal) in module.metadata.strings() {
             let str_val = self.create_string(literal)
-                .map_err(|err| ExecError::WithDebugContext {
+                .map_err(|err| ExecError::WithStackTrace {
                     err: err.into(),
-                    span: Some(module.module_span().clone()),
                     stack_trace: self.stack_trace(),
                 })?;
 
@@ -1681,13 +1677,16 @@ impl Interpreter {
         self.init_stdlib_globals();
 
         let init_stack_size = self.marshaller.stack_alloc_size(&module.init)
-            .map_err(|err| self.add_debug_ctx(err.into()))?;
+            .map_err(|err| self.add_stack_trace(err.into()))?;
 
         self.push_stack("<init>", init_stack_size);
+
+        if module.opts.debug_info {
+            self.current_frame_mut()?.debug_push(module.module_span().clone());
+        }
+
         self.execute(&module.init)?;
         self.pop_stack()?;
-
-        self.debug_ctx_stack.pop();
 
         Ok(())
     }
