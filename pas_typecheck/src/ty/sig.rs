@@ -392,8 +392,20 @@ impl FunctionSig {
 
 impl fmt::Display for FunctionSig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function (")?;
+        write!(f, "function")?;
+        
+        if let Some(type_params) = &self.type_params {
+            write!(f, "[")?;
+            for i in 0..type_params.len() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "T{}", i)?;
+            }
+            write!(f, "]")?;
+        }
 
+        write!(f, " (")?;
         for (i, param) in self.params.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
@@ -405,10 +417,31 @@ impl fmt::Display for FunctionSig {
             write!(f, "{}", param.ty)?;
         }
         write!(f, ")")?;
-
-        match &self.return_ty {
-            Type::Nothing => Ok(()),
-            ty => write!(f, ": {}", ty),
+        
+        if self.return_ty != Type::Nothing {
+            write!(f, ": {}", self.return_ty)?;
         }
+
+        if let Some(type_params) = &self.type_params {
+            if type_params.iter().any(|p| p.is_ty != Type::Any) {
+                write!(f, " where ")?;
+
+                let mut constraint_count = 0;
+                for i in 0..type_params.len() {
+                    if type_params[i].is_ty == Type::Any {
+                        continue;
+                    }
+
+                    if constraint_count > 0 {
+                        write!(f, "; ")?;
+                    }
+
+                    write!(f, "T{i} is {}", type_params[i].is_ty)?;
+                    constraint_count += 1;
+                }
+            }
+        }
+        
+        Ok(())
     }
 }
