@@ -197,7 +197,10 @@ impl Type {
     /// params, we ignore those types since they'll be real types when actually used
     pub fn contains_generic_params(&self, ctx: &Context) -> bool {
         if let Type::GenericParam(ty_param_ty) = self {
-            return if let Some(ctx_ty_params) = ctx.current_func_ty_params() {
+            let current_func_ty_params = ctx.current_function_env()
+                .and_then(|env| env.ty_params.as_ref());
+
+            return if let Some(ctx_ty_params) = current_func_ty_params {
                 let is_param_defined_in_scope = ctx_ty_params.iter()
                     .find(|p| ty_param_ty.name == p.name)
                     .is_some();

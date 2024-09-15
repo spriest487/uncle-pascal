@@ -2,7 +2,7 @@ use crate::ast::const_eval_string;
 use crate::ast::typecheck_block;
 use crate::ast::typecheck_expr;
 use crate::ast::InterfaceDecl;
-use crate::string_type;
+use crate::{string_type, ClosureBodyEnvironment, FunctionBodyEnvironment};
 use crate::typecheck_type;
 use crate::typecheck_type_params;
 use crate::Binding;
@@ -216,7 +216,7 @@ pub fn typecheck_func_def(
 ) -> TypecheckResult<FunctionDef> {
     let decl = typecheck_func_decl(&def.decl, ctx)?;
     
-    let body_env = Environment::FunctionBody {
+    let body_env = FunctionBodyEnvironment {
         result_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
         ty_params: decl.type_params.clone(),
     }; 
@@ -408,8 +408,8 @@ pub fn typecheck_func_expr(
         type_params: None,
     });
 
-    let body_scope_id = ctx.push_scope(Environment::ClosureBody {
-        result_ty: return_ty.clone(),
+    let body_scope_id = ctx.push_scope(ClosureBodyEnvironment {
+        result_ty: Some(return_ty.clone()),
         captures: LinkedHashMap::new(),
     });
 
@@ -417,8 +417,8 @@ pub fn typecheck_func_expr(
         typecheck_block(&src_def.body, &return_ty, ctx)
     });
 
-    let captures = match ctx.pop_scope(body_scope_id).into_env() {
-        Environment::ClosureBody { captures, .. } => captures,
+    let closure_env = match ctx.pop_scope(body_scope_id).into_env() {
+        Environment::ClosureBody(body) => body,
         _ => unreachable!(),
     };
     
@@ -437,6 +437,6 @@ pub fn typecheck_func_expr(
         return_ty: Some(return_ty),
         annotation,
         body,
-        captures,
+        captures: closure_env.captures,
     })
 }

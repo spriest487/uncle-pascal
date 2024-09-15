@@ -7,37 +7,37 @@ mod ufcs;
 mod decl;
 mod def;
 
-pub use self::decl::*;
 pub use self::builtin::*;
+pub use self::decl::*;
 pub use self::def::*;
+pub use self::result::*;
 pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
-pub use self::result::*;
 use crate::ast::EnumDecl;
-use crate::ast::Literal;
-use crate::specialize_struct_def;
-use crate::ast::VariantDef;
-use crate::ast::OverloadCandidate;
-use crate::ast::InterfaceDecl;
-use crate::ast::FunctionDef;
 use crate::ast::FunctionDecl;
+use crate::ast::FunctionDef;
+use crate::ast::InterfaceDecl;
+use crate::ast::Literal;
+use crate::ast::OverloadCandidate;
 use crate::ast::StructDef;
+use crate::ast::VariantDef;
 use crate::specialize_generic_variant;
+use crate::specialize_struct_def;
 use crate::FunctionSig;
 use crate::Primitive;
 use crate::Symbol;
 use crate::Type;
 use crate::TypeParamList;
 use crate::TypeParamType;
-use crate::TypecheckResult;
 use crate::TypecheckError;
+use crate::TypecheckResult;
+use linked_hash_map::LinkedHashMap;
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
 use std::rc::Rc;
-use linked_hash_map::LinkedHashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Binding {
@@ -94,8 +94,8 @@ pub enum Environment {
     Namespace { namespace: IdentPath },
     TypeDecl,
     FunctionDecl,
-    FunctionBody { result_ty: Type, ty_params: Option<TypeParamList> },
-    ClosureBody { result_ty: Type, captures: LinkedHashMap<Ident, Type> },
+    FunctionBody(FunctionBodyEnvironment),
+    ClosureBody(ClosureBodyEnvironment),
     Block { allow_unsafe: bool },
 }
 
@@ -118,6 +118,30 @@ impl Environment {
             Environment::Block { .. } => "Block",
         }
     }
+}
+
+impl From<FunctionBodyEnvironment> for Environment {
+    fn from(value: FunctionBodyEnvironment) -> Self {
+        Environment::FunctionBody(value)
+    }
+}
+
+impl From<ClosureBodyEnvironment> for Environment {
+    fn from(value: ClosureBodyEnvironment) -> Self {
+        Environment::ClosureBody(value)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionBodyEnvironment {
+    pub result_ty: Type, 
+    pub ty_params: Option<TypeParamList>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClosureBodyEnvironment {
+    pub result_ty: Option<Type>, 
+    pub captures: LinkedHashMap<Ident, Type>
 }
 
 #[derive(Clone, Debug)]
@@ -172,11 +196,11 @@ impl Context {
         &self.module_span
     }
 
-    pub fn push_scope(&mut self, env: Environment) -> ScopeID {
+    pub fn push_scope(&mut self, env: impl Into<Environment>) -> ScopeID {
         let new_id = self.next_scope_id;
         self.next_scope_id = ScopeID(self.next_scope_id.0 + 1);
 
-        self.scopes.push_scope(Scope::new(new_id, env));
+        self.scopes.push_scope(Scope::new(new_id, env.into()));
         new_id
     }
 
@@ -192,7 +216,7 @@ impl Context {
         }
     }
 
-    pub fn scope<F, T>(&mut self, env: Environment, f: F) -> TypecheckResult<T>
+    pub fn scope<F, T>(&mut self, env: impl Into<Environment>, f: F) -> TypecheckResult<T>
         where F: FnOnce(&mut Context) -> TypecheckResult<T>
     {
         let scope_id = self.push_scope(env);
@@ -201,7 +225,7 @@ impl Context {
 
         self.pop_scope(scope_id);
 
-        return result;
+        result
     }
 
     pub fn unit_scope<T, F>(&mut self, unit_path: IdentPath, f: F) -> TypecheckResult<T>
@@ -361,28 +385,33 @@ impl Context {
         // the last `uses` import always wins
         results.into_iter().last()
     } 
-
-    pub fn current_func_return_ty(&self) -> Option<&Type> {
+    
+    pub fn current_closure_env(&self) -> Option<&ClosureBodyEnvironment> {
         for scope in self.scopes.iter().rev() {
             match scope.env() {
-                Environment::FunctionBody { result_ty, .. } => return Some(result_ty),
-                Environment::ClosureBody { result_ty, .. } => return Some(result_ty),
+                Environment::ClosureBody(body_env) => return Some(body_env),
                 _ => continue,
             }
         }
-
+        
         None
     }
-
-    pub fn current_func_ty_params(&self) -> Option<&TypeParamList> {
+    
+    pub fn current_function_env(&self) -> Option<&FunctionBodyEnvironment> {
         for scope in self.scopes.iter().rev() {
             match scope.env() {
-                Environment::FunctionBody { ty_params, .. } => return ty_params.as_ref(),
+                Environment::FunctionBody(body_env) => return Some(body_env),
                 _ => continue,
             }
         }
-
+        
         None
+    }
+    
+    pub fn current_func_return_ty(&self) -> Option<&Type> {
+        self.current_function_env().map(|env| &env.result_ty)
+            .or_else(|| self.current_closure_env()
+                .and_then(|env| env.result_ty.as_ref()))
     }
 
     pub fn allow_unsafe(&self) -> bool {
@@ -1287,8 +1316,8 @@ impl Context {
 
     pub fn add_closure_capture(&mut self, name: &Ident, ty: &Type) {
         for scope in self.scopes.iter_mut().rev() {
-            if let Environment::ClosureBody { captures, .. } = scope.env_mut() {
-                if let Some(old_ty) = captures.insert(name.clone(), ty.clone()) {
+            if let Environment::ClosureBody(body) = scope.env_mut() {
+                if let Some(old_ty) = body.captures.insert(name.clone(), ty.clone()) {
                     if old_ty != *ty {
                         panic!("closure capture did not match previous type: {} (declared as {}, was previously {})", name, ty, old_ty)
                     }
