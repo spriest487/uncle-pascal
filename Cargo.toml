@@ -5,13 +5,11 @@ authors = ["spriest487 <spriest487@googlemail.com>"]
 edition = "2021"
 
 [dependencies]
-pas_common = { path = "pas_common" }
-pas_pp = { path = "pas_pp" }
-pas_syn = { path = "pas_syn" }
-pas_typecheck = { path = "pas_typecheck" }
-pas_ir = { path = "pas_ir" }
-pas_interpreter = { path = "pas_interpreter" }
-pas_backend_c = { path = "pas_backend_c" }
+pas_common = { path = "common" }
+compiler = { path = "frontend" }
+pas_ir = { path = "intermediate" }
+pas_interpreter = { path = "interpreter" }
+pas_backend_c = { path = "backend_c" }
 
 structopt = "0.3.25"
 codespan = "0.11.1"
@@ -20,10 +18,8 @@ topological-sort = "0.2.2"
 
 [workspace]
 members = [
-    "pas_common",
-    "pas_syn",
-    "pas_typecheck",
-    "pas_pp",
-    "pas_ir", 
+    "common",
+    "frontend",
+    "intermediate", 
     "test_runner",
 ]

@@ -1,13 +1,17 @@
-use std::{fmt, io};
-use std::path::PathBuf;
-
+use compiler::ast::IdentPath;
+use compiler::parse::ParseError;
+use compiler::pp::error::PreprocessorError;
+use compiler::typecheck::TypecheckError;
+use compiler::TokenizeError;
 use pas_common::span::Span;
-use pas_common::{Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
+use pas_common::Backtrace;
+use pas_common::DiagnosticLabel;
+use pas_common::DiagnosticMessage;
+use pas_common::DiagnosticOutput;
+use pas_common::TracedError;
 use pas_interpreter::result::ExecError;
-use pas_pp::error::PreprocessorError;
-use pas_syn::parse::ParseError;
-use pas_syn::{IdentPath, TokenizeError};
-use pas_typecheck::TypecheckError;
+use std::path::PathBuf;
+use std::{fmt, io};
 
 #[derive(Debug)]
 pub enum CompileError {

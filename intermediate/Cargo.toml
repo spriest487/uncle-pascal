@@ -1,0 +1,12 @@
+[package]
+name = "pas_ir"
+version = "0.1.0"
+authors = ["spriest487 <spriest487@googlemail.com>"]
+edition = "2021"
+
+[dependencies]
+pas_common = { path = "../common" }
+compiler = { path = "../frontend" }
+linked-hash-map = "0.5.2"
+cast = "0.3.0"
+bigdecimal = "0.0.14"

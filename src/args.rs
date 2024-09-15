@@ -48,7 +48,7 @@ pub struct Args {
     #[structopt(long = "trace-ir")]
     pub trace_ir: bool,
 
-    /// print compiler backtrace on compilation failure
+    /// print frontend backtrace on compilation failure
     #[structopt(long = "backtrace", short = "bt")]
     pub backtrace: bool,
 

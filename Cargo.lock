@@ -172,6 +172,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "compiler"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "cast",
+ "derivative",
+ "linked-hash-map",
+ "pas_common",
+ "regex",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -420,42 +432,9 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "cast",
+ "compiler",
  "linked-hash-map",
  "pas_common",
- "pas_pp",
- "pas_syn",
- "pas_typecheck",
-]
-
-[[package]]
-name = "pas_pp"
-version = "0.1.0"
-dependencies = [
- "pas_common",
- "regex",
-]
-
-[[package]]
-name = "pas_syn"
-version = "0.1.0"
-dependencies = [
- "bigdecimal",
- "cast",
- "derivative",
- "linked-hash-map",
- "pas_common",
- "pas_pp",
-]
-
-[[package]]
-name = "pas_typecheck"
-version = "0.1.0"
-dependencies = [
- "derivative",
- "linked-hash-map",
- "pas_common",
- "pas_pp",
- "pas_syn",
 ]
 
 [[package]]
@@ -464,13 +443,11 @@ version = "0.1.0"
 dependencies = [
  "codespan",
  "codespan-reporting",
+ "compiler",
  "pas_backend_c",
  "pas_common",
  "pas_interpreter",
  "pas_ir",
- "pas_pp",
- "pas_syn",
- "pas_typecheck",
  "structopt",
  "topological-sort 0.2.2",
 ]

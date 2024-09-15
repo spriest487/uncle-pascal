@@ -14,11 +14,11 @@ fn main() -> Result<(), i32> {
 
     let exists = opts.compiler.exists();
     if !exists {
-        eprintln!("compiler not found! expected at {}", opts.compiler.display());
+        eprintln!("frontend not found! expected at {}", opts.compiler.display());
         return Err(1);
     }
 
-    println!("using compiler: {}", opts.compiler.display());
+    println!("using frontend: {}", opts.compiler.display());
 
     let timestamp = match opts.compiler.metadata().and_then(|metadata| metadata.modified()) {
         Ok(modified) => {

@@ -3,29 +3,40 @@ mod compile_error;
 mod reporting;
 mod sources;
 
-use crate::{args::*, compile_error::*, sources::*};
-use pas_backend_c as backend_c;
-use pas_common::{span::*, BuildOptions, read_source_file};
-use pas_interpreter::{Interpreter, InterpreterOpts};
-use pas_ir::{self as ir, IROptions};
-use pas_pp::{self as pp, PreprocessedUnit};
-use pas_syn::{ast, parse, IdentPath, TokenTree, Ident};
-use pas_typecheck as ty;
-use std::{
-    collections::hash_map::{Entry, HashMap},
-    fs::{self, File},
-    io,
-    path::PathBuf,
-    process,
-};
+use crate::args::*;
+use crate::compile_error::*;
+use crate::reporting::report_err;
+use crate::sources::*;
 use codespan_reporting::diagnostic::Severity;
+use compiler::ast;
+use compiler::ast::Ident;
+use compiler::ast::IdentPath;
+use compiler::parse;
+use compiler::pp as pp;
+use compiler::typecheck as ty;
+use compiler::TokenTree;
+use pas_backend_c as backend_c;
+use pas_common::read_source_file;
+use pas_common::span::*;
+use pas_common::BuildOptions;
+use pas_interpreter::Interpreter;
+use pas_interpreter::InterpreterOpts;
+use pas_ir as ir;
+use pas_ir::IROptions;
+use pp::PreprocessedUnit;
+use std::collections::hash_map::Entry;
+use std::collections::hash_map::HashMap;
+use std::fs;
+use std::fs::File;
+use std::io;
+use std::path::PathBuf;
+use std::process;
 use structopt::StructOpt;
 use topological_sort::TopologicalSort;
-use crate::reporting::report_err;
 
 enum CompileOutput {
     Preprocess(Vec<PreprocessedUnit>),
-    Parse(Vec<pas_syn::ast::Unit<Span>>),
+    Parse(Vec<ast::Unit<Span>>),
     Typecheck(ty::Module),
     IR(ir::Module),
 }

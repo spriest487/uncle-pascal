@@ -1,9 +1,12 @@
-use std::collections::{LinkedList};
-use std::env;
-use std::path::{Path, PathBuf};
+use crate::Args;
+use crate::CompileError;
+use crate::Target;
+use compiler::ast::IdentPath;
 use pas_common::span::*;
-use pas_syn::IdentPath;
-use crate::{CompileError, Args, Target};
+use std::collections::LinkedList;
+use std::env;
+use std::path::Path;
+use std::path::PathBuf;
 
 fn find_in_path(filename: &PathBuf, dir: &Path) -> Option<PathBuf> {
     if !dir.exists() || !dir.is_dir() {
