@@ -1,9 +1,9 @@
 use crate::jmp_exists;
 use crate::metadata::FunctionSig;
+use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::syn::FunctionParamMod;
 use crate::syn::Ident;
-use crate::syn::IdentPath;
 use crate::translate_block;
 use crate::translate_literal;
 use crate::typ;
@@ -13,7 +13,6 @@ use crate::FunctionID;
 use crate::GlobalRef;
 use crate::Instruction;
 use crate::LocalID;
-use crate::Module;
 use crate::Ref;
 use crate::Type;
 use crate::TypeDefID;
@@ -84,25 +83,6 @@ pub struct FunctionInstance {
     pub sig: Rc<typ::FunctionSig>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum FunctionDeclKey {
-    Function { name: IdentPath },
-    Method(MethodDeclKey),
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct MethodDeclKey {
-    pub iface: IdentPath,
-    pub self_ty: typ::Type,
-    pub method: Ident,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct FunctionDefKey {
-    pub decl_key: FunctionDeclKey,
-    pub type_args: Option<typ::TypeList>,
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct StaticClosureID(pub usize);
 
@@ -122,7 +102,7 @@ pub struct StaticClosure {
 }
 
 fn create_function_body_builder<'m>(
-    module: &'m mut Module,
+    module: &'m mut ModuleBuilder,
     type_params: Option<&typ::TypeParamList>,
     type_args: Option<typ::TypeList>,
 ) -> Builder<'m> {
@@ -152,7 +132,7 @@ fn create_function_body_builder<'m>(
 }
 
 pub fn build_func_def(
-    module: &mut Module,
+    module: &mut ModuleBuilder,
     def_params: &[typ::ast::FunctionParam],
     def_type_params: Option<&typ::TypeParamList>,
     def_type_args: Option<typ::TypeList>,
@@ -184,7 +164,7 @@ pub fn build_func_def(
 }
 
 pub fn build_func_static_closure_def(
-    module: &mut Module,
+    module: &mut ModuleBuilder,
     target_func: &FunctionInstance,
     target_ir_func: &Function,
 ) -> FunctionDef {
@@ -248,13 +228,13 @@ pub fn build_func_static_closure_def(
 }
 
 pub fn build_closure_function_def(
-    module: &mut Module,
+    module: &mut ModuleBuilder,
     func_def: &typ::ast::AnonymousFunctionDef,
     closure_id: TypeDefID,
     src_span: Span,
     debug_name: String,
 ) -> FunctionDef {
-    let closure_def = module.metadata.get_struct_def(closure_id).cloned().unwrap();
+    let closure_def = module.metadata().get_struct_def(closure_id).cloned().unwrap();
 
     let mut body_builder = create_function_body_builder(module, None, None);
 
@@ -411,7 +391,7 @@ fn build_func_body(
     instructions
 }
 
-pub fn translate_func_params(sig: &typ::FunctionSig, module: &mut Module) -> Vec<Type> {
+pub fn translate_func_params(sig: &typ::FunctionSig, module: &mut ModuleBuilder) -> Vec<Type> {
     sig.params
         .iter()
         .map(|sig_param| {
@@ -427,7 +407,7 @@ pub fn translate_func_params(sig: &typ::FunctionSig, module: &mut Module) -> Vec
 pub fn build_static_closure_impl(
     closure: ClosureInstance,
     id: StaticClosureID,
-    module: &mut Module,
+    module: &mut ModuleBuilder,
 ) -> StaticClosure {
     let mut init_builder = Builder::new(module);
 
@@ -439,7 +419,7 @@ pub fn build_static_closure_impl(
 
     let init_body = init_builder.finish();
 
-    let init_func_id = module.metadata.insert_func(None);
+    let init_func_id = module.metadata_mut().insert_func(None);
     module.insert_func(
         init_func_id,
         Function::Local(FunctionDef {

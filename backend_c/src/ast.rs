@@ -281,7 +281,7 @@ impl Module {
     pub fn add_ir(&mut self, module: &ir::Module) {
         let mut module_type_defs = Vec::new();
 
-        for (id, type_def) in module.metadata.type_defs() {
+        for (id, type_def) in module.metadata().type_defs() {
             let mut member_deps = Vec::new();
 
             let c_type_def = match type_def {
@@ -349,7 +349,7 @@ impl Module {
             self.static_closures.push(static_closure.clone());
         }
 
-        for (id, func) in &module.functions {
+        for (id, func) in module.functions() {
             match func {
                 ir::Function::Local(func_def) => {
                     let c_func = FunctionDef::translate(*id, func_def, self);
@@ -401,7 +401,7 @@ impl Module {
 
         init_builder.stmts.extend(ffi_init_stmts);
 
-        init_builder.translate_instructions(&module.init);
+        init_builder.translate_instructions(module.init());
 
         init_func.body.extend(init_builder.stmts);
 

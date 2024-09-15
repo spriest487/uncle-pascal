@@ -1,6 +1,6 @@
+use crate::module_builder::ModuleBuilder;
 use crate::translate_name;
 use crate::typ;
-use crate::Module;
 use crate::NamePath;
 use crate::Type;
 use common::span::Span;
@@ -24,7 +24,7 @@ pub struct VariantDef {
 pub fn translate_variant_def(
     variant_def: &typ::ast::VariantDef,
     type_args: Option<&typ::TypeList>,
-    module: &mut Module,
+    module: &mut ModuleBuilder,
 ) -> VariantDef {
     let name_path = translate_name(&variant_def.name, type_args, module);
 

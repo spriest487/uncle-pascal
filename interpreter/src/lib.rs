@@ -1583,17 +1583,17 @@ impl Interpreter {
     }
 
     pub fn load_module(&mut self, module: &Module) -> ExecResult<()> {
-        self.metadata.extend(&module.metadata);
+        self.metadata.extend(&module.metadata());
 
         let mut marshaller = (*self.marshaller).clone();
 
-        for (id, type_def) in module.metadata.type_defs() {
+        for (id, type_def) in module.metadata().type_defs() {
             let def_result = match type_def {
                 TypeDef::Struct(struct_def) => {
-                    marshaller.add_struct(id, struct_def, &module.metadata).map(Some)
+                    marshaller.add_struct(id, struct_def, module.metadata()).map(Some)
                 },
                 TypeDef::Variant(variant_def) => {
-                    marshaller.add_variant(id, variant_def, &module.metadata).map(Some)
+                    marshaller.add_variant(id, variant_def, module.metadata()).map(Some)
                 }
                 TypeDef::Function(_func_def) => {
                     // functions don't need special marshalling, we only marshal pointers to them
@@ -1604,7 +1604,7 @@ impl Interpreter {
             def_result.map_err(|err| self.add_stack_trace(err.into()))?;
         }
 
-        for (func_id, ir_func) in &module.functions {
+        for (func_id, ir_func) in module.functions() {
             let func_ref = GlobalRef::Function(*func_id);
 
             let func = match ir_func {
@@ -1643,7 +1643,7 @@ impl Interpreter {
         self.marshaller = Rc::new(marshaller);
         self.native_heap.set_marshaller(self.marshaller.clone());
 
-        for (id, literal) in module.metadata.strings() {
+        for (id, literal) in module.metadata().strings() {
             let str_val = self.create_string(literal)
                 .map_err(|err| ExecError::WithStackTrace {
                     err: err.into(),
@@ -1663,16 +1663,16 @@ impl Interpreter {
 
         self.init_stdlib_globals();
 
-        let init_stack_size = self.marshaller.stack_alloc_size(&module.init)
+        let init_stack_size = self.marshaller.stack_alloc_size(module.init())
             .map_err(|err| self.add_stack_trace(err.into()))?;
 
         self.push_stack("<init>", init_stack_size);
 
-        if module.opts.debug_info {
-            self.current_frame_mut()?.debug_push(module.module_span().clone());
+        if let Some(module_span) = module.span() {
+            self.current_frame_mut()?.debug_push(module_span.clone());
         }
 
-        self.execute(&module.init)?;
+        self.execute(module.init())?;
         self.pop_stack()?;
 
         Ok(())

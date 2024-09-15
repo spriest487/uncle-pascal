@@ -10,7 +10,7 @@ pub struct Options {
 }
 
 pub fn translate(ir_module: &ir::Module, opts: Options) -> ast::Module {
-    let mut module = ast::Module::new(&ir_module.metadata, opts);
+    let mut module = ast::Module::new(&ir_module.metadata(), opts);
     module.add_ir(ir_module);
 
     module

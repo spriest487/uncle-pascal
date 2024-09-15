@@ -3,12 +3,12 @@ use crate::syn;
 use crate::typ;
 use crate::InstructionFormatter;
 use crate::Metadata;
-use crate::Module;
 use crate::RawInstructionFormatter;
 use syn::Path;
 use std::borrow::Cow;
 use std::fmt;
 use typ::Specializable;
+use crate::module_builder::ModuleBuilder;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath {
@@ -89,7 +89,7 @@ impl NamePath {
 pub fn translate_name(
     name: &typ::Symbol,
     type_args: Option<&typ::TypeList>,
-    module: &mut Module,
+    module: &mut ModuleBuilder,
 ) -> NamePath {
     if name.is_unspecialized_generic() {
         panic!("can't translate unspecialized generic name: {}", name);

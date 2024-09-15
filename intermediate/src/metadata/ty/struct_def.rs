@@ -1,14 +1,14 @@
+use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::translate_name;
 use crate::typ;
-use crate::Module;
 use crate::NamePath;
 use crate::Type;
 use crate::TypeDefID;
-use linked_hash_map::LinkedHashMap;
 use common::span::Location;
 use common::span::Span;
 use common::span::Spanned;
+use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::fmt;
 use syn::StructKind;
@@ -149,7 +149,7 @@ impl fmt::Display for FieldID {
 pub fn translate_struct_def(
     struct_def: &typ::ast::StructDef,
     type_args: Option<&typ::TypeList>,
-    module: &mut Module,
+    module: &mut ModuleBuilder,
 ) -> Struct {
     let name_path = translate_name(&struct_def.name, type_args, module);
 

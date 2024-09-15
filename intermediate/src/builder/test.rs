@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn end_loop_scope_ends_at_right_scope_level() {
     let ctx = typ::Context::root(Span::zero("test"));
-    let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
+    let mut module = ModuleBuilder::new(ctx, Metadata::default(), IROptions::default());
     let mut builder = Builder::new(&mut module);
 
     let initial_scope = builder.scopes.len();
@@ -19,7 +19,7 @@ fn end_loop_scope_ends_at_right_scope_level() {
 #[test]
 fn break_cleans_up_loop_locals() {
     let ctx = typ::Context::root(Span::zero("test"));
-    let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
+    let mut module = ModuleBuilder::new(ctx, Metadata::default(), IROptions::default());
     let mut builder = Builder::new(&mut module);
 
     let continue_label = builder.alloc_label();

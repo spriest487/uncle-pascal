@@ -4,7 +4,6 @@ use crate::syn;
 use crate::ClosureIdentity;
 use crate::FieldID;
 use crate::FunctionInstance;
-use crate::Module;
 use crate::Struct;
 use crate::StructFieldDef;
 use crate::StructIdentity;
@@ -15,6 +14,7 @@ use crate::CLOSURE_PTR_FIELD;
 use linked_hash_map::LinkedHashMap;
 use syn::Ident;
 use std::fmt;
+use crate::module_builder::ModuleBuilder;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FunctionSig {
@@ -41,7 +41,7 @@ impl FunctionSig {
     pub fn translate(
         sig: &typ::FunctionSig,
         type_args: Option<&typ::TypeList>,
-        module: &mut Module,
+        module: &mut ModuleBuilder,
     ) -> Self {
         assert!(
             sig.type_params.is_none(),
@@ -117,9 +117,9 @@ pub fn translate_closure_struct(
     identity: ClosureIdentity,
     captures: &LinkedHashMap<Ident, typ::Type>,
     type_args: Option<&typ::TypeList>,
-    module: &mut Module,
+    module: &mut ModuleBuilder,
 ) -> TypeDefID {
-    let id = module.metadata.reserve_new_struct();
+    let id = module.metadata_mut().reserve_new_struct();
     
     let src_span = identity.src_span();
 
@@ -150,7 +150,7 @@ pub fn translate_closure_struct(
         field_id.0 += 1;
     }
 
-    module.metadata.define_closure_ty(
+    module.metadata_mut().define_closure_ty(
         id,
         Struct {
             identity: StructIdentity::Closure(identity),

@@ -1,5 +1,12 @@
+use crate::module_builder::ModuleBuilder;
+use crate::translate_name;
+use crate::typ;
+use crate::FunctionID;
+use crate::MethodID;
+use crate::NamePath;
+use crate::Type;
+use crate::VirtualTypeID;
 use std::collections::HashMap;
-use crate::{FunctionID, MethodID, Module, NamePath, typ, translate_name, Type, VirtualTypeID};
 
 #[derive(Clone, Debug)]
 pub struct Method {
@@ -78,12 +85,12 @@ impl InterfaceImpl {
 pub fn translate_iface(
     iface_def: &typ::ast::InterfaceDecl,
     type_args: Option<&typ::TypeList>,
-    module: &mut Module,
+    module: &mut ModuleBuilder,
 ) -> Interface {
     let name = translate_name(&iface_def.name, type_args, module);
 
     // it needs to be declared to reference its own ID in the Self type
-    let id = module.metadata.declare_iface(&name);
+    let id = module.metadata_mut().declare_iface(&name);
 
     let methods: Vec<_> = iface_def
         .methods

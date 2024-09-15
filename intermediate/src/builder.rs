@@ -8,15 +8,12 @@ use crate::metadata::*;
 use crate::ty::FieldID;
 use crate::ty::Interface;
 use crate::ty::Struct;
-use crate::FunctionDeclKey;
-use crate::FunctionDefKey;
 use crate::FunctionInstance;
 use crate::GlobalRef;
 use crate::IROptions;
 use crate::Instruction;
 use crate::Label;
 use crate::LocalID;
-use crate::Module;
 use crate::Ref;
 use crate::Type;
 use crate::Value;
@@ -32,10 +29,11 @@ use std::fmt;
 use syn::Ident;
 use syn::IdentPath;
 use syn::TypeList;
+use crate::module_builder::{FunctionDeclKey, FunctionDefKey, ModuleBuilder};
 
 #[derive(Debug)]
 pub struct Builder<'m> {
-    module: &'m mut Module,
+    module: &'m mut ModuleBuilder,
 
     //positional list of type args that can be used to reify types in the current context
     type_args: Option<typ::TypeList>,
@@ -48,11 +46,11 @@ pub struct Builder<'m> {
 }
 
 impl<'m> Builder<'m> {
-    pub fn new(module: &'m mut Module) -> Self {
+    pub fn new(module: &'m mut ModuleBuilder) -> Self {
         let module_span = module.module_span().clone();
 
         let mut instructions = Vec::new();
-        if module.opts.debug_info {
+        if module.opts().debug_info {
             instructions.push(Instruction::DebugPush(module_span.clone()));
         }
         instructions.push(Instruction::LocalBegin);
@@ -73,7 +71,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn opts(&self) -> &IROptions {
-        &self.module.opts
+        &self.module.opts()
     }
 
     pub fn type_args(&self) -> Option<&typ::TypeList> {
@@ -105,7 +103,7 @@ impl<'m> Builder<'m> {
     ) -> (TypeDefID, usize, Option<&'ty Type>) {
         let name_path = self.translate_name(variant);
 
-        let (id, variant_struct) = match self.module.metadata.find_variant_def(&name_path) {
+        let (id, variant_struct) = match self.module.metadata().find_variant_def(&name_path) {
             Some((id, variant_struct)) => (id, variant_struct),
             None => panic!("missing IR metadata definition for variant {}", variant),
         };
@@ -209,7 +207,7 @@ impl<'m> Builder<'m> {
     pub fn build_closure_instance(&mut self, closure: ClosureInstance) -> Ref {
         let closure_def = self
             .module
-            .metadata
+            .metadata()
             .get_struct_def(closure.closure_id)
             .cloned()
             .unwrap();
@@ -284,19 +282,19 @@ impl<'m> Builder<'m> {
     }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
-        self.module.metadata.pretty_ty_name(ty)
+        self.module.metadata().pretty_ty_name(ty)
     }
 
     pub fn find_or_insert_string(&mut self, s: &str) -> StringID {
-        self.module.metadata.find_or_insert_string(s)
+        self.module.metadata_mut().find_or_insert_string(s)
     }
 
     pub fn get_struct(&self, id: TypeDefID) -> Option<&Struct> {
-        self.module.metadata.get_struct_def(id)
+        self.module.metadata().get_struct_def(id)
     }
 
     pub fn get_iface(&self, id: InterfaceID) -> Option<&Interface> {
-        self.module.metadata.get_iface_def(id)
+        self.module.metadata().get_iface_def(id)
     }
 
     pub fn finish(mut self) -> Vec<Instruction> {
@@ -321,7 +319,7 @@ impl<'m> Builder<'m> {
             self.instructions.remove(pos);
         }
 
-        if self.module.opts.debug_info {
+        if self.module.opts().debug_info {
             self.append(Instruction::DebugPop);
         }
 
@@ -769,7 +767,7 @@ impl<'m> Builder<'m> {
     {
         match ty {
             Type::Struct(struct_id) => {
-                let struct_def = self.module.metadata.get_struct_def(*struct_id).unwrap();
+                let struct_def = self.module.metadata().get_struct_def(*struct_id).unwrap();
 
                 let fields: Vec<_> = struct_def
                     .fields
@@ -801,7 +799,7 @@ impl<'m> Builder<'m> {
             Type::Variant(id) => {
                 let cases = &self
                     .module
-                    .metadata
+                    .metadata()
                     .get_variant_def(*id)
                     .unwrap_or_else(|| panic!("missing variant def {}", id))
                     .cases
