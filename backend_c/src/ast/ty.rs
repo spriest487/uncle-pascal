@@ -5,7 +5,7 @@ mod variant_def;
 
 pub use self::{class_def::*, struct_def::*, type_def::*, variant_def::*};
 use crate::ast::Module;
-use pas_ir::metadata;
+use intermediate::metadata;
 use std::fmt;
 
 #[allow(unused)]

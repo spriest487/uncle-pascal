@@ -15,7 +15,7 @@ use crate::typecheck::NameContainer;
 use crate::typecheck::NameError;
 use crate::typecheck::NameResult;
 use crate::typecheck::Symbol;
-use pas_common::span::*;
+use common::span::*;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TypePattern {

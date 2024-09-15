@@ -13,7 +13,7 @@ pub use self::context::*;
 pub use self::result::*;
 pub use self::ty::*;
 use ast::typecheck_unit;
-use pas_common::span::*;
+use common::span::*;
 use crate::ast as syn;
 
 #[derive(Debug, Clone)]

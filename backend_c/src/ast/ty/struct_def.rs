@@ -1,10 +1,10 @@
 use crate::ast::{Module, Type, TypeDecl, TypeDefName};
-use pas_ir::metadata;
+use intermediate::metadata;
 use std::{
     fmt,
     hash::{Hash, Hasher},
 };
-use pas_ir::metadata::{FieldID, StructIdentity};
+use intermediate::metadata::{FieldID, StructIdentity};
 
 #[derive(Clone, Eq)]
 pub struct StructMember {

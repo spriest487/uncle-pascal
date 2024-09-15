@@ -9,8 +9,8 @@ use crate::DelimiterPair;
 use crate::Operator;
 use crate::Separator;
 use derivative::*;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 use std::fmt;
 
 #[derive(Clone, Eq, Derivative)]

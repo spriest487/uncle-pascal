@@ -4,7 +4,7 @@ use codespan_reporting::{
     term::termcolor,
     files::{Files, Error as FileError}
 };
-use pas_common::{path_relative_to_cwd, DiagnosticMessage, DiagnosticOutput, read_source_file};
+use common::{path_relative_to_cwd, DiagnosticMessage, DiagnosticOutput, read_source_file};
 use std::collections::HashMap;
 
 type CodeMap = SimpleFiles<String, String>;

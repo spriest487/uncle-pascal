@@ -1,8 +1,8 @@
 use crate::Args;
 use crate::CompileError;
 use crate::Target;
-use compiler::ast::IdentPath;
-use pas_common::span::*;
+use frontend::ast::IdentPath;
+use common::span::*;
 use std::collections::LinkedList;
 use std::env;
 use std::path::Path;

@@ -15,11 +15,11 @@ use crate::typecheck::GenericError;
 use crate::typecheck::Type;
 use crate::typecheck::ValueKind;
 use crate::IntConstant;
-use pas_common::span::*;
-use pas_common::Backtrace;
-use pas_common::DiagnosticLabel;
-use pas_common::DiagnosticMessage;
-use pas_common::DiagnosticOutput;
+use common::span::*;
+use common::Backtrace;
+use common::DiagnosticLabel;
+use common::DiagnosticMessage;
+use common::DiagnosticOutput;
 use std::fmt;
 use std::path::PathBuf;
 

@@ -12,7 +12,7 @@ use crate::typecheck::TypecheckResult;
 use crate::typecheck::Typed;
 use crate::typecheck::TypedValue;
 use crate::typecheck::ValueKind;
-use pas_common::span::{Span, Spanned};
+use common::span::{Span, Spanned};
 
 pub type Block = ast::Block<Typed>;
 

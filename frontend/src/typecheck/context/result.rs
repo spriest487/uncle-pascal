@@ -5,7 +5,7 @@ use crate::typecheck::FunctionSig;
 use crate::typecheck::ScopeMemberKind;
 use crate::typecheck::Type;
 use crate::typecheck::Typed;
-use pas_common::span::*;
+use common::span::*;
 use std::fmt;
 use std::fmt::Debug;
 

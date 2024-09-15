@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use pas_common::{
+use common::{
     span::{Span, Spanned},
     TracedError
 };

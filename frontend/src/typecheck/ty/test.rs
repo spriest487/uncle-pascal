@@ -1,12 +1,11 @@
-use crate::{
-    ast::{StructDef, Unit},
-    context::*,
-    ty::*,
-};
-use pas_syn::{ast};
+use crate::typecheck::ast::StructDef;
+use crate::typecheck::ast::Unit;
+use crate::typecheck::context::*;
+use crate::typecheck::ty::*;
+use crate::ast;
 use std::rc::Rc;
 use crate::ast::{Call, Stmt};
-use crate::test::module_from_src;
+use crate::typecheck::test::module_from_src;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BYTE: Type = Type::Primitive(Primitive::UInt8);

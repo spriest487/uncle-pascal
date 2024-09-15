@@ -4,8 +4,8 @@ use crate::parse::TokenStream;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::TokenTree;
-use pas_common::span::Span;
-use pas_common::BuildOptions;
+use common::span::Span;
+use common::BuildOptions;
 use crate::pp::Preprocessor;
 
 pub fn try_unit_from_string(unit_name: &str, src: &str) -> ParseResult<Unit<Span>> {

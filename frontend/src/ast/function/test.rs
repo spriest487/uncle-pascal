@@ -1,7 +1,7 @@
 use super::*;
 use crate::ast::type_name::IdentTypeName;
 use crate::pp::Preprocessor;
-use pas_common::BuildOptions;
+use common::BuildOptions;
 
 fn parse_func_decl(src: &str) -> FunctionDecl<Span> {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
@@ -29,9 +29,8 @@ fn make_iface_ty<const N: usize>(name: IdentPath, ty_args: [&str; N]) -> TypeNam
         ident: name,
         type_args: match N {
             0 => None,
-            _ => Some(TypeList {
-                span: test_span.clone(),
-                items: ty_args.iter()
+            _ => {
+                let items = ty_args.iter()
                     .map(|arg_name| {
                         TypeName::Ident(IdentTypeName {
                             ident: IdentPath::from(Ident::new(arg_name, test_span.clone())),
@@ -39,9 +38,10 @@ fn make_iface_ty<const N: usize>(name: IdentPath, ty_args: [&str; N]) -> TypeNam
                             indirection: 0,
                             span: test_span.clone(),
                         })
-                    })
-                    .collect(),
-            })
+                    });
+                
+                Some(TypeList::new(items, test_span.clone()))
+            }
         },
         span: test_span,
         indirection: 0,

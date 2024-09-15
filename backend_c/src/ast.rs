@@ -6,7 +6,7 @@ mod ty;
 
 pub use self::{function::*, stmt::*, ty::*, expr::*};
 use crate::{ast::string_lit::StringLiteral, Options};
-use pas_ir::{
+use intermediate::{
     metadata::STRING_ID,
     self as ir,
     metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD},

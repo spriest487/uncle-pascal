@@ -7,7 +7,7 @@ use crate::typecheck::ast;
 use crate::typecheck::Primitive;
 use crate::typecheck::Symbol;
 use crate::typecheck::Type;
-use pas_common::span::*;
+use common::span::*;
 use std::rc::Rc;
 
 pub const SYSTEM_UNIT_NAME: &str = "System";

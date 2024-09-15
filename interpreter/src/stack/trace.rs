@@ -1,6 +1,6 @@
 use std::{fmt, slice};
 use std::fmt::Formatter;
-use pas_common::span::Span;
+use common::span::Span;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct StackTrace {

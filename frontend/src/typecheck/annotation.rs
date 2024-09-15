@@ -16,7 +16,7 @@ use crate::typecheck::ValueKind;
 use crate::ast::Ident;
 use crate::IntConstant;
 use derivative::*;
-use pas_common::span::*;
+use common::span::*;
 use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;

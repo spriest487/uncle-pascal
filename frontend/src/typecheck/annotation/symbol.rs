@@ -1,6 +1,6 @@
 use std::fmt;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 use crate::ast::DeclNamed;
 use crate::ast::TypeDeclName;
 use crate::ast::Ident;

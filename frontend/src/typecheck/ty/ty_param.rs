@@ -4,7 +4,7 @@ use crate::typecheck::typecheck_type;
 use crate::typecheck::Context;
 use crate::typecheck::Type;
 use crate::typecheck::TypecheckResult;
-use pas_common::span::Spanned;
+use common::span::Spanned;
 use std::borrow::Cow;
 use std::fmt;
 

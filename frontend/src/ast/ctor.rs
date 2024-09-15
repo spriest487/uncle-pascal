@@ -12,8 +12,8 @@ use crate::DelimiterPair;
 use crate::Separator;
 use crate::TokenTree;
 use derivative::*;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 use std::fmt;
 
 #[derive(Eq, Clone, Derivative)]

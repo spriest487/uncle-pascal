@@ -4,7 +4,7 @@ use crate::{
     token_tree::*,
     Keyword,
 };
-use pas_common::span::*;
+use common::span::*;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

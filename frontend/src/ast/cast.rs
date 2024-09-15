@@ -1,6 +1,6 @@
 use crate::ast::{Annotation, Expr};
 use std::fmt;
-use pas_common::span::{Span, Spanned};
+use common::span::{Span, Spanned};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Cast<A: Annotation> {

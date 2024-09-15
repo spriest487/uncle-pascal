@@ -1,5 +1,5 @@
 use crate::ast::{Builder, Expr, InfixOp, Module, Statement, Type, TypeDecl};
-use pas_ir::{
+use intermediate::{
     self as ir,
     metadata::{
         FunctionID,

@@ -28,7 +28,7 @@ use crate::typecheck::TypedValue;
 use crate::typecheck::ValueKind;
 use crate::ast::Ident;
 use linked_hash_map::LinkedHashMap;
-use pas_common::span::{Span, Spanned};
+use common::span::{Span, Spanned};
 use std::rc::Rc;
 
 pub type FunctionDecl = ast::FunctionDecl<Typed>;

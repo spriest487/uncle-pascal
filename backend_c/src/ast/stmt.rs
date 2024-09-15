@@ -3,7 +3,7 @@ use crate::ast::{
     ty::FieldName,
     FunctionName, Module, Type,
 };
-use pas_ir::{
+use intermediate::{
     self as ir,
     metadata::{ty::VirtualTypeID, StringID, TypeDefID},
     Label, StaticClosureID,

@@ -22,7 +22,7 @@ use crate::ast::UnaryOp;
 use crate::consts::*;
 use crate::ast::ident::*;
 use crate::parse::*;
-use pas_common::span::*;
+use common::span::*;
 use std::fmt;
 use std::rc::Rc;
 

@@ -5,9 +5,9 @@ use crate::Ref;
 use crate::Type;
 use crate::Value;
 use crate::metadata::VirtualTypeID;
-use compiler::typecheck as typ;
-use compiler::Operator;
-use compiler::ast as syn;
+use crate::syn;
+use crate::typ;
+use syn::Operator;
 
 pub fn translate_bin_op(
     bin_op: &typ::ast::BinOp,

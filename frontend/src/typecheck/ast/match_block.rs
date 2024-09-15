@@ -13,8 +13,8 @@ use crate::typecheck::TypecheckError;
 use crate::typecheck::TypecheckResult;
 use crate::typecheck::ValueKind;
 use crate::typecheck::TypedValue;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 use crate::ast;
 
 pub type MatchBlock<B> = ast::MatchBlock<Typed, B>;

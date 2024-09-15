@@ -8,9 +8,9 @@ use crate::parse::TokenStream;
 use crate::Keyword;
 use crate::Separator;
 use derivative::*;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
-use pas_common::TracedError;
+use common::span::Span;
+use common::span::Spanned;
+use common::TracedError;
 use std::fmt;
 
 #[derive(Clone, Debug)]

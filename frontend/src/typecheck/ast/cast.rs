@@ -10,8 +10,8 @@ use crate::typecheck::TypecheckResult;
 use crate::typecheck::Typed;
 use crate::typecheck::TypedValue;
 use crate::typecheck::ValueKind;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 
 pub type Cast = ast::Cast<Typed>;
 

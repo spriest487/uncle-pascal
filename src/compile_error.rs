@@ -1,15 +1,15 @@
-use compiler::ast::IdentPath;
-use compiler::parse::ParseError;
-use compiler::pp::error::PreprocessorError;
-use compiler::typecheck::TypecheckError;
-use compiler::TokenizeError;
-use pas_common::span::Span;
-use pas_common::Backtrace;
-use pas_common::DiagnosticLabel;
-use pas_common::DiagnosticMessage;
-use pas_common::DiagnosticOutput;
-use pas_common::TracedError;
-use pas_interpreter::result::ExecError;
+use frontend::ast::IdentPath;
+use frontend::parse::ParseError;
+use frontend::pp::error::PreprocessorError;
+use frontend::typecheck::TypecheckError;
+use frontend::TokenizeError;
+use common::span::Span;
+use common::Backtrace;
+use common::DiagnosticLabel;
+use common::DiagnosticMessage;
+use common::DiagnosticOutput;
+use common::TracedError;
+use interpreter::result::ExecError;
 use std::path::PathBuf;
 use std::{fmt, io};
 

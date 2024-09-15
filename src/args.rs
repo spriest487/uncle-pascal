@@ -2,7 +2,7 @@ use std::{
     path::PathBuf,
 };
 use structopt::*;
-use pas_common::LanguageMode;
+use common::LanguageMode;
 
 #[derive(StructOpt, Debug)]
 pub struct Args {

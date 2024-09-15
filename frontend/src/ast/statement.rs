@@ -30,8 +30,8 @@ use crate::DelimiterPair;
 use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
-use pas_common::span::{Span, Spanned};
-use pas_common::TracedError;
+use common::span::{Span, Spanned};
+use common::TracedError;
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

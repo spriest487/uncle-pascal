@@ -26,9 +26,9 @@ use crate::Separator;
 use crate::TokenTree;
 use derivative::*;
 use linked_hash_map::LinkedHashMap;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
-use pas_common::TracedError;
+use common::span::Span;
+use common::span::Spanned;
+use common::TracedError;
 use std::fmt;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

@@ -14,7 +14,7 @@ use crate::Instruction;
 use crate::Ref;
 use crate::Type;
 use crate::Value;
-use pas_common::span::Spanned;
+use common::span::Spanned;
 use crate::expr::build_call;
 
 pub fn translate_stmt(stmt: &typ::ast::Stmt, builder: &mut Builder) {

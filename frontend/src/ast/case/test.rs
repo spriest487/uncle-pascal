@@ -2,7 +2,7 @@ use super::*;
 use crate::TokenTree;
 use crate::parse::Parse;
 use crate::pp::Preprocessor;
-use pas_common::BuildOptions;
+use common::BuildOptions;
 
 fn try_parse_case<Item>(s: &str) -> Result<CaseBlock<Span, Item>, String>
 where

@@ -4,8 +4,8 @@ use crate::ast::type_name::TypeName;
 use crate::pp::Preprocessor;
 use crate::token_tree::TokenTree;
 use crate::Operator;
-use pas_common::BuildOptions;
-use pas_common::TracedError;
+use common::BuildOptions;
+use common::TracedError;
 
 fn tokenize(src: &str) -> TokenStream {
     let test_unit = Preprocessor::new("test", BuildOptions::default())

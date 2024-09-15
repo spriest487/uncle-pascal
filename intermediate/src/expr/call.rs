@@ -4,15 +4,15 @@ use crate::metadata::InterfaceID;
 use crate::metadata::MethodID;
 use crate::metadata::VirtualTypeID;
 use crate::metadata::CLOSURE_PTR_FIELD;
+use crate::syn;
+use crate::typ;
 use crate::GlobalRef;
 use crate::Instruction;
 use crate::Ref;
 use crate::Type;
 use crate::Value;
-use compiler::ast;
-use compiler::Ident;
-use compiler::typecheck::Typed;
-use compiler::typecheck as typ;
+use syn::Ident;
+use typ::Typed;
 
 fn translate_call_with_args(
     call_target: CallTarget,
@@ -108,11 +108,11 @@ enum CallTarget {
 
 pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
     match call {
-        ast::Call::FunctionNoArgs(func_call) => {
+        syn::Call::FunctionNoArgs(func_call) => {
             build_func_call(&func_call.target, &[], None, builder)
         },
 
-        ast::Call::MethodNoArgs(method_call) => match method_call.target.annotation() {
+        syn::Call::MethodNoArgs(method_call) => match method_call.target.annotation() {
             Typed::InterfaceMethod(method) => {
                 let self_arg = method_call.self_arg.clone();
                 let self_ty = self_arg.annotation().ty().into_owned();
@@ -131,14 +131,14 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
             _ => panic!("target of no-args method call was not a method"),
         },
 
-        ast::Call::Function(func_call) => build_func_call(
+        syn::Call::Function(func_call) => build_func_call(
             &func_call.target,
             &func_call.args,
             func_call.type_args.as_ref(),
             builder,
         ),
 
-        ast::Call::Method(method_call) => {
+        syn::Call::Method(method_call) => {
             let method_sig = method_call.func_type.as_func().unwrap();
 
             build_method_call(
@@ -152,7 +152,7 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
             )
         },
 
-        ast::Call::VariantCtor(variant_ctor) => build_variant_ctor_call(variant_ctor, builder),
+        syn::Call::VariantCtor(variant_ctor) => build_variant_ctor_call(variant_ctor, builder),
     }
 }
 

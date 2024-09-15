@@ -3,8 +3,8 @@ use std::fmt;
 pub use self::{formatter::*, instruction::*, metadata::ty::Type, module::*, val::*, function::*};
 use crate::ty::{VirtualTypeID, FieldID, TypeDef};
 use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
-use compiler::ast as syn;
-use compiler::typecheck as typ;
+use frontend::ast as syn;
+use frontend::typecheck as typ;
 
 mod builder;
 mod dep_sort;

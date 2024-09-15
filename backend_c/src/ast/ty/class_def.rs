@@ -2,7 +2,7 @@ use crate::ast::{
     Expr, FunctionDecl, FunctionDef, FunctionName, GlobalName, Module, Statement, Type,
     TypeDefName,
 };
-use pas_ir::{
+use intermediate::{
     metadata::{
         self, FunctionID, InterfaceID, MethodID, TypeDefID, VirtualTypeID,
         DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID,
@@ -13,7 +13,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
 };
-use pas_ir::metadata::DynArrayRuntimeType;
+use intermediate::metadata::DynArrayRuntimeType;
 
 #[derive(Clone, Debug)]
 struct MethodImplFunc {
@@ -27,13 +27,13 @@ impl MethodImplFunc {
         iface_id: InterfaceID,
         self_ty_id: TypeDefID,
         method_id: MethodID,
-        iface_method: &pas_ir::metadata::Method,
+        iface_method: &intermediate::metadata::Method,
         impl_func_id: FunctionID,
         metadata: &metadata::Metadata,
         module: &mut Module,
     ) -> Self {
-        let class_ty = pas_ir::Type::RcPointer(VirtualTypeID::Class(self_ty_id));
-        let iface_ty = pas_ir::Type::RcPointer(VirtualTypeID::Interface(iface_id));
+        let class_ty = intermediate::Type::RcPointer(VirtualTypeID::Class(self_ty_id));
+        let iface_ty = intermediate::Type::RcPointer(VirtualTypeID::Interface(iface_id));
 
         let impl_func_name = FunctionName::ID(impl_func_id);
         let vcall_wrapper_name = FunctionName::MethodWrapper(iface_id, method_id, self_ty_id);
@@ -131,7 +131,7 @@ impl Class {
     ) -> Self {
         let name = module.type_names[&metadata::Type::Struct(struct_id)].clone();
         
-        let class_ty = pas_ir::Type::RcPointer(VirtualTypeID::Class(struct_id));
+        let class_ty = intermediate::Type::RcPointer(VirtualTypeID::Class(struct_id));
 
         let mut impls = HashMap::new();
 

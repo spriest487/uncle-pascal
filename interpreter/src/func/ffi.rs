@@ -1,11 +1,15 @@
-use crate::{marshal::ForeignType, ExecResult, Interpreter};
-use ::libffi::{middle::Cif, raw::ffi_call as ffi_raw_call};
-use pas_ir::{LocalID, Ref, Type};
+use crate::marshal::ForeignType;
+use crate::ExecResult;
+use crate::Interpreter;
+use ::libffi::middle::Cif;
+use ::libffi::raw::ffi_call as ffi_raw_call;
+use intermediate::Ref;
+use intermediate::LocalID;
+use intermediate::Type;
 use smallvec::*;
-use std::{
-    ffi::c_void,
-    ptr::{null_mut, slice_from_raw_parts},
-};
+use std::ffi::c_void;
+use std::ptr::null_mut;
+use std::ptr::slice_from_raw_parts;
 
 pub struct FfiInvoker {
     cif: Cif,

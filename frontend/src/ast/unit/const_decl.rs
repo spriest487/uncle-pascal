@@ -15,9 +15,9 @@ use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
 use derivative::*;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
-use pas_common::TracedError;
+use common::span::Span;
+use common::span::Spanned;
+use common::TracedError;
 use std::fmt;
 
 /// var or const binding (depending on the keyword)

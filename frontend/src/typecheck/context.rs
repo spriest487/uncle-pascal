@@ -38,7 +38,7 @@ use crate::typecheck::TypeParamType;
 use crate::typecheck::TypecheckError;
 use crate::typecheck::TypecheckResult;
 use linked_hash_map::LinkedHashMap;
-use pas_common::span::*;
+use common::span::*;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
 use std::rc::Rc;

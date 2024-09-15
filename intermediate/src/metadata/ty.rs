@@ -8,7 +8,7 @@ use crate::{
     name_path::NamePath, InterfaceID, TypeDefID,
     STRING_ID,
 };
-use pas_common::span::Span;
+use common::span::Span;
 use std::{
     fmt,
     fmt::Write,

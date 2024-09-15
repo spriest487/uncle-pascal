@@ -1,30 +1,33 @@
-use pas_common::{span::Span, BuildOptions};
-use pas_syn::{parse::TokenStream, Ident, TokenTree, ast, IdentPath};
-use pas_typecheck::{
-    self as ty,
-};
+use crate::dep_sort::find_deps;
+use crate::dep_sort::sort_defs;
+use crate::metadata::Metadata;
+use crate::metadata::NamePath;
+use crate::metadata::TypeDef;
+use crate::metadata::TypeDefID;
+use crate::syn;
+use crate::syn::Ident;
+use crate::syn::IdentPath;
+use crate::translate;
+use crate::typ;
+use crate::IROptions;
+use common::span::Span;
+use common::BuildOptions;
+use frontend::parse::TokenStream;
+use frontend::TokenTree;
+use frontend::pp::Preprocessor;
 use std::collections::HashMap;
-use crate::{
-    metadata::NamePath,
-    dep_sort::sort_defs,
-    metadata::Metadata,
-    metadata::{TypeDefID, TypeDef},
-    translate,
-    IROptions,
-    dep_sort::find_deps
-};
 
 fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
-    let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())
+    let test_unit = Preprocessor::new("test", BuildOptions::default())
         .preprocess(src)
         .unwrap();
     let tokens = TokenTree::tokenize(test_unit).unwrap();
     let mut stream = TokenStream::new(tokens, Span::zero("test"));
 
-    let unit = ast::Unit::parse(&mut stream, IdentPath::from_parts(vec![Ident::new("test", Span::zero("test"))])).unwrap();
+    let unit = syn::Unit::parse(&mut stream, IdentPath::from_parts(vec![Ident::new("test", Span::zero("test"))])).unwrap();
     stream.finish().unwrap();
 
-    let module = ty::Module::typecheck(&[unit]).unwrap();
+    let module = typ::Module::typecheck(&[unit]).unwrap();
     let ir = translate(&module, IROptions::default());
 
     let defs = ir.metadata.type_defs()

@@ -8,7 +8,7 @@ use crate::{
         TokenStream,
     }, Separator,
 };
-use pas_common::{
+use common::{
     span::{Span, Spanned},
 };
 use std::fmt;

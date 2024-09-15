@@ -1,5 +1,5 @@
 use crate::ast::{FieldName, Module, Type, TypeDecl, TypeDefName};
-use pas_ir::{metadata, metadata::TypeDefID};
+use intermediate::{metadata, metadata::TypeDefID};
 use std::{
     fmt,
     hash::{Hash, Hasher},

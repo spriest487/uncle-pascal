@@ -3,9 +3,9 @@ use crate::{
     func::ffi::FfiInvoker,
     ExecResult, Interpreter,
 };
-use pas_ir::{ExternalFunctionRef, FunctionDef, Type};
+use intermediate::{ExternalFunctionRef, FunctionDef, Type};
 use std::fmt;
-use pas_ir::metadata::Metadata;
+use intermediate::metadata::Metadata;
 
 pub mod ffi;
 

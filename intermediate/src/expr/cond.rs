@@ -7,7 +7,7 @@ use crate::Type;
 use crate::pattern::translate_pattern_match;
 use crate::pattern::PatternMatchOutput;
 use crate::stmt::build_case_block;
-use compiler::typecheck as typ;
+use crate::typ;
 
 pub fn translate_if_cond<B, BranchTranslateFn>(
     if_cond: &typ::ast::IfCond<B>,

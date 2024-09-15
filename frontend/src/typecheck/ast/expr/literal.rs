@@ -7,7 +7,7 @@ use crate::typecheck::Type;
 use crate::typecheck::TypecheckResult;
 use crate::typecheck::TypedValue;
 use crate::typecheck::ValueKind;
-use pas_common::span::Span;
+use common::span::Span;
 use crate::ast;
 use crate::IntConstant;
 

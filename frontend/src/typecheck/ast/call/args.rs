@@ -19,7 +19,7 @@ use crate::typecheck::TypeParamType;
 use crate::typecheck::TypecheckError;
 use crate::typecheck::TypecheckResult;
 use crate::typecheck::ValueKind;
-use pas_common::span::Span;
+use common::span::Span;
 use std::borrow::Cow;
 
 pub struct SpecializedCallArgs {

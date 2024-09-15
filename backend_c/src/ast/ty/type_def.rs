@@ -1,5 +1,5 @@
 use std::fmt;
-use pas_ir::metadata::TypeDefID;
+use intermediate::metadata::TypeDefID;
 use crate::ast::{FuncAliasDef, StructDef, TypeDecl, VariantDef};
 
 #[derive(Clone, Eq, PartialEq, Hash)]

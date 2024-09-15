@@ -4,7 +4,7 @@ mod test;
 use crate::ast::{Annotation, Expr, Stmt};
 use crate::parse::{MatchOneOf, Parse, ParseResult, TokenStream};
 use crate::{DelimiterPair, Keyword, Separator, TokenTree};
-use pas_common::span::{Span, Spanned};
+use common::span::{Span, Spanned};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 

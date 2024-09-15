@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::rc::Rc;
-use pas_ir::Type;
+use intermediate::Type;
 use crate::{DynValue, marshal::{Marshaller, MarshalError}, Pointer};
 
 #[derive(Clone, Debug)]

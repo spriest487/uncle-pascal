@@ -24,7 +24,7 @@ use crate::{
     token_tree::*,
     Keyword
 };
-use pas_common::{span::*, TracedError};
+use common::{span::*, TracedError};
 use std::fmt;
 use crate::ast::ObjectCtorMember;
 use crate::ast::operators::*;

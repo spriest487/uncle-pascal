@@ -12,8 +12,8 @@ use crate::typecheck::FunctionSig;
 use crate::typecheck::Primitive;
 use crate::typecheck::Type;
 use crate::TokenTree;
-use pas_common::span::Span;
-use pas_common::BuildOptions;
+use common::span::Span;
+use common::BuildOptions;
 use std::cmp::Ordering;
 
 fn parse_expr(src: &str) -> ast::Expr<Span> {

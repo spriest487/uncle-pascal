@@ -6,7 +6,7 @@ use crate::ast::Ident;
 use crate::Separator;
 use crate::TokenTree;
 use std::{fmt};
-use pas_common::span::{Span, Spanned};
+use common::span::{Span, Spanned};
 use crate::parse::{LookAheadTokenStream, Matcher, ParseResult, ParseSeq, TokenStream};
 use crate::token_tree::DelimitedGroup;
 use derivative::*;

@@ -137,9 +137,9 @@ fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceM
 
 #[cfg(test)]
 mod test {
-    use crate::context::ufcs::find_ufcs_free_functions;
-    use crate::test::{unit_from_src, units_from_src};
-    use crate::Type;
+    use crate::typecheck::context::ufcs::find_ufcs_free_functions;
+    use crate::typecheck::test::{unit_from_src, units_from_src};
+    use crate::typecheck::Type;
 
     #[test]
     fn finds_ufcs_func() {

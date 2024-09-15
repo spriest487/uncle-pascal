@@ -4,7 +4,7 @@ use crate::typecheck::ast::Literal;
 use crate::typecheck::Binding;
 use crate::typecheck::FunctionSig;
 use crate::typecheck::Type;
-use pas_common::span::Span;
+use common::span::Span;
 use std::fmt;
 use std::rc::Rc;
 

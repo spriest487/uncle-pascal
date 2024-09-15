@@ -766,7 +766,7 @@ impl Metadata {
             typ::Type::GenericParam(param) => panic!(
                 "{} is not a real type in this context: {:?}",
                 param,
-                pas_common::Backtrace::new()
+                common::Backtrace::new()
             ),
 
             typ::Type::Function(sig) => match self.function_types_by_sig.get(sig) {

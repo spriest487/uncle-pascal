@@ -7,7 +7,7 @@ use crate::{
     ast::{Expr, Stmt},
     Keyword
 };
-use pas_common::span::{Span, Spanned};
+use common::span::{Span, Spanned};
 use std::fmt;
 
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]

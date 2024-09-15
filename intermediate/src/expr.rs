@@ -3,8 +3,10 @@ mod op;
 mod ctor;
 mod cond;
 
+use crate::syn;
 use crate::translate_stmt;
 use crate::ty::VirtualTypeID;
+use crate::typ;
 use crate::Builder;
 use crate::GlobalRef;
 use crate::Instruction;
@@ -14,13 +16,11 @@ use crate::Value;
 use crate::DYNARRAY_LEN_FIELD;
 use crate::DYNARRAY_PTR_FIELD;
 use crate::RETURN_REF;
-use pas_common::span::*;
-use compiler::ast as syn;
-use compiler::ast::Ident;
-use compiler::typecheck as typ;
+pub use call::*;
+use common::span::*;
+use syn::Ident;
 use typ::Typed;
 use typ::ValueKind;
-pub use call::*;
 
 pub fn expr_to_val(expr: &typ::ast::Expr, builder: &mut Builder) -> Value {
     match expr {

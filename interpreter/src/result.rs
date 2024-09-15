@@ -3,12 +3,12 @@ use crate::marshal::MarshalError;
 use crate::stack::StackError;
 use crate::stack::StackTrace;
 use crate::Pointer;
-use pas_common::span::Span;
-use pas_common::DiagnosticLabel;
-use pas_common::DiagnosticOutput;
-use pas_ir::Instruction;
-use pas_ir::InstructionFormatter;
-use pas_ir::RawInstructionFormatter;
+use common::span::Span;
+use common::DiagnosticLabel;
+use common::DiagnosticOutput;
+use intermediate::Instruction;
+use intermediate::InstructionFormatter;
+use intermediate::RawInstructionFormatter;
 use std::fmt;
 
 #[derive(Debug)]

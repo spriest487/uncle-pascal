@@ -3,8 +3,8 @@ use crate::ast::TypeDeclItem;
 use crate::ast::{StructDef, Unit, Visibility};
 use crate::parse::ParseError;
 use crate::Separator;
-use pas_common::span::Span;
-use pas_common::TracedError;
+use common::span::Span;
+use common::TracedError;
 
 /// empty class and record types should be allowed - only the typechecker should enforce
 /// non-empty records 

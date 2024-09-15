@@ -3,9 +3,9 @@ mod lex;
 #[cfg(test)]
 mod test;
 
-use crate::parse::TokenStream;
+pub use crate::parse::TokenStream;
 use crate::consts::{IntConstant, RealConstant};
-use pas_common::{span::*, DiagnosticLabel, DiagnosticOutput, TracedError};
+use common::{span::*, DiagnosticLabel, DiagnosticOutput, TracedError};
 use std::rc::Rc;
 use std::fmt::{self, Write as _};
 use crate::pp::PreprocessedUnit;

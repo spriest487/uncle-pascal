@@ -3,7 +3,7 @@ use crate::{
     parse::{Parse, ParseError, ParseResult, TokenStream},
     Keyword,
 };
-use pas_common::{
+use common::{
     span::{Span, Spanned},
     TracedError,
 };

@@ -21,7 +21,7 @@ use crate::Value;
 use crate::CLOSURE_PTR_FIELD;
 use crate::EXIT_LABEL;
 use crate::RETURN_REF;
-use pas_common::span::Span;
+use common::span::Span;
 use std::fmt;
 use std::iter;
 use std::rc::Rc;

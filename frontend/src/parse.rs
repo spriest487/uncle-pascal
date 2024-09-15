@@ -7,11 +7,11 @@ use crate::ast::TypeName;
 use crate::ast::*;
 use crate::token_tree::*;
 use crate::ast::Ident;
-use pas_common::span::*;
-use pas_common::DiagnosticLabel;
-use pas_common::DiagnosticMessage;
-use pas_common::DiagnosticOutput;
-use pas_common::TracedError;
+use common::span::*;
+use common::DiagnosticLabel;
+use common::DiagnosticMessage;
+use common::DiagnosticOutput;
+use common::TracedError;
 use std::fmt;
 
 #[derive(Debug)]

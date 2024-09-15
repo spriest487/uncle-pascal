@@ -1,5 +1,5 @@
 use std::fmt;
-use pas_common::span::Span;
+use common::span::Span;
 use crate::{Ref, Value, Type, LocalID, InterfaceID, MethodID, FieldID, TypeDefID, VirtualTypeID, RawInstructionFormatter, InstructionFormatter};
 
 #[derive(Debug, Clone, PartialEq)]

@@ -5,8 +5,8 @@ use crate::typecheck::ast::FunctionDef;
 use crate::typecheck::ast::InterfaceDecl;
 use crate::typecheck::ast::StructDef;
 use crate::typecheck::ast::VariantDef;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]

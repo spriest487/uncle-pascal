@@ -27,7 +27,7 @@ use crate::typecheck::Symbol;
 use crate::typecheck::TypeArgsResult::NotGeneric;
 use crate::typecheck::Typed;
 use crate::Operator;
-use pas_common::span::*;
+use common::span::*;
 use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;

@@ -1,8 +1,12 @@
 use crate::ptr::Pointer;
 use cast::i128;
-use pas_ir::metadata::{VirtualTypeID, FieldID, FunctionID, TypeDefID};
-use pas_ir::Type;
-use std::ops::{Index, IndexMut};
+use intermediate::metadata::FunctionID;
+use intermediate::metadata::FieldID;
+use intermediate::metadata::VirtualTypeID;
+use intermediate::metadata::TypeDefID;
+use intermediate::Type;
+use std::ops::Index;
+use std::ops::IndexMut;
 
 #[derive(Debug, Clone)]
 pub enum DynValue {

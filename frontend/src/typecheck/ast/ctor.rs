@@ -18,7 +18,7 @@ use crate::typecheck::Typed;
 use crate::typecheck::TypedValue;
 use crate::typecheck::ValueKind;
 use linked_hash_map::LinkedHashMap;
-use pas_common::span::{Span, Spanned};
+use common::span::{Span, Spanned};
 use std::iter;
 
 pub type ObjectCtor = ast::ObjectCtor<Typed>;

@@ -1,4 +1,4 @@
-use pas_common::{span::*, TracedError};
+use common::{span::*, TracedError};
 
 use crate::{parse::*, token_tree::*};
 

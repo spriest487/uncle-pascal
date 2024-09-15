@@ -1,4 +1,4 @@
-use pas_common::{
+use common::{
     span::{Span, Spanned},
     DiagnosticLabel, DiagnosticOutput,
 };

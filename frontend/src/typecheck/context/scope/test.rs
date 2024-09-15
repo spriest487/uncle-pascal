@@ -1,17 +1,17 @@
 use crate::ast::Literal;
-use crate::Decl;
-use crate::Environment;
-use crate::Primitive;
-use crate::Scope;
-use crate::ScopeMemberKind;
-use crate::ScopeMemberRef;
-use crate::ScopeStack;
-use crate::Type;
-use crate::ScopeID;
-use pas_common::span::Span;
-use pas_syn::ast::Visibility;
-use pas_syn::Ident;
-use pas_syn::IdentPath;
+use crate::typecheck::Decl;
+use crate::typecheck::Environment;
+use crate::typecheck::Primitive;
+use crate::typecheck::Scope;
+use crate::typecheck::ScopeMemberKind;
+use crate::typecheck::ScopeMemberRef;
+use crate::typecheck::ScopeStack;
+use crate::typecheck::Type;
+use crate::typecheck::ScopeID;
+use common::span::Span;
+use crate::ast::Visibility;
+use crate::ast::Ident;
+use crate::ast::IdentPath;
 
 fn new_global_scope() -> ScopeStack {
     ScopeStack::new(Scope::new(ScopeID(0), Environment::Global))

@@ -7,7 +7,7 @@ use crate::typecheck::Typed;
 use crate::typecheck::Type;
 use crate::typecheck::Context;
 use crate::typecheck::ValueKind;
-use pas_common::span::{Span, Spanned};
+use common::span::{Span, Spanned};
 use crate::ast;
 
 pub type CaseBranch<Item> = ast::CaseBranch<Typed, Item>;

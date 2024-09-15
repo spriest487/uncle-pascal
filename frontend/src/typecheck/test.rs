@@ -1,7 +1,14 @@
-use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
-use pas_common::read_source_file;
-use std::{collections::HashMap, iter, path::PathBuf};
-use pas_syn::ast;
+use crate::ast;
+use crate::typecheck::FunctionParamSig;
+use crate::typecheck::FunctionSig;
+use crate::typecheck::Module;
+use crate::typecheck::ModuleUnit;
+use crate::typecheck::Primitive;
+use crate::typecheck::Type;
+use common::read_source_file;
+use std::collections::HashMap;
+use std::iter;
+use std::path::PathBuf;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);

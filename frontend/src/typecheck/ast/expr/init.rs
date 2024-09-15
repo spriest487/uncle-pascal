@@ -1,4 +1,4 @@
-use pas_common::span::Spanned;
+use common::span::Spanned;
 use crate::ast;
 use crate::ast::Ident;
 use crate::ast::FunctionParamMod;

@@ -8,8 +8,8 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::TokenTree;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]

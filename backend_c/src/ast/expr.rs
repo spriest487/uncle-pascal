@@ -4,10 +4,10 @@ use crate::ast::GlobalName;
 use crate::ast::Module;
 use crate::ast::Type;
 use crate::ir;
-use pas_ir::metadata;
-use pas_ir::metadata::TypeDefID;
-use pas_ir::metadata::CLOSURE_PTR_FIELD;
-use pas_ir::LocalID;
+use intermediate::metadata;
+use intermediate::metadata::TypeDefID;
+use intermediate::metadata::CLOSURE_PTR_FIELD;
+use intermediate::LocalID;
 use std::fmt;
 use crate::ast::TypeDefName;
 

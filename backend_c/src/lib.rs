@@ -1,4 +1,4 @@
-use pas_ir as ir;
+use intermediate as ir;
 
 pub mod ast;
 

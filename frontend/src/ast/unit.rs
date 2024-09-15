@@ -27,8 +27,8 @@ use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
 use crate::TokenTree;
-use pas_common::span::Span;
-use pas_common::TracedError;
+use common::span::Span;
+use common::TracedError;
 use std::fmt;
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]

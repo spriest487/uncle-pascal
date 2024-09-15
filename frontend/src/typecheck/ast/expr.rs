@@ -34,7 +34,7 @@ use crate::ast::IdentPath;
 use crate::IntConstant;
 pub use init::*;
 pub use literal::*;
-use pas_common::span::*;
+use common::span::*;
 
 pub type Expr = ast::Expr<Typed>;
 

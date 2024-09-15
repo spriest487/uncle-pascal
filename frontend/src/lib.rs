@@ -17,5 +17,6 @@ pub use self::consts::SetConstant;
 pub use self::token_tree::DelimiterPair;
 pub use self::token_tree::Separator;
 pub use self::token_tree::TokenTree;
+pub use self::token_tree::TokenStream;
 pub use self::token_tree::TokenizeError;
 pub use self::token_tree::TokenizeResult;

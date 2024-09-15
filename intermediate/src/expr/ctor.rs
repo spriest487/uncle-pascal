@@ -1,13 +1,13 @@
 use crate::builder::Builder;
 use crate::expr;
+use crate::metadata::VirtualTypeID;
+use crate::metadata::DYNARRAY_LEN_FIELD;
+use crate::metadata::DYNARRAY_PTR_FIELD;
+use crate::typ;
 use crate::Instruction;
 use crate::Ref;
 use crate::Type;
 use crate::Value;
-use crate::metadata::VirtualTypeID;
-use crate::metadata::DYNARRAY_LEN_FIELD;
-use crate::metadata::DYNARRAY_PTR_FIELD;
-use compiler::typecheck as typ;
 
 pub fn translate_object_ctor(ctor: &typ::ast::ObjectCtor, builder: &mut Builder) -> Ref {
     let object_ty = builder.translate_type(&ctor.annotation.ty());

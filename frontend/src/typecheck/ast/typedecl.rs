@@ -16,8 +16,8 @@ use crate::typecheck::TypecheckError;
 use crate::typecheck::TypecheckResult;
 use crate::typecheck::Typed;
 use crate::IntConstant;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 
 pub type StructDef = ast::StructDef<Typed>;
 pub type Member = ast::StructMember<Typed>;

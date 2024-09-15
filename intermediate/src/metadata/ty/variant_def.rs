@@ -3,8 +3,8 @@ use crate::typ;
 use crate::Module;
 use crate::NamePath;
 use crate::Type;
-use pas_common::span::Span;
-use pas_common::span::Spanned;
+use common::span::Span;
+use common::span::Spanned;
 
 #[derive(Clone, Debug)]
 pub struct VariantCase {
