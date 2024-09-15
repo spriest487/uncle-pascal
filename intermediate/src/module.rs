@@ -1,12 +1,10 @@
 use crate::metadata::*;
-use crate::module_builder::FunctionDefKey;
 use crate::write_instruction_list;
 use crate::ExternalFunctionRef;
 use crate::FieldID;
 use crate::Function;
 use crate::FunctionDef;
 use crate::FunctionID;
-use crate::FunctionInstance;
 use crate::Instruction;
 use crate::InstructionFormatter;
 use crate::Metadata;
@@ -16,16 +14,15 @@ use crate::Type;
 use crate::TypeDef;
 use crate::TypeDefID;
 use crate::VirtualTypeID;
+use common::span::Span;
 use std::collections::HashMap;
 use std::fmt;
-use common::span::Span;
 
 #[derive(Clone, Debug)]
 pub struct Module {
     pub(crate) metadata: Metadata,
 
     pub(crate) functions: HashMap<FunctionID, Function>,
-    pub(crate) translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
     pub(crate) static_closures: Vec<StaticClosure>,
     pub(crate) function_static_closures: HashMap<FunctionID, StaticClosureID>,
@@ -41,7 +38,6 @@ impl Module {
             init: Vec::new(),
 
             functions: HashMap::new(),
-            translated_funcs: HashMap::new(),
 
             static_closures: Vec::new(),
             function_static_closures: HashMap::new(),

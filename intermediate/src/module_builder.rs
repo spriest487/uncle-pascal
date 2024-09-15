@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 use linked_hash_map::LinkedHashMap;
 use crate::metadata::{translate_closure_struct, DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD};
@@ -52,6 +53,8 @@ pub struct ModuleBuilder {
     opts: IROptions,
     
     type_cache: LinkedHashMap<typ::Type, Type>,
+    
+    translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
     module: Module,
 }
@@ -63,6 +66,8 @@ impl ModuleBuilder {
             src_metadata,
             
             type_cache: LinkedHashMap::new(),
+            
+            translated_funcs: HashMap::new(),
 
             module: Module::new(metadata),
         }
@@ -119,7 +124,7 @@ impl ModuleBuilder {
     }
 
     pub(crate) fn instantiate_func(&mut self, key: FunctionDefKey) -> FunctionInstance {
-        if let Some(cached_func) = self.module.translated_funcs.get(&key) {
+        if let Some(cached_func) = self.translated_funcs.get(&key) {
             return cached_func.clone();
         }
 
@@ -176,7 +181,7 @@ impl ModuleBuilder {
 
         let type_args = key.type_args.clone();
 
-        self.module.translated_funcs.insert(key, cached_func.clone());
+        self.translated_funcs.insert(key, cached_func.clone());
 
         let debug_name = specialized_decl.to_string();
         let ir_func = build_func_def(
@@ -233,7 +238,7 @@ impl ModuleBuilder {
             }),
         );
 
-        self.module.translated_funcs.insert(key, cached_func.clone());
+        self.translated_funcs.insert(key, cached_func.clone());
 
         cached_func
     }
@@ -306,7 +311,7 @@ impl ModuleBuilder {
             decl_key: FunctionDeclKey::Method(method_key),
             type_args: None,
         };
-        self.module.translated_funcs.insert(key, cached_func.clone());
+        self.translated_funcs.insert(key, cached_func.clone());
 
         let debug_name = specialized_decl.to_string();
         let ir_func = build_func_def(
