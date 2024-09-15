@@ -1,13 +1,20 @@
 use std::fmt;
 
+use crate::context;
+use crate::result::*;
+use crate::ty::typecheck_type;
+use crate::ty::Specializable;
+use crate::ty::Type;
+use crate::Context;
+use crate::Decl;
+use crate::NameContainer;
+use crate::NameError;
+use crate::NameResult;
+use crate::Symbol;
 use pas_common::span::*;
-use pas_syn::{
-    ast,
-    ident::*,
-};
+use pas_syn::ast;
 use pas_syn::ast::IdentTypeName;
-
-use crate::{context, result::*, Context, Decl, NameError, Symbol, ty::{Type, Specializable, typecheck_type}, NameContainer, NameResult};
+use pas_syn::ident::*;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TypePattern {

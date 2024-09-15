@@ -1,16 +1,17 @@
 use std::fmt;
 use pas_common::span::{Span, Spanned};
 use crate::{
-    ast::{Annotation, TypeName},
+    ast::Annotation,
     ast::{
         Expr, TypeAnnotation,
     },
+    parse::{ParseResult, TokenStream},
     Ident,
     Keyword,
     Operator,
-    Separator,
-    parse::{ParseResult, TokenStream}
+    Separator
 };
+use crate::ast::type_name::TypeName;
 use crate::parse::Parse;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -1,19 +1,20 @@
-use crate::{DynValue, ExecError, ExecResult, Interpreter, Pointer};
-use std::{
-    borrow::Cow,
-    fmt,
-    io::{self, BufRead},
-};
+use crate::DynValue;
+use crate::ExecError;
+use crate::ExecResult;
+use crate::Interpreter;
+use crate::Pointer;
+use pas_ir::metadata::TypeDefID;
+use pas_ir::LocalID;
+use pas_ir::Ref;
+use pas_ir::Type;
+use pas_ir::Value;
+use pas_ir::RETURN_REF;
+use std::borrow::Cow;
 use std::env::consts::OS;
+use std::fmt;
+use std::io;
+use std::io::BufRead;
 use std::io::Write;
-use pas_ir::{
-    metadata::TypeDefID,
-    LocalID,
-    Ref,
-    Type,
-    RETURN_REF,
-    Value
-};
 
 fn primitive_to_str<T, UnwrapFn>(state: &mut Interpreter, unwrap_fn: UnwrapFn) -> ExecResult<()>
 where
@@ -24,7 +25,7 @@ where
 
     let arg_0_dyn = state.load(&arg_0)?;
     let value = unwrap_fn(&arg_0_dyn).ok_or_else(|| {
-        ExecError::illegal_state(format!("primitive_to_str argument is not the correct type"))
+        ExecError::illegal_state("primitive_to_str argument is not the correct type".to_string())
     })?;
 
     let string = state.create_string(&value.to_string())?;

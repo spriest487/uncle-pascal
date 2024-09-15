@@ -1,14 +1,27 @@
-use crate::{
-    annotation::Typed,
-    ast::{Call, Expr, VariantDef, OverloadCandidate},
-    context::NameError,
-    GenericError, Type, ValueKind,
-};
-use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
-use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator, IntConstant};
+use crate::annotation::Typed;
+use crate::ast::Call;
+use crate::ast::DeclMod;
+use crate::ast::Expr;
+use crate::ast::OverloadCandidate;
+use crate::ast::Stmt;
+use crate::ast::VariantDef;
+use crate::context::NameError;
+use crate::GenericError;
+use crate::Type;
+use crate::ValueKind;
+use pas_common::span::*;
+use pas_common::Backtrace;
+use pas_common::DiagnosticLabel;
+use pas_common::DiagnosticMessage;
+use pas_common::DiagnosticOutput;
+use pas_syn::ast;
+use pas_syn::parse::InvalidStatement;
+use pas_syn::Ident;
+use pas_syn::IdentPath;
+use pas_syn::IntConstant;
+use pas_syn::Operator;
 use std::fmt;
 use std::path::PathBuf;
-use crate::ast::{DeclMod, Stmt};
 
 #[derive(Debug)]
 pub enum TypecheckError {

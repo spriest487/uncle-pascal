@@ -2,12 +2,13 @@ use std::borrow::Cow;
 use crate::expr::{expr_to_val, translate_raise};
 use crate::pattern::translate_pattern_match;
 use crate::{
-    jmp_exists, translate_block, build_call, translate_exit, translate_expr,
+    jmp_exists, translate_block, translate_exit, translate_expr,
     translate_if_cond_stmt, Builder, Instruction, Ref, Type, Value,
 };
 use pas_common::span::Spanned;
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
+use crate::expr::build_call;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Stmt, builder: &mut Builder) {
     builder.push_debug_context(stmt.annotation().span().clone());

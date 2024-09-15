@@ -1,5 +1,5 @@
 use crate::{
-    ast::{IdentTypeName, TypeName, TypeAnnotation},
+    ast::TypeAnnotation,
     parse::{LookAheadTokenStream, Matcher, Parse, ParseError, ParseResult, ParseSeq, TokenStream},
     Ident, IdentPath, Keyword, Separator,
 };
@@ -8,6 +8,7 @@ use pas_common::{
     TracedError,
 };
 use std::fmt;
+use crate::ast::type_name::{IdentTypeName, TypeName};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TypeConstraint<T: TypeAnnotation> {

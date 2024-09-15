@@ -1,12 +1,18 @@
+use crate::ast::cast::implicit_conversion;
+use crate::ast::expr::expect_expr_initialized;
+use crate::ast::expr::expect_stmt_initialized;
+use crate::ast::typecheck_expr;
+use crate::ast::typecheck_stmt;
+use crate::Context;
+use crate::Environment;
+use crate::Type;
+use crate::TypecheckError;
+use crate::TypecheckResult;
+use crate::Typed;
+use crate::TypedValue;
+use crate::ValueKind;
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
-use crate::{ast::{
-    cast::implicit_conversion,
-    expect_expr_initialized,
-    expect_stmt_initialized,
-    typecheck_expr,
-    typecheck_stmt,
-}, Context, Environment, Type, Typed, TypecheckError, TypecheckResult, TypedValue, ValueKind};
 
 pub type Block = ast::Block<Typed>;
 

@@ -5,10 +5,15 @@ use pas_common::BuildOptions;
 use pas_syn::parse::TokenStream;
 use pas_syn::{ast, TokenTree};
 
-use crate::ast::{call::resolve_overload, typecheck_expr, OverloadCandidate};
+use crate::ast::typecheck_expr;
 use crate::test::module_from_src;
-use crate::{Context, FunctionSig, Primitive, Type};
+use crate::Context;
+use crate::FunctionSig;
+use crate::Primitive;
+use crate::Type;
 use std::cmp::Ordering;
+use crate::ast::call::overload::resolve_overload;
+use crate::ast::call::overload::OverloadCandidate;
 
 fn parse_expr(src: &str) -> ast::Expr<Span> {
     let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())

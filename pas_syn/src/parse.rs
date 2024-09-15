@@ -1,11 +1,18 @@
 mod matcher;
 mod token_stream;
 
-use crate::{ast::*, token_tree::*, Ident};
-use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
+pub use self::matcher::*;
+pub use self::token_stream::*;
+use crate::ast::TypeName;
+use crate::ast::*;
+use crate::token_tree::*;
+use crate::Ident;
+use pas_common::span::*;
+use pas_common::DiagnosticLabel;
+use pas_common::DiagnosticMessage;
+use pas_common::DiagnosticOutput;
+use pas_common::TracedError;
 use std::fmt;
-
-pub use self::{matcher::*, token_stream::*};
 
 #[derive(Debug)]
 pub struct InvalidStatement<A: Annotation>(pub Box<Expr<A>>);

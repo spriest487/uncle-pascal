@@ -8,18 +8,18 @@ use crate::{
         expression::parse::CompoundExpressionPart,
         ArgList,
         BinOp,
+        Call,
         Cast,
         Expr,
         FunctionCall,
         TypeList,
-        TypeName,
-        UnaryOp,
-        Call
+        UnaryOp
     },
+    parse::{ParseError, ParseResult},
     Operator,
     Position,
-    parse::{ParseError, ParseResult},
 };
+use crate::ast::type_name::TypeName;
 
 fn resolve_postfix<F>(parts: Vec<CompoundExpressionPart>, lo_op_index: usize, span: &Span, f: F) -> ParseResult<Expr<Span>>
     where F: FnOnce(Expr<Span>) -> Expr<Span>
@@ -246,7 +246,7 @@ impl OperatorPart {
     pub fn span(&self) -> Span {
         match self {
             OperatorPart::OperatorSymbol(sym) => sym.span.clone(),
-            OperatorPart::Call { args, type_args: Some(ty_args), .. } => ty_args.span.to(&args.close),
+            OperatorPart::Call { args, type_args: Some(ty_args), .. } => ty_args.span().to(&args.close),
             OperatorPart::Call { args, .. } => args.open.to(&args.close),
             OperatorPart::AsCast { kw_span, ty } => kw_span.to(ty.span()),
         }

@@ -1,20 +1,35 @@
-pub use self::{pattern::*, primitive::*, sig::*, ty_param::*};
+pub use self::pattern::*;
+pub use self::primitive::*;
+pub use self::sig::*;
+pub use self::ty_param::*;
+use crate::ast::const_eval_integer;
+use crate::ast::typecheck_expr;
+use crate::ast::FunctionDecl;
 use crate::ast::Literal;
-use crate::{
-    ast::{const_eval_integer, typecheck_expr, FunctionDecl, Member, StructDef, VariantDef},
-    context,
-    result::*,
-    Context, GenericError, GenericResult, GenericTarget, NameResult, Symbol, Typed,
-    TypeArgsResult::NotGeneric,
-};
+use crate::ast::Member;
+use crate::ast::StructDef;
+use crate::ast::VariantDef;
+use crate::context;
+use crate::result::*;
+use crate::Context;
+use crate::GenericError;
+use crate::GenericResult;
+use crate::GenericTarget;
+use crate::NameResult;
+use crate::Symbol;
+use crate::TypeArgsResult::NotGeneric;
+use crate::Typed;
 use pas_common::span::*;
-use pas_syn::{
-    ast::{self, ArrayTypeName, IdentTypeName, StructKind, TypeAnnotation},
-    ident::*,
-    Operator,
-};
+use pas_syn::ast;
+use pas_syn::ast::ArrayTypeName;
+use pas_syn::ast::IdentTypeName;
+use pas_syn::ast::StructKind;
+use pas_syn::ast::TypeAnnotation;
+use pas_syn::ident::*;
+use pas_syn::Operator;
 use std::borrow::Cow;
-use std::{fmt, rc::Rc};
+use std::fmt;
+use std::rc::Rc;
 
 #[cfg(test)]
 mod test;

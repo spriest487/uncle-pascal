@@ -1,25 +1,24 @@
-use std::{
-    fmt,
-};
+use std::fmt;
 use pas_common::span::{Span, Spanned};
 use crate::{
-    ast::{Annotation, Expr, TypeName},
+    ast::{Annotation, Expr},
+    parse::{
+        LookAheadTokenStream,
+        Matcher,
+        Parse,
+        ParseResult,
+        ParseSeq,
+        TokenStream
+    },
     Ident,
     Keyword,
     Operator,
-    Separator,
-    parse::{
-        ParseResult,
-        TokenStream,
-        Parse,
-        LookAheadTokenStream,
-        Matcher,
-        ParseSeq
-    }
+    Separator
 };
 use derivative::*;
 use pas_common::TracedError;
 use crate::ast::BindingDeclKind;
+use crate::ast::type_name::TypeName;
 use crate::parse::{MatchOneOf, ParseError};
 
 /// var or const binding (depending on the keyword)

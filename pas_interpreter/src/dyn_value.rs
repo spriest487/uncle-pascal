@@ -5,92 +5,6 @@ use pas_ir::Type;
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone)]
-pub struct StructValue {
-    pub type_id: TypeDefID,
-    pub rc: Option<RcState>,
-    pub fields: Vec<DynValue>,
-}
-
-impl StructValue {
-    pub fn struct_ty(&self) -> Type {
-        Type::Struct(self.type_id)
-    }
-}
-
-impl Index<FieldID> for StructValue {
-    type Output = DynValue;
-
-    fn index(&self, index: FieldID) -> &DynValue {
-        &self.fields[index.0]
-    }
-}
-
-impl IndexMut<FieldID> for StructValue {
-    fn index_mut(&mut self, index: FieldID) -> &mut DynValue {
-        &mut self.fields[index.0]
-    }
-}
-
-impl PartialEq<Self> for StructValue {
-    fn eq(&self, other: &Self) -> bool {
-        if self.type_id != other.type_id || self.fields.len() != other.fields.len() {
-            return false;
-        }
-
-        self.fields
-            .iter()
-            .zip(other.fields.iter())
-            .all(|(a, b)| match a.try_eq(b) {
-                Some(eq) => eq,
-                None => panic!("structs can only contain comparable fields"),
-            })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RcState {
-    pub strong_count: i32,
-    pub weak_count: i32,
-}
-
-#[derive(Debug, Clone)]
-pub struct VariantValue {
-    pub id: TypeDefID,
-    pub tag: Box<DynValue>,
-    pub data: Box<DynValue>,
-}
-
-impl VariantValue {
-    pub fn variant_ty(&self) -> Type {
-        Type::Variant(self.id)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ArrayValue {
-    pub el_ty: Type,
-    pub elements: Vec<DynValue>,
-}
-
-impl ArrayValue {
-    pub fn try_eq(&self, other: &Self) -> Option<bool> {
-        if self.elements.len() == other.elements.len() {
-            let mut all_same = true;
-            for (mine, theirs) in self.elements.iter().zip(other.elements.iter()) {
-                all_same &= mine.try_eq(theirs)?;
-            }
-            Some(all_same)
-        } else {
-            None
-        }
-    }
-
-    pub fn array_ty(&self) -> Type {
-        self.el_ty.clone().array(self.elements.len())
-    }
-}
-
-#[derive(Debug, Clone)]
 pub enum DynValue {
     Bool(bool),
     I8(i8),
@@ -534,5 +448,91 @@ impl From<StructValue> for DynValue {
 impl From<ArrayValue> for DynValue {
     fn from(arr: ArrayValue) -> Self {
         DynValue::Array(Box::new(arr))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StructValue {
+    pub type_id: TypeDefID,
+    pub rc: Option<RcState>,
+    pub fields: Vec<DynValue>,
+}
+
+impl StructValue {
+    pub fn struct_ty(&self) -> Type {
+        Type::Struct(self.type_id)
+    }
+}
+
+impl Index<FieldID> for StructValue {
+    type Output = DynValue;
+
+    fn index(&self, index: FieldID) -> &DynValue {
+        &self.fields[index.0]
+    }
+}
+
+impl IndexMut<FieldID> for StructValue {
+    fn index_mut(&mut self, index: FieldID) -> &mut DynValue {
+        &mut self.fields[index.0]
+    }
+}
+
+impl PartialEq<Self> for StructValue {
+    fn eq(&self, other: &Self) -> bool {
+        if self.type_id != other.type_id || self.fields.len() != other.fields.len() {
+            return false;
+        }
+
+        self.fields
+            .iter()
+            .zip(other.fields.iter())
+            .all(|(a, b)| match a.try_eq(b) {
+                Some(eq) => eq,
+                None => panic!("structs can only contain comparable fields"),
+            })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RcState {
+    pub strong_count: i32,
+    pub weak_count: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct VariantValue {
+    pub id: TypeDefID,
+    pub tag: Box<DynValue>,
+    pub data: Box<DynValue>,
+}
+
+impl VariantValue {
+    pub fn variant_ty(&self) -> Type {
+        Type::Variant(self.id)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayValue {
+    pub el_ty: Type,
+    pub elements: Vec<DynValue>,
+}
+
+impl ArrayValue {
+    pub fn try_eq(&self, other: &Self) -> Option<bool> {
+        if self.elements.len() == other.elements.len() {
+            let mut all_same = true;
+            for (mine, theirs) in self.elements.iter().zip(other.elements.iter()) {
+                all_same &= mine.try_eq(theirs)?;
+            }
+            Some(all_same)
+        } else {
+            None
+        }
+    }
+
+    pub fn array_ty(&self) -> Type {
+        self.el_ty.clone().array(self.elements.len())
     }
 }

@@ -1,5 +1,5 @@
 use pas_common::BuildOptions;
-use crate::ast::IdentTypeName;
+use crate::ast::type_name::IdentTypeName;
 use super::*;
 
 fn parse_func_decl(src: &str) -> FunctionDecl<Span> {

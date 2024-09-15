@@ -1,36 +1,40 @@
-#[cfg(test)]
-mod test;
-
-use crate::{func::ffi::FfiInvoker, ArrayValue, DynValue, Pointer, StructValue, VariantValue, RcState};
-use ::dlopen::{raw as dlopen, Error as DlopenError};
-use libffi::{
-    low::ffi_type,
-    middle::{Builder as FfiBuilder, Type as FfiType},
-    raw::FFI_TYPE_STRUCT,
-};
-use pas_ir::{
-    metadata::{VirtualTypeID, FunctionID, Metadata, Struct, TypeDefID, VariantDef},
-    ExternalFunctionRef,
-    Instruction,
-    InstructionFormatter,
-    RawInstructionFormatter,
-    Type
-};
-use std::{
-    cmp::max,
-    convert::TryInto,
-    fmt,
-    iter,
-    mem::{transmute, size_of},
-    ptr::{slice_from_raw_parts, slice_from_raw_parts_mut},
-    rc::Rc,
-    collections::{
-        BTreeSet,
-        BTreeMap,
-        HashMap
-    }
-};
+use crate::func::ffi::FfiInvoker;
+use crate::ArrayValue;
+use crate::DynValue;
+use crate::Pointer;
+use crate::RcState;
+use crate::StructValue;
+use crate::VariantValue;
+use ::dlopen::raw as dlopen;
+use ::dlopen::Error as DlopenError;
+use libffi::low::ffi_type;
+use libffi::middle::Builder as FfiBuilder;
+use libffi::middle::Type as FfiType;
+use libffi::raw::FFI_TYPE_STRUCT;
 use pas_ir::metadata::FieldID;
+use pas_ir::metadata::FunctionID;
+use pas_ir::metadata::Metadata;
+use pas_ir::metadata::Struct;
+use pas_ir::metadata::TypeDefID;
+use pas_ir::metadata::VariantDef;
+use pas_ir::metadata::VirtualTypeID;
+use pas_ir::ExternalFunctionRef;
+use pas_ir::Instruction;
+use pas_ir::InstructionFormatter;
+use pas_ir::RawInstructionFormatter;
+use pas_ir::Type;
+use std::cmp::max;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::convert::TryInto;
+use std::fmt;
+use std::iter;
+use std::mem::size_of;
+use std::mem::transmute;
+use std::ptr::slice_from_raw_parts;
+use std::ptr::slice_from_raw_parts_mut;
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub enum MarshalError {

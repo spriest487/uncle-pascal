@@ -2,13 +2,14 @@
 mod test;
 
 use std::fmt;
-use crate::{ast::{Block, DeclMod, TypeList, TypeParam, WhereClause, Expr}, DelimiterPair, Ident, IdentPath, Keyword, Operator, Separator, TokenTree};
+use crate::{ast::{Block, DeclMod, Expr, TypeList, TypeParam, WhereClause}, DelimiterPair, Ident, IdentPath, Keyword, Operator, Separator, TokenTree};
 use derivative::*;
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_common::TracedError;
-use crate::ast::{Annotation, BindingDeclKind, TypeName};
-use crate::parse::{Matcher, MatchOneOf, Parse, ParseError, ParseResult, ParseSeq, TokenStream};
+use crate::ast::{Annotation, BindingDeclKind};
+use crate::ast::type_name::TypeName;
+use crate::parse::{MatchOneOf, Matcher, Parse, ParseError, ParseResult, ParseSeq, TokenStream};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {

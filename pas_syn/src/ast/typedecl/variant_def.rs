@@ -1,5 +1,4 @@
 use crate::{
-    ast::TypeName,
     ast::{Annotation, TypeDeclName},
     parse::Parse,
     parse::{LookAheadTokenStream, Matcher, ParseResult, ParseSeq, TokenStream},
@@ -8,6 +7,7 @@ use crate::{
 use derivative::*;
 use pas_common::span::{Span, Spanned};
 use std::fmt;
+use crate::ast::type_name::TypeName;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]

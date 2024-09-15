@@ -1,5 +1,4 @@
 use crate::{
-    ast::TypeName,
     ast::{Annotation, TypeDeclName},
     parse::MatchSequenceOf,
     parse::{MatchOneOf, Matcher, Parse, ParseResult, TokenStream},
@@ -8,6 +7,7 @@ use crate::{
 use derivative::*;
 use pas_common::span::{Span, Spanned};
 use std::fmt;
+use crate::ast::type_name::TypeName;
 use crate::parse::TryParse;
 
 #[cfg(test)]

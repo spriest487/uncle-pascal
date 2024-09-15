@@ -39,19 +39,6 @@ use std::ops::BitOr;
 use std::ops::BitXor;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct InterpreterOpts {
-    pub trace_heap: bool,
-    pub trace_rc: bool,
-    pub trace_ir: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct GlobalValue {
-    pub value: DynValue,
-    ty: Type,
-}
-
 #[derive(Debug)]
 pub struct Interpreter {
     metadata: Metadata,
@@ -1786,6 +1773,19 @@ impl Interpreter {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct InterpreterOpts {
+    pub trace_heap: bool,
+    pub trace_rc: bool,
+    pub trace_ir: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct GlobalValue {
+    pub value: DynValue,
+    ty: Type,
 }
 
 struct LabelLocation {

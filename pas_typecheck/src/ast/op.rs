@@ -1,19 +1,43 @@
-use crate::{
-    annotation::VariantCtorTyped,
-    ast::{
-        const_eval_integer, implicit_conversion, member_annotation, typecheck_expr,
-        typecheck_object_ctor, Call, Expr, MethodCall,
-    },
-    string_type, Context, FunctionTyped, FunctionSig, InstanceMember,
-    MethodTyped, NameContainer, NameError, OverloadTyped, Primitive, Symbol,
-    Type, Typed, TypeMember, TypecheckError, TypecheckResult, TypedValue,
-    UfcsTyped, ValueKind, DISPLAYABLE_IFACE_NAME, DISPLAYABLE_TOSTRING_METHOD,
-    SYSTEM_UNIT_NAME,
-};
-use pas_common::span::{Span, Spanned};
-use pas_syn::{ast, Ident, IdentPath, IntConstant, Operator};
+use crate::annotation::VariantCtorTyped;
+use crate::ast::const_eval_integer;
+use crate::ast::implicit_conversion;
+use crate::ast::member_annotation;
+use crate::ast::typecheck_expr;
+use crate::ast::typecheck_object_ctor;
+use crate::ast::Call;
+use crate::ast::Expr;
+use crate::ast::MethodCall;
+use crate::ast::OverloadCandidate;
+use crate::string_type;
+use crate::Context;
+use crate::FunctionSig;
+use crate::FunctionTyped;
+use crate::InstanceMember;
+use crate::MethodTyped;
+use crate::NameContainer;
+use crate::NameError;
+use crate::OverloadTyped;
+use crate::Primitive;
+use crate::Symbol;
+use crate::Type;
+use crate::TypeMember;
+use crate::TypecheckError;
+use crate::TypecheckResult;
+use crate::Typed;
+use crate::TypedValue;
+use crate::UfcsTyped;
+use crate::ValueKind;
+use crate::DISPLAYABLE_IFACE_NAME;
+use crate::DISPLAYABLE_TOSTRING_METHOD;
+use crate::SYSTEM_UNIT_NAME;
+use pas_common::span::Span;
+use pas_common::span::Spanned;
+use pas_syn::ast;
+use pas_syn::Ident;
+use pas_syn::IdentPath;
+use pas_syn::IntConstant;
+use pas_syn::Operator;
 use std::rc::Rc;
-use crate::ast::{OverloadCandidate};
 
 pub type BinOp = ast::BinOp<Typed>;
 

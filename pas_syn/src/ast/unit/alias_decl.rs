@@ -1,11 +1,12 @@
 use crate::parse::{Parse, ParseResult};
 use crate::{
-    ast::{Annotation, TypeDeclName, TypeName},
+    ast::{Annotation, TypeDeclName},
     parse::TokenStream,
 };
 use derivative::Derivative;
 use pas_common::span::{Span, Spanned};
 use std::fmt;
+use crate::ast::type_name::TypeName;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Hash, Debug)]

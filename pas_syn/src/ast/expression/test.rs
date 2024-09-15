@@ -1,10 +1,10 @@
 use super::*;
 use pas_common::{BuildOptions, TracedError};
 use crate::{
-    ast::{IdentTypeName, TypeName},
     token_tree::TokenTree,
     Operator
 };
+use crate::ast::type_name::{IdentTypeName, TypeName};
 
 fn tokenize(src: &str) -> TokenStream {
     let test_unit = pas_pp::Preprocessor::new("test", BuildOptions::default())

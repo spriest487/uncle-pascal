@@ -18,8 +18,7 @@ use crate::{
         ObjectCtor,
         ObjectCtorArgs,
         Raise,
-        TypeList,
-        TypeName
+        TypeList
     },
     operators::*,
     parse::*,
@@ -29,6 +28,7 @@ use crate::{
 use pas_common::{span::*, TracedError};
 use std::fmt;
 use crate::ast::ObjectCtorMember;
+use crate::ast::type_name::TypeName;
 
 fn parse_identifier(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     // the context of an identifier expr should be the first part of the
