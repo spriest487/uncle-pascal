@@ -117,7 +117,7 @@ pub struct Class {
     cleanup_func: FunctionName,
 
     // if this class is a dyn array, the RTTI for it
-    dyn_array_type_info: Option<ir_meta::DynArrayRuntimeType>,
+    dyn_array_type_info: Option<ir::DynArrayRuntimeType>,
 }
 
 impl Class {

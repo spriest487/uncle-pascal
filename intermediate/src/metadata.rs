@@ -18,18 +18,6 @@ pub struct FunctionDecl {
     pub global_name: Option<Symbol>,
 }
 
-#[derive(Clone, Debug)]
-pub struct RuntimeType {
-    pub release: FunctionID,
-    pub retain: FunctionID,
-}
-
-#[derive(Clone, Debug)]
-pub struct DynArrayRuntimeType {
-    pub alloc: FunctionID,
-    pub length: FunctionID,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct Metadata {
     type_decls: LinkedHashMap<TypeDefID, TypeDecl>,

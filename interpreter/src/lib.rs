@@ -495,7 +495,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn find_rc_boilerplate(&self, resource_ty: &ir::Type) -> ExecResult<RuntimeType> {
+    fn find_rc_boilerplate(&self, resource_ty: &ir::Type) -> ExecResult<ir::RuntimeType> {
         self
             .metadata
             .get_runtime_type(&resource_ty)

@@ -10,7 +10,6 @@ use crate::metadata::translate_struct_def;
 use crate::metadata::translate_variant_def;
 use crate::metadata::ClosureInstance;
 use crate::metadata::Metadata;
-use crate::metadata::RuntimeType;
 use crate::stmt::translate_stmt;
 use crate::translate_func_params;
 use crate::typ;
@@ -709,7 +708,7 @@ impl ModuleBuilder {
 
     // get or generate runtime type for a given type, which contains the function IDs etc
     // used for RC operations at runtime
-    pub fn runtime_type(&mut self, ty: &ir::Type) -> RuntimeType {
+    pub fn runtime_type(&mut self, ty: &ir::Type) -> ir::RuntimeType {
         if let Some(boilerplate) = self.module.metadata.get_runtime_type(ty) {
             return boilerplate.clone();
         }

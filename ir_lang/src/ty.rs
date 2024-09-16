@@ -3,6 +3,7 @@ use crate::metadata::TypeDefID;
 use crate::metadata::STRING_ID;
 use std::fmt;
 use std::rc::Rc;
+use crate::FunctionID;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
@@ -193,3 +194,14 @@ impl fmt::Display for FieldID {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct RuntimeType {
+    pub release: FunctionID,
+    pub retain: FunctionID,
+}
+
+#[derive(Clone, Debug)]
+pub struct DynArrayRuntimeType {
+    pub alloc: FunctionID,
+    pub length: FunctionID,
+}
