@@ -2,8 +2,6 @@ use crate::ast::Module;
 use crate::ast::Type;
 use crate::ast::TypeDecl;
 use crate::ast::TypeDefName;
-use intermediate::metadata;
-use intermediate::metadata::StructIdentity;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -56,7 +54,7 @@ impl Hash for StructDef {
 impl StructDef {
     pub fn translate(
         id: ir::TypeDefID,
-        ir_struct: &metadata::Struct,
+        ir_struct: &ir::Struct,
         module: &mut Module,
     ) -> Self {
         let mut members = Vec::new();
@@ -89,7 +87,7 @@ impl StructDef {
         // user-defined types will have explicit padding, so they should be packed to avoid
         // the C frontend inserting any extra padding
         let packed = match &ir_struct.identity {
-            StructIdentity::Record(_) | StructIdentity::Class(_) | StructIdentity::Array(..) => true,
+            ir::StructIdentity::Record(_) | ir::StructIdentity::Class(_) | ir::StructIdentity::Array(..) => true,
             _ => false,
         };
 

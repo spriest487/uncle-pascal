@@ -7,7 +7,6 @@ use crate::expr::*;
 use crate::metadata::*;
 use crate::module_builder::ModuleBuilder;
 use crate::stmt::*;
-use crate::ty::TypeDef;
 use frontend::ast as syn;
 use frontend::typecheck as typ;
 pub use ir_lang as ir;

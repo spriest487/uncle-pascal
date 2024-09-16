@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 common = { path = "../common" }
 bigdecimal = "0.4.5"
+linked-hash-map = "0.5.6"

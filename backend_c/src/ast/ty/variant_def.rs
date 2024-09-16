@@ -3,7 +3,6 @@ use crate::ast::Module;
 use crate::ast::Type;
 use crate::ast::TypeDecl;
 use crate::ast::TypeDefName;
-use intermediate::metadata;
 use ir_lang::*;
 use std::fmt;
 use std::hash::Hash;
@@ -50,7 +49,7 @@ impl Hash for VariantDef {
 }
 
 impl VariantDef {
-    pub fn translate(id: TypeDefID, variant: &metadata::VariantDef, module: &mut Module) -> Self {
+    pub fn translate(id: TypeDefID, variant: &ir::VariantDef, module: &mut Module) -> Self {
         let cases = variant
             .cases
             .iter()

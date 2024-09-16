@@ -9,14 +9,8 @@ use crate::VariantValue;
 use ::dlopen::raw as dlopen;
 use ::dlopen::Error as DlopenError;
 use intermediate::metadata::Metadata;
-use intermediate::metadata::Struct;
-use intermediate::metadata::VariantDef;
-use ir_lang::FieldID;
-use ir_lang::FunctionID;
 use ir_lang::InstructionFormatter;
 use ir_lang::RawInstructionFormatter;
-use ir_lang::TypeDefID;
-use ir_lang::VirtualTypeID;
 use libffi::low::ffi_type;
 use libffi::middle::Builder as FfiBuilder;
 use libffi::middle::Type as FfiType;
@@ -42,17 +36,17 @@ pub enum MarshalError {
     UnsupportedValue(DynValue),
 
     VariantTagOutOfRange {
-        variant_id: TypeDefID,
+        variant_id: ir::TypeDefID,
         tag: DynValue,
     },
     FieldOutOfRange {
-        struct_id: TypeDefID,
-        field: FieldID,
+        struct_id: ir::TypeDefID,
+        field: ir::FieldID,
     },
 
     InvalidStructID {
-        expected: TypeDefID,
-        actual: TypeDefID,
+        expected: ir::TypeDefID,
+        actual: ir::TypeDefID,
     },
 
     InvalidRefCountValue(DynValue),
@@ -251,11 +245,11 @@ pub struct Marshaller {
     types: HashMap<ir::Type, ForeignType>,
     libs: HashMap<String, Rc<dlopen::Library>>,
 
-    struct_field_types: BTreeMap<TypeDefID, Vec<ir::Type>>,
-    variant_case_types: BTreeMap<TypeDefID, Vec<Option<ir::Type>>>,
+    struct_field_types: BTreeMap<ir::TypeDefID, Vec<ir::Type>>,
+    variant_case_types: BTreeMap<ir::TypeDefID, Vec<Option<ir::Type>>>,
 
     // structure types that need refcounting fields and type info for virtual calls
-    ref_types: BTreeSet<TypeDefID>,
+    ref_types: BTreeSet<ir::TypeDefID>,
 }
 
 impl Marshaller {
@@ -292,8 +286,8 @@ impl Marshaller {
 
     pub fn add_struct(
         &mut self,
-        id: TypeDefID,
-        def: &Struct,
+        id: ir::TypeDefID,
+        def: &ir::Struct,
         metadata: &Metadata,
     ) -> MarshalResult<ForeignType> {
         let struct_ty = ir::Type::Struct(id);
@@ -332,8 +326,8 @@ impl Marshaller {
 
     pub fn add_variant(
         &mut self,
-        id: TypeDefID,
-        def: &VariantDef,
+        id: ir::TypeDefID,
+        def: &ir::VariantDef,
         metadata: &Metadata,
     ) -> MarshalResult<ForeignType> {
         let variant_ty = ir::Type::Variant(id);
@@ -489,7 +483,7 @@ impl Marshaller {
         }
     }
 
-    pub fn get_field_info(&self, type_id: TypeDefID, field: FieldID) -> MarshalResult<ForeignFieldInfo> {
+    pub fn get_field_info(&self, type_id: ir::TypeDefID, field: ir::FieldID) -> MarshalResult<ForeignFieldInfo> {
         let struct_marshal_ty = self.get_ty(&ir::Type::Struct(type_id))?;
 
         let fields = self.struct_field_types.get(&type_id)
@@ -653,7 +647,7 @@ impl Marshaller {
                 let ptr_ty = if raw_ptr_val.value.is_null() {
                     // if we have an expected concrete type, we can reinterpret the null pointer
                     // as that type as a minor optimization for later
-                    if let VirtualTypeID::Class(type_id) = class_id {
+                    if let ir::VirtualTypeID::Class(type_id) = class_id {
                         ir::Type::Struct(*type_id)
                     } else {
                         ir::Type::Nothing
@@ -667,7 +661,7 @@ impl Marshaller {
                     };
                     let struct_id = usize::from_ne_bytes(unmarshal_bytes(&struct_id_bytes)?);
 
-                    ir::Type::Struct(TypeDefID(struct_id))
+                    ir::Type::Struct(ir::TypeDefID(struct_id))
                 };
 
                 raw_ptr_val.map(|raw_ptr| {
@@ -685,7 +679,7 @@ impl Marshaller {
                 let func_id = unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes)?;
 
                 func_id.map(|id| {
-                    DynValue::Function(FunctionID(id))
+                    DynValue::Function(ir::FunctionID(id))
                 })
             }
 
@@ -767,7 +761,7 @@ impl Marshaller {
         Ok(offset)
     }
 
-    fn unmarshal_struct(&self, struct_id: TypeDefID, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<StructValue>> {
+    fn unmarshal_struct(&self, struct_id: ir::TypeDefID, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<StructValue>> {
         let mut offset = 0;
 
         let rc = if self.ref_types.contains(&struct_id) {
@@ -861,7 +855,7 @@ impl Marshaller {
 
     fn unmarshal_variant(
         &self,
-        variant_id: TypeDefID,
+        variant_id: ir::TypeDefID,
         in_bytes: &[u8],
     ) -> MarshalResult<UnmarshalledValue<VariantValue>> {
         let tag_val = self.unmarshal(in_bytes, &ir::Type::I32)?;

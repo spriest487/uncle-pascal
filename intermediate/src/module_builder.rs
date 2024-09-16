@@ -3,12 +3,11 @@ use crate::build_func_def;
 use crate::build_func_static_closure_def;
 use crate::build_static_closure_impl;
 use crate::builder::Builder;
-use crate::metadata::{translate_closure_struct, translate_sig, NamePathExt, Symbol, TypeDecl, TypeDef};
+use crate::metadata::{translate_closure_struct, translate_sig, NamePathExt, Symbol};
 use crate::metadata::translate_iface;
 use crate::metadata::translate_name;
 use crate::metadata::translate_struct_def;
 use crate::metadata::translate_variant_def;
-use crate::metadata::ClosureIdentity;
 use crate::metadata::ClosureInstance;
 use crate::metadata::Metadata;
 use crate::metadata::RuntimeType;
@@ -699,7 +698,7 @@ impl ModuleBuilder {
     ) -> ir::TypeDefID {
         assert!(!self.function_types_by_sig.contains_key(&sig));
 
-        let decl = TypeDecl::Def(TypeDef::Function(func_ty));
+        let decl = ir::TypeDecl::Def(ir::TypeDef::Function(func_ty));
 
         let id = self.metadata_mut().insert_type_decl(decl);
 
@@ -842,7 +841,7 @@ impl ModuleBuilder {
 
         let func_ty_id = self.translate_func_ty(&func_ty_sig, type_args.as_ref());
 
-        let closure_identity = ClosureIdentity {
+        let closure_identity = ir::ClosureIdentity {
             virt_func_ty: func_ty_id,
             module: func.span().file.display().to_string(),
             line: func.span().start.line,
@@ -890,7 +889,7 @@ impl ModuleBuilder {
         // itself, not the usage
         let src_span = ir_func.src_span();
 
-        let closure_identity = ClosureIdentity {
+        let closure_identity = ir::ClosureIdentity {
             virt_func_ty: func_ty_id,
             col: src_span.start.col,
             line: src_span.end.col,

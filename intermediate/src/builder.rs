@@ -7,7 +7,6 @@ use self::scope::*;
 use crate::metadata::*;
 use crate::module_builder::{FunctionDeclKey, FunctionDefKey, ModuleBuilder};
 use crate::ty::Interface;
-use crate::ty::Struct;
 use crate::FunctionInstance;
 use crate::IROptions;
 use common::span::Span;

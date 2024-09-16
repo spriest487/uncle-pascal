@@ -1579,13 +1579,13 @@ impl Interpreter {
 
         for (id, type_def) in module.metadata().type_defs() {
             let def_result = match type_def {
-                TypeDef::Struct(struct_def) => {
+                ir::TypeDef::Struct(struct_def) => {
                     marshaller.add_struct(id, struct_def, module.metadata()).map(Some)
                 },
-                TypeDef::Variant(variant_def) => {
+                ir::TypeDef::Variant(variant_def) => {
                     marshaller.add_variant(id, variant_def, module.metadata()).map(Some)
                 }
-                TypeDef::Function(_func_def) => {
+                ir::TypeDef::Function(_func_def) => {
                     // functions don't need special marshalling, we only marshal pointers to them
                     Ok(None)
                 }

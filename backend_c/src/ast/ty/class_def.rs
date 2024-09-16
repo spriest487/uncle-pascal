@@ -123,7 +123,7 @@ pub struct Class {
 impl Class {
     pub fn translate(
         struct_id: ir::TypeDefID,
-        _struct_def: &ir_meta::Struct,
+        _struct_def: &ir::Struct,
         metadata: &ir_meta::Metadata,
         module: &mut Module,
     ) -> Self {

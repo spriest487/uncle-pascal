@@ -1,6 +1,7 @@
 mod instruction;
 mod val;
 mod ty;
+mod ty_decl;
 mod metadata;
 mod formatter;
 mod function;
@@ -12,6 +13,7 @@ pub use ty::*;
 pub use metadata::*;
 pub use formatter::*;
 pub use function::*;
+pub use ty_decl::*;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath {

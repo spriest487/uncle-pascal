@@ -2,11 +2,7 @@ use crate::ir;
 use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::typ;
-use crate::ClosureIdentity;
 use crate::FunctionInstance;
-use crate::Struct;
-use crate::StructFieldDef;
-use crate::StructIdentity;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
 use ir_lang::FunctionSig;
@@ -41,7 +37,7 @@ impl fmt::Display for ClosureInstance {
 }
 
 pub fn translate_closure_struct(
-    identity: ClosureIdentity,
+    identity: ir::ClosureIdentity,
     captures: &LinkedHashMap<Ident, typ::Type>,
     type_args: Option<&typ::TypeList>,
     module: &mut ModuleBuilder,
@@ -53,7 +49,7 @@ pub fn translate_closure_struct(
     let mut fields = LinkedHashMap::new();
     fields.insert(
         ir::CLOSURE_PTR_FIELD,
-        StructFieldDef {
+        ir::StructFieldDef {
             name: None,
             rc: false,
             ty: ir::Type::Function(identity.virt_func_ty),
@@ -67,7 +63,7 @@ pub fn translate_closure_struct(
 
         fields.insert(
             field_id,
-            StructFieldDef {
+            ir::StructFieldDef {
                 name: Some((*capture_name.name).clone()),
                 ty,
                 rc: capture_ty.is_rc_reference(),
@@ -79,8 +75,8 @@ pub fn translate_closure_struct(
 
     module.metadata_mut().define_closure_ty(
         id,
-        Struct {
-            identity: StructIdentity::Closure(identity),
+        ir::Struct {
+            identity: ir::StructIdentity::Closure(identity),
             src_span: Some(src_span),
             fields,
         },

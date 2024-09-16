@@ -300,7 +300,7 @@ impl Metadata {
                     Cow::Owned(pretty_name)
                 },
                 Some(TypeDecl::Def(def)) => {
-                    let pretty_name = def.to_pretty_str(|ty| self.pretty_ty_name(ty));
+                    let pretty_name = def.to_pretty_string(|ty| self.pretty_ty_name(ty));
                     Cow::Owned(pretty_name)
                 },
                 Some(TypeDecl::Reserved) | None => Cow::Owned(id.to_string()),

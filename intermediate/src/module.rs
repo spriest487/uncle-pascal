@@ -1,7 +1,5 @@
-use crate::metadata::*;
 use crate::write_instruction_list;
 use crate::Metadata;
-use crate::TypeDef;
 use crate::ir;
 use common::span::Span;
 use std::collections::HashMap;
@@ -77,15 +75,15 @@ impl fmt::Display for Module {
 
         for (id, def) in &defs {
             match def {
-                TypeDef::Struct(s) => {
+                ir::TypeDef::Struct(s) => {
                     write!(f, "{}: ", id.0)?;
 
                     match &s.identity {
-                        StructIdentity::Class(name) | StructIdentity::Record(name) => {
+                        ir::StructIdentity::Class(name) | ir::StructIdentity::Record(name) => {
                             self.metadata.format_name(name, f)?;
                         },
 
-                        StructIdentity::Closure(identity) => {
+                        ir::StructIdentity::Closure(identity) => {
                             let func_ty_name = self
                                 .metadata
                                 .pretty_ty_name(&ir::Type::Function(identity.virt_func_ty));
@@ -96,11 +94,11 @@ impl fmt::Display for Module {
                             )?;
                         },
 
-                        StructIdentity::Array(element, dim) => {
+                        ir::StructIdentity::Array(element, dim) => {
                             write!(f, "array[{dim}] of {}", self.metadata.pretty_ty_name(element))?;
                         }
 
-                        StructIdentity::DynArray(element) => {
+                        ir::StructIdentity::DynArray(element) => {
                             write!(f, "array of {}", self.metadata.pretty_ty_name(element))?;
                         }
                     }
@@ -137,7 +135,7 @@ impl fmt::Display for Module {
                     }
                 },
 
-                TypeDef::Variant(v) => {
+                ir::TypeDef::Variant(v) => {
                     writeln!(f, "{}: {}", id, v.name)?;
                     for (i, case) in v.cases.iter().enumerate() {
                         write!(f, "{:8>} ({})", format!("  .{}", i), case.name,)?;
@@ -149,7 +147,7 @@ impl fmt::Display for Module {
                     }
                 },
 
-                TypeDef::Function(def) => {
+                ir::TypeDef::Function(def) => {
                     write!(f, "{}: {}", id.0, self.metadata.pretty_func_sig(def))?;
                 },
             }

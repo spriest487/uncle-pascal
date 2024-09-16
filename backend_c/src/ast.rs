@@ -169,9 +169,9 @@ impl Module {
             .type_defs()
             .map(|(id, ty_def)| {
                 let ty = match ty_def {
-                    ir_meta::TypeDef::Variant(..) => ir::Type::Variant(id),
-                    ir_meta::TypeDef::Struct(..) => ir::Type::Struct(id),
-                    ir_meta::TypeDef::Function(..) => ir::Type::Function(id),
+                    ir::TypeDef::Variant(..) => ir::Type::Variant(id),
+                    ir::TypeDef::Struct(..) => ir::Type::Struct(id),
+                    ir::TypeDef::Function(..) => ir::Type::Function(id),
                 };
 
                 let name = metadata.pretty_ty_name(&ty);
@@ -201,7 +201,7 @@ impl Module {
         };
 
         let class_defs = metadata.type_defs().filter_map(|(id, def)| match def {
-            ir_meta::TypeDef::Struct(struct_def) => Some((id, struct_def)),
+            ir::TypeDef::Struct(struct_def) => Some((id, struct_def)),
             _ => None,
         });
 
@@ -284,7 +284,7 @@ impl Module {
             let mut member_deps = Vec::new();
 
             let c_type_def = match type_def {
-                ir_meta::TypeDef::Struct(struct_def) => {
+                ir::TypeDef::Struct(struct_def) => {
                     let struct_def = StructDef::translate(id, struct_def, self);
                     for member in &struct_def.members {
                         member.ty.collect_type_def_deps(&mut member_deps);
@@ -293,7 +293,7 @@ impl Module {
                     TypeDef::Struct(struct_def)
                 },
 
-                ir_meta::TypeDef::Variant(variant_def) => {
+                ir::TypeDef::Variant(variant_def) => {
                     let variant_def = VariantDef::translate(id, variant_def, self);
                     for case in &variant_def.cases {
                         if let Some(case_ty) = &case.ty {
@@ -304,7 +304,7 @@ impl Module {
                     TypeDef::Variant(variant_def)
                 },
 
-                ir_meta::TypeDef::Function(func_def) => {
+                ir::TypeDef::Function(func_def) => {
                     let return_ty = Type::from_metadata(&func_def.return_ty, self);
                     return_ty.collect_type_def_deps(&mut member_deps);
 

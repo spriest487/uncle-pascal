@@ -2,9 +2,6 @@
 mod test;
 
 use crate::metadata::Metadata;
-use crate::ty::Struct;
-use crate::ty::TypeDef;
-use crate::ty::VariantDef;
 use ir_lang::*;
 use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;
