@@ -3,7 +3,7 @@ use crate::build_func_def;
 use crate::build_func_static_closure_def;
 use crate::build_static_closure_impl;
 use crate::builder::Builder;
-use crate::metadata::{translate_closure_struct, translate_sig, NamePathExt, Symbol};
+use crate::metadata::{translate_closure_struct, translate_sig, NamePathExt};
 use crate::metadata::translate_iface;
 use crate::metadata::translate_name;
 use crate::metadata::translate_struct_def;
@@ -28,6 +28,7 @@ use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use ir_lang::NamePath;
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -359,14 +360,13 @@ impl ModuleBuilder {
                     .collect();
                 let name = func_decl.ident.last().to_string();
 
-                let global_name = Symbol::new(name, ns);
+                let global_name = NamePath::new(ns, name);
 
                 Some(match type_args {
                     None => global_name,
                     Some(type_args) => {
                         let types = type_args.iter()
-                            .map(|ty| self.translate_type(ty, Some(type_args)))
-                            .collect();
+                            .map(|ty| self.translate_type(ty, Some(type_args)));
 
                         global_name.with_ty_args(types)
                     },

@@ -1,5 +1,4 @@
 pub mod name_path;
-pub mod symbol;
 pub mod ty;
 
 use crate::dep_sort::sort_defs;
@@ -10,12 +9,11 @@ use std::borrow::Cow;
 use std::collections::hash_map::HashMap;
 use std::fmt;
 use std::rc::Rc;
-pub use symbol::*;
 pub use ty::*;
 
 #[derive(Debug, Clone)]
 pub struct FunctionDecl {
-    pub global_name: Option<Symbol>,
+    pub global_name: Option<NamePath>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -81,12 +79,12 @@ impl Metadata {
                 let name = func_decl
                     .global_name
                     .as_ref()
-                    .map(Symbol::to_string)
+                    .map(NamePath::to_string)
                     .unwrap_or_else(|| "<unnamed>".to_string());
                 let existing_name = existing
                     .global_name
                     .as_ref()
-                    .map(Symbol::to_string)
+                    .map(NamePath::to_string)
                     .unwrap_or_else(|| "<unnamed>".to_string());
 
                 panic!(
@@ -173,7 +171,7 @@ impl Metadata {
             .unwrap()
     }
 
-    pub fn insert_func(&mut self, global_name: Option<Symbol>) -> FunctionID {
+    pub fn insert_func(&mut self, global_name: Option<NamePath>) -> FunctionID {
         let id = self.next_function_id();
 
         let decl = FunctionDecl { global_name };
@@ -223,7 +221,7 @@ impl Metadata {
         self.runtime_types.iter()
     }
 
-    pub fn find_function(&self, name: &Symbol) -> Option<FunctionID> {
+    pub fn find_function(&self, name: &NamePath) -> Option<FunctionID> {
         self.functions
             .iter()
             .find(|(_id, func)| func.global_name.as_ref() == Some(name))
@@ -238,7 +236,7 @@ impl Metadata {
         self.functions
             .get(&id)
             .and_then(|decl| decl.global_name.as_ref())
-            .map(Symbol::to_string)
+            .map(NamePath::to_string)
             .or_else(|| {
                 self.ifaces().find_map(|(iface_id, iface)| {
                     iface.impls.iter().find_map(|(impl_ty, iface_impl)| {

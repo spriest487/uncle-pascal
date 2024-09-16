@@ -12,12 +12,13 @@ use crate::ast::string_lit::StringLiteral;
 use crate::ir;
 use crate::Options;
 use intermediate::metadata as ir_meta;
-use intermediate::metadata::{NamePathExt, Symbol};
+use intermediate::metadata::NamePathExt;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
 use std::fmt;
 use topological_sort::TopologicalSort;
+use ir_lang::NamePath;
 
 pub struct Module {
     functions: Vec<FunctionDef>,
@@ -152,7 +153,7 @@ impl Module {
 
         let mut builtin_funcs = HashMap::new();
         for (pas_name, c_name, _params, _return_ty) in system_funcs {
-            let global_name = &Symbol::new(*pas_name, vec!["System"]);
+            let global_name = &NamePath::new(vec!["System".to_string()], *pas_name);
 
             // if a function isn't used then it won't be included in the metadata
             if let Some(func_id) = metadata.find_function(global_name) {

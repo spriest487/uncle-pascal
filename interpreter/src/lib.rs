@@ -27,7 +27,7 @@ use std::ops::BitAnd;
 use std::ops::BitOr;
 use std::ops::BitXor;
 use std::rc::Rc;
-use ir_lang::InstructionFormatter;
+use ir_lang::{InstructionFormatter, NamePath};
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -1498,7 +1498,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn define_builtin(&mut self, name: Symbol, func: BuiltinFn, ret: ir::Type, params: Vec<ir::Type>) {
+    fn define_builtin(&mut self, name: NamePath, func: BuiltinFn, ret: ir::Type, params: Vec<ir::Type>) {
         if let Some(func_id) = self.metadata.find_function(&name) {
             self.globals.insert(
                 ir::GlobalRef::Function(func_id),
@@ -1567,7 +1567,7 @@ impl Interpreter {
         ];
 
         for (ident, func, ret, params) in system_funcs {
-            let name = Symbol::new(ident.to_string(), vec!["System"]);
+            let name = NamePath::new(vec!["System".to_string()], ident.to_string());
             self.define_builtin(name, *func, ret.clone(), params.to_vec());
         }
     }
