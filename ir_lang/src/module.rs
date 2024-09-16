@@ -11,7 +11,6 @@ pub struct Module {
     pub functions: HashMap<crate::FunctionID, crate::Function>,
 
     pub static_closures: Vec<crate::StaticClosure>,
-    pub function_static_closures: HashMap<crate::FunctionID, crate::StaticClosureID>,
 
     pub init: Vec<crate::Instruction>,
     
@@ -26,7 +25,6 @@ impl Module {
             functions: HashMap::new(),
 
             static_closures: Vec::new(),
-            function_static_closures: HashMap::new(),
             
             span: None,
 

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use crate::ty::FieldID;
 use crate::ty::VirtualTypeID;
-use crate::{DynArrayRuntimeType, FunctionSig, InterfaceImpl, StructFieldDef, StructIdentity};
+use crate::{DynArrayRuntimeType, FunctionSig, InterfaceImpl, StaticClosureID, StructFieldDef, StructIdentity};
 use crate::FunctionDecl;
 use crate::FunctionID;
 use crate::GlobalRef;
@@ -71,8 +71,6 @@ pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
 pub const CLOSURE_PTR_FIELD: FieldID = FieldID(0);
 
-
-
 #[derive(Debug, Clone, Default)]
 pub struct Metadata {
     type_decls: LinkedHashMap<TypeDefID, TypeDecl>,
@@ -84,6 +82,7 @@ pub struct Metadata {
     functions: LinkedHashMap<FunctionID, Rc<FunctionDecl>>,
 
     closures: Vec<TypeDefID>,
+    function_static_closures: HashMap<FunctionID, StaticClosureID>,
 
     runtime_types: HashMap<Type, RuntimeType>,
     dyn_array_runtime_types: HashMap<Type, DynArrayRuntimeType>,
@@ -467,6 +466,15 @@ impl Metadata {
                 );
             },
         }
+    }
+    
+    pub fn insert_static_closure(&mut self, func_id: FunctionID, closure: StaticClosureID) {
+        let replaced = self.function_static_closures.insert(func_id, closure);
+        assert!(replaced.is_none(), "static closure for function {func_id} must not have been inserted already");
+    }
+
+    pub fn get_static_closure(&self, p0: FunctionID) -> Option<StaticClosureID> {
+        self.function_static_closures.get(&p0).cloned()
     }
 
     pub fn define_closure_ty(&mut self, id: TypeDefID, closure_def: Struct) {

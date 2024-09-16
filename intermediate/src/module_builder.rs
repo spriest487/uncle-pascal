@@ -873,7 +873,7 @@ impl ModuleBuilder {
     }
 
     pub fn build_func_static_closure_instance(&mut self, func: &FunctionInstance) -> &ir::StaticClosure {
-        if let Some(existing) = self.module.function_static_closures.get(&func.id) {
+        if let Some(existing) = self.module.metadata.get_static_closure(func.id) {
             return &self.module.static_closures[existing.0];
         }
 
@@ -921,7 +921,7 @@ impl ModuleBuilder {
         };
 
         let static_closure_id = self.build_static_closure_instance(closure).id;
-        self.module.function_static_closures.insert(func.id, static_closure_id);
+        self.module.metadata.insert_static_closure(func.id, static_closure_id);
 
         &self.module.static_closures[static_closure_id.0]
     }
