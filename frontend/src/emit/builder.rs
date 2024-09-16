@@ -40,7 +40,7 @@ impl<'m> Builder<'m> {
         let module_span = module.module_span().clone();
 
         let mut instructions = Vec::new();
-        if module.opts().debug_info {
+        if module.opts().debug {
             instructions.push(Instruction::DebugPush(module_span.clone()));
         }
         instructions.push(Instruction::LocalBegin);
@@ -309,7 +309,7 @@ impl<'m> Builder<'m> {
             self.instructions.remove(pos);
         }
 
-        if self.module.opts().debug_info {
+        if self.module.opts().debug {
             self.append(Instruction::DebugPop);
         }
 
@@ -317,7 +317,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn push_debug_context(&mut self, ctx: Span) {
-        if !self.opts().debug_info {
+        if !self.opts().debug {
             return;
         }
 
@@ -327,7 +327,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn pop_debug_context(&mut self) {
-        if !self.opts().debug_info {
+        if !self.opts().debug {
             return;
         }
 
@@ -345,7 +345,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn comment(&mut self, content: &(impl fmt::Display + ?Sized)) {
-        if !self.opts().debug_info {
+        if !self.opts().debug {
             return;
         }
 
@@ -809,7 +809,7 @@ impl<'m> Builder<'m> {
                 // for each case, check if the tag matches and jump past it if not
 
                 for (tag, case) in cases.iter().enumerate() {
-                    if self.opts().debug_info {
+                    if self.opts().debug {
                         self.comment(&format!("testing for variant case {} ({})", tag, case.name));
                     }
 
@@ -1004,7 +1004,7 @@ impl<'m> Builder<'m> {
         self.append(Instruction::LocalBegin);
         self.scopes.push(Scope::new());
 
-        if self.opts().annotate_scopes {
+        if self.opts().debug {
             self.comment(&format!("begin scope {}", self.scopes.len()));
         }
     }
@@ -1034,7 +1034,7 @@ impl<'m> Builder<'m> {
 
         let last_scope = self.scopes.len() - 1;
 
-        if self.opts().annotate_scopes {
+        if self.opts().debug {
             if to_scope == last_scope {
                 self.comment(&format!("cleanup scope {}", to_scope + 1));
             } else {
@@ -1048,7 +1048,7 @@ impl<'m> Builder<'m> {
 
         let cleanup_range = to_scope..=last_scope;
 
-        if self.opts().debug_info {
+        if self.opts().debug {
             let debug_pops: usize = self.scopes[cleanup_range.clone()]
                 .iter()
                 .map(|scope| scope.debug_ctx_count())
@@ -1105,7 +1105,7 @@ impl<'m> Builder<'m> {
     pub fn end_scope(&mut self) {
         self.cleanup_scope(self.scopes.len() - 1);
 
-        if self.opts().annotate_scopes {
+        if self.opts().debug {
             self.comment(&format!("end scope {}", self.scopes.len()));
         }
 

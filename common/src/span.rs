@@ -1,7 +1,12 @@
 use crate::path_relative_to_cwd;
-use std::{cmp::Ordering, fmt, path::PathBuf, rc::Rc};
+use serde::Deserialize;
+use serde::Serialize;
+use std::cmp::Ordering;
+use std::fmt;
+use std::path::PathBuf;
+use std::rc::Rc;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Location {
     pub line: usize,
     pub col: usize,
@@ -20,6 +25,12 @@ impl Location {
     }
 }
 
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.line + 1, self.col + 1)
+    }
+}
+
 impl Ord for Location {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.line.cmp(&other.line) {
@@ -35,7 +46,7 @@ impl PartialOrd for Location {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Span {
     pub file: Rc<PathBuf>,
     pub start: Location,
@@ -73,12 +84,6 @@ impl Span {
             1 => slice[0].span().clone(),
             _ => slice[0].span().to(slice[slice.len() - 1].span()),
         }
-    }
-}
-
-impl fmt::Display for Location {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.line + 1, self.col + 1)
     }
 }
 

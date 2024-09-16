@@ -1,17 +1,18 @@
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use crate::FunctionID;
 use crate::MethodID;
 use crate::NamePath;
 use crate::Type;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Method {
     pub name: String,
     pub return_ty: Type,
     pub params: Vec<Type>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Interface {
     pub name: NamePath,
     pub methods: Vec<Method>,
@@ -64,7 +65,7 @@ impl Interface {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InterfaceImpl {
     // method index -> method impl
     pub methods: HashMap<MethodID, FunctionID>,
@@ -79,7 +80,7 @@ impl InterfaceImpl {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InterfaceDecl {
     Forward(NamePath),
     Def(Interface),

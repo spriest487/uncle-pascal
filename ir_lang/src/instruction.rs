@@ -1,11 +1,12 @@
 use std::fmt;
+use serde::{Deserialize, Serialize};
 use common::span::Span;
 use crate::formatter::{InstructionFormatter, RawInstructionFormatter};
 use crate::metadata::{InterfaceID, MethodID, TypeDefID};
 use crate::ty::{FieldID, Type, VirtualTypeID};
 use crate::val::{LocalID, Ref, Value};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Instruction {
     Comment(String),
     DebugPush(Span),
@@ -259,7 +260,7 @@ impl fmt::Display for Instruction {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Label(pub usize);
 
 impl fmt::Display for Label {

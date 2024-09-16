@@ -18,24 +18,20 @@ pub mod module_builder;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct IROptions {
-    // insert IR comments indicating scoped lifetimes
-    pub annotate_scopes: bool,
-
     // insert IR comments indicating RC release/retain operations
     pub annotate_rc: bool,
 
     // insert source spans for statements and expressions for improved error messaging in the
     // translation/interpreter stage
-    pub debug_info: bool,
+    pub debug: bool,
 }
 
 impl Default for IROptions {
     fn default() -> Self {
         Self {
-            annotate_scopes: false,
             annotate_rc: false,
 
-            debug_info: true,
+            debug: true,
         }
     }
 }

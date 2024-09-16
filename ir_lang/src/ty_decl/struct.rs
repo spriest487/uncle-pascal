@@ -6,8 +6,9 @@ use common::span::Span;
 use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::fmt;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Struct {
     pub identity: StructIdentity,
     pub fields: LinkedHashMap<FieldID, StructFieldDef>,
@@ -87,7 +88,7 @@ impl fmt::Display for Struct {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct StructFieldDef {
     pub name: Option<String>,
     pub ty: Type,

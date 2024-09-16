@@ -1,6 +1,11 @@
 use std::fmt;
+use serde::Deserialize;
+use serde::Serialize;
 use common::span::Span;
-use crate::{Instruction, Label, NamePath, TypeDefID};
+use crate::Label;
+use crate::Instruction;
+use crate::NamePath;
+use crate::TypeDefID;
 use crate::LocalID;
 use crate::Ref;
 
@@ -9,7 +14,7 @@ pub const BUILTIN_SRC: &str = "rt";
 pub const RETURN_REF: Ref = Ref::Local(LocalID(0));
 pub const EXIT_LABEL: Label = Label(0);
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct FunctionID(pub usize);
 
 impl fmt::Display for FunctionID {
@@ -18,7 +23,7 @@ impl fmt::Display for FunctionID {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct StaticClosureID(pub usize);
 
 impl fmt::Display for StaticClosureID {
@@ -27,7 +32,7 @@ impl fmt::Display for StaticClosureID {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct StaticClosure {
     pub id: StaticClosureID,
     pub init_func: FunctionID,
@@ -37,7 +42,7 @@ pub struct StaticClosure {
 }
 
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct FunctionSig {
     pub return_ty: crate::Type,
     pub param_tys: Vec<crate::Type>,
@@ -58,9 +63,7 @@ impl fmt::Display for FunctionSig {
     }
 }
 
-
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExternalFunctionRef {
     pub symbol: String,
     pub src: String,
@@ -70,12 +73,12 @@ pub struct ExternalFunctionRef {
     pub src_span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionDecl {
     pub global_name: Option<NamePath>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionDef {
     pub debug_name: String,
 
@@ -86,7 +89,7 @@ pub struct FunctionDef {
     pub src_span: Span,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Function {
     External(ExternalFunctionRef),
     Local(FunctionDef),

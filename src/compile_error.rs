@@ -35,7 +35,8 @@ pub enum CompileError {
         unit_ident: IdentPath,
         used_unit: IdentPath,
         span: Span,
-    }
+    },
+    InternalError(String),
 }
 
 impl From<TracedError<TokenizeError>> for CompileError {
@@ -65,6 +66,12 @@ impl From<PreprocessorError> for CompileError {
 impl From<ExecError> for CompileError {
     fn from(err: ExecError) -> Self {
         CompileError::ExecError(err)
+    }
+}
+
+impl From<bincode::Error> for CompileError {
+    fn from(value: bincode::Error) -> Self {
+        CompileError::InternalError(value.to_string())
     }
 }
 
@@ -115,6 +122,11 @@ impl DiagnosticOutput for CompileError {
                     span: span.clone(),
                 }),
                 notes: Vec::new(),
+            },
+            CompileError::InternalError(msg) => DiagnosticMessage {
+                title: msg.to_string(),
+                label: None,
+                notes: Vec::new(),
             }
         }
     }
@@ -154,6 +166,7 @@ impl fmt::Display for CompileError {
             CompileError::DuplicateUnit { .. } => write!(f, "unit was already loaded"),
             CompileError::FileNotFound(_, _) => write!(f, "file not found"),
             CompileError::CircularDependency { .. } => write!(f, "circular unit reference"),
+            CompileError::InternalError(..) => write!(f, "internal compiler error"),
         }
     }
 }

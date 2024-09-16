@@ -3,9 +3,10 @@ use crate::metadata::TypeDefID;
 use crate::metadata::STRING_ID;
 use std::fmt;
 use std::rc::Rc;
+use serde::{Deserialize, Serialize};
 use crate::FunctionID;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Type {
     /// no type (used for raw pointers like void*)
     Nothing,
@@ -150,7 +151,7 @@ impl fmt::Display for Type {
 }
 
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum VirtualTypeID {
     // unknown type - may refer to any class type, only known at runtime
     Any,
@@ -185,7 +186,7 @@ impl fmt::Display for VirtualTypeID {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct FieldID(pub usize);
 
 impl fmt::Display for FieldID {
@@ -194,13 +195,13 @@ impl fmt::Display for FieldID {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RuntimeType {
     pub release: FunctionID,
     pub retain: FunctionID,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DynArrayRuntimeType {
     pub alloc: FunctionID,
     pub length: FunctionID,

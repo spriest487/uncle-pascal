@@ -15,11 +15,12 @@ pub use metadata::*;
 pub use module::*;
 use std::borrow::Cow;
 use std::fmt;
+use serde::{Deserialize, Serialize};
 pub use ty::*;
 pub use ty_decl::*;
 pub use val::*;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct NamePath {
     pub path: Vec<String>,
     pub type_args: Option<Vec<Type>>,

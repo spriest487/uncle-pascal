@@ -22,9 +22,10 @@ use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use serde::{Deserialize, Serialize};
 use crate::dep_sort::sort_defs;
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct StringID(pub usize);
 
 impl fmt::Display for StringID {
@@ -33,7 +34,7 @@ impl fmt::Display for StringID {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct TypeDefID(pub usize);
 
 impl fmt::Display for TypeDefID {
@@ -42,10 +43,10 @@ impl fmt::Display for TypeDefID {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct InterfaceID(pub usize);
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct MethodID(pub usize);
 
 impl fmt::Display for InterfaceID {
@@ -71,7 +72,7 @@ pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
 pub const CLOSURE_PTR_FIELD: FieldID = FieldID(0);
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Metadata {
     type_decls: LinkedHashMap<TypeDefID, TypeDecl>,
     string_literals: LinkedHashMap<StringID, String>,

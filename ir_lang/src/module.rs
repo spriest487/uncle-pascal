@@ -1,10 +1,11 @@
 use common::span::Span;
 use std::collections::HashMap;
 use std::fmt;
+use serde::{Deserialize, Serialize};
 use crate::InstructionFormatter;
 use crate::Metadata;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Module {
     pub metadata: Metadata,
 

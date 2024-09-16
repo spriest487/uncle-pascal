@@ -7,15 +7,16 @@ use crate::args::*;
 use crate::compile_error::*;
 use crate::reporting::report_err;
 use crate::sources::*;
-use codespan_reporting::diagnostic::Severity;
-use frontend::ast;
-use frontend::ast::IdentPath;
-use frontend::pp as pp;
-use frontend::typ as ty;
 use backend_c as backend_c;
+use codespan_reporting::diagnostic::Severity;
 use common::read_source_file;
 use common::span::*;
 use common::BuildOptions;
+use frontend::ast;
+use frontend::ast::IdentPath;
+use frontend::emit::IROptions;
+use frontend::pp as pp;
+use frontend::typ as ty;
 use interpreter::Interpreter;
 use interpreter::InterpreterOpts;
 use ir_lang as ir;
@@ -25,11 +26,13 @@ use std::collections::hash_map::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process;
 use structopt::StructOpt;
 use topological_sort::TopologicalSort;
-use frontend::emit::IROptions;
+
+const IR_LIB_EXT: &str = "lib";
 
 enum CompileOutput {
     Preprocess(Vec<PreprocessedUnit>),
@@ -59,6 +62,12 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
     for define_sym in &args.define_syms {
         opts.define(define_sym.clone());
     }
+    
+    let source_ext = get_extension(&args.file);
+    if source_ext.eq_ignore_ascii_case(IR_LIB_EXT) {
+        let module = load_module_from_file(&args.file)?;
+        return Ok(CompileOutput::IR(module));
+    }
 
     let mut sources = SourceCollection::new(args)?;
 
@@ -71,7 +80,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
 
     // if we just want preprocessor output, no unit refs need to be looked up, just process and
     // print the units provided on the cli
-    if args.target == Target::Preprocessed {
+    if let Some(CompileStage::Preprocess) = args.print_stage {
         let mut pp_units = Vec::new();
         while let Some(source_path) = sources.next() {
             let pp_unit = preprocess(&source_path, opts.clone())?;
@@ -155,7 +164,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         }
     }
 
-    if args.target == Target::SyntaxAst {
+    if let Some(CompileStage::Parse) = args.print_stage {
         return Ok(CompileOutput::Parse(parsed_units.into_values().collect()));
     }
 
@@ -175,21 +184,45 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
 
     let typed_module = frontend::typecheck(&compile_units)?;
 
-    if args.target == Target::TypecheckAst {
+    if let Some(CompileStage::Typecheck) = args.print_stage {
         return Ok(CompileOutput::Typecheck(typed_module));
     }
 
     let ir_opts = IROptions {
-        annotate_scopes: args.ir_annotate_scopes,
         annotate_rc: args.trace_rc,
-        debug_info: args.ir_debug,
+        debug: args.debug,
     };
 
     let module = frontend::emit_ir(&typed_module, ir_opts);
     Ok(CompileOutput::IR(module))
 }
 
-fn write_output<F>(out_path: Option<&PathBuf>, f: F) -> Result<(), CompileError>
+fn load_module_from_file(path: &Path) -> Result<ir::Module, CompileError> {
+    let mut module_bytes = Vec::new();
+
+    File::open(&path)
+        .and_then(|mut file| {
+            file.read_to_end(&mut module_bytes)
+        })
+        .map_err(|err| {
+            CompileError::ReadSourceFileFailed {
+                msg: err.to_string(),
+                path: path.to_path_buf(),
+            }
+        })?;
+
+    let module: ir::Module = bincode::deserialize(&module_bytes)
+        .map_err(|err| {
+            CompileError::ReadSourceFileFailed {
+                msg: err.to_string(),
+                path: path.to_path_buf(),
+            }
+        })?;
+
+    Ok(module)
+}
+
+fn print_output<F>(out_path: Option<&PathBuf>, f: F) -> Result<(), CompileError>
 where
     F: FnOnce(&mut dyn io::Write) -> io::Result<()>,
 {
@@ -224,14 +257,14 @@ where
 
 fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError> {
     match output {
-        CompileOutput::Preprocess(units) => write_output(args.output.as_ref(), |dst| {
+        CompileOutput::Preprocess(units) => print_output(args.output.as_ref(), |dst| {
             for pp_unit in units {
                 write!(dst, "{}", pp_unit.source)?;
             }
             Ok(())
         }),
 
-        CompileOutput::Parse(units) => write_output(args.output.as_ref(), |dst| {
+        CompileOutput::Parse(units) => print_output(args.output.as_ref(), |dst| {
             for unit in units {
                 write!(dst, "{}", unit)?;
             }
@@ -239,7 +272,7 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
             Ok(())
         }),
 
-        CompileOutput::Typecheck(module) => write_output(args.output.as_ref(), |dst| {
+        CompileOutput::Typecheck(module) => print_output(args.output.as_ref(), |dst| {
             for unit in &module.units {
                 write!(dst, "{}", unit.unit)?;
             }
@@ -247,17 +280,17 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
             Ok(())
         }),
 
-        CompileOutput::IR(module) if args.target == Target::Intermediate => {
-            write_output(args.output.as_ref(), |dst| write!(dst, "{}", module))
-        },
-
         CompileOutput::IR(module) => {
-            let c_hint = args.output.as_ref()
-                .and_then(|out_path| out_path.extension())
-                .map(|ext| ext.to_string_lossy().eq_ignore_ascii_case("c"))
-                .unwrap_or(false);
+            if let Some(CompileStage::EmitIR) = args.print_stage {
+                return print_output(args.output.as_ref(), |dst| write!(dst, "{}", module));
+            }
+            
+            let output_ext = args.output.as_ref()
+                .map(|out_path| get_extension(out_path))
+                .unwrap_or_else(String::new);
 
-            if c_hint {
+            if output_ext.eq_ignore_ascii_case("c") {
+                // output C code
                 let c_opts = backend_c::Options {
                     trace_heap: args.trace_heap,
                     trace_rc: args.trace_rc,
@@ -266,10 +299,18 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
 
                 let c_module = backend_c::translate(&module, c_opts);
 
-                write_output(args.output.as_ref(), |dst| {
+                print_output(args.output.as_ref(), |dst| {
                     write!(dst, "{}", c_module)
                 })
+            } else if output_ext.eq_ignore_ascii_case(IR_LIB_EXT) {
+                // the IR object is the output
+                let module_bytes = bincode::serialize(&module)?;
+
+                print_output(args.output.as_ref(), |dst| {
+                    dst.write_all(&module_bytes)
+                })
             } else {
+                // execute the IR immediately
                 let interpret_opts = InterpreterOpts {
                     trace_rc: args.trace_rc,
                     trace_heap: args.trace_heap,
@@ -285,6 +326,12 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
         }
     }
 }
+
+fn get_extension(path: &Path) -> String {
+    path.extension()
+        .map(|ext| ext.to_string_lossy().into_owned())
+        .unwrap_or_else(String::new)
+} 
 
 fn main() {
     let args: Args = Args::from_args();

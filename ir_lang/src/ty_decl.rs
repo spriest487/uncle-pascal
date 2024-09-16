@@ -13,9 +13,10 @@ pub use r#struct::*;
 use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Write;
+use serde::{Deserialize, Serialize};
 pub use variant::*;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum StructIdentity {
     Record(NamePath),
     Class(NamePath),
@@ -24,7 +25,7 @@ pub enum StructIdentity {
     Closure(ClosureIdentity),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ClosureIdentity {
     /// the type of the closure's virtual call function alias, which has the sig of the closure's
     /// target type plus a type-erased pointer inserted as parameter 0
@@ -53,7 +54,7 @@ impl StructIdentity {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TypeDecl {
     Reserved,
     Forward(NamePath),
@@ -87,7 +88,7 @@ impl fmt::Display for TypeDecl {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TypeDef {
     Struct(Struct),
     Variant(VariantDef),

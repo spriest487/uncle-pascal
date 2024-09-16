@@ -1,6 +1,6 @@
 use crate::Args;
 use crate::CompileError;
-use crate::Target;
+use crate::CompileStage;
 use frontend::ast::IdentPath;
 use common::span::*;
 use std::collections::LinkedList;
@@ -77,7 +77,7 @@ impl SourceCollection {
         };
 
         // auto-add system units if we're going beyond parsing
-        if args.target > Target::SyntaxAst {
+        if args.wants_stage(CompileStage::Typecheck) {
             sources.add(&PathBuf::from("System.pas"), None)?;
         }
 

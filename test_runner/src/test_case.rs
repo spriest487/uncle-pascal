@@ -65,20 +65,34 @@ impl TestCase {
     
     fn run_interpreted<RunFn>(&self, opts: &Opts, run: RunFn) -> io::Result<ExitStatus> 
         where RunFn: FnOnce(&mut dyn Write, &mut dyn Read, &mut dyn Read)
-    {
-        let cwd = self.working_dir();
-        let script_rel_path = Path::strip_prefix(&self.path, cwd)
-            .unwrap_or_else(|_| panic!("failed to strip working dir {} from script path {}", cwd.display(), self.path.display()));
+    {        
+        let mut build_stdout = Vec::new();
+        let mut build_stderr = Vec::new();
+        
+        let module_path = target_file_path(&self.path, opts, "lib")?;
+        if is_target_outdated(&module_path, &self.path, opts) {
+            let build_status = try_run_command(
+                Command::new(&opts.compiler)
+                    .arg(&self.path)
+                    .arg("-o").arg(&module_path),
+                &mut build_stdout,
+                &mut build_stderr
+            )?;
+            
+            if !build_status.success() {
+                dump_output_buffers(&build_stdout, &build_stderr);
+                return Ok(build_status);
+            }
+        }
 
         try_run_interactive(
             Command::new(&opts.compiler)
-                .arg(script_rel_path)
-                .current_dir(self.working_dir())
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped()),
+                .arg(module_path.canonicalize()?)
+                .current_dir(self.working_dir()),
             |stdin, stdout, stderr| {
-                run(stdin, stdout, stderr)
+                let mut stdout = ConcatReader::new(build_stdout.as_slice(), stdout);
+                let mut stderr = ConcatReader::new(build_stderr.as_slice(), stderr);
+                run(stdin, &mut stdout, &mut stderr)
             })
     }
     
@@ -139,18 +153,10 @@ impl TestCase {
     fn run_clang<RunFn>(&self, opts: &Opts, run: RunFn) -> io::Result<ExitStatus>
         where RunFn: FnOnce(&mut dyn Write, &mut dyn Read, &mut dyn Read)
     {
-        let path_as_rel = match self.path.strip_prefix(&opts.search_path) {
-            Ok(path) => path,
-            Err(err) => {
-                return Err(io::Error::new(io::ErrorKind::Other, err.to_string()));
-            }
-        };
-        
-        let mut exe_path = opts.target_path.join(&path_as_rel);
-        exe_path.set_extension(match env::consts::OS {
+        let exe_path = target_file_path(&self.path, opts, match env::consts::OS {
             "windows" => "exe",
             _ => "",
-        });
+        })?;
 
         let mut build_stdout = Vec::new();
         let mut build_stderr = Vec::new();
@@ -349,6 +355,20 @@ fn try_run_interactive<RunFn>(command: &mut Command, f: RunFn) -> io::Result<Exi
     dump_output(&output);
 
     Ok(output.status)
+}
+
+fn target_file_path(src_path: &Path, opts: &Opts, target_ext: impl AsRef<OsStr>) -> io::Result<PathBuf> {
+    let path_as_rel = match src_path.strip_prefix(&opts.search_path) {
+        Ok(path) => path,
+        Err(err) => {
+            return Err(io::Error::new(io::ErrorKind::Other, err.to_string()));
+        }
+    };
+
+    let mut target_path = opts.target_path.join(&path_as_rel);
+    target_path.set_extension(target_ext);
+    
+    Ok(target_path)
 }
 
 fn is_target_outdated(target: &Path, source: &Path, opts: &Opts) -> bool {

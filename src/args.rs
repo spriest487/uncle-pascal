@@ -31,10 +31,10 @@ pub struct Args {
     #[structopt(long = "search-dir", short = "s", parse(from_os_str))]
     pub search_dirs: Vec<PathBuf>,
 
-    /// target stage. intermediate targets other than `interpret` will cause
-    /// compilation to stop at that stage and dump the output.
-    #[structopt(short = "t", long = "target", default_value = "interpret", parse(try_from_str = parse_target))]
-    pub target: Target,
+    /// if set, run compilation to a given stage and print the output as human-readable
+    /// text instead of creating an output file
+    #[structopt(short = "p", long = "print-stage", parse(try_from_str = parse_compile_stage))]
+    pub print_stage: Option<CompileStage>,
 
     /// interpreter: log RC heap usage
     #[structopt(long = "trace-heap")]
@@ -55,29 +55,33 @@ pub struct Args {
     #[structopt(long = "verbose", short = "v")]
     pub verbose: bool,
 
-    #[structopt(long = "ir-debug")]
-    pub ir_debug: bool,
+    #[structopt(long = "debug")]
+    pub debug: bool,
+}
 
-    #[structopt(long = "ir-scopes")]
-    pub ir_annotate_scopes: bool,
+impl Args {
+    pub fn wants_stage(&self, stage: CompileStage) -> bool {
+        match self.print_stage {
+            None => true,
+            Some(print_stage) => print_stage >= stage,
+        }
+    }
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
-pub enum Target {
-    Preprocessed,
-    SyntaxAst,
-    TypecheckAst,
-    Intermediate,
-    Interpret,
+pub enum CompileStage {
+    Preprocess,
+    Parse,
+    Typecheck,
+    EmitIR,
 }
 
-fn parse_target(s: &str) -> Result<Target, String> {
+fn parse_compile_stage(s: &str) -> Result<CompileStage, String> {
     match s {
-        "i" | "interpret" => Ok(Target::Interpret),
-        "ir" | "intermediate" => Ok(Target::Intermediate),
-        "p" | "parse" => Ok(Target::SyntaxAst),
-        "t" | "typ" => Ok(Target::TypecheckAst),
-        "pp" | "preprocess" => Ok(Target::Preprocessed),
+        "ir" | "emit-ir" => Ok(CompileStage::EmitIR),
+        "p" | "parse" => Ok(CompileStage::Parse),
+        "t" | "typecheck" => Ok(CompileStage::Typecheck),
+        "pp" | "preprocess" => Ok(CompileStage::Preprocess),
         _ => Err(format!("invalid output kind: {}", s)),
     }
 }

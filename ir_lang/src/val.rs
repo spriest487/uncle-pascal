@@ -1,10 +1,11 @@
 use std::fmt;
 use bigdecimal::{BigDecimal, FromPrimitive};
+use serde::{Deserialize, Serialize};
 use crate::{FunctionID, StaticClosureID};
 use crate::metadata::StringID;
 use crate::ty::Type;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Ref {
     Discard,
     // write-only ref that doesn't result in mov instructions when written to
@@ -30,7 +31,7 @@ impl fmt::Display for Ref {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     Ref(Ref),
     LiteralNull,
@@ -119,7 +120,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum GlobalRef {
     Function(FunctionID),
     StringLiteral(StringID),
@@ -136,7 +137,7 @@ impl fmt::Display for GlobalRef {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct LocalID(pub usize);
 
 impl fmt::Display for LocalID {
