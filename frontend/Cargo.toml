@@ -6,8 +6,9 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
+ir-lang = { path = "../ir_lang" }
 bigdecimal = "0.4.5"
 cast = "0.3.0"
 derivative = "2.2.0"
-linked-hash-map = "0.5.4"
-regex = "1.1.0"
+linked-hash-map = "0.5.6"
+regex = "1.10.6"

@@ -37,6 +37,7 @@ impl<A: Annotation> From<Expr<A>> for InvalidStatement<A> {
 
 #[derive(Debug)]
 pub enum ParseError {
+    InvalidUnitFilename(Span),
     UnexpectedToken(Box<TokenTree>, Option<Matcher>),
     UnexpectedEOF(Matcher, Span),
     EmptyOperand { operator: Span, before: bool },
@@ -62,6 +63,7 @@ pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
 impl Spanned for ParseError {
     fn span(&self) -> &Span {
         match self {
+            ParseError::InvalidUnitFilename(span) => span,
             ParseError::UnexpectedToken(tt, _) => match tt.as_ref() {
                 TokenTree::Delimited(group) => group.open.span(),
                 _ => tt.span(),
@@ -90,6 +92,7 @@ impl Spanned for ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            ParseError::InvalidUnitFilename(..) => write!(f, "Invalid unit filename"),
             ParseError::UnexpectedToken(..) => write!(f, "Unexpected token"),
             ParseError::UnexpectedEOF(..) => write!(f, "Unexpected end of sequence"),
             ParseError::EmptyOperand { .. } => write!(f, "Empty operand"),
@@ -115,85 +118,87 @@ impl fmt::Display for ParseError {
 impl DiagnosticOutput for ParseError {
     fn label(&self) -> Option<DiagnosticLabel> {
         let text = match self {
+            ParseError::InvalidUnitFilename(..) => None,
+            
             ParseError::UnexpectedToken(tt, Some(expected)) => {
                 if expected.is_multiline_display() {
-                    format!("expected {}\nfound {}", expected, tt)
+                    Some(format!("expected {}\nfound {}", expected, tt))
                 } else {
-                    format!("expected {}, found {}", expected, tt)
+                    Some(format!("expected {}, found {}", expected, tt))
                 }
             }
 
-            ParseError::UnexpectedToken(tt, None) => format!("unexpected {}", tt),
+            ParseError::UnexpectedToken(tt, None) => Some(format!("unexpected {}", tt)),
 
             ParseError::UnexpectedEOF(expected, _tt) => {
-                format!("expected {} but reached end of sequence", expected)
+                Some(format!("expected {} but reached end of sequence", expected))
             }
 
             ParseError::EmptyOperand { operator, before } => {
                 let pos_name = if *before { "before" } else { "after" };
-                format!("expected operand {} {}", pos_name, operator)
+                Some(format!("expected operand {} {}", pos_name, operator))
             }
 
-            ParseError::UnexpectedOperator { .. } => "expected operand, found operator".to_string(),
+            ParseError::UnexpectedOperator { .. } => Some("expected operand, found operator".to_string()),
 
-            ParseError::InvalidStatement(invalid_stmt) => invalid_stmt.to_string(),
+            ParseError::InvalidStatement(invalid_stmt) => Some(invalid_stmt.to_string()),
 
-            ParseError::DuplicateModifier { new, .. } => format!(
+            ParseError::DuplicateModifier { new, .. } => Some(format!(
                 "the modifier `{}` is already present on this declaration",
                 new.keyword(),
-            ),
+            )),
 
             ParseError::CtorWithTypeArgs { .. } => {
-                "Object constructor expr cannot explicitly specify type args".to_string()
+                Some("Object constructor expr cannot explicitly specify type args".to_string())
             }
 
             ParseError::TypeConstraintAlreadySpecified(c) => {
-                format!("parameter `{}` has more than one type constraint", c.param_ident)
+                Some(format!("parameter `{}` has more than one type constraint", c.param_ident))
             }
 
             ParseError::EmptyTypeParamList { .. } => {
-                "type parameter list must contain one or more identifiers".to_string()
+                Some("type parameter list must contain one or more identifiers".to_string())
             }
 
             ParseError::EmptyTypeArgList { .. } => {
-                "type argument list must contain one or more type names".to_string()
+                Some("type argument list must contain one or more type names".to_string())
             }
 
             ParseError::EmptyWhereClause(..) => {
-                "`where` clause must contain one or more type constraints in the form `Type is InterfaceName`".to_string()
+                Some("`where` clause must contain one or more type constraints in the form `Type is InterfaceName`".to_string())
             }
 
             ParseError::NoMatchingParamForTypeConstraint(c) => {
-                format!("type constraint was specified for parameter `{}` which does not exist", c.param_ident)
+                Some(format!("type constraint was specified for parameter `{}` which does not exist", c.param_ident))
             }
 
             ParseError::UnterminatedStatement { .. } => {
-                format!("stmt here is unterminated")
+                Some("stmt here is unterminated".to_string())
             }
 
             ParseError::InvalidFunctionImplType(ty) => {
-                format!("type {} cannot have interface implementation functions declared for it", ty)
+                Some(format!("type {} cannot have interface implementation functions declared for it", ty))
             }
 
             ParseError::InvalidAssignmentExpr { .. } => {
-                format!("Assignment operator can only be used in an assignment stmt")
+                Some("Assignment operator can only be used in an assignment stmt".to_string())
             }
 
             ParseError::EmptyTypeDecl { .. } => {
-                format!("type declaration must contain one or more types")
+                Some("type declaration must contain one or more types".to_string())
             }
 
             ParseError::EmptyConstDecl { .. } => {
-                format!("const declaration must contain one or more constants")
+                Some("const declaration must contain one or more constants".to_string())
             }
 
             ParseError::InvalidForLoopInit(stmt) => {
-                format!("stmt `{}` cannot be used to initialize the counter variable of a for-loop", stmt)
+                Some(format!("stmt `{}` cannot be used to initialize the counter variable of a for-loop", stmt))
             }
         };
 
         Some(DiagnosticLabel {
-            text: Some(text),
+            text,
             span: self.span().clone(),
         })
     }

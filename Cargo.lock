@@ -247,6 +247,7 @@ dependencies = [
  "cast",
  "common",
  "derivative",
+ "ir-lang",
  "linked-hash-map",
  "regex",
 ]
@@ -296,18 +297,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "intermediate"
-version = "0.1.0"
-dependencies = [
- "bigdecimal",
- "cast",
- "common",
- "frontend",
- "ir-lang",
- "linked-hash-map",
 ]
 
 [[package]]
@@ -465,7 +454,6 @@ dependencies = [
  "codespan-reporting",
  "common",
  "frontend",
- "intermediate",
  "interpreter",
  "ir-lang",
  "structopt",

@@ -76,7 +76,7 @@ fn parse_target(s: &str) -> Result<Target, String> {
         "i" | "interpret" => Ok(Target::Interpret),
         "ir" | "intermediate" => Ok(Target::Intermediate),
         "p" | "parse" => Ok(Target::SyntaxAst),
-        "t" | "typecheck" => Ok(Target::TypecheckAst),
+        "t" | "typ" => Ok(Target::TypecheckAst),
         "pp" | "preprocess" => Ok(Target::Preprocessed),
         _ => Err(format!("invalid output kind: {}", s)),
     }

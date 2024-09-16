@@ -1,7 +1,7 @@
 use frontend::ast::IdentPath;
 use frontend::parse::ParseError;
 use frontend::pp::error::PreprocessorError;
-use frontend::typecheck::TypecheckError;
+use frontend::typ::TypecheckError;
 use frontend::TokenizeError;
 use common::span::Span;
 use common::Backtrace;
@@ -21,7 +21,6 @@ pub enum CompileError {
     PreprocessorError(PreprocessorError),
     ExecError(ExecError),
 
-    InvalidUnitFilename(Span),
     FileNotFound(PathBuf, Option<Span>),
     ReadSourceFileFailed {
         path: PathBuf,
@@ -83,14 +82,6 @@ impl DiagnosticOutput for CompileError {
                     err
                 ),
                 label: None,
-                notes: Vec::new(),
-            },
-            CompileError::InvalidUnitFilename(at) => DiagnosticMessage {
-                title: "Invalid unit filename".to_string(),
-                label: Some(DiagnosticLabel {
-                    text: None,
-                    span: at.clone(),
-                }),
                 notes: Vec::new(),
             },
             CompileError::ExecError(ExecError::Raised { msg, .. }) => DiagnosticMessage {
@@ -156,11 +147,6 @@ impl fmt::Display for CompileError {
             CompileError::TypecheckError(err) => write!(f, "{}", err),
             CompileError::PreprocessorError(err) => write!(f, "{}", err),
             CompileError::ReadSourceFileFailed { msg, .. } => write!(f, "{}", msg),
-            CompileError::InvalidUnitFilename(span) => write!(
-                f,
-                "invalid unit identifier in filename: {}",
-                span.file.display()
-            ),
             CompileError::OutputFailed(span, err) => {
                 write!(f, "writing to file {} failed: {}", span.file.display(), err,)
             }

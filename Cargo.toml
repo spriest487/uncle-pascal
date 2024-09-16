@@ -7,7 +7,6 @@ edition = "2021"
 [dependencies]
 common = { path = "common" }
 frontend = { path = "frontend" }
-intermediate = { path = "intermediate" }
 interpreter = { path = "interpreter" }
 backend_c = { path = "backend_c" }
 ir-lang = { path = "ir_lang" }
@@ -21,7 +20,6 @@ topological-sort = "0.2.2"
 members = [
     "common",
     "frontend",
-    "intermediate", 
     "ir_lang", 
     "test_runner",
 ]

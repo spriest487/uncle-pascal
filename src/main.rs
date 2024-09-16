@@ -9,19 +9,15 @@ use crate::reporting::report_err;
 use crate::sources::*;
 use codespan_reporting::diagnostic::Severity;
 use frontend::ast;
-use frontend::ast::Ident;
 use frontend::ast::IdentPath;
-use frontend::parse;
 use frontend::pp as pp;
-use frontend::typecheck as ty;
-use frontend::TokenTree;
+use frontend::typ as ty;
 use backend_c as backend_c;
 use common::read_source_file;
 use common::span::*;
 use common::BuildOptions;
 use interpreter::Interpreter;
 use interpreter::InterpreterOpts;
-use intermediate::IROptions;
 use ir_lang as ir;
 use pp::PreprocessedUnit;
 use std::collections::hash_map::Entry;
@@ -33,6 +29,7 @@ use std::path::PathBuf;
 use std::process;
 use structopt::StructOpt;
 use topological_sort::TopologicalSort;
+use frontend::emit::IROptions;
 
 enum CompileOutput {
     Preprocess(Vec<PreprocessedUnit>),
@@ -49,40 +46,9 @@ fn preprocess(filename: &PathBuf, opts: BuildOptions) -> Result<PreprocessedUnit
                 msg: err.to_string(),
             }
         })?;
-
-    let pp = pp::Preprocessor::new(filename, opts);
-    let preprocessed = pp.preprocess(&src)?;
-
+    
+    let preprocessed = frontend::preprocess(filename, &src, opts)?;
     Ok(preprocessed)
-}
-
-fn parse(unit: PreprocessedUnit) -> Result<ast::Unit<Span>, CompileError> {
-    let file_span = Span {
-        file: unit.filename.clone(),
-        start: Location::zero(),
-        end: Location::zero()
-    };
-
-    let unit_ident = unit.filename
-        .with_extension("")
-        .file_name()
-        .and_then(|file_name| {
-            let unit_ident = IdentPath::from_parts(file_name
-                .to_string_lossy()
-                .split('.')
-                .map(|part| Ident::new(part, file_span.clone())));
-
-            Some(unit_ident)
-        })
-        .ok_or_else(|| CompileError::InvalidUnitFilename(file_span.clone()))?;
-
-    let tokens = TokenTree::tokenize(unit)?;
-
-    let mut token_stream = parse::TokenStream::new(tokens, file_span);
-    let parsed_unit = ast::Unit::parse(&mut token_stream, unit_ident)?;
-    token_stream.finish()?;
-
-    Ok(parsed_unit)
 }
 
 fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
@@ -130,7 +96,8 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
             }
         }
 
-        let parsed_unit = parse(pp_unit)?;
+        let tokens = frontend::tokenize(pp_unit)?;
+        let parsed_unit = frontend::parse(unit_filename.clone(), tokens)?;
 
         let unit_ident = parsed_unit.ident.clone();
         let uses_units: Vec<_> = parsed_unit
@@ -206,7 +173,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         }
     }
 
-    let typed_module = ty::Module::typecheck(&compile_units)?;
+    let typed_module = frontend::typecheck(&compile_units)?;
 
     if args.target == Target::TypecheckAst {
         return Ok(CompileOutput::Typecheck(typed_module));
@@ -218,7 +185,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         debug_info: args.ir_debug,
     };
 
-    let module = intermediate::translate(&typed_module, ir_opts);
+    let module = frontend::emit_ir(&typed_module, ir_opts);
     Ok(CompileOutput::IR(module))
 }
 
