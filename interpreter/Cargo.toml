@@ -5,7 +5,6 @@ authors = ["spriest487 <spriest487@googlemail.com>"]
 edition = "2021"
 
 [dependencies]
-intermediate = { path = "../intermediate" }
 ir-lang = { path = "../ir_lang" }
 common = { path = "../common" }
 libffi = "3.2.0"

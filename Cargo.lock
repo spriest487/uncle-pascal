@@ -72,7 +72,6 @@ name = "backend_c"
 version = "0.1.0"
 dependencies = [
  "common",
- "intermediate",
  "ir-lang",
  "topological-sort",
 ]
@@ -318,7 +317,6 @@ dependencies = [
  "cast",
  "common",
  "dlopen",
- "intermediate",
  "ir-lang",
  "libffi",
  "smallvec",

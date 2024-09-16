@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
-use intermediate::ir;
+use crate::ir;
 
 /// pointer to native memory that is marshalled to/from value cells when accessed
 #[derive(Debug, Clone, Eq)]

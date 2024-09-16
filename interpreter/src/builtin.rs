@@ -3,13 +3,13 @@ use crate::ExecError;
 use crate::ExecResult;
 use crate::Interpreter;
 use crate::Pointer;
+use crate::ir;
 use std::borrow::Cow;
 use std::env::consts::OS;
 use std::fmt;
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
-use intermediate::ir;
 use ir_lang::{LocalID, Ref, Type, TypeDefID, Value};
 
 fn primitive_to_str<T, UnwrapFn>(state: &mut Interpreter, unwrap_fn: UnwrapFn) -> ExecResult<()>
