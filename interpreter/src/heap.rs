@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::rc::Rc;
-use intermediate::Type;
+use crate::ir;
 use crate::{DynValue, marshal::{Marshaller, MarshalError}, Pointer};
 
 #[derive(Clone, Debug)]
@@ -10,7 +10,7 @@ pub enum NativeHeapError {
     NullPointerDeref,
     BadFree(Pointer),
     ZeroSizedAllocation {
-        ty: Type,
+        ty: ir::Type,
         count: usize,
     },
 }
@@ -65,7 +65,7 @@ impl NativeHeap {
         self.marshaller = marshaller;
     }
 
-    pub fn alloc(&mut self, ty: Type, count: usize) -> NativeHeapResult<Pointer> {
+    pub fn alloc(&mut self, ty: ir::Type, count: usize) -> NativeHeapResult<Pointer> {
         let ty_size = self.marshaller.get_ty(&ty)?.size();
         if ty_size == 0 || count == 0 {
             return Err(NativeHeapError::ZeroSizedAllocation { ty, count });

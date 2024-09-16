@@ -1,15 +1,14 @@
 mod trace;
 
-use std::borrow::Cow;
 pub use self::trace::*;
+use crate::ir;
 use crate::marshal::MarshalError;
 use crate::marshal::MarshalResult;
 use crate::marshal::Marshaller;
 use crate::DynValue;
 use crate::Pointer;
 use common::span::Span;
-use intermediate::LocalID;
-use intermediate::Type;
+use std::borrow::Cow;
 use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
@@ -20,7 +19,7 @@ const SENTINEL: usize = 12345678;
 #[derive(Debug)]
 struct Block {
     #[allow(unused)] // is this actually needed??
-    decls: Vec<LocalID>,
+    decls: Vec<ir::LocalID>,
 
     initial_stack_offset: usize,
 }
@@ -36,7 +35,7 @@ struct StackAlloc {
     // function param allocs don't have an alloc location
     alloc_pc: Option<usize>,
 
-    ty: Type,
+    ty: ir::Type,
 
     stack_offset: usize,
 }
@@ -83,7 +82,7 @@ impl StackFrame {
     /// add a local to the stack without a local variable declaration. function params and return
     /// values get allocated by this mechanism because they aren't ever declared as locals in the
     /// body of the function
-    pub fn add_undeclared_local(&mut self, ty: Type, value: &DynValue) -> MarshalResult<LocalID> {
+    pub fn add_undeclared_local(&mut self, ty: ir::Type, value: &DynValue) -> MarshalResult<ir::LocalID> {
         let stack_offset = self.stack_alloc(value)?;
 
         if cfg!(debug_assertions) {
@@ -98,11 +97,11 @@ impl StackFrame {
             stack_offset,
         });
 
-        let id = LocalID(self.locals.len() - 1);
+        let id = ir::LocalID(self.locals.len() - 1);
         Ok(id)
     }
 
-    pub fn declare_local(&mut self, id: LocalID, ty: Type, value: &DynValue, alloc_pc: usize) -> StackResult<()> {
+    pub fn declare_local(&mut self, id: ir::LocalID, ty: ir::Type, value: &DynValue, alloc_pc: usize) -> StackResult<()> {
         // we only need to allocate new variables the first time the block is executed, so if
         // we try to allocate twice from the same instruction, just do nothing
         // todo: this could be cleaned up by allocating everything at the start of the block
@@ -174,7 +173,7 @@ impl StackFrame {
             .unwrap_or_else(|| Cow::Owned(Span::zero("<unknown>")))
     }
 
-    pub fn get_local_ptr(&self, id: LocalID) -> StackResult<Pointer> {
+    pub fn get_local_ptr(&self, id: ir::LocalID) -> StackResult<Pointer> {
         match self.locals.get(id.0) {
             Some(alloc) => {
                 Ok(Pointer {
@@ -252,10 +251,10 @@ impl StackFrame {
 
 #[derive(Debug, Clone)]
 pub enum StackError {
-    LocalNotAllocated(LocalID),
+    LocalNotAllocated(ir::LocalID),
     DuplicateLocalAlloc {
         stack_frame: String,
-        id: LocalID,
+        id: ir::LocalID,
         first_pc: Option<usize>,
         next_pc: usize,
     },
@@ -263,7 +262,7 @@ pub enum StackError {
         current_block: usize,
         dest_block: usize,
     },
-    IllegalAlloc(LocalID),
+    IllegalAlloc(ir::LocalID),
     EmptyBlockStack,
     MarshalError(MarshalError),
     BadSentinel(usize),

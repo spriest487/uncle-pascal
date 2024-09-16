@@ -1,5 +1,5 @@
 use crate::ast::Ident;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, FromPrimitive};
 use bigdecimal::ToPrimitive;
 use cast;
 use std::fmt;
@@ -223,6 +223,7 @@ impl Div for IntConstant {
     }
 }
 
+// TODO needs NaN/Inf variants
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RealConstant(pub BigDecimal);
 
@@ -243,7 +244,7 @@ impl RealConstant {
 
 impl From<f64> for RealConstant {
     fn from(val: f64) -> Self {
-        RealConstant(val.into())
+        RealConstant(BigDecimal::from_f64(val).expect("NaN/infinite constant values not supported yet"))
     }
 }
 

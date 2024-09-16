@@ -5,16 +5,13 @@ use crate::pattern::translate_pattern_match;
 use crate::translate_expr;
 use crate::translate_exit;
 use crate::translate_block;
-use crate::jmp_exists;
 use crate::typ;
 use crate::syn;
 use crate::translate_if_cond_stmt;
 use crate::Builder;
-use crate::Instruction;
-use crate::Ref;
-use crate::Type;
-use crate::Value;
+use crate::ir;
 use common::span::Spanned;
+use crate::builder::jmp_exists;
 use crate::expr::build_call;
 
 pub fn translate_stmt(stmt: &typ::ast::Stmt, builder: &mut Builder) {
@@ -35,7 +32,7 @@ pub fn translate_stmt(stmt: &typ::ast::Stmt, builder: &mut Builder) {
         },
 
         syn::Stmt::Block(block) => {
-            translate_block(block, Ref::Discard, builder);
+            translate_block(block, ir::Ref::Discard, builder);
         },
 
         syn::Stmt::Exit(exit) => {
@@ -138,21 +135,21 @@ pub fn build_for_loop(for_loop: &typ::ast::ForLoop, builder: &mut Builder) {
         };
 
         let inc_val = match counter_ty {
-            Type::I8 => Value::LiteralI8(1),
-            Type::U8 => Value::LiteralU8(1),
-            Type::I16 => Value::LiteralI16(1),
-            Type::U16 => Value::LiteralU16(1),
-            Type::I32 => Value::LiteralI32(1),
-            Type::U32 => Value::LiteralU32(1),
-            Type::I64 => Value::LiteralI64(1),
-            Type::U64 => Value::LiteralU64(1),
-            Type::ISize => Value::LiteralISize(1),
-            Type::USize => Value::LiteralUSize(1),
-            _ => Value::LiteralI32(1),
+            ir::Type::I8 => ir::Value::LiteralI8(1),
+            ir::Type::U8 => ir::Value::LiteralU8(1),
+            ir::Type::I16 => ir::Value::LiteralI16(1),
+            ir::Type::U16 => ir::Value::LiteralU16(1),
+            ir::Type::I32 => ir::Value::LiteralI32(1),
+            ir::Type::U32 => ir::Value::LiteralU32(1),
+            ir::Type::I64 => ir::Value::LiteralI64(1),
+            ir::Type::U64 => ir::Value::LiteralU64(1),
+            ir::Type::ISize => ir::Value::LiteralISize(1),
+            ir::Type::USize => ir::Value::LiteralUSize(1),
+            _ => ir::Value::LiteralI32(1),
         };
 
         // temp value to store the result of evaluating the break condition
-        let break_cond_val = builder.local_temp(Type::Bool);
+        let break_cond_val = builder.local_temp(ir::Type::Bool);
         let to_val = expr_to_val(&for_loop.to_expr, builder);
 
         builder.mov(counter_val.clone(), counter_init_val);
@@ -177,7 +174,7 @@ pub fn build_for_loop(for_loop: &typ::ast::ForLoop, builder: &mut Builder) {
         builder.add(counter_val.clone(), counter_val.clone(), inc_val);
 
         // return to top of loop
-        builder.append(Instruction::Jump { dest: top_label });
+        builder.append(ir::Instruction::Jump { dest: top_label });
     });
 
     if jmp_exists(&loop_instructions, break_label) {
@@ -191,7 +188,7 @@ pub fn translate_while_loop(while_loop: &typ::ast::WhileLoop, builder: &mut Buil
     let break_label = builder.alloc_label();
 
     let loop_instructions = builder.scope(|builder| {
-        let not_cond = builder.local_temp(Type::Bool);
+        let not_cond = builder.local_temp(ir::Type::Bool);
 
         builder.comment("while-loop top");
         builder.label(top_label);
@@ -244,7 +241,7 @@ pub fn translate_assignment(assignment: &typ::ast::Assignment, builder: &mut Bui
     let lhs_ty = builder.translate_type(&assignment.lhs.annotation().ty());
     builder.release(lhs.clone(), &lhs_ty);
 
-    builder.append(Instruction::Move {
+    builder.append(ir::Instruction::Move {
         out: lhs,
         new_val: rhs.into(),
     });
@@ -281,7 +278,7 @@ pub fn translate_compound_assignment(
         builder.retain(op_result.clone(), &lhs_ty);
         builder.release(lhs.clone(), &lhs_ty);
 
-        builder.append(Instruction::Move {
+        builder.append(ir::Instruction::Move {
             out: lhs,
             new_val: op_result.into(),
         });
@@ -319,7 +316,7 @@ pub fn build_case_block<Item, ItemFn>(
             builder.scope(|builder| {
                 let branch_val = expr_to_val(&branch.value, builder);
 
-                let cond_eq = builder.local_temp(Type::Bool);
+                let cond_eq = builder.local_temp(ir::Type::Bool);
 
                 builder.eq(cond_eq.clone(), branch_val, cond_expr_val.clone());
                 builder.jmp_if(*branch_label, cond_eq);
@@ -369,7 +366,7 @@ fn translate_match_stmt(match_stmt: &typ::ast::MatchStmt, builder: &mut Builder)
             None
         };
 
-        let is_skip = builder.local_temp(Type::Bool);
+        let is_skip = builder.local_temp(ir::Type::Bool);
 
         for branch in &match_stmt.branches {
             builder.scope(|builder| {

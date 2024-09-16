@@ -1,12 +1,8 @@
 use crate::builder::Builder;
 use crate::expr;
-use crate::Instruction;
-use crate::Ref;
-use crate::Type;
-use crate::Value;
-use crate::metadata::VirtualTypeID;
 use crate::syn;
 use crate::typ;
+use ir_lang::*;
 use syn::Operator;
 
 pub fn translate_bin_op(

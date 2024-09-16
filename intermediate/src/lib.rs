@@ -1,27 +1,28 @@
 use std::fmt;
 
-pub use self::{formatter::*, instruction::*, metadata::ty::Type, module::*, val::*, function::*};
-use crate::ty::{VirtualTypeID, FieldID, TypeDef};
-use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
+pub use self::function::*;
+pub use self::module::*;
+use crate::builder::Builder;
+use crate::expr::*;
+use crate::metadata::*;
+use crate::module_builder::ModuleBuilder;
+use crate::stmt::*;
+use crate::ty::TypeDef;
 use frontend::ast as syn;
 use frontend::typecheck as typ;
-use crate::module_builder::ModuleBuilder;
+pub use ir_lang as ir;
+use metadata::Metadata;
+use ir_lang::InstructionFormatter;
 
 mod builder;
 mod dep_sort;
 mod expr;
-mod formatter;
-mod instruction;
 pub mod metadata;
 mod module;
 mod stmt;
-mod val;
 mod pattern;
 mod function;
 pub mod module_builder;
-
-pub const RETURN_REF: Ref = Ref::Local(LocalID(0));
-pub const EXIT_LABEL: Label = Label(0);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct IROptions {
@@ -50,11 +51,11 @@ impl Default for IROptions {
 fn write_instruction_list(
     f: &mut fmt::Formatter,
     metadata: &Metadata,
-    instructions: &[Instruction],
+    instructions: &[ir::Instruction],
 ) -> fmt::Result {
     let num_len = instructions.len().to_string().len();
 
-    let formatter = StatefulIndentedFormatter::new(metadata, 4);
+    let formatter = ir::StatefulIndentedFormatter::new(metadata, 4);
 
     for (i, instruction) in instructions.iter().enumerate() {
         write!(f, "{:>width$}|", i, width = num_len)?;
@@ -94,8 +95,8 @@ pub fn translate(module: &typ::Module, opts: IROptions) -> Module {
             name
         };
 
-        ir_module.metadata_mut().reserve_struct(STRING_ID);
-        ir_module.metadata_mut().declare_struct(STRING_ID, &name);
+        ir_module.metadata_mut().reserve_struct(ir::STRING_ID);
+        ir_module.metadata_mut().declare_struct(ir::STRING_ID, &name);
 
         let string_def = {
             let mut builder = Builder::new(&mut ir_module);
@@ -104,8 +105,8 @@ pub fn translate(module: &typ::Module, opts: IROptions) -> Module {
             string_def
         };
 
-        ir_module.metadata_mut().define_struct(STRING_ID, string_def);
-        ir_module.runtime_type(&Type::Struct(STRING_ID));
+        ir_module.metadata_mut().define_struct(ir::STRING_ID, string_def);
+        ir_module.runtime_type(&ir::Type::Struct(ir::STRING_ID));
     }
 
     for unit in &module.units {

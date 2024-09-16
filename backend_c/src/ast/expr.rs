@@ -3,13 +3,9 @@ use crate::ast::FunctionName;
 use crate::ast::GlobalName;
 use crate::ast::Module;
 use crate::ast::Type;
-use crate::ir;
-use intermediate::metadata;
-use intermediate::metadata::TypeDefID;
-use intermediate::metadata::CLOSURE_PTR_FIELD;
-use intermediate::LocalID;
-use std::fmt;
 use crate::ast::TypeDefName;
+use crate::ir;
+use std::fmt;
 
 #[allow(unused)]
 #[derive(Clone, Debug)]
@@ -71,9 +67,9 @@ impl fmt::Display for PrefixOp {
 #[allow(unused)]
 #[derive(Clone, Debug)]
 pub enum Expr {
-    Local(LocalID),
+    Local(ir::LocalID),
     Function(FunctionName),
-    Class(TypeDefID),
+    Class(ir::TypeDefID),
     Deref(Box<Expr>),
     Global(GlobalName), // global value
     LitCString(String), // C string literal
@@ -239,21 +235,21 @@ impl Expr {
 
     pub fn translate_field(
         a: &ir::Ref,
-        of_ty: &metadata::Type,
-        field_id: metadata::FieldID,
+        of_ty: &ir::Type,
+        field_id: ir::FieldID,
         module: &mut Module,
     ) -> Self {
         let a_expr = Expr::translate_ref(a, module);
 
         match of_ty {
-            metadata::Type::RcPointer(class_id) => {
+            ir::Type::RcPointer(class_id) => {
                 // pointer to RC containing pointer to class resource
                 match class_id {
                     // HACK: closures are of unknown type, but we don't need a real vtable to call
                     // them. every closure struct starts with a Rc struct followed by a pointer
                     // to the closure's function, so we can get the function pointer by applying
                     // the offset manually
-                    metadata::VirtualTypeID::Closure(func_ty_id) if field_id == CLOSURE_PTR_FIELD => {
+                    ir::VirtualTypeID::Closure(func_ty_id) if field_id == ir::CLOSURE_PTR_FIELD => {
                         let size_of_rc = Expr::SizeOf(Type::Rc);
                         let offset_ptr = Expr::infix_op(a_expr, InfixOp::Add, size_of_rc);
 
@@ -262,7 +258,7 @@ impl Expr {
                     },
 
                     // normal class: it's just a field accessed through this pointer
-                    metadata::VirtualTypeID::Class(..) => {
+                    ir::VirtualTypeID::Class(..) => {
                         a_expr.arrow(FieldName::ID(field_id)).addr_of()
                     },
 
@@ -285,7 +281,7 @@ impl Expr {
         }
     }
 
-    pub fn class_ptr(struct_id: TypeDefID) -> Self {
+    pub fn class_ptr(struct_id: ir::TypeDefID) -> Self {
         Expr::Class(struct_id).addr_of().cast(Type::Class.ptr())
     }
 }

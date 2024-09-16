@@ -1,4 +1,3 @@
-use crate::jmp_exists;
 use crate::metadata::FunctionSig;
 use crate::module_builder::ModuleBuilder;
 use crate::syn;
@@ -9,21 +8,11 @@ use crate::translate_literal;
 use crate::typ;
 use crate::Builder;
 use crate::ClosureInstance;
-use crate::FunctionID;
-use crate::GlobalRef;
-use crate::Instruction;
-use crate::LocalID;
-use crate::Ref;
-use crate::Type;
-use crate::TypeDefID;
-use crate::Value;
-use crate::CLOSURE_PTR_FIELD;
-use crate::EXIT_LABEL;
-use crate::RETURN_REF;
 use common::span::Span;
-use std::fmt;
+use ir_lang::*;
 use std::iter;
 use std::rc::Rc;
+use crate::builder::jmp_exists;
 
 #[derive(Clone, Debug)]
 pub struct ExternalFunctionRef {
@@ -34,8 +23,6 @@ pub struct ExternalFunctionRef {
 
     pub src_span: Span,
 }
-
-pub const BUILTIN_SRC: &str = "rt";
 
 #[derive(Clone, Debug)]
 pub struct FunctionDef {
@@ -81,15 +68,6 @@ impl Function {
 pub struct FunctionInstance {
     pub id: FunctionID,
     pub sig: Rc<typ::FunctionSig>,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct StaticClosureID(pub usize);
-
-impl fmt::Display for StaticClosureID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "static closure #{}", self.0)
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

@@ -1,50 +1,40 @@
-use std::collections::HashMap;
-use std::rc::Rc;
-use linked_hash_map::LinkedHashMap;
-use crate::metadata::{translate_closure_struct, DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD};
+use crate::{build_closure_function_def, ir};
+use crate::build_func_def;
+use crate::build_func_static_closure_def;
+use crate::build_static_closure_impl;
+use crate::builder::Builder;
+use crate::metadata::translate_closure_struct;
 use crate::metadata::translate_iface;
 use crate::metadata::translate_name;
 use crate::metadata::translate_struct_def;
 use crate::metadata::translate_variant_def;
 use crate::metadata::ClosureIdentity;
 use crate::metadata::ClosureInstance;
-use crate::metadata::FunctionID;
 use crate::metadata::FunctionSig;
-use crate::metadata::RuntimeType;
-use crate::metadata::TypeDefID;
-use crate::metadata::VirtualTypeID;
-use crate::metadata::STRING_CHARS_FIELD;
-use crate::metadata::STRING_ID;
 use crate::metadata::Metadata;
-use crate::{build_closure_function_def, build_static_closure_impl, translate_func_params, RETURN_REF};
-use crate::build_func_static_closure_def;
-use crate::FunctionDef;
-use crate::GlobalRef;
-use crate::Instruction;
-use crate::LocalID;
-use crate::Ref;
-use crate::StaticClosure;
-use crate::StaticClosureID;
-use crate::Type;
-use crate::Value;
-use crate::build_func_def;
+use crate::metadata::RuntimeType;
+use crate::stmt::translate_stmt;
+use crate::translate_func_params;
 use crate::typ;
 use crate::ExternalFunctionRef;
 use crate::Function;
+use crate::FunctionDef;
 use crate::FunctionInstance;
 use crate::IROptions;
 use crate::Module;
+use crate::StaticClosure;
 use common::span::Span;
 use common::span::Spanned;
 use frontend::ast::{IdentPath, StructKind};
-use frontend::Ident;
 use frontend::typecheck::ast::specialize_func_decl;
 use frontend::typecheck::builtin_string_name;
-use frontend::typecheck::TypeList;
 use frontend::typecheck::layout::StructLayout;
 use frontend::typecheck::layout::StructLayoutMember;
-use crate::builder::Builder;
-use crate::stmt::translate_stmt;
+use frontend::typecheck::TypeList;
+use frontend::Ident;
+use linked_hash_map::LinkedHashMap;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -52,7 +42,7 @@ pub struct ModuleBuilder {
     
     opts: IROptions,
     
-    type_cache: LinkedHashMap<typ::Type, Type>,
+    type_cache: LinkedHashMap<typ::Type, ir::Type>,
     
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
@@ -89,7 +79,7 @@ impl ModuleBuilder {
             gen_class_rc_boilerplate(&mut self, &class_ty);
         }
         for closure_id in self.module.closure_types().collect::<Vec<_>>() {
-            self.runtime_type(&Type::Struct(closure_id));
+            self.runtime_type(&ir::Type::Struct(closure_id));
         }
 
         self.module.metadata.sort_type_defs_by_deps();
@@ -374,7 +364,7 @@ impl ModuleBuilder {
         self.instantiate_func(key)
     }
 
-    pub fn insert_func(&mut self, id: FunctionID, function: Function) {
+    pub fn insert_func(&mut self, id: ir::FunctionID, function: Function) {
         assert!(
             self.module.metadata.get_function(id).is_some(),
             "function passed to insert_func must have been previously registered in metadata"
@@ -433,7 +423,7 @@ impl ModuleBuilder {
         &mut self,
         src_ty: &typ::Type,
         type_args: Option<&typ::TypeList>,
-    ) -> Type {
+    ) -> ir::Type {
         let src_ty = match type_args {
             Some(current_ty_args) => {
                 let src_ty = src_ty.clone().substitute_type_args(current_ty_args);
@@ -453,7 +443,7 @@ impl ModuleBuilder {
                 let variant_def = self.src_metadata.instantiate_variant_def(variant).unwrap();
 
                 let id = self.module.metadata.reserve_new_struct();
-                let ty = Type::Variant(id);
+                let ty = ir::Type::Variant(id);
                 self.type_cache.insert(src_ty.clone(), ty.clone());
 
                 let name_path = translate_name(&variant, type_args, self);
@@ -468,7 +458,7 @@ impl ModuleBuilder {
             typ::Type::Record(name) | typ::Type::Class(name) => {
                 // handle builtin types
                 if **name == builtin_string_name() {
-                    let string_ty = Type::RcPointer(VirtualTypeID::Class(STRING_ID));
+                    let string_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(ir::STRING_ID));
 
                     self.type_cache.insert(src_ty, string_ty.clone());
 
@@ -481,10 +471,10 @@ impl ModuleBuilder {
 
                 let ty = match def.kind {
                     StructKind::Class => {
-                        Type::RcPointer(VirtualTypeID::Class(id))
+                        ir::Type::RcPointer(ir::VirtualTypeID::Class(id))
                     },
                     StructKind::Record | StructKind::PackedRecord => {
-                        Type::Struct(id)
+                        ir::Type::Struct(id)
                     },
                 };
 
@@ -505,7 +495,7 @@ impl ModuleBuilder {
 
                 let iface_name = translate_name(&iface_def.name, type_args, self);
                 let id = self.module.metadata.declare_iface(&iface_name);
-                let ty = Type::RcPointer(VirtualTypeID::Interface(id));
+                let ty = ir::Type::RcPointer(ir::VirtualTypeID::Interface(id));
 
                 self.type_cache.insert(src_ty, ty.clone());
 
@@ -519,7 +509,7 @@ impl ModuleBuilder {
             typ::Type::DynArray { element } => {
                 let id = self.translate_dyn_array_struct(&element, type_args);
 
-                let ty = Type::RcPointer(VirtualTypeID::Class(id));
+                let ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(id));
                 self.type_cache.insert(src_ty, ty.clone());
 
                 ty
@@ -527,13 +517,13 @@ impl ModuleBuilder {
 
             typ::Type::Function(func_sig) => {
                 if let Some(id) = self.module.metadata.find_func_ty(&func_sig) {
-                    return Type::Function(id);
+                    return ir::Type::Function(id);
                 }
 
                 let ir_sig = FunctionSig::translate(&func_sig, type_args, self);
                 let func_ty_id = self.module.metadata.define_func_ty((**func_sig).clone(), ir_sig);
 
-                let ty = Type::RcPointer(VirtualTypeID::Closure(func_ty_id));
+                let ty = ir::Type::RcPointer(ir::VirtualTypeID::Closure(func_ty_id));
 
                 self.type_cache.insert(src_ty, ty.clone());
 
@@ -559,7 +549,7 @@ impl ModuleBuilder {
 
     // get or generate runtime type for a given type, which contains the function IDs etc
     // used for RC operations at runtime
-    pub fn runtime_type(&mut self, ty: &Type) -> RuntimeType {
+    pub fn runtime_type(&mut self, ty: &ir::Type) -> RuntimeType {
         if let Some(boilerplate) = self.module.metadata.get_runtime_type(ty) {
             return boilerplate.clone();
         }
@@ -572,13 +562,13 @@ impl ModuleBuilder {
 
         let release_body = {
             let mut release_builder = Builder::new(self);
-            release_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
-            let target_ref = Ref::Local(LocalID(0)).to_deref();
+            release_builder.bind_param(ir::LocalID(0), ty.clone().ptr(), "target", true);
+            let target_ref = ir::Ref::Local(ir::LocalID(0)).to_deref();
 
             match ty {
-                Type::Struct(STRING_ID) => {
-                    let chars_field_ref = release_builder.local_temp(Type::U8.ptr().ptr());
-                    release_builder.field(chars_field_ref.clone(), target_ref, ty.clone(), STRING_CHARS_FIELD);
+                ir::Type::Struct(ir::STRING_ID) => {
+                    let chars_field_ref = release_builder.local_temp(ir::Type::U8.ptr().ptr());
+                    release_builder.field(chars_field_ref.clone(), target_ref, ty.clone(), ir::STRING_CHARS_FIELD);
                     release_builder.free_mem(chars_field_ref.to_deref());
                 },
                 _ => {
@@ -595,7 +585,7 @@ impl ModuleBuilder {
             Function::Local(FunctionDef {
                 body: release_body,
                 sig: FunctionSig {
-                    return_ty: Type::Nothing,
+                    return_ty: ir::Type::Nothing,
                     param_tys: vec![ty.clone().ptr()],
                 },
                 debug_name: format!("<generated releaser for {}>", self.module.metadata.pretty_ty_name(ty)),
@@ -605,8 +595,8 @@ impl ModuleBuilder {
 
         let retain_body = {
             let mut retain_builder = Builder::new(self);
-            retain_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
-            let target_ref = Ref::Local(LocalID(0)).to_deref();
+            retain_builder.bind_param(ir::LocalID(0), ty.clone().ptr(), "target", true);
+            let target_ref = ir::Ref::Local(ir::LocalID(0)).to_deref();
             retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
                 builder.retain(el_ref, el_ty)
             });
@@ -618,7 +608,7 @@ impl ModuleBuilder {
             Function::Local(FunctionDef {
                 body: retain_body,
                 sig: FunctionSig {
-                    return_ty: Type::Nothing,
+                    return_ty: ir::Type::Nothing,
                     param_tys: vec![ty.clone().ptr()],
                 },
                 debug_name: format!("generated RC retain func for {}", self.module.metadata.pretty_ty_name(ty)),
@@ -633,7 +623,7 @@ impl ModuleBuilder {
         &mut self,
         element_ty: &typ::Type,
         type_args: Option<&TypeList>,
-    ) -> TypeDefID {
+    ) -> ir::TypeDefID {
         let element_ty = self.translate_type(element_ty, type_args);
 
         match self.module.metadata.find_dyn_array_struct(&element_ty) {
@@ -651,7 +641,7 @@ impl ModuleBuilder {
         layout.members_of(&struct_def, &self.src_metadata).unwrap()
     }
 
-    fn class_types(&self) -> impl Iterator<Item = &Type> {
+    fn class_types(&self) -> impl Iterator<Item = &ir::Type> {
         self.type_cache.iter().filter_map(|(src_ty, ir_ty)| {
             if src_ty.as_class().is_ok() {
                 Some(ir_ty)
@@ -665,7 +655,7 @@ impl ModuleBuilder {
         &mut self,
         func_sig: &typ::FunctionSig,
         type_args: Option<&typ::TypeList>,
-    ) -> TypeDefID {
+    ) -> ir::TypeDefID {
         let func_ty_id = match self.module.metadata.find_func_ty(&func_sig) {
             Some(id) => id,
             None => {
@@ -790,7 +780,7 @@ impl ModuleBuilder {
             return &self.module.static_closures[existing_index];
         }
 
-        let id = StaticClosureID(self.module.static_closures.len());
+        let id = ir::StaticClosureID(self.module.static_closures.len());
         let instance = build_static_closure_impl(closure, id, self);
 
         self.module.static_closures.push(instance);
@@ -802,8 +792,8 @@ impl ModuleBuilder {
     fn gen_static_closure_init(&mut self) {
         let mut static_closures_init = Vec::new();
         for static_closure in &self.module.static_closures {
-            static_closures_init.push(Instruction::Call {
-                function: Value::Ref(Ref::Global(GlobalRef::Function(static_closure.init_func))),
+            static_closures_init.push(ir::Instruction::Call {
+                function: ir::Value::Ref(ir::Ref::Global(ir::GlobalRef::Function(static_closure.init_func))),
                 args: Vec::new(),
                 out: None,
             });
@@ -832,7 +822,7 @@ pub(crate) struct FunctionDefKey {
     pub type_args: Option<typ::TypeList>,
 }
 
-fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &Type, struct_id: TypeDefID) {
+fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
     let mut alloc_builder = Builder::new(module);
     gen_dyn_array_alloc_func(&mut alloc_builder, elem_ty, struct_id);
     let alloc_body = alloc_builder.finish();
@@ -846,8 +836,8 @@ fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &Type, struct_id: Ty
             module.metadata().pretty_ty_name(elem_ty)
         ),
         sig: FunctionSig {
-            param_tys: vec![Type::any(), Type::I32, Type::any(), Type::any()],
-            return_ty: Type::Nothing,
+            param_tys: vec![ir::Type::any(), ir::Type::I32, ir::Type::any(), ir::Type::any()],
+            return_ty: ir::Type::Nothing,
         },
         body: alloc_body,
         src_span: module.module_span().clone(),
@@ -863,70 +853,70 @@ fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &Type, struct_id: Ty
             module.metadata().pretty_ty_name(elem_ty)
         ),
         sig: FunctionSig {
-            param_tys: vec![Type::any()],
-            return_ty: Type::I32,
+            param_tys: vec![ir::Type::any()],
+            return_ty: ir::Type::I32,
         },
         body: length_body,
         src_span: module.module_span().clone(),
     }));
 }
 
-fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &Type, struct_id: TypeDefID) {
-    let array_ref_ty = Type::RcPointer(VirtualTypeID::Class(struct_id));
+fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
+    let array_ref_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
     let el_ptr_ty = elem_ty.clone().ptr();
 
     builder.comment("bind params");
-    let arr_arg = LocalID(0);
-    let len_arg = LocalID(1);
-    let src_arr_arg = LocalID(2);
-    let default_val_arg = LocalID(3);
-    builder.bind_param(arr_arg, Type::any(), "arr_ptr", false);
-    builder.bind_param(len_arg, Type::I32, "len", false);
-    builder.bind_param(src_arr_arg, Type::any(), "src_arr_ptr", false);
-    builder.bind_param(default_val_arg, Type::Nothing.ptr(), "default_val", false);
+    let arr_arg = ir::LocalID(0);
+    let len_arg = ir::LocalID(1);
+    let src_arr_arg = ir::LocalID(2);
+    let default_val_arg = ir::LocalID(3);
+    builder.bind_param(arr_arg, ir::Type::any(), "arr_ptr", false);
+    builder.bind_param(len_arg, ir::Type::I32, "len", false);
+    builder.bind_param(src_arr_arg, ir::Type::any(), "src_arr_ptr", false);
+    builder.bind_param(default_val_arg, ir::Type::Nothing.ptr(), "default_val", false);
 
     builder.comment("retain the refs to the array params");
-    builder.retain(Ref::Local(LocalID(0)), &Type::any());
-    builder.retain(Ref::Local(LocalID(2)), &Type::any());
+    builder.retain(ir::Ref::Local(ir::LocalID(0)), &ir::Type::any());
+    builder.retain(ir::Ref::Local(ir::LocalID(2)), &ir::Type::any());
 
     builder.comment("cast the array params to this array type");
     let arr = builder.local_temp(array_ref_ty.clone());
     let src_arr = builder.local_temp(array_ref_ty.clone());
-    builder.cast(arr.clone(), Ref::Local(LocalID(0)), array_ref_ty.clone());
-    builder.cast(src_arr.clone(), Ref::Local(LocalID(2)), array_ref_ty.clone());
+    builder.cast(arr.clone(), ir::Ref::Local(ir::LocalID(0)), array_ref_ty.clone());
+    builder.cast(src_arr.clone(), ir::Ref::Local(ir::LocalID(2)), array_ref_ty.clone());
 
     let default_el_ptr = builder.local_temp(el_ptr_ty.clone());
     builder.cast(default_el_ptr.clone(), default_val_arg, el_ptr_ty.clone());
 
     builder.comment("copy_len := copy_from->length");
-    let src_len = builder.local_temp(Type::I32);
-    builder.field_val(src_len.clone(), src_arr.clone(), array_ref_ty.clone(), DYNARRAY_LEN_FIELD, Type::I32);
+    let src_len = builder.local_temp(ir::Type::I32);
+    builder.field_val(src_len.clone(), src_arr.clone(), array_ref_ty.clone(), ir::DYNARRAY_LEN_FIELD, ir::Type::I32);
 
     builder.comment("el_len := sizeof(elem_ty)");
-    let el_len = builder.local_temp(Type::I32);
+    let el_len = builder.local_temp(ir::Type::I32);
     builder.size_of(el_len.clone(), elem_ty.clone());
 
     builder.comment("data_len := el_len * len");
-    let data_len = builder.local_temp(Type::I32);
+    let data_len = builder.local_temp(ir::Type::I32);
     builder.mul(data_len.clone(), el_len.clone(), len_arg);
 
     builder.comment("data = GetMem(data_len) as ^elem_ty");
-    let data_mem = builder.local_temp(Type::U8.ptr());
+    let data_mem = builder.local_temp(ir::Type::U8.ptr());
     builder.get_mem(data_len, data_mem.clone());
     let data = builder.local_temp(el_ptr_ty.clone());
     builder.cast(data.clone(), data_mem, el_ptr_ty.clone());
 
     builder.comment("iteration counter for initializing elements");
-    let counter = builder.local_temp(Type::I32);
-    builder.mov(counter.clone(), Value::LiteralI32(0));
+    let counter = builder.local_temp(ir::Type::I32);
+    builder.mov(counter.clone(), ir::Value::LiteralI32(0));
 
     builder.comment("loop break flag we use in a couple of places later");
-    let done = builder.local_temp(Type::Bool);
+    let done = builder.local_temp(ir::Type::Bool);
 
     builder.comment("copy elements from copied array");
     builder.scope(|builder| {
-        let copy_count = builder.local_temp(Type::I32);
-        let copy_count_ok = builder.local_temp(Type::Bool);
+        let copy_count = builder.local_temp(ir::Type::I32);
+        let copy_count_ok = builder.local_temp(ir::Type::Bool);
 
         builder.comment("copy_count := src_len");
         builder.mov(copy_count.clone(), src_len.clone());
@@ -961,7 +951,7 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &Type, struct_id: Ty
             builder.add(copy_dst.clone(), data.clone(), counter.clone());
 
             builder.comment("copy_src := src_arr->ptr + counter");
-            builder.field_val(copy_src.clone(), src_arr.clone(), array_ref_ty.clone(), DYNARRAY_PTR_FIELD, el_ptr_ty.clone());
+            builder.field_val(copy_src.clone(), src_arr.clone(), array_ref_ty.clone(), ir::DYNARRAY_PTR_FIELD, el_ptr_ty.clone());
             builder.add(copy_src.clone(), copy_src.clone(), counter.clone());
 
             builder.comment("copy_dst^ := copy_src^");
@@ -971,7 +961,7 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &Type, struct_id: Ty
         });
 
         builder.comment("counter += 1");
-        builder.add(counter.clone(), counter.clone(), Value::LiteralI32(1));
+        builder.add(counter.clone(), counter.clone(), ir::Value::LiteralI32(1));
 
         builder.jmp(copy_loop_label);
         builder.label(copy_break_label);
@@ -998,34 +988,34 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &Type, struct_id: Ty
     });
 
     builder.comment("counter += 1");
-    builder.add(counter.clone(), counter.clone(), Value::LiteralI32(1));
+    builder.add(counter.clone(), counter.clone(), ir::Value::LiteralI32(1));
     builder.jmp(init_loop_label);
 
     builder.label(init_break_label);
 
-    builder.set_field(arr.clone(), array_ref_ty.clone(), DYNARRAY_LEN_FIELD, Type::I32, len_arg);
-    builder.set_field(arr, array_ref_ty, DYNARRAY_PTR_FIELD, el_ptr_ty, data);
+    builder.set_field(arr.clone(), array_ref_ty.clone(), ir::DYNARRAY_LEN_FIELD, ir::Type::I32, len_arg);
+    builder.set_field(arr, array_ref_ty, ir::DYNARRAY_PTR_FIELD, el_ptr_ty, data);
 }
 
-fn gen_dyn_array_length_func(builder: &mut Builder, struct_id: TypeDefID) {
-    let array_ref_ty = Type::RcPointer(VirtualTypeID::Class(struct_id));
+fn gen_dyn_array_length_func(builder: &mut Builder, struct_id: ir::TypeDefID) {
+    let array_ref_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
 
     builder.comment("bind and retain params");
     builder.bind_return();
-    builder.bind_param(LocalID(1), Type::any(), "arr_ptr", false);
-    builder.retain(Ref::Local(LocalID(1)), &Type::any());
+    builder.bind_param(ir::LocalID(1), ir::Type::any(), "arr_ptr", false);
+    builder.retain(ir::Ref::Local(ir::LocalID(1)), &ir::Type::any());
 
     builder.comment("cast pointer down to this array type");
     let arr = builder.local_temp(array_ref_ty.clone());
-    builder.cast(arr.clone(), Ref::Local(LocalID(1)), array_ref_ty.clone());
+    builder.cast(arr.clone(), ir::Ref::Local(ir::LocalID(1)), array_ref_ty.clone());
 
     builder.comment("evaluate length field into return ref");
-    builder.field_val(RETURN_REF, arr, array_ref_ty, DYNARRAY_LEN_FIELD, Type::I32);
+    builder.field_val(ir::RETURN_REF, arr, array_ref_ty, ir::DYNARRAY_LEN_FIELD, ir::Type::I32);
 }
 
-fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &Type, struct_id: TypeDefID) {
-    let array_ref_ty = Type::RcPointer(VirtualTypeID::Class(struct_id));
-    let array_struct_ty = Type::Struct(struct_id);
+fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
+    let array_ref_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
+    let array_struct_ty = ir::Type::Struct(struct_id);
 
     let rc_boilerplate = module
         .metadata()
@@ -1035,24 +1025,24 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &Type, stru
     let mut builder = Builder::new(module);
 
     builder.comment("%0 is the self arg, the pointer to the inner struct");
-    builder.bind_param(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
-    let self_arg = Ref::Local(LocalID(0)).to_deref();
+    builder.bind_param(ir::LocalID(0), array_struct_ty.clone().ptr(), "self", true);
+    let self_arg = ir::Ref::Local(ir::LocalID(0)).to_deref();
 
     builder.comment("pointer to the length field of the dynarray object");
-    let len_field_ptr = builder.local_temp(Type::I32.ptr());
+    let len_field_ptr = builder.local_temp(ir::Type::I32.ptr());
 
     builder.comment("pointer to the pointer field of the dynarray object");
     let arr_field_ptr = builder.local_temp(elem_ty.clone().ptr().ptr());
 
     builder.comment("u8 pointer type field to cast the array memory into to call FreeMem");
-    let arr_mem_ptr = builder.local_temp(Type::U8.ptr());
+    let arr_mem_ptr = builder.local_temp(ir::Type::U8.ptr());
 
     builder.comment("iteration vars");
-    let counter = builder.local_temp(Type::I32);
-    let has_more = builder.local_temp(Type::Bool);
+    let counter = builder.local_temp(ir::Type::I32);
+    let has_more = builder.local_temp(ir::Type::Bool);
     let el_ptr = builder.local_temp(elem_ty.clone().ptr());
 
-    let zero_elements = builder.local_temp(Type::Bool);
+    let zero_elements = builder.local_temp(ir::Type::Bool);
 
     builder.comment("jump to loop end if counter == array len");
     let start_loop_label = builder.alloc_label();
@@ -1060,11 +1050,11 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &Type, stru
 
     let after_free = builder.alloc_label();
 
-    builder.field(len_field_ptr.clone(), self_arg.clone(), array_struct_ty.clone(), DYNARRAY_LEN_FIELD);
-    builder.field(arr_field_ptr.clone(), self_arg, array_struct_ty.clone(), DYNARRAY_PTR_FIELD);
+    builder.field(len_field_ptr.clone(), self_arg.clone(), array_struct_ty.clone(), ir::DYNARRAY_LEN_FIELD);
+    builder.field(arr_field_ptr.clone(), self_arg, array_struct_ty.clone(), ir::DYNARRAY_PTR_FIELD);
 
     builder.comment("release every element");
-    builder.mov(counter.clone(), Value::LiteralI32(0));
+    builder.mov(counter.clone(), ir::Value::LiteralI32(0));
 
     builder.label(start_loop_label);
 
@@ -1085,22 +1075,22 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &Type, stru
     builder.release(el_ptr.to_deref(), &elem_ty);
 
     builder.comment("counter := counter + 1");
-    builder.add(counter.clone(), counter, Value::LiteralI32(1));
+    builder.add(counter.clone(), counter, ir::Value::LiteralI32(1));
 
     builder.jmp(start_loop_label);
     builder.label(end_loop_label);
 
     builder.comment("free the dynamic-allocated buffer - if len > 0");
-    builder.eq(zero_elements.clone(), len_field_ptr.clone().to_deref(), Value::LiteralI32(0));
+    builder.eq(zero_elements.clone(), len_field_ptr.clone().to_deref(), ir::Value::LiteralI32(0));
     builder.jmp_if(after_free, zero_elements);
 
-    builder.cast(arr_mem_ptr.clone(), arr_field_ptr.clone().to_deref(), Type::U8.ptr());
+    builder.cast(arr_mem_ptr.clone(), arr_field_ptr.clone().to_deref(), ir::Type::U8.ptr());
     builder.free_mem(arr_mem_ptr);
 
-    builder.append(Instruction::Label(after_free));
+    builder.append(ir::Instruction::Label(after_free));
 
-    builder.mov(len_field_ptr.to_deref(), Value::LiteralI32(0));
-    builder.mov(arr_field_ptr.to_deref(), Value::LiteralNull);
+    builder.mov(len_field_ptr.to_deref(), ir::Value::LiteralI32(0));
+    builder.mov(arr_field_ptr.to_deref(), ir::Value::LiteralNull);
 
     let releaser_body = builder.finish();
 
@@ -1111,7 +1101,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &Type, stru
         Function::Local(FunctionDef {
             debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
             sig: FunctionSig {
-                return_ty: Type::Nothing,
+                return_ty: ir::Type::Nothing,
                 param_tys: vec![array_struct_ty.clone().ptr()],
             },
             body: releaser_body,
@@ -1125,7 +1115,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &Type, stru
         Function::Local(FunctionDef {
             debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
             sig: FunctionSig {
-                return_ty: Type::Nothing,
+                return_ty: ir::Type::Nothing,
                 param_tys: vec![array_struct_ty.clone().ptr()],
             },
             body: Vec::new(),
@@ -1140,11 +1130,11 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &Type, stru
 // for example, a class instance maybe be stored behind an `Any` reference,
 // at which point rc instructions must discover the actual class type
 // dynamically from the rc cell's class pointer/class ID
-fn gen_class_rc_boilerplate(module: &mut ModuleBuilder, class_ty: &Type) {
+fn gen_class_rc_boilerplate(module: &mut ModuleBuilder, class_ty: &ir::Type) {
     let resource_struct = class_ty
         .rc_resource_class_id()
         .and_then(|class_id| class_id.as_class())
         .expect("resource class of translated class type was not a struct");
 
-    module.runtime_type(&Type::Struct(resource_struct));
+    module.runtime_type(&ir::Type::Struct(resource_struct));
 }

@@ -1,25 +1,21 @@
+use crate::ir;
 use crate::metadata::Metadata;
-use crate::typ;
+use crate::module_builder::ModuleBuilder;
 use crate::syn;
+use crate::typ;
 use crate::ClosureIdentity;
-use crate::FieldID;
 use crate::FunctionInstance;
 use crate::Struct;
 use crate::StructFieldDef;
 use crate::StructIdentity;
-use crate::Type;
-use crate::TypeDefID;
-use crate::VirtualTypeID;
-use crate::CLOSURE_PTR_FIELD;
 use linked_hash_map::LinkedHashMap;
-use syn::Ident;
 use std::fmt;
-use crate::module_builder::ModuleBuilder;
+use syn::Ident;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FunctionSig {
-    pub return_ty: Type,
-    pub param_tys: Vec<Type>,
+    pub return_ty: ir::Type,
+    pub param_tys: Vec<ir::Type>,
 }
 
 impl fmt::Display for FunctionSig {
@@ -91,15 +87,15 @@ pub struct ClosureInstance {
     pub func_instance: FunctionInstance,
     
     // ID of the function type (not the closure function but the target type)
-    pub func_ty_id: TypeDefID,
+    pub func_ty_id: ir::TypeDefID,
     
     // ID of the implementation struct type of this closure
-    pub closure_id: TypeDefID,
+    pub closure_id: ir::TypeDefID,
 }
 
 impl ClosureInstance {
-    pub fn closure_ptr_ty(&self) -> Type {
-        Type::RcPointer(VirtualTypeID::Closure(self.func_ty_id))
+    pub fn closure_ptr_ty(&self) -> ir::Type {
+        ir::Type::RcPointer(ir::VirtualTypeID::Closure(self.func_ty_id))
     }
 }
 
@@ -118,22 +114,22 @@ pub fn translate_closure_struct(
     captures: &LinkedHashMap<Ident, typ::Type>,
     type_args: Option<&typ::TypeList>,
     module: &mut ModuleBuilder,
-) -> TypeDefID {
+) -> ir::TypeDefID {
     let id = module.metadata_mut().reserve_new_struct();
     
     let src_span = identity.src_span();
 
     let mut fields = LinkedHashMap::new();
     fields.insert(
-        CLOSURE_PTR_FIELD,
+        ir::CLOSURE_PTR_FIELD,
         StructFieldDef {
             name: None,
             rc: false,
-            ty: Type::Function(identity.virt_func_ty),
+            ty: ir::Type::Function(identity.virt_func_ty),
         },
     );
 
-    let mut field_id = FieldID(CLOSURE_PTR_FIELD.0 + 1);
+    let mut field_id = ir::FieldID(ir::CLOSURE_PTR_FIELD.0 + 1);
 
     for (capture_name, capture_ty) in captures {
         let ty = module.translate_type(capture_ty, type_args);

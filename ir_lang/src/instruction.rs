@@ -1,6 +1,9 @@
 use std::fmt;
 use common::span::Span;
-use crate::{Ref, Value, Type, LocalID, InterfaceID, MethodID, FieldID, TypeDefID, VirtualTypeID, RawInstructionFormatter, InstructionFormatter};
+use crate::formatter::{InstructionFormatter, RawInstructionFormatter};
+use crate::metadata::{InterfaceID, MethodID, TypeDefID};
+use crate::ty::{FieldID, Type, VirtualTypeID};
+use crate::val::{LocalID, Ref, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
@@ -263,11 +266,4 @@ impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:", self.0)
     }
-}
-
-pub fn jmp_exists(instructions: &[Instruction], to_label: Label) -> bool {
-    instructions.iter().any(|i| match i {
-        Instruction::Jump { dest } | Instruction::JumpIf { dest, .. } => *dest == to_label,
-        _ => false,
-    })
 }

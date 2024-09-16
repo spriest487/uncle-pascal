@@ -1,18 +1,10 @@
 use crate::builder::Builder;
 use crate::expr;
-use crate::metadata::InterfaceID;
-use crate::metadata::MethodID;
-use crate::metadata::VirtualTypeID;
-use crate::metadata::CLOSURE_PTR_FIELD;
 use crate::syn;
 use crate::typ;
-use crate::GlobalRef;
-use crate::Instruction;
-use crate::Ref;
-use crate::Type;
-use crate::Value;
 use syn::Ident;
 use typ::Typed;
+use ir_lang::*;
 
 fn translate_call_with_args(
     call_target: CallTarget,

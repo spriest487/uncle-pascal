@@ -1,29 +1,22 @@
-use crate::metadata::ty::*;
+use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::typ;
-use crate::InstructionFormatter;
 use crate::Metadata;
-use crate::RawInstructionFormatter;
-use syn::Path;
+use ir_lang::*;
 use std::borrow::Cow;
-use std::fmt;
 use typ::Specializable;
-use crate::module_builder::ModuleBuilder;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct NamePath {
-    pub path: Path<String>,
-    pub type_args: Option<Vec<Type>>,
+pub trait NamePathExt {
+    fn from_decl(name: typ::Symbol, metadata: &Metadata) -> Self;
+    fn from_ident_path(ident: &syn::IdentPath, type_args: Option<Vec<Type>>) -> Self;
+    fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self;
+    
+    fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
+        where TyFormat: Fn(&Type) -> Cow<'a, str>;
 }
 
-impl fmt::Display for NamePath {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        RawInstructionFormatter.format_name(self, f)
-    }
-}
-
-impl NamePath {
-    pub fn from_decl(name: typ::Symbol, metadata: &Metadata) -> Self {
+impl NamePathExt for NamePath {
+    fn from_decl(name: typ::Symbol, metadata: &Metadata) -> Self {
         let path_parts = name
             .qualified
             .into_parts()
@@ -45,27 +38,28 @@ impl NamePath {
         };
 
         NamePath {
-            path: Path::from_parts(path_parts),
+            path: path_parts.collect(),
             type_args,
         }
     }
 
-    pub fn from_ident_path(ident: &syn::IdentPath, type_args: Option<Vec<Type>>) -> Self {
-        let path = Path::from_parts(ident.iter().map(|ident| ident.to_string()));
+    fn from_ident_path(ident: &syn::IdentPath, type_args: Option<Vec<Type>>) -> Self {
+        let path = ident.iter()
+            .map(|ident| ident.to_string())
+            .collect();
 
         NamePath { path, type_args }
     }
 
-    pub fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self {
+    fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self {
         NamePath {
-            path: Path::from_parts(iter),
+            path: iter.into_iter().collect(),
             type_args: None,
         }
     }
 
-    pub fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
-    where
-        TyFormat: Fn(&Type) -> Cow<'a, str>,
+    fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
+        where TyFormat: Fn(&Type) -> Cow<'a, str>,
     {
         let mut buf = self.path.join("::");
 
@@ -104,12 +98,13 @@ pub fn translate_name(
         }
     }
 
-    let path_parts = name
+    let path = name
         .qualified
         .clone()
         .into_parts()
         .into_iter()
-        .map(|ident| ident.to_string());
+        .map(|ident| ident.to_string())
+        .collect();
 
     let type_args = name.type_args.as_ref().map(|name_type_args_list| {
         name_type_args_list
@@ -120,7 +115,7 @@ pub fn translate_name(
     });
 
     NamePath {
-        path: Path::from_parts(path_parts),
+        path,
         type_args,
     }
 }

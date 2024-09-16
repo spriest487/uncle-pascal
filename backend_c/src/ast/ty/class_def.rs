@@ -1,19 +1,17 @@
-use crate::ast::{
-    Expr, FunctionDecl, FunctionDef, FunctionName, GlobalName, Module, Statement, Type,
-    TypeDefName,
-};
-use intermediate::{
-    metadata::{
-        self, FunctionID, InterfaceID, MethodID, TypeDefID, VirtualTypeID,
-        DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID,
-    },
-    LocalID,
-};
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::Write,
-};
-use intermediate::metadata::DynArrayRuntimeType;
+use crate::ast::Expr;
+use crate::ast::FunctionDecl;
+use crate::ast::FunctionDef;
+use crate::ast::FunctionName;
+use crate::ast::GlobalName;
+use crate::ast::Module;
+use crate::ast::Statement;
+use crate::ast::Type;
+use crate::ast::TypeDefName;
+use intermediate::metadata as ir_meta;
+use crate::ir;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::fmt::Write;
 
 #[derive(Clone, Debug)]
 struct MethodImplFunc {
@@ -24,16 +22,16 @@ struct MethodImplFunc {
 
 impl MethodImplFunc {
     fn new(
-        iface_id: InterfaceID,
-        self_ty_id: TypeDefID,
-        method_id: MethodID,
-        iface_method: &intermediate::metadata::Method,
-        impl_func_id: FunctionID,
-        metadata: &metadata::Metadata,
+        iface_id: ir::InterfaceID,
+        self_ty_id: ir::TypeDefID,
+        method_id: ir::MethodID,
+        iface_method: &ir_meta::Method,
+        impl_func_id: ir::FunctionID,
+        metadata: &ir_meta::Metadata,
         module: &mut Module,
     ) -> Self {
-        let class_ty = intermediate::Type::RcPointer(VirtualTypeID::Class(self_ty_id));
-        let iface_ty = intermediate::Type::RcPointer(VirtualTypeID::Interface(iface_id));
+        let class_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(self_ty_id));
+        let iface_ty = ir::Type::RcPointer(ir::VirtualTypeID::Interface(iface_id));
 
         let impl_func_name = FunctionName::ID(impl_func_id);
         let vcall_wrapper_name = FunctionName::MethodWrapper(iface_id, method_id, self_ty_id);
@@ -63,7 +61,7 @@ impl MethodImplFunc {
     }
 
     fn gen_vcall_wrapper(&self, module: &Module) -> FunctionDef {
-        let mut next_param_local = LocalID(match &self.vcall_wrapper_decl.return_ty {
+        let mut next_param_local = ir::LocalID(match &self.vcall_wrapper_decl.return_ty {
             Type::Void => 0,
             _ => 1,
         });
@@ -90,7 +88,7 @@ impl MethodImplFunc {
             Type::Void => Statement::Expr(call_impl_func),
 
             _ => {
-                let result_expr = Expr::Local(LocalID(0));
+                let result_expr = Expr::Local(ir::LocalID(0));
                 let casted_result = call_impl_func.cast(self.vcall_wrapper_decl.return_ty.clone());
                 Statement::Expr(Expr::assign(result_expr, casted_result))
             },
@@ -105,33 +103,33 @@ impl MethodImplFunc {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
-    method_impls: BTreeMap<MethodID, MethodImplFunc>,
+    method_impls: BTreeMap<ir::MethodID, MethodImplFunc>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Class {
     name: String,
     
-    struct_id: TypeDefID,
-    impls: HashMap<InterfaceID, InterfaceImpl>,
+    struct_id: ir::TypeDefID,
+    impls: HashMap<ir::InterfaceID, InterfaceImpl>,
 
     disposer: Option<MethodImplFunc>,
     cleanup_func: FunctionName,
 
     // if this class is a dyn array, the RTTI for it
-    dyn_array_type_info: Option<DynArrayRuntimeType>,
+    dyn_array_type_info: Option<ir_meta::DynArrayRuntimeType>,
 }
 
 impl Class {
     pub fn translate(
-        struct_id: TypeDefID,
-        _struct_def: &metadata::Struct,
-        metadata: &metadata::Metadata,
+        struct_id: ir::TypeDefID,
+        _struct_def: &ir_meta::Struct,
+        metadata: &ir_meta::Metadata,
         module: &mut Module,
     ) -> Self {
-        let name = module.type_names[&metadata::Type::Struct(struct_id)].clone();
+        let name = module.type_names[&ir::Type::Struct(struct_id)].clone();
         
-        let class_ty = intermediate::Type::RcPointer(VirtualTypeID::Class(struct_id));
+        let class_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
 
         let mut impls = HashMap::new();
 
@@ -164,15 +162,15 @@ impl Class {
         }
 
         let disposer = impls
-            .get(&metadata::DISPOSABLE_ID)
+            .get(&ir::DISPOSABLE_ID)
             .and_then(|disposable_impl| {
                 disposable_impl
                     .method_impls
-                    .get(&metadata::DISPOSABLE_DISPOSE_INDEX)
+                    .get(&ir::DISPOSABLE_DISPOSE_INDEX)
                     .cloned()
             });
 
-        let resource_ty = metadata::Type::Struct(struct_id);
+        let resource_ty = ir::Type::Struct(struct_id);
         let cleanup_func = metadata
             .get_runtime_type(&resource_ty)
             .map(|funcs| FunctionName::ID(funcs.release))
@@ -310,8 +308,8 @@ impl Class {
 
         if let Some(..) = &self.disposer {
             let dispose_wrapper = FunctionName::MethodWrapper(
-                DISPOSABLE_ID,
-                DISPOSABLE_DISPOSE_INDEX,
+                ir::DISPOSABLE_ID,
+                ir::DISPOSABLE_DISPOSE_INDEX,
                 self.struct_id,
             );
             writeln!(class_init, "  .disposer = &{},", dispose_wrapper).unwrap();
@@ -371,14 +369,14 @@ impl Class {
 }
 
 pub struct Interface {
-    id: InterfaceID,
+    id: ir::InterfaceID,
     methods: Vec<FunctionDecl>,
 }
 
 impl Interface {
     pub fn translate(
-        iface_id: InterfaceID,
-        iface: &metadata::Interface,
+        iface_id: ir::InterfaceID,
+        iface: &ir_meta::Interface,
         module: &mut Module,
     ) -> Self {
         let methods = iface
@@ -387,7 +385,7 @@ impl Interface {
             .enumerate()
             .map(|(method_index, method)| {
                 let return_ty = Type::from_metadata(&method.return_ty, module);
-                let method_id = MethodID(method_index);
+                let method_id = ir::MethodID(method_index);
                 let params = method
                     .params
                     .iter()
@@ -435,8 +433,8 @@ impl Interface {
             table.push_str(" {\n");
 
             let (self_arg_local, arg_offset) = match method.return_ty {
-                Type::Void => (Expr::Local(LocalID(0)), 0),
-                _ => (Expr::Local(LocalID(1)), 1),
+                Type::Void => (Expr::Local(ir::LocalID(0)), 0),
+                _ => (Expr::Local(ir::LocalID(1)), 1),
             };
 
             let self_arg_rc = self_arg_local.cast(Type::Rc.ptr());

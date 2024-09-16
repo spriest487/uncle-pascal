@@ -1,9 +1,14 @@
-use crate::ast::{FieldName, Module, Type, TypeDecl, TypeDefName};
-use intermediate::{metadata, metadata::TypeDefID};
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-};
+use crate::ast::FieldName;
+use crate::ast::Module;
+use crate::ast::Type;
+use crate::ast::TypeDecl;
+use crate::ast::TypeDefName;
+use intermediate::metadata;
+use ir_lang::*;
+use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
+use crate::ir;
 
 #[derive(Clone, Eq)]
 pub struct VariantCaseDef {
@@ -61,7 +66,7 @@ impl VariantDef {
             })
             .collect();
 
-        let variant_ty = metadata::Type::Variant(id);
+        let variant_ty = ir::Type::Variant(id);
         let comment = module.pretty_type(&variant_ty).to_string();
 
         Self {

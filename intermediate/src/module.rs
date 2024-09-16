@@ -1,33 +1,27 @@
 use crate::metadata::*;
 use crate::write_instruction_list;
 use crate::ExternalFunctionRef;
-use crate::FieldID;
 use crate::Function;
 use crate::FunctionDef;
-use crate::FunctionID;
-use crate::Instruction;
-use crate::InstructionFormatter;
 use crate::Metadata;
 use crate::StaticClosure;
-use crate::StaticClosureID;
-use crate::Type;
 use crate::TypeDef;
-use crate::TypeDefID;
-use crate::VirtualTypeID;
+use crate::ir;
 use common::span::Span;
 use std::collections::HashMap;
 use std::fmt;
+use ir_lang::InstructionFormatter;
 
 #[derive(Clone, Debug)]
 pub struct Module {
     pub(crate) metadata: Metadata,
 
-    pub(crate) functions: HashMap<FunctionID, Function>,
+    pub(crate) functions: HashMap<ir::FunctionID, Function>,
 
     pub(crate) static_closures: Vec<StaticClosure>,
-    pub(crate) function_static_closures: HashMap<FunctionID, StaticClosureID>,
+    pub(crate) function_static_closures: HashMap<ir::FunctionID, ir::StaticClosureID>,
 
-    pub(crate) init: Vec<Instruction>,
+    pub(crate) init: Vec<ir::Instruction>,
     
     pub(crate) span: Option<Span>,
 }
@@ -50,7 +44,7 @@ impl Module {
         module
     }
 
-    pub fn closure_types(&self) -> impl Iterator<Item = TypeDefID> + '_ {
+    pub fn closure_types(&self) -> impl Iterator<Item = ir::TypeDefID> + '_ {
         self.metadata.closures().iter().cloned()
     }
 
@@ -58,7 +52,7 @@ impl Module {
         &self.static_closures
     }
 
-    pub fn find_dyn_array_struct(&self, elem_ty: &Type) -> Option<TypeDefID> {
+    pub fn find_dyn_array_struct(&self, elem_ty: &ir::Type) -> Option<ir::TypeDefID> {
         self.metadata.find_dyn_array_struct(elem_ty)
     }
     
@@ -66,7 +60,7 @@ impl Module {
         self.span.as_ref()
     }
     
-    pub fn init(&self) -> &[Instruction] {
+    pub fn init(&self) -> &[ir::Instruction] {
         self.init.as_slice()
     }
     
@@ -74,7 +68,7 @@ impl Module {
         &self.metadata
     }
     
-    pub fn functions(&self) -> &HashMap<FunctionID, Function> {
+    pub fn functions(&self) -> &HashMap<ir::FunctionID, Function> {
         &self.functions
     }
 }
@@ -98,7 +92,7 @@ impl fmt::Display for Module {
                         StructIdentity::Closure(identity) => {
                             let func_ty_name = self
                                 .metadata
-                                .pretty_ty_name(&Type::Function(identity.virt_func_ty));
+                                .pretty_ty_name(&ir::Type::Function(identity.virt_func_ty));
                             write!(
                                 f,
                                 "closure of {} @ {}:{}:{}",
@@ -117,9 +111,9 @@ impl fmt::Display for Module {
 
                     writeln!(f)?;
 
-                    let max_field_id = s.fields.keys().max().cloned().unwrap_or(FieldID(0));
+                    let max_field_id = s.fields.keys().max().cloned().unwrap_or(ir::FieldID(0));
                     let fields = (0..=max_field_id.0).filter_map(|id| {
-                        let field = s.fields.get(&FieldID(id))?;
+                        let field = s.fields.get(&ir::FieldID(id))?;
                         Some((id, field))
                     });
 
@@ -134,8 +128,8 @@ impl fmt::Display for Module {
                         writeln!(f)?;
                     }
 
-                    let ty_as_struct = Type::Struct(*id);
-                    let ty_as_class = Type::RcPointer(VirtualTypeID::Class(*id));
+                    let ty_as_struct = ir::Type::Struct(*id);
+                    let ty_as_class = ir::Type::RcPointer(ir::VirtualTypeID::Class(*id));
                     let mut iface_impls = self.metadata.impls(&ty_as_struct);
                     iface_impls.extend(self.metadata.impls(&ty_as_class));
 

@@ -1,4 +1,5 @@
 use crate::heap::NativeHeapError;
+use crate::ir;
 use crate::marshal::MarshalError;
 use crate::stack::StackError;
 use crate::stack::StackTrace;
@@ -6,9 +7,8 @@ use crate::Pointer;
 use common::span::Span;
 use common::DiagnosticLabel;
 use common::DiagnosticOutput;
-use intermediate::Instruction;
-use intermediate::InstructionFormatter;
-use intermediate::RawInstructionFormatter;
+use ir_lang::InstructionFormatter;
+use ir_lang::RawInstructionFormatter;
 use std::fmt;
 
 #[derive(Debug)]
@@ -26,7 +26,7 @@ pub enum ExecError {
     IllegalDereference {
         ptr: Pointer,
     },
-    IllegalInstruction(Instruction),
+    IllegalInstruction(ir::Instruction),
     IllegalState {
         msg: String,
     },

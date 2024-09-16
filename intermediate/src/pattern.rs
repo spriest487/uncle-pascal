@@ -1,16 +1,13 @@
 use std::borrow::Cow;
 use crate::typ::specialize_generic_name;
 use crate::typ::TypePattern;
-use crate::Type;
-use crate::Value;
-use crate::Ref;
 use crate::Builder;
-use crate::Instruction;
+use crate::ir;
 
 pub struct PatternMatchBinding {
     pub name: String,
-    pub ty: Type,
-    pub binding_ref: Ref,
+    pub ty: ir::Type,
+    pub binding_ref: ir::Ref,
 }
 
 impl PatternMatchBinding {
@@ -30,14 +27,14 @@ impl PatternMatchBinding {
 }
 
 pub struct PatternMatchOutput {
-    pub is_match: Value,
+    pub is_match: ir::Value,
     pub bindings: Vec<PatternMatchBinding>,
 }
 
 pub fn translate_pattern_match(
     pattern: &TypePattern,
-    target_val: &Ref,
-    target_ty: &Type,
+    target_val: &ir::Ref,
+    target_ty: &ir::Type,
     builder: &mut Builder
 ) -> PatternMatchOutput {
     match pattern {
@@ -52,7 +49,7 @@ pub fn translate_pattern_match(
                     // this needs to create a cast, even for static non-ref types - the binding
                     // will be of the supposed type even if the check will always fail, and the
                     // instructions that follow must be valid
-                    let binding_val_ptr = builder.local_temp(Type::Nothing.ptr());
+                    let binding_val_ptr = builder.local_temp(ir::Type::Nothing.ptr());
                     builder.addr_of(binding_val_ptr.clone(), target_val.clone());
 
                     let binding_ref_ptr = builder.local_temp(is_ty.clone().ptr());
@@ -105,7 +102,7 @@ pub fn translate_pattern_match(
 
             let (struct_id, case_index, case_ty) =
                 builder.translate_variant_case(&variant, case);
-            let variant_ty = Type::Variant(struct_id);
+            let variant_ty = ir::Type::Variant(struct_id);
 
             let bindings = match data_binding {
                 Some(binding) => {
@@ -117,7 +114,7 @@ pub fn translate_pattern_match(
 
                     let data_ptr = builder.local_temp(case_ty.clone().ptr());
 
-                    builder.append(Instruction::VariantData {
+                    builder.append(ir::Instruction::VariantData {
                         out: data_ptr.clone(),
                         a: target_val.clone(),
                         of_ty: variant_ty.clone(),
@@ -137,7 +134,7 @@ pub fn translate_pattern_match(
             let is = translate_is_variant(target_val.clone(), variant_ty, case_index, builder);
 
             PatternMatchOutput {
-                is_match: Value::Ref(is),
+                is_match: ir::Value::Ref(is),
                 bindings,
             }
         },
@@ -146,10 +143,10 @@ pub fn translate_pattern_match(
             let (struct_id, case_index, _case_ty) =
                 builder.translate_variant_case(variant, case);
 
-            let variant_ty = Type::Variant(struct_id);
+            let variant_ty = ir::Type::Variant(struct_id);
             let is = translate_is_variant(target_val.clone(), variant_ty, case_index, builder);
 
-            let is_not = builder.not_to_val(Value::Ref(is));
+            let is_not = builder.not_to_val(ir::Value::Ref(is));
 
             PatternMatchOutput {
                 is_match: is_not,
@@ -159,51 +156,51 @@ pub fn translate_pattern_match(
     }
 }
 
-pub fn translate_is_ty(val: Ref, val_ty: &Type, ty: &Type, builder: &mut Builder) -> Value {
+pub fn translate_is_ty(val: ir::Ref, val_ty: &ir::Type, ty: &ir::Type, builder: &mut Builder) -> ir::Value {
     if val_ty.is_rc() {
         match ty {
-            Type::RcPointer(class_id) => {
+            ir::Type::RcPointer(class_id) => {
                 // checking if one RC type (probably an interface) is an instance of another RC
                 // type (probably a class): this is a runtime check
-                let result = builder.local_temp(Type::Bool);
+                let result = builder.local_temp(ir::Type::Bool);
 
-                builder.append(Instruction::ClassIs {
+                builder.append(ir::Instruction::ClassIs {
                     out: result.clone(),
-                    a: Value::Ref(val),
+                    a: ir::Value::Ref(val),
                     class_id: *class_id,
                 });
 
-                Value::Ref(result)
+                ir::Value::Ref(result)
             },
 
             // value is a value type, we wanted an RC type
-            _ => Value::LiteralBool(false),
+            _ => ir::Value::LiteralBool(false),
         }
     } else {
         // value types must match exactly
         let same_ty = *val_ty == *ty;
-        Value::LiteralBool(same_ty)
+        ir::Value::LiteralBool(same_ty)
     }
 }
 
 fn translate_is_variant(
-    val: Ref,
-    variant_ty: Type,
+    val: ir::Ref,
+    variant_ty: ir::Type,
     case_index: usize,
     builder: &mut Builder,
-) -> Ref {
-    let tag_ptr = builder.local_temp(Type::I32.ptr());
-    builder.append(Instruction::VariantTag {
+) -> ir::Ref {
+    let tag_ptr = builder.local_temp(ir::Type::I32.ptr());
+    builder.append(ir::Instruction::VariantTag {
         out: tag_ptr.clone(),
         a: val,
         of_ty: variant_ty,
     });
 
-    let is = builder.local_temp(Type::Bool);
-    builder.append(Instruction::Eq {
+    let is = builder.local_temp(ir::Type::Bool);
+    builder.append(ir::Instruction::Eq {
         out: is.clone(),
-        a: Value::Ref(tag_ptr.to_deref()),
-        b: Value::LiteralI32(case_index as i32), //todo: proper size type,
+        a: ir::Value::Ref(tag_ptr.to_deref()),
+        b: ir::Value::LiteralI32(case_index as i32), //todo: proper size type,
     });
 
     is

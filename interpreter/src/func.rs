@@ -1,11 +1,13 @@
-use crate::{
-    marshal::{MarshalResult, Marshaller},
-    func::ffi::FfiInvoker,
-    ExecResult, Interpreter,
-};
-use intermediate::{ExternalFunctionRef, FunctionDef, Type};
-use std::fmt;
+use crate::func::ffi::FfiInvoker;
+use crate::marshal::MarshalResult;
+use crate::marshal::Marshaller;
+use crate::ExecResult;
+use crate::Interpreter;
 use intermediate::metadata::Metadata;
+use intermediate::ir;
+use intermediate::ExternalFunctionRef;
+use intermediate::FunctionDef;
+use std::fmt;
 
 pub mod ffi;
 
@@ -13,8 +15,8 @@ pub type BuiltinFn = fn(state: &mut Interpreter) -> ExecResult<()>;
 
 pub struct BuiltinFunction {
     pub func: BuiltinFn,
-    pub return_ty: Type,
-    pub param_tys: Vec<Type>,
+    pub return_ty: ir::Type,
+    pub param_tys: Vec<ir::Type>,
 
     pub debug_name: String,
 }
@@ -22,8 +24,8 @@ pub struct BuiltinFunction {
 pub struct FfiFunction {
     debug_name: String,
 
-    return_ty: Type,
-    param_tys: Vec<Type>,
+    return_ty: ir::Type,
+    param_tys: Vec<ir::Type>,
 
     invoker: FfiInvoker,
 }
@@ -53,7 +55,7 @@ impl Function {
         Ok(func)
     }
 
-    pub fn return_ty(&self) -> &Type {
+    pub fn return_ty(&self) -> &ir::Type {
         match self {
             Function::Builtin(def) => &def.return_ty,
             Function::External(def) => &def.return_ty,
@@ -61,7 +63,7 @@ impl Function {
         }
     }
 
-    pub fn param_tys(&self) -> &[Type] {
+    pub fn param_tys(&self) -> &[ir::Type] {
         match self {
             Function::Builtin(builtin_fn) => &builtin_fn.param_tys,
             Function::External(external_fn) => &external_fn.param_tys,
@@ -110,7 +112,7 @@ impl Function {
         }
 
         let return_size = match self.return_ty() {
-            Type::Nothing => 0,
+            ir::Type::Nothing => 0,
             return_ty => marshaller.get_ty(return_ty)?.size(),
         };
 

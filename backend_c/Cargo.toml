@@ -7,5 +7,6 @@ edition = "2021"
 [dependencies]
 intermediate = { path = "../intermediate" }
 common = { path = "../common" }
+ir-lang = { path = "../ir_lang" }
 
-topological-sort = "0.1.0"
+topological-sort = "0.2.2"

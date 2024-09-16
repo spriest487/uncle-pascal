@@ -1,6 +1,9 @@
+use crate::ast::FuncAliasDef;
+use crate::ast::StructDef;
+use crate::ast::TypeDecl;
+use crate::ast::VariantDef;
+use ir_lang::*;
 use std::fmt;
-use intermediate::metadata::TypeDefID;
-use crate::ast::{FuncAliasDef, StructDef, TypeDecl, VariantDef};
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub enum TypeDef {

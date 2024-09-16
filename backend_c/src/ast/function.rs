@@ -1,14 +1,16 @@
-use crate::ast::{Builder, Expr, InfixOp, Module, Statement, Type, TypeDecl};
-use intermediate::{
-    self as ir,
-    metadata::{
-        FunctionID,
-        InterfaceID,
-        MethodID,
-        TypeDefID
-    },
-    LocalID,
-};
+use crate::ast::Builder;
+use crate::ast::Expr;
+use crate::ast::InfixOp;
+use crate::ast::Module;
+use crate::ast::Statement;
+use crate::ast::Type;
+use crate::ast::TypeDecl;
+use intermediate as ir;
+use ir_lang::FunctionID;
+use ir_lang::InterfaceID;
+use ir_lang::LocalID;
+use ir_lang::MethodID;
+use ir_lang::TypeDefID;
 use std::fmt;
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]

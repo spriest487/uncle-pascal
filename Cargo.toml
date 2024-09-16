@@ -20,6 +20,6 @@ topological-sort = "0.2.2"
 members = [
     "common",
     "frontend",
-    "intermediate", 
+    "intermediate", "ir_lang", 
     "test_runner",
 ]

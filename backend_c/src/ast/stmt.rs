@@ -1,22 +1,20 @@
-use crate::ast::{
-    expr::{Expr, InfixOp, PrefixOp},
-    ty::FieldName,
-    FunctionName, Module, Type,
-};
-use intermediate::{
-    self as ir,
-    metadata::{ty::VirtualTypeID, StringID, TypeDefID},
-    Label, StaticClosureID,
-};
+use crate::ast::expr::Expr;
+use crate::ast::expr::InfixOp;
+use crate::ast::expr::PrefixOp;
+use crate::ast::ty::FieldName;
+use crate::ast::FunctionName;
+use crate::ast::Module;
+use crate::ast::Type;
+use ir_lang as ir;
 use std::fmt;
 
 #[derive(Clone, Debug)]
 pub enum GlobalName {
-    ClassInstance(TypeDefID),
+    ClassInstance(ir::TypeDefID),
 
-    StringLiteral(StringID),
+    StringLiteral(ir::StringID),
 
-    StaticClosure(StaticClosureID),
+    StaticClosure(ir::StaticClosureID),
 }
 
 impl fmt::Display for GlobalName {
@@ -39,8 +37,8 @@ pub enum Statement {
     Expr(Expr),
     BeginBlock,
     EndBlock,
-    Label(Label),
-    Goto(Label),
+    Label(ir::Label),
+    Goto(ir::Label),
     Comment(String),
     IfCond {
         cond: Expr,
@@ -406,7 +404,7 @@ impl<'a> Builder<'a> {
         )))
     }
 
-    fn translate_is(&mut self, out: &ir::Ref, a: &ir::Value, class_id: VirtualTypeID) {
+    fn translate_is(&mut self, out: &ir::Ref, a: &ir::Value, class_id: ir::VirtualTypeID) {
         let actual_expr = Expr::translate_val(a, self.module);
 
         // get class ptr from rc
@@ -414,22 +412,22 @@ impl<'a> Builder<'a> {
         let actual_class_ptr = rc_ptr.arrow(FieldName::RcClass);
 
         let is = match class_id {
-            VirtualTypeID::Class(struct_id) => {
+            ir::VirtualTypeID::Class(struct_id) => {
                 let is_class_ptr = Expr::class_ptr(struct_id);
                 Expr::infix_op(actual_class_ptr, InfixOp::Eq, is_class_ptr)
             },
 
-            VirtualTypeID::Any => {
+            ir::VirtualTypeID::Any => {
                 // `is Any` is true for anything!
                 Expr::LitBool(true)
             },
 
-            VirtualTypeID::Closure(_func_ty_id) => {
+            ir::VirtualTypeID::Closure(_func_ty_id) => {
                 // TODO - can you use `is` on a function type?
                 Expr::LitBool(false)
             },
 
-            VirtualTypeID::Interface(iface_id) => {
+            ir::VirtualTypeID::Interface(iface_id) => {
                 let is_impl_func = Expr::Function(FunctionName::IsImpl);
 
                 Expr::call(
@@ -460,7 +458,7 @@ impl<'a> Builder<'a> {
         }));
     }
 
-    fn translate_rc_new(&mut self, out: &ir::Ref, struct_id: TypeDefID) {
+    fn translate_rc_new(&mut self, out: &ir::Ref, struct_id: ir::TypeDefID) {
         let ty_class_ptr = Expr::class_ptr(struct_id);
 
         let new_rc = Expr::Call {

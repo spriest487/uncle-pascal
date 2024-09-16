@@ -5,7 +5,7 @@ mod variant_def;
 
 pub use self::{class_def::*, struct_def::*, type_def::*, variant_def::*};
 use crate::ast::Module;
-use intermediate::metadata;
+use crate::ir;
 use std::fmt;
 
 #[allow(unused)]
@@ -48,31 +48,31 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn from_metadata(ty: &metadata::Type, module: &mut Module) -> Type {
+    pub fn from_metadata(ty: &ir::Type, module: &mut Module) -> Type {
         match ty {
-            metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
-            metadata::Type::Function(id) => Type::DefinedType(TypeDefName::Alias(*id)),
-            metadata::Type::RcPointer(metadata::VirtualTypeID::Class(id)) => {
+            ir::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
+            ir::Type::Function(id) => Type::DefinedType(TypeDefName::Alias(*id)),
+            ir::Type::RcPointer(ir::VirtualTypeID::Class(id)) => {
                 Type::DefinedType(TypeDefName::Struct(*id)).ptr()
             },
-            metadata::Type::RcPointer(..) => Type::Void.ptr(),
-            metadata::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
-            metadata::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
-            metadata::Type::Nothing => Type::Void,
-            metadata::Type::Bool => Type::Bool,
-            metadata::Type::F32 => Type::Float,
-            metadata::Type::I8 => Type::SChar,
-            metadata::Type::U8 => Type::UChar,
-            metadata::Type::I16 => Type::Int16,
-            metadata::Type::U16 => Type::UInt16,
-            metadata::Type::I32 => Type::Int32,
-            metadata::Type::U32 => Type::UInt32,
-            metadata::Type::I64 => Type::Int64,
-            metadata::Type::U64 => Type::UInt64,
-            metadata::Type::ISize => Type::PtrDiffType,
-            metadata::Type::USize => Type::SizeType,
+            ir::Type::RcPointer(..) => Type::Void.ptr(),
+            ir::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
+            ir::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
+            ir::Type::Nothing => Type::Void,
+            ir::Type::Bool => Type::Bool,
+            ir::Type::F32 => Type::Float,
+            ir::Type::I8 => Type::SChar,
+            ir::Type::U8 => Type::UChar,
+            ir::Type::I16 => Type::Int16,
+            ir::Type::U16 => Type::UInt16,
+            ir::Type::I32 => Type::Int32,
+            ir::Type::U32 => Type::UInt32,
+            ir::Type::I64 => Type::Int64,
+            ir::Type::U64 => Type::UInt64,
+            ir::Type::ISize => Type::PtrDiffType,
+            ir::Type::USize => Type::SizeType,
 
-            metadata::Type::Array { element, dim } => {
+            ir::Type::Array { element, dim } => {
                 let element = Type::from_metadata(element, module);
                 module.make_array_type(element, *dim)
             },

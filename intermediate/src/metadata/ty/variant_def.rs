@@ -1,21 +1,20 @@
+use crate::ir;
 use crate::module_builder::ModuleBuilder;
 use crate::translate_name;
 use crate::typ;
-use crate::NamePath;
-use crate::Type;
 use common::span::Span;
 use common::span::Spanned;
 
 #[derive(Clone, Debug)]
 pub struct VariantCase {
     pub name: String,
-    pub ty: Option<Type>,
+    pub ty: Option<ir::Type>,
     pub rc: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct VariantDef {
-    pub name: NamePath,
+    pub name: ir::NamePath,
     pub cases: Vec<VariantCase>,
 
     pub src_span: Option<Span>,

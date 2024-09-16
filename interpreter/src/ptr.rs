@@ -4,14 +4,14 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
+use intermediate::ir;
 use intermediate::metadata::Metadata;
-use intermediate::Type;
 
 /// pointer to native memory that is marshalled to/from value cells when accessed
 #[derive(Debug, Clone, Eq)]
 pub struct Pointer {
     pub addr: usize,
-    pub ty: Type,
+    pub ty: ir::Type,
 }
 
 impl fmt::Display for Pointer {
@@ -21,7 +21,7 @@ impl fmt::Display for Pointer {
 }
 
 impl Pointer {
-    pub fn null(ty: Type) -> Self {
+    pub fn null(ty: ir::Type) -> Self {
         Self {
             addr: 0,
             ty
@@ -36,7 +36,7 @@ impl Pointer {
         state.load_indirect(self)
     }
 
-    pub fn reinterpret(&self, ty: Type) -> Self {
+    pub fn reinterpret(&self, ty: ir::Type) -> Self {
         Self {
             addr: self.addr,
             ty,

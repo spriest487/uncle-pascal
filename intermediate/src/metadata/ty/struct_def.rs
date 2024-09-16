@@ -2,12 +2,10 @@ use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::translate_name;
 use crate::typ;
-use crate::NamePath;
-use crate::Type;
-use crate::TypeDefID;
 use common::span::Location;
 use common::span::Span;
 use common::span::Spanned;
+use ir_lang::*;
 use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -134,15 +132,6 @@ impl fmt::Display for Struct {
                 identity.virt_func_ty, identity.module, identity.line, identity.col
             ),
         }
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct FieldID(pub usize);
-
-impl fmt::Display for FieldID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

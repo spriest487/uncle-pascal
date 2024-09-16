@@ -1,8 +1,9 @@
+use crate::instruction::Instruction;
+use crate::metadata::{InterfaceID, MethodID};
+use crate::ty::{FieldID, Type, VirtualTypeID};
+use crate::val::{Ref, Value};
+use crate::NamePath;
 use std::{cell::Cell, fmt};
-
-use crate::{metadata::*, GlobalRef, Instruction, Ref, Value, Type};
-use crate::name_path::NamePath;
-use crate::ty::{VirtualTypeID, FieldID};
 
 pub trait InstructionFormatter {
     fn format_instruction<W: fmt::Write>(
@@ -411,120 +412,6 @@ impl InstructionFormatter for RawInstructionFormatter {
         f: &mut dyn fmt::Write,
     ) -> fmt::Result {
         write!(f, "data_{}", tag)
-    }
-}
-
-impl InstructionFormatter for Metadata {
-    fn format_type(&self, ty: &Type, f: &mut dyn fmt::Write) -> fmt::Result {
-        write!(f, "{}", self.pretty_ty_name(ty))
-    }
-
-    fn format_val(&self, val: &Value, f: &mut dyn fmt::Write) -> fmt::Result {
-        match val {
-            Value::Ref(r) => self.format_ref(r, f),
-            _ => RawInstructionFormatter.format_val(val, f),
-        }
-    }
-
-    fn format_ref(&self, r: &Ref, f: &mut dyn fmt::Write) -> fmt::Result {
-        match r {
-            Ref::Global(GlobalRef::StringLiteral(string_id)) => match self.get_string(*string_id) {
-                Some(string_lit) => write!(f, "'{}'", string_lit),
-                None => write!(f, "{}", r),
-            },
-
-            Ref::Global(GlobalRef::Function(id)) => {
-                let func_name = self.get_function(*id).and_then(|f| f.global_name.as_ref());
-
-                match func_name {
-                    Some(name) => write!(f, "{}", name),
-
-                    None => {
-                        let find_iface_impl = self.ifaces().find_map(|(_id, iface)| {
-                            iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
-                                let method_id = iface_impl.methods.iter().find_map(
-                                    |(method_id, func_id)| {
-                                        if *func_id == *id {
-                                            Some(method_id)
-                                        } else {
-                                            None
-                                        }
-                                    },
-                                )?;
-
-                                let method = iface.get_method(*method_id).unwrap();
-
-                                Some((&iface.name, impl_ty, &method.name))
-                            })
-                        });
-
-                        match find_iface_impl {
-                            Some((iface_name, impl_ty, method_name)) => {
-                                write!(f, "{}.{} impl for ", iface_name, method_name)?;
-                                self.format_type(impl_ty, f)
-                            }
-
-                            None => write!(f, "{}", r),
-                        }
-                    }
-                }
-            }
-
-            _ => RawInstructionFormatter.format_ref(r, f),
-        }
-    }
-
-    fn format_method(
-        &self,
-        iface_id: InterfaceID,
-        method: MethodID,
-        f: &mut dyn fmt::Write,
-    ) -> fmt::Result {
-        let iface = match self.get_iface_def(iface_id) {
-            Some(iface) => iface,
-            None => return RawInstructionFormatter.format_method(iface_id, method, f),
-        };
-
-        let method = match iface.get_method(method) {
-            Some(method) => method,
-            None => {
-                return RawInstructionFormatter.format_method(iface_id, method, f);
-            }
-        };
-
-        write!(f, "{}", method.name)
-    }
-
-    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut dyn fmt::Write) -> fmt::Result {
-        let field_name = of_ty
-            .as_struct()
-            .or_else(|| match of_ty.rc_resource_class_id()? {
-                VirtualTypeID::Class(struct_id) => Some(struct_id),
-                _ => None,
-            })
-            .and_then(|struct_id| self.get_struct_def(struct_id))
-            .and_then(|struct_def| struct_def.fields.get(&field))
-            .and_then(|field| field.name.as_ref());
-
-        match field_name {
-            Some(name) => write!(f, "{}", name),
-            _ => RawInstructionFormatter.format_field(of_ty, field, f),
-        }
-    }
-
-    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut dyn fmt::Write) -> fmt::Result {
-        let case_name = match of_ty {
-            Type::Variant(id) => self
-                .get_variant_def(*id)
-                .and_then(|variant| variant.cases.get(tag))
-                .map(|case| &case.name),
-            _ => None,
-        };
-
-        match case_name {
-            Some(name) => write!(f, "{}", name),
-            _ => RawInstructionFormatter.format_variant_case(of_ty, tag, f),
-        }
     }
 }
 

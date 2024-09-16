@@ -1,29 +1,25 @@
 use crate::module_builder::ModuleBuilder;
 use crate::translate_name;
 use crate::typ;
-use crate::FunctionID;
-use crate::MethodID;
-use crate::NamePath;
-use crate::Type;
-use crate::VirtualTypeID;
+use crate::ir;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct Method {
     pub name: String,
-    pub return_ty: Type,
-    pub params: Vec<Type>,
+    pub return_ty: ir::Type,
+    pub params: Vec<ir::Type>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Interface {
-    pub name: NamePath,
+    pub name: ir::NamePath,
     pub methods: Vec<Method>,
-    pub impls: HashMap<Type, InterfaceImpl>,
+    pub impls: HashMap<ir::Type, InterfaceImpl>,
 }
 
 impl Interface {
-    pub fn new(name: impl Into<NamePath>, methods: impl Into<Vec<Method>>) -> Self {
+    pub fn new(name: impl Into<ir::NamePath>, methods: impl Into<Vec<Method>>) -> Self {
         Self {
             name: name.into(),
             methods: methods.into(),
@@ -32,9 +28,9 @@ impl Interface {
     }
 
     pub fn add_impl(&mut self,
-        implementor: Type,
-        method: MethodID,
-        func_id: FunctionID,
+        implementor: ir::Type,
+        method: ir::MethodID,
+        func_id: ir::FunctionID,
     ) {
         assert!(method.0 < self.methods.len());
 
@@ -56,14 +52,14 @@ impl Interface {
         impl_entry.methods.insert(method, func_id);
     }
 
-    pub fn method_index(&self, name: &str) -> Option<MethodID> {
+    pub fn method_index(&self, name: &str) -> Option<ir::MethodID> {
         self.methods
             .iter()
             .position(|m| m.name.as_str() == name)
-            .map(MethodID)
+            .map(ir::MethodID)
     }
 
-    pub fn get_method(&self, id: MethodID) -> Option<&Method> {
+    pub fn get_method(&self, id: ir::MethodID) -> Option<&Method> {
         self.methods.get(id.0)
     }
 }
@@ -71,7 +67,7 @@ impl Interface {
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
     // method index -> method impl
-    pub methods: HashMap<MethodID, FunctionID>,
+    pub methods: HashMap<ir::MethodID, ir::FunctionID>,
 }
 
 impl InterfaceImpl {
@@ -96,14 +92,14 @@ pub fn translate_iface(
         .methods
         .iter()
         .map(|method| {
-            let self_ty = Type::RcPointer(VirtualTypeID::Interface(id));
+            let self_ty = ir::Type::RcPointer(ir::VirtualTypeID::Interface(id));
 
             Method {
                 name: method.ident().to_string(),
                 return_ty: match &method.decl.return_ty {
                     Some(typ::Type::MethodSelf) => self_ty.clone(),
                     Some(return_ty) => module.translate_type(return_ty, type_args),
-                    None => Type::Nothing,
+                    None => ir::Type::Nothing,
                 },
                 params: method
                     .decl

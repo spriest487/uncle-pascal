@@ -4,26 +4,26 @@ mod expr;
 mod string_lit;
 mod ty;
 
-pub use self::{function::*, stmt::*, ty::*, expr::*};
-use crate::{ast::string_lit::StringLiteral, Options};
-use intermediate::{
-    metadata::STRING_ID,
-    self as ir,
-    metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD},
-    StaticClosure,
-    BUILTIN_SRC
-};
-use std::{
-    borrow::Cow,
-    collections::hash_map::{Entry, HashMap},
-    fmt,
-};
+pub use self::expr::*;
+pub use self::function::*;
+pub use self::stmt::*;
+pub use self::ty::*;
+use crate::ast::string_lit::StringLiteral;
+use crate::ir;
+use crate::Options;
+use intermediate::metadata as ir_meta;
+use intermediate::metadata::{NamePathExt, Symbol};
+use intermediate::StaticClosure;
+use std::borrow::Cow;
+use std::collections::hash_map::Entry;
+use std::collections::hash_map::HashMap;
+use std::fmt;
 use topological_sort::TopologicalSort;
 
 pub struct Module {
     functions: Vec<FunctionDef>,
     ffi_funcs: Vec<FfiFunction>,
-    builtin_funcs: HashMap<FunctionID, FunctionName>,
+    builtin_funcs: HashMap<ir::FunctionID, FunctionName>,
 
     static_array_types: HashMap<ArraySig, Type>,
 
@@ -33,7 +33,7 @@ pub struct Module {
     classes: Vec<Class>,
     ifaces: Vec<Interface>,
 
-    string_literals: HashMap<StringID, StringLiteral>,
+    string_literals: HashMap<ir::StringID, StringLiteral>,
     static_closures: Vec<StaticClosure>,
 
     opts: Options,
@@ -42,8 +42,8 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(metadata: &ir::metadata::Metadata, opts: Options) -> Self {
-        let string_ty = Type::DefinedType(TypeDefName::Struct(STRING_ID)).ptr();
+    pub fn new(metadata: &ir_meta::Metadata, opts: Options) -> Self {
+        let string_ty = Type::DefinedType(TypeDefName::Struct(ir::STRING_ID)).ptr();
 
         let system_funcs = &[
             (
@@ -170,9 +170,9 @@ impl Module {
             .type_defs()
             .map(|(id, ty_def)| {
                 let ty = match ty_def {
-                    ir::metadata::TypeDef::Variant(..) => ir::Type::Variant(id),
-                    ir::metadata::TypeDef::Struct(..) => ir::Type::Struct(id),
-                    ir::metadata::TypeDef::Function(..) => ir::Type::Function(id),
+                    ir_meta::TypeDef::Variant(..) => ir::Type::Variant(id),
+                    ir_meta::TypeDef::Struct(..) => ir::Type::Struct(id),
+                    ir_meta::TypeDef::Function(..) => ir::Type::Function(id),
                 };
 
                 let name = metadata.pretty_ty_name(&ty);
@@ -202,7 +202,7 @@ impl Module {
         };
 
         let class_defs = metadata.type_defs().filter_map(|(id, def)| match def {
-            ir::metadata::TypeDef::Struct(struct_def) => Some((id, struct_def)),
+            ir_meta::TypeDef::Struct(struct_def) => Some((id, struct_def)),
             _ => None,
         });
 
@@ -226,7 +226,7 @@ impl Module {
         }
     }
 
-    pub fn pretty_name(&self, name_path: &ir::metadata::NamePath) -> String {
+    pub fn pretty_name(&self, name_path: &ir::NamePath) -> String {
         name_path.to_pretty_string(|ty| self.pretty_type(ty))
     }
 
@@ -271,21 +271,21 @@ impl Module {
         }
     }
 
-    pub fn function_name(&self, id: FunctionID) -> FunctionName {
+    pub fn function_name(&self, id: ir::FunctionID) -> FunctionName {
         match self.builtin_funcs.get(&id) {
             Some(builtin) => *builtin,
             None => FunctionName::ID(id),
         }
     }
 
-    pub fn add_ir(&mut self, module: &ir::Module) {
+    pub fn add_ir(&mut self, module: &intermediate::Module) {
         let mut module_type_defs = Vec::new();
 
         for (id, type_def) in module.metadata().type_defs() {
             let mut member_deps = Vec::new();
 
             let c_type_def = match type_def {
-                ir::metadata::TypeDef::Struct(struct_def) => {
+                ir_meta::TypeDef::Struct(struct_def) => {
                     let struct_def = StructDef::translate(id, struct_def, self);
                     for member in &struct_def.members {
                         member.ty.collect_type_def_deps(&mut member_deps);
@@ -294,7 +294,7 @@ impl Module {
                     TypeDef::Struct(struct_def)
                 },
 
-                ir::metadata::TypeDef::Variant(variant_def) => {
+                ir_meta::TypeDef::Variant(variant_def) => {
                     let variant_def = VariantDef::translate(id, variant_def, self);
                     for case in &variant_def.cases {
                         if let Some(case_ty) = &case.ty {
@@ -305,7 +305,7 @@ impl Module {
                     TypeDef::Variant(variant_def)
                 },
 
-                ir::metadata::TypeDef::Function(func_def) => {
+                ir_meta::TypeDef::Function(func_def) => {
                     let return_ty = Type::from_metadata(&func_def.return_ty, self);
                     return_ty.collect_type_def_deps(&mut member_deps);
 
@@ -351,15 +351,15 @@ impl Module {
 
         for (id, func) in module.functions() {
             match func {
-                ir::Function::Local(func_def) => {
+                intermediate::Function::Local(func_def) => {
                     let c_func = FunctionDef::translate(*id, func_def, self);
 
                     self.functions.push(c_func);
                 },
 
-                ir::Function::External(func_ref) if func_ref.src == BUILTIN_SRC => {},
+                intermediate::Function::External(func_ref) if func_ref.src == ir::BUILTIN_SRC => {},
 
-                ir::Function::External(func_ref) => {
+                intermediate::Function::External(func_ref) => {
                     let ffi_func = FfiFunction::translate(*id, func_ref, self);
 
                     self.ffi_funcs.push(ffi_func);
@@ -445,7 +445,7 @@ impl fmt::Display for Module {
 
         for def_name in &ordered_type_defs {
             // special case for System.String: we expect it to already be defined in the prelude
-            if *def_name == TypeDefName::Struct(ir::metadata::STRING_ID) {
+            if *def_name == TypeDefName::Struct(ir::STRING_ID) {
                 continue;
             }
 
@@ -477,10 +477,10 @@ impl fmt::Display for Module {
         }
 
         for (str_id, lit) in &self.string_literals {
-            let chars_field = FieldName::ID(STRING_CHARS_FIELD);
-            let len_field = FieldName::ID(STRING_LEN_FIELD);
+            let chars_field = FieldName::ID(ir::STRING_CHARS_FIELD);
+            let len_field = FieldName::ID(ir::STRING_LEN_FIELD);
 
-            let string_name = TypeDefName::Struct(STRING_ID);
+            let string_name = TypeDefName::Struct(ir::STRING_ID);
             let lit_name = GlobalName::StringLiteral(*str_id);
             writeln!(f, "static struct {} {} = {{", string_name, lit_name)?;
 
@@ -490,7 +490,7 @@ impl fmt::Display for Module {
                 f,
                 "    .{class_field} = &{class_name},",
                 class_field = FieldName::RcClass,
-                class_name = GlobalName::ClassInstance(STRING_ID),
+                class_name = GlobalName::ClassInstance(ir::STRING_ID),
             )?;
             writeln!(f, "    .{strong_count} = -1,", strong_count = FieldName::RcRefCount)?;
             writeln!(f, "  }},")?;

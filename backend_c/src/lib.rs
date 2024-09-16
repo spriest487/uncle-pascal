@@ -1,6 +1,8 @@
-use intermediate as ir;
-
 pub mod ast;
+pub use ir_lang as ir;
+pub use intermediate::Module as IRModule;
+
+pub use ast as c;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Options {
@@ -9,8 +11,8 @@ pub struct Options {
     pub trace_ir: bool,
 }
 
-pub fn translate(ir_module: &ir::Module, opts: Options) -> ast::Module {
-    let mut module = ast::Module::new(&ir_module.metadata(), opts);
+pub fn translate(ir_module: &IRModule, opts: Options) -> c::Module {
+    let mut module = c::Module::new(&ir_module.metadata(), opts);
     module.add_ir(ir_module);
 
     module

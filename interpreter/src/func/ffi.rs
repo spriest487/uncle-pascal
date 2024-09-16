@@ -3,9 +3,7 @@ use crate::ExecResult;
 use crate::Interpreter;
 use ::libffi::middle::Cif;
 use ::libffi::raw::ffi_call as ffi_raw_call;
-use intermediate::Ref;
-use intermediate::LocalID;
-use intermediate::Type;
+use crate::ir;
 use smallvec::*;
 use std::ffi::c_void;
 use std::ptr::null_mut;
@@ -18,7 +16,7 @@ pub struct FfiInvoker {
 
     ffi_param_tys: Vec<ForeignType>,
 
-    return_ty: Type,
+    return_ty: ir::Type,
     ffi_return_ty: ForeignType,
 }
 
@@ -27,7 +25,7 @@ impl FfiInvoker {
         cif: Cif,
         symbol: *const (),
         ffi_param_tys: Vec<ForeignType>,
-        return_ty: Type,
+        return_ty: ir::Type,
         ffi_return_ty: ForeignType,
     ) -> Self {
         Self {
@@ -51,18 +49,18 @@ impl FfiInvoker {
         let mut args_ptrs: SmallVec<[*mut c_void; 4]> = smallvec![null_mut(); param_count];
 
         let first_param_local = match self.return_ty {
-            Type::Nothing => 0,
+            ir::Type::Nothing => 0,
             _ => 1,
         };
 
         let mut arg_offset = 0;
 
         for i in 0..param_count {
-            let local_id = LocalID(first_param_local + i);
+            let local_id = ir::LocalID(first_param_local + i);
 
             let param_size = self.ffi_param_tys[i].size();
 
-            let arg_val = state.load(&Ref::Local(local_id))?;
+            let arg_val = state.load(&ir::Ref::Local(local_id))?;
             let bytes_copied = state
                 .marshaller()
                 .marshal(&arg_val, &mut args[arg_offset..])?;
@@ -74,7 +72,7 @@ impl FfiInvoker {
             arg_offset += param_size;
         }
 
-        let mut result_buf: Vec<u8> = if self.return_ty != Type::Nothing {
+        let mut result_buf: Vec<u8> = if self.return_ty != ir::Type::Nothing {
             vec![0; self.ffi_return_ty.size()]
         } else {
             Vec::new()
@@ -91,14 +89,14 @@ impl FfiInvoker {
             );
         }
 
-        if self.return_ty != Type::Nothing {
+        if self.return_ty != ir::Type::Nothing {
             unsafe {
                 let result_slice = slice_from_raw_parts(result_buf.as_ptr(), result_buf.len());
                 let return_val = state
                     .marshaller()
                     .unmarshal(result_slice.as_ref().unwrap(), &self.return_ty)?;
 
-                let return_local = Ref::Local(LocalID(0));
+                let return_local = ir::Ref::Local(ir::LocalID(0));
                 state.store(&return_local, return_val.value)?;
             }
         }

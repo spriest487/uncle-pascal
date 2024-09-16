@@ -73,7 +73,8 @@ version = "0.1.0"
 dependencies = [
  "common",
  "intermediate",
- "topological-sort 0.1.0",
+ "ir-lang",
+ "topological-sort",
 ]
 
 [[package]]
@@ -93,10 +94,12 @@ dependencies = [
 
 [[package]]
 name = "bigdecimal"
-version = "0.0.14"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "679e21a6734fdfc63378aea80c2bf31e6ac8ced21ed33e1ee37f8f7bf33c2056"
+checksum = "51d712318a27c7150326677b321a5fa91b55f6d9034ffd67f20319e147d40cee"
 dependencies = [
+ "autocfg",
+ "libm",
  "num-bigint",
  "num-integer",
  "num-traits",
@@ -304,6 +307,7 @@ dependencies = [
  "cast",
  "common",
  "frontend",
+ "ir-lang",
  "linked-hash-map",
 ]
 
@@ -315,8 +319,17 @@ dependencies = [
  "common",
  "dlopen",
  "intermediate",
+ "ir-lang",
  "libffi",
  "smallvec",
+]
+
+[[package]]
+name = "ir-lang"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "common",
 ]
 
 [[package]]
@@ -366,6 +379,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libm"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
+
+[[package]]
 name = "linked-hash-map"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -394,9 +413,9 @@ dependencies = [
 
 [[package]]
 name = "num-bigint"
-version = "0.2.6"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+checksum = "608e7659b5c3d7cba262d894801b9ec9d00de989e8a82bd4bef91d08da45cdc0"
 dependencies = [
  "autocfg",
  "num-integer",
@@ -415,9 +434,9 @@ dependencies = [
 
 [[package]]
 name = "num-traits"
-version = "0.2.14"
+version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
 ]
@@ -449,7 +468,7 @@ dependencies = [
  "intermediate",
  "interpreter",
  "structopt",
- "topological-sort 0.2.2",
+ "topological-sort",
 ]
 
 [[package]]
@@ -682,12 +701,6 @@ checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 dependencies = [
  "unicode-width",
 ]
-
-[[package]]
-name = "topological-sort"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa7c7f42dea4b1b99439786f5633aeb9c14c1b53f75e282803c2ec2ad545873c"
 
 [[package]]
 name = "topological-sort"

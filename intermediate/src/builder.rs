@@ -5,31 +5,23 @@ mod test;
 
 use self::scope::*;
 use crate::metadata::*;
-use crate::ty::FieldID;
+use crate::module_builder::{FunctionDeclKey, FunctionDefKey, ModuleBuilder};
 use crate::ty::Interface;
 use crate::ty::Struct;
 use crate::FunctionInstance;
-use crate::GlobalRef;
 use crate::IROptions;
-use crate::Instruction;
-use crate::Label;
-use crate::LocalID;
-use crate::Ref;
-use crate::Type;
-use crate::Value;
-use crate::EXIT_LABEL;
+use common::span::Span;
+use common::span::Spanned;
 use frontend::ast as syn;
 use frontend::typecheck as typ;
 use frontend::typecheck::Specializable;
 use frontend::typecheck::SYSTEM_UNIT_NAME;
-use common::span::Span;
-use common::span::Spanned;
+use ir_lang::*;
 use std::borrow::Cow;
 use std::fmt;
 use syn::Ident;
 use syn::IdentPath;
 use syn::TypeList;
-use crate::module_builder::{FunctionDeclKey, FunctionDefKey, ModuleBuilder};
 
 #[derive(Debug)]
 pub struct Builder<'m> {
@@ -1167,4 +1159,11 @@ fn type_args_to_string(args: &typ::TypeList) -> String {
         .map(|a| a.to_string())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+pub fn jmp_exists(instructions: &[Instruction], to_label: Label) -> bool {
+    instructions.iter().any(|i| match i {
+        Instruction::Jump { dest } | Instruction::JumpIf { dest, .. } => *dest == to_label,
+        _ => false,
+    })
 }

@@ -1,6 +1,8 @@
 use std::fmt;
-use bigdecimal::BigDecimal;
-use crate::{FunctionID, StaticClosureID, StringID, Type};
+use bigdecimal::{BigDecimal, FromPrimitive};
+use crate::{FunctionID, StaticClosureID};
+use crate::metadata::StringID;
+use crate::ty::Type;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ref {
@@ -110,7 +112,8 @@ impl Value {
             Value::LiteralU64(x) => Some(BigDecimal::from(*x)),
             Value::LiteralISize(x) => Some(BigDecimal::from(*x as i64)),
             Value::LiteralUSize(x) => Some(BigDecimal::from(*x as u64)),
-            Value::LiteralF32(x) => Some(BigDecimal::from(*x)),
+            Value::LiteralF32(x) => Some(BigDecimal::from_f32(*x)
+                .expect("NaN/infinite constant values not supported yet")),
             _ => None,
         }
     }

@@ -7,22 +7,20 @@ use crate::StructValue;
 use crate::VariantValue;
 use ::dlopen::raw as dlopen;
 use ::dlopen::Error as DlopenError;
+use intermediate::metadata::Metadata;
+use intermediate::metadata::Struct;
+use intermediate::metadata::VariantDef;
+use intermediate::{ir, ExternalFunctionRef};
+use ir_lang::FieldID;
+use ir_lang::FunctionID;
+use ir_lang::InstructionFormatter;
+use ir_lang::RawInstructionFormatter;
+use ir_lang::TypeDefID;
+use ir_lang::VirtualTypeID;
 use libffi::low::ffi_type;
 use libffi::middle::Builder as FfiBuilder;
 use libffi::middle::Type as FfiType;
 use libffi::raw::FFI_TYPE_STRUCT;
-use intermediate::metadata::FieldID;
-use intermediate::metadata::FunctionID;
-use intermediate::metadata::Metadata;
-use intermediate::metadata::Struct;
-use intermediate::metadata::TypeDefID;
-use intermediate::metadata::VariantDef;
-use intermediate::metadata::VirtualTypeID;
-use intermediate::ExternalFunctionRef;
-use intermediate::Instruction;
-use intermediate::InstructionFormatter;
-use intermediate::RawInstructionFormatter;
-use intermediate::Type;
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -40,7 +38,7 @@ use std::rc::Rc;
 pub enum MarshalError {
     InvalidData,
 
-    UnsupportedType(Type),
+    UnsupportedType(ir::Type),
     UnsupportedValue(DynValue),
 
     VariantTagOutOfRange {
@@ -81,9 +79,9 @@ impl MarshalError {
             MarshalError::InvalidData => write!(f, "invalid data"),
             MarshalError::InvalidStructID { expected, actual } => {
                 write!(f, "expected struct ")?;
-                format.format_type(&Type::Struct(*expected), f)?;
+                format.format_type(&ir::Type::Struct(*expected), f)?;
                 write!(f, ", got ")?;
-                format.format_type(&Type::Struct(*actual), f)?;
+                format.format_type(&ir::Type::Struct(*actual), f)?;
                 Ok(())
             },
             MarshalError::UnsupportedValue(val) => {
@@ -244,17 +242,17 @@ impl ForeignType {
 #[derive(Debug, Clone)]
 pub struct ForeignFieldInfo {
     pub offset: usize,
-    pub ty: Type,
+    pub ty: ir::Type,
     pub foreign_ty: ForeignType,
 }
 
 #[derive(Debug, Clone)]
 pub struct Marshaller {
-    types: HashMap<Type, ForeignType>,
+    types: HashMap<ir::Type, ForeignType>,
     libs: HashMap<String, Rc<dlopen::Library>>,
 
-    struct_field_types: BTreeMap<TypeDefID, Vec<Type>>,
-    variant_case_types: BTreeMap<TypeDefID, Vec<Option<Type>>>,
+    struct_field_types: BTreeMap<TypeDefID, Vec<ir::Type>>,
+    variant_case_types: BTreeMap<TypeDefID, Vec<Option<ir::Type>>>,
 
     // structure types that need refcounting fields and type info for virtual calls
     ref_types: BTreeSet<TypeDefID>,
@@ -272,18 +270,18 @@ impl Marshaller {
             ref_types: BTreeSet::new(),
         };
 
-        marshaller.types.insert(Type::I8, ForeignType::i8());
-        marshaller.types.insert(Type::U8, ForeignType::u8());
-        marshaller.types.insert(Type::I16, ForeignType::i16());
-        marshaller.types.insert(Type::U16, ForeignType::u16());
-        marshaller.types.insert(Type::I32, ForeignType::i32());
-        marshaller.types.insert(Type::U32, ForeignType::u32());
-        marshaller.types.insert(Type::I64, ForeignType::i64());
-        marshaller.types.insert(Type::U64, ForeignType::u64());
-        marshaller.types.insert(Type::ISize, ForeignType::isize());
-        marshaller.types.insert(Type::USize, ForeignType::usize());
-        marshaller.types.insert(Type::F32, ForeignType::f32());
-        marshaller.types.insert(Type::Bool, ForeignType::u8());
+        marshaller.types.insert(ir::Type::I8, ForeignType::i8());
+        marshaller.types.insert(ir::Type::U8, ForeignType::u8());
+        marshaller.types.insert(ir::Type::I16, ForeignType::i16());
+        marshaller.types.insert(ir::Type::U16, ForeignType::u16());
+        marshaller.types.insert(ir::Type::I32, ForeignType::i32());
+        marshaller.types.insert(ir::Type::U32, ForeignType::u32());
+        marshaller.types.insert(ir::Type::I64, ForeignType::i64());
+        marshaller.types.insert(ir::Type::U64, ForeignType::u64());
+        marshaller.types.insert(ir::Type::ISize, ForeignType::isize());
+        marshaller.types.insert(ir::Type::USize, ForeignType::usize());
+        marshaller.types.insert(ir::Type::F32, ForeignType::f32());
+        marshaller.types.insert(ir::Type::Bool, ForeignType::u8());
 
         marshaller
     }
@@ -298,7 +296,7 @@ impl Marshaller {
         def: &Struct,
         metadata: &Metadata,
     ) -> MarshalResult<ForeignType> {
-        let struct_ty = Type::Struct(id);
+        let struct_ty = ir::Type::Struct(id);
         if let Some(cached) = self.types.get(&struct_ty) {
             return Ok(cached.clone());
         }
@@ -338,7 +336,7 @@ impl Marshaller {
         def: &VariantDef,
         metadata: &Metadata,
     ) -> MarshalResult<ForeignType> {
-        let variant_ty = Type::Variant(id);
+        let variant_ty = ir::Type::Variant(id);
         if let Some(cached) = self.types.get(&variant_ty) {
             return Ok(cached.clone());
         }
@@ -385,7 +383,7 @@ impl Marshaller {
         // the "nothing" type is usually not allowed by the marshaller because it can't be
         // instantiated, but here we need to map it to the void ffi type
         let ffi_return_ty = match &func_ref.sig.return_ty {
-            Type::Nothing => ForeignType(FfiType::void()),
+            ir::Type::Nothing => ForeignType(FfiType::void()),
             return_ty => self.build_marshalled_type(return_ty, metadata)?,
         };
 
@@ -428,7 +426,7 @@ impl Marshaller {
 
     fn build_marshalled_type(
         &mut self,
-        ty: &Type,
+        ty: &ir::Type,
         metadata: &Metadata,
     ) -> MarshalResult<ForeignType> {
         if let Some(cached) = self.types.get(ty) {
@@ -436,7 +434,7 @@ impl Marshaller {
         }
 
         match ty {
-            Type::Variant(id) => {
+            ir::Type::Variant(id) => {
                 let def = metadata
                     .get_variant_def(*id)
                     .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
@@ -444,7 +442,7 @@ impl Marshaller {
                 self.add_variant(*id, def, metadata)
             },
 
-            Type::Struct(id) => {
+            ir::Type::Struct(id) => {
                 let def = metadata
                     .get_struct_def(*id)
                     .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
@@ -452,9 +450,9 @@ impl Marshaller {
                 self.add_struct(*id, def, metadata)
             },
 
-            Type::RcPointer(..) | Type::Pointer(..) | Type::Function(..) => Ok(ForeignType::pointer()),
+            ir::Type::RcPointer(..) | ir::Type::Pointer(..) | ir::Type::Function(..) => Ok(ForeignType::pointer()),
 
-            Type::Array { element, dim } => {
+            ir::Type::Array { element, dim } => {
                 let el_ty = self.build_marshalled_type(&element, metadata)?;
                 let el_tys = vec![el_ty; *dim];
 
@@ -466,23 +464,23 @@ impl Marshaller {
         }
     }
 
-    pub fn get_ty(&self, ty: &Type) -> MarshalResult<ForeignType> {
+    pub fn get_ty(&self, ty: &ir::Type) -> MarshalResult<ForeignType> {
         match ty {
-            Type::Nothing => {
+            ir::Type::Nothing => {
                 // "nothing" is not a marshallable type!
-                Err(MarshalError::UnsupportedType(Type::Nothing))
+                Err(MarshalError::UnsupportedType(ir::Type::Nothing))
             },
 
             // we can't cache array types so always build them on demand
             // pascal static arrays are treated as a struct of elements laid out sequentially
-            Type::Array { element, dim } => {
+            ir::Type::Array { element, dim } => {
                 let el_ty = self.get_ty(&element)?;
                 let el_tys = vec![el_ty; *dim];
 
                 Ok(ForeignType::structure(el_tys))
             },
 
-            Type::Pointer(..) | Type::RcPointer(..) | Type::Function(..) => Ok(ForeignType::pointer()),
+            ir::Type::Pointer(..) | ir::Type::RcPointer(..) | ir::Type::Function(..) => Ok(ForeignType::pointer()),
 
             ty => match self.types.get(ty) {
                 Some(cached_ty) => Ok(cached_ty.clone()),
@@ -492,10 +490,10 @@ impl Marshaller {
     }
 
     pub fn get_field_info(&self, type_id: TypeDefID, field: FieldID) -> MarshalResult<ForeignFieldInfo> {
-        let struct_marshal_ty = self.get_ty(&Type::Struct(type_id))?;
+        let struct_marshal_ty = self.get_ty(&ir::Type::Struct(type_id))?;
 
         let fields = self.struct_field_types.get(&type_id)
-            .ok_or_else(|| MarshalError::UnsupportedType(Type::Struct(type_id)))?;
+            .ok_or_else(|| MarshalError::UnsupportedType(ir::Type::Struct(type_id)))?;
         let field_ty = fields.get(field.0)
             .ok_or_else(|| MarshalError::FieldOutOfRange { struct_id: type_id, field })?
             .clone();
@@ -573,7 +571,7 @@ impl Marshaller {
         Ok(len)
     }
 
-    fn unmarshal_ptr(&self, deref_ty: Type, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<Pointer>> {
+    fn unmarshal_ptr(&self, deref_ty: ir::Type, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<Pointer>> {
         let addr_bytes = unmarshal_bytes(in_bytes)?;
         let addr = usize::from_ne_bytes(addr_bytes);
         let ptr = Pointer {
@@ -616,27 +614,27 @@ impl Marshaller {
     pub fn unmarshal(
         &self,
         in_bytes: &[u8],
-        ty: &Type,
+        ty: &ir::Type,
     ) -> MarshalResult<UnmarshalledValue<DynValue>> {
         let dyn_val = match ty {
-            Type::I8 => unmarshal_from_ne_bytes(in_bytes, i8::from_ne_bytes)?.map(DynValue::I8),
-            Type::U8 => unmarshal_from_ne_bytes(in_bytes, u8::from_ne_bytes)?.map(DynValue::U8),
-            Type::I16 => unmarshal_from_ne_bytes(in_bytes, i16::from_ne_bytes)?.map(DynValue::I16),
-            Type::U16 => unmarshal_from_ne_bytes(in_bytes, u16::from_ne_bytes)?.map(DynValue::U16),
-            Type::I32 => unmarshal_from_ne_bytes(in_bytes, i32::from_ne_bytes)?.map(DynValue::I32),
-            Type::U32 => unmarshal_from_ne_bytes(in_bytes, u32::from_ne_bytes)?.map(DynValue::U32),
-            Type::I64 => unmarshal_from_ne_bytes(in_bytes, i64::from_ne_bytes)?.map(DynValue::I64),
-            Type::U64 => unmarshal_from_ne_bytes(in_bytes, u64::from_ne_bytes)?.map(DynValue::U64),
-            Type::ISize => {
+            ir::Type::I8 => unmarshal_from_ne_bytes(in_bytes, i8::from_ne_bytes)?.map(DynValue::I8),
+            ir::Type::U8 => unmarshal_from_ne_bytes(in_bytes, u8::from_ne_bytes)?.map(DynValue::U8),
+            ir::Type::I16 => unmarshal_from_ne_bytes(in_bytes, i16::from_ne_bytes)?.map(DynValue::I16),
+            ir::Type::U16 => unmarshal_from_ne_bytes(in_bytes, u16::from_ne_bytes)?.map(DynValue::U16),
+            ir::Type::I32 => unmarshal_from_ne_bytes(in_bytes, i32::from_ne_bytes)?.map(DynValue::I32),
+            ir::Type::U32 => unmarshal_from_ne_bytes(in_bytes, u32::from_ne_bytes)?.map(DynValue::U32),
+            ir::Type::I64 => unmarshal_from_ne_bytes(in_bytes, i64::from_ne_bytes)?.map(DynValue::I64),
+            ir::Type::U64 => unmarshal_from_ne_bytes(in_bytes, u64::from_ne_bytes)?.map(DynValue::U64),
+            ir::Type::ISize => {
                 unmarshal_from_ne_bytes(in_bytes, isize::from_ne_bytes)?.map(DynValue::ISize)
             },
-            Type::USize => {
+            ir::Type::USize => {
                 unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes)?.map(DynValue::USize)
             },
 
-            Type::F32 => unmarshal_from_ne_bytes(in_bytes, f32::from_ne_bytes)?.map(DynValue::F32),
+            ir::Type::F32 => unmarshal_from_ne_bytes(in_bytes, f32::from_ne_bytes)?.map(DynValue::F32),
 
-            Type::Bool => {
+            ir::Type::Bool => {
                 if in_bytes.len() == 0 {
                     return Err(MarshalError::InvalidData);
                 }
@@ -648,17 +646,17 @@ impl Marshaller {
                 }
             },
 
-            Type::RcPointer(class_id) => {
-                let raw_ptr_val = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
+            ir::Type::RcPointer(class_id) => {
+                let raw_ptr_val = self.unmarshal_ptr(ir::Type::Nothing, in_bytes)?;
 
                 // null rcpointers can exist - e.g. uninitialized stack values
                 let ptr_ty = if raw_ptr_val.value.is_null() {
                     // if we have an expected concrete type, we can reinterpret the null pointer
                     // as that type as a minor optimization for later
                     if let VirtualTypeID::Class(type_id) = class_id {
-                        Type::Struct(*type_id)
+                        ir::Type::Struct(*type_id)
                     } else {
-                        Type::Nothing
+                        ir::Type::Nothing
                     }
                 } else {
                     // the struct ID is the first field so we can just access it directly here
@@ -669,7 +667,7 @@ impl Marshaller {
                     };
                     let struct_id = usize::from_ne_bytes(unmarshal_bytes(&struct_id_bytes)?);
 
-                    Type::Struct(TypeDefID(struct_id))
+                    ir::Type::Struct(TypeDefID(struct_id))
                 };
 
                 raw_ptr_val.map(|raw_ptr| {
@@ -678,12 +676,12 @@ impl Marshaller {
                 })
             },
 
-            Type::Pointer(deref_ty) => {
+            ir::Type::Pointer(deref_ty) => {
                 self.unmarshal_ptr((**deref_ty).clone(), in_bytes)?
                     .map(DynValue::Pointer)
             },
 
-            Type::Function(..) => {
+            ir::Type::Function(..) => {
                 let func_id = unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes)?;
 
                 func_id.map(|id| {
@@ -691,7 +689,7 @@ impl Marshaller {
                 })
             }
 
-            Type::Array { element, dim } => {
+            ir::Type::Array { element, dim } => {
                 let mut offset = 0;
                 let mut elements = Vec::with_capacity(*dim as usize);
                 for _ in 0..*dim {
@@ -711,7 +709,7 @@ impl Marshaller {
 
             // these need field offset/tag type info from the ffi cache so marshal/unmarshal should
             // be members
-            Type::Struct(struct_id) => {
+            ir::Type::Struct(struct_id) => {
                 let struct_val = self.unmarshal_struct(*struct_id, in_bytes)?;
 
                 UnmarshalledValue {
@@ -720,7 +718,7 @@ impl Marshaller {
                 }
             },
 
-            Type::Variant(variant_id) => {
+            ir::Type::Variant(variant_id) => {
                 let variant_val = self.unmarshal_variant(*variant_id, in_bytes)?;
                 variant_val.map(Box::new).map(DynValue::Variant)
             },
@@ -733,10 +731,10 @@ impl Marshaller {
         Ok(dyn_val)
     }
 
-    pub fn stack_alloc_size(&self, instructions: &[Instruction]) -> MarshalResult<usize> {
+    pub fn stack_alloc_size(&self, instructions: &[ir::Instruction]) -> MarshalResult<usize> {
         let mut local_sizes = Vec::new();
         for instruction in instructions {
-            if let Instruction::LocalAlloc(id, ty) = instruction {
+            if let ir::Instruction::LocalAlloc(id, ty) = instruction {
                 while local_sizes.len() <= id.0 {
                     local_sizes.push(0);
                 }
@@ -792,7 +790,7 @@ impl Marshaller {
         let field_tys = self
             .struct_field_types
             .get(&struct_id)
-            .ok_or_else(|| MarshalError::UnsupportedType(Type::Struct(struct_id)))?;
+            .ok_or_else(|| MarshalError::UnsupportedType(ir::Type::Struct(struct_id)))?;
 
         let mut fields = Vec::new();
 
@@ -820,7 +818,7 @@ impl Marshaller {
         let case_tys = self
             .variant_case_types
             .get(&variant_val.id)
-            .ok_or_else(|| MarshalError::UnsupportedType(Type::Variant(variant_val.id)))?;
+            .ok_or_else(|| MarshalError::UnsupportedType(ir::Type::Variant(variant_val.id)))?;
 
         let tag = variant_val
             .tag
@@ -833,7 +831,7 @@ impl Marshaller {
 
         // we still need to refer to the type size, because we always always marshal/unmarshal
         // the entire size of the variant regardless of which case is active
-        let variant_size = self.get_ty(&Type::Variant(variant_val.id))?.size();
+        let variant_size = self.get_ty(&ir::Type::Variant(variant_val.id))?.size();
 
         let tag_size = self.marshal(&variant_val.tag, out_bytes)?;
 
@@ -855,7 +853,7 @@ impl Marshaller {
             "marshalled size {} <= type size {} for variant {}",
             marshalled_size,
             variant_size,
-            Type::Variant(variant_val.id)
+            ir::Type::Variant(variant_val.id)
         );
 
         Ok(variant_size)
@@ -866,7 +864,7 @@ impl Marshaller {
         variant_id: TypeDefID,
         in_bytes: &[u8],
     ) -> MarshalResult<UnmarshalledValue<VariantValue>> {
-        let tag_val = self.unmarshal(in_bytes, &Type::I32)?;
+        let tag_val = self.unmarshal(in_bytes, &ir::Type::I32)?;
         let tag = tag_val.value.as_i32().unwrap();
 
         let case_index = cast::usize(tag).map_err(|_| MarshalError::VariantTagOutOfRange {
@@ -874,12 +872,12 @@ impl Marshaller {
             tag: tag_val.value.clone(),
         })?;
 
-        let variant_size = self.get_ty(&Type::Variant(variant_id))?.size();
+        let variant_size = self.get_ty(&ir::Type::Variant(variant_id))?.size();
 
         let case_tys = self
             .variant_case_types
             .get(&variant_id)
-            .ok_or_else(|| MarshalError::UnsupportedType(Type::Variant(variant_id)))?;
+            .ok_or_else(|| MarshalError::UnsupportedType(ir::Type::Variant(variant_id)))?;
 
         let case_ty = case_tys
             .get(case_index)
@@ -892,7 +890,7 @@ impl Marshaller {
         let data_val = match case_ty {
             Some(case_ty) => self.unmarshal(&in_bytes[tag_val.byte_count..], case_ty)?,
             None => UnmarshalledValue {
-                value: DynValue::Pointer(Pointer::null(Type::Nothing)),
+                value: DynValue::Pointer(Pointer::null(ir::Type::Nothing)),
                 byte_count: 0,
             },
         };

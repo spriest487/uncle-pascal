@@ -1,24 +1,21 @@
 use crate::builder::Builder;
 use crate::expr;
-use crate::GlobalRef;
-use crate::Instruction;
-use crate::Ref;
-use crate::Type;
 use crate::pattern::translate_pattern_match;
 use crate::pattern::PatternMatchOutput;
 use crate::stmt::build_case_block;
 use crate::typ;
+use crate::ir;
 
 pub fn translate_if_cond<B, BranchTranslateFn>(
     if_cond: &typ::ast::IfCond<B>,
     builder: &mut Builder,
     branch_translate: BranchTranslateFn,
-) -> Option<Ref>
+) -> Option<ir::Ref>
 where
-    BranchTranslateFn: Fn(&B, Option<&Ref>, &Type, &mut Builder),
+    BranchTranslateFn: Fn(&B, Option<&ir::Ref>, &ir::Type, &mut Builder),
 {
     let (out_val, out_ty) = match if_cond.annotation.ty().as_ref() {
-        typ::Type::Nothing => (None, Type::Nothing),
+        typ::Type::Nothing => (None, ir::Type::Nothing),
         out_ty => {
             let out_ty = builder.translate_type(out_ty);
             let out_val = builder.local_new(out_ty.clone(), None);
@@ -85,7 +82,7 @@ where
     out_val
 }
 
-pub fn translate_case_expr(case: &typ::ast::CaseExpr, builder: &mut Builder) -> Ref {
+pub fn translate_case_expr(case: &typ::ast::CaseExpr, builder: &mut Builder) -> ir::Ref {
     let out_ty = builder.translate_type(&case.annotation.ty());
     let out_ref = builder.local_temp(out_ty);
 
@@ -97,7 +94,7 @@ pub fn translate_case_expr(case: &typ::ast::CaseExpr, builder: &mut Builder) -> 
     out_ref
 }
 
-pub fn translate_match_expr(match_expr: &typ::ast::MatchExpr, builder: &mut Builder) -> Ref {
+pub fn translate_match_expr(match_expr: &typ::ast::MatchExpr, builder: &mut Builder) -> ir::Ref {
     let out_ty = builder.translate_type(&match_expr.annotation.ty());
     let out_ref = builder.local_new(out_ty.clone(), None);
 
@@ -113,7 +110,7 @@ pub fn translate_match_expr(match_expr: &typ::ast::MatchExpr, builder: &mut Buil
             None
         };
 
-        let is_skip = builder.local_temp(Type::Bool);
+        let is_skip = builder.local_temp(ir::Type::Bool);
 
         for branch in &match_expr.branches {
             // label to skip this branch if it isn't a match
@@ -162,8 +159,8 @@ pub fn translate_match_expr(match_expr: &typ::ast::MatchExpr, builder: &mut Buil
         // we MUST have executed a branch!
         let err = "unhandled pattern in match expr";
         let err_str = builder.find_or_insert_string(err);
-        builder.append(Instruction::Raise {
-            val: Ref::Global(GlobalRef::StringLiteral(err_str)),
+        builder.append(ir::Instruction::Raise {
+            val: ir::Ref::Global(ir::GlobalRef::StringLiteral(err_str)),
         });
 
         builder.label(break_label);

@@ -1,10 +1,13 @@
-use crate::ast::{Module, Type, TypeDecl, TypeDefName};
+use crate::ast::Module;
+use crate::ast::Type;
+use crate::ast::TypeDecl;
+use crate::ast::TypeDefName;
 use intermediate::metadata;
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-};
-use intermediate::metadata::{FieldID, StructIdentity};
+use intermediate::metadata::StructIdentity;
+use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
+use crate::ir;
 
 #[derive(Clone, Eq)]
 pub struct StructMember {
@@ -52,7 +55,7 @@ impl Hash for StructDef {
 
 impl StructDef {
     pub fn translate(
-        id: metadata::TypeDefID,
+        id: ir::TypeDefID,
         ir_struct: &metadata::Struct,
         module: &mut Module,
     ) -> Self {
@@ -80,7 +83,7 @@ impl StructDef {
             });
         }
 
-        let struct_ty = metadata::Type::Struct(id);
+        let struct_ty = ir::Type::Struct(id);
         let comment = module.pretty_type(&struct_ty).to_string();
 
         // user-defined types will have explicit padding, so they should be packed to avoid
@@ -134,7 +137,7 @@ impl fmt::Display for StructDef {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum FieldName {
     // ID from metadata
-    ID(FieldID),
+    ID(ir::FieldID),
 
     // rc state for rc types
     Rc,

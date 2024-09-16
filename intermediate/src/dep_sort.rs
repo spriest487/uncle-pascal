@@ -1,17 +1,16 @@
 #[cfg(test)]
 mod test;
 
+use crate::metadata::Metadata;
+use crate::ty::Struct;
+use crate::ty::TypeDef;
+use crate::ty::VariantDef;
+use crate::FunctionSig;
+use ir_lang::*;
 use linked_hash_map::LinkedHashMap;
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-};
-use crate::{
-    ty::{Struct, TypeDef, VariantDef},
-    metadata::{Metadata, TypeDefID},
-    FunctionSig,
-    Type
-};
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 // sort list of type defs to resolve deep structural dependencies on other defs.
 // struct, variant and static array fields count as structural dependencies (and are

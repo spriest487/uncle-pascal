@@ -6,7 +6,6 @@ use crate::dep_sort::sort_defs;
 use crate::syn;
 use crate::syn::Ident;
 use crate::typ;
-use crate::InstructionFormatter;
 use syn::IdentPath;
 use linked_hash_map::LinkedHashMap;
 pub use name_path::*;
@@ -14,64 +13,9 @@ use std::borrow::Cow;
 use std::collections::hash_map::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use ir_lang::*;
 pub use symbol::*;
 pub use ty::*;
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct StringID(pub usize);
-
-impl fmt::Display for StringID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "string literal #{}", self.0)
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct TypeDefID(pub usize);
-
-impl fmt::Display for TypeDefID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct InterfaceID(pub usize);
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct MethodID(pub usize);
-
-impl fmt::Display for InterfaceID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-// builtin fixed IDs
-pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
-pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
-pub const DISPOSABLE_DISPOSE_INDEX: MethodID = MethodID(0);
-
-pub const STRING_ID: TypeDefID = TypeDefID(1);
-pub const STRING_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(STRING_ID);
-pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
-pub const STRING_LEN_FIELD: FieldID = FieldID(1);
-
-pub const STRING_TYPE: Type = Type::RcPointer(STRING_VTYPE_ID);
-
-pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
-pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
-
-pub const CLOSURE_PTR_FIELD: FieldID = FieldID(0);
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct FunctionID(pub usize);
-
-impl fmt::Display for FunctionID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function {}", self.0)
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct FunctionDecl {
@@ -965,6 +909,122 @@ impl Metadata {
         self.type_decls = decls;
         for (id, def) in sorted_defs {
             self.type_decls.insert(id, TypeDecl::Def(def));
+        }
+    }
+}
+
+
+
+impl InstructionFormatter for Metadata {
+    fn format_type(&self, ty: &Type, f: &mut dyn fmt::Write) -> fmt::Result {
+        write!(f, "{}", self.pretty_ty_name(ty))
+    }
+
+    fn format_val(&self, val: &Value, f: &mut dyn fmt::Write) -> fmt::Result {
+        match val {
+            Value::Ref(r) => self.format_ref(r, f),
+            _ => RawInstructionFormatter.format_val(val, f),
+        }
+    }
+
+    fn format_ref(&self, r: &Ref, f: &mut dyn fmt::Write) -> fmt::Result {
+        match r {
+            Ref::Global(GlobalRef::StringLiteral(string_id)) => match self.get_string(*string_id) {
+                Some(string_lit) => write!(f, "'{}'", string_lit),
+                None => write!(f, "{}", r),
+            },
+
+            Ref::Global(GlobalRef::Function(id)) => {
+                let func_name = self.get_function(*id).and_then(|f| f.global_name.as_ref());
+
+                match func_name {
+                    Some(name) => write!(f, "{}", name),
+
+                    None => {
+                        let find_iface_impl = self.ifaces().find_map(|(_id, iface)| {
+                            iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
+                                let method_id = iface_impl.methods.iter().find_map(
+                                    |(method_id, func_id)| {
+                                        if *func_id == *id {
+                                            Some(method_id)
+                                        } else {
+                                            None
+                                        }
+                                    },
+                                )?;
+
+                                let method = iface.get_method(*method_id).unwrap();
+
+                                Some((&iface.name, impl_ty, &method.name))
+                            })
+                        });
+
+                        match find_iface_impl {
+                            Some((iface_name, impl_ty, method_name)) => {
+                                write!(f, "{}.{} impl for ", iface_name, method_name)?;
+                                self.format_type(impl_ty, f)
+                            }
+
+                            None => write!(f, "{}", r),
+                        }
+                    }
+                }
+            }
+
+            _ => RawInstructionFormatter.format_ref(r, f),
+        }
+    }
+
+    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut dyn fmt::Write) -> fmt::Result {
+        let field_name = of_ty
+            .as_struct()
+            .or_else(|| match of_ty.rc_resource_class_id()? {
+                VirtualTypeID::Class(struct_id) => Some(struct_id),
+                _ => None,
+            })
+            .and_then(|struct_id| self.get_struct_def(struct_id))
+            .and_then(|struct_def| struct_def.fields.get(&field))
+            .and_then(|field| field.name.as_ref());
+
+        match field_name {
+            Some(name) => write!(f, "{}", name),
+            _ => RawInstructionFormatter.format_field(of_ty, field, f),
+        }
+    }
+
+    fn format_method(
+        &self,
+        iface_id: InterfaceID,
+        method: MethodID,
+        f: &mut dyn fmt::Write,
+    ) -> fmt::Result {
+        let iface = match self.get_iface_def(iface_id) {
+            Some(iface) => iface,
+            None => return RawInstructionFormatter.format_method(iface_id, method, f),
+        };
+
+        let method = match iface.get_method(method) {
+            Some(method) => method,
+            None => {
+                return RawInstructionFormatter.format_method(iface_id, method, f);
+            }
+        };
+
+        write!(f, "{}", method.name)
+    }
+
+    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut dyn fmt::Write) -> fmt::Result {
+        let case_name = match of_ty {
+            Type::Variant(id) => self
+                .get_variant_def(*id)
+                .and_then(|variant| variant.cases.get(tag))
+                .map(|case| &case.name),
+            _ => None,
+        };
+
+        match case_name {
+            Some(name) => write!(f, "{}", name),
+            _ => RawInstructionFormatter.format_variant_case(of_ty, tag, f),
         }
     }
 }

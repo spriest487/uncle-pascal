@@ -3,18 +3,14 @@ use crate::ExecError;
 use crate::ExecResult;
 use crate::Interpreter;
 use crate::Pointer;
-use intermediate::metadata::TypeDefID;
-use intermediate::LocalID;
-use intermediate::Ref;
-use intermediate::Type;
-use intermediate::Value;
-use intermediate::RETURN_REF;
 use std::borrow::Cow;
 use std::env::consts::OS;
 use std::fmt;
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
+use intermediate::ir;
+use ir_lang::{LocalID, Ref, Type, TypeDefID, Value};
 
 fn primitive_to_str<T, UnwrapFn>(state: &mut Interpreter, unwrap_fn: UnwrapFn) -> ExecResult<()>
 where
@@ -29,7 +25,7 @@ where
     })?;
 
     let string = state.create_string(&value.to_string())?;
-    state.store(&RETURN_REF, string)?;
+    state.store(&ir::RETURN_REF, string)?;
 
     Ok(())
 }
@@ -93,7 +89,7 @@ pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
         msg: format!("could not convert `{}` to Integer", string),
     })?;
 
-    state.store(&RETURN_REF, DynValue::I32(int))?;
+    state.store(&ir::RETURN_REF, DynValue::I32(int))?;
 
     Ok(())
 }
@@ -141,7 +137,7 @@ pub(super) fn read_ln(state: &mut Interpreter) -> ExecResult<()> {
 
     let result_str = state.create_string(&line)?;
 
-    state.store(&RETURN_REF, result_str)?;
+    state.store(&ir::RETURN_REF, result_str)?;
 
     Ok(())
 }
@@ -161,7 +157,7 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
         Pointer::null(Type::U8)
     };
 
-    state.store(&RETURN_REF, DynValue::Pointer(mem_ptr))?;
+    state.store(&ir::RETURN_REF, DynValue::Pointer(mem_ptr))?;
 
     Ok(())
 }
@@ -213,7 +209,7 @@ pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
         })?;
 
     let arr_arg = state.evaluate(&Value::Ref(array_arg_ref))?;
-    state.call(len_func, &[arr_arg], Some(&RETURN_REF))?;
+    state.call(len_func, &[arr_arg], Some(&ir::RETURN_REF))?;
 
     Ok(())
 }
@@ -246,7 +242,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
     state.call(alloc_func, &[new_arr_val.clone(), new_len, old_arr, default_val_ptr], None)?;
 
-    state.store(&RETURN_REF, new_arr_val)?;
+    state.store(&ir::RETURN_REF, new_arr_val)?;
 
     Ok(())
 }

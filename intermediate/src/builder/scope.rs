@@ -1,17 +1,17 @@
-use crate::{Label, LocalID, Ref, Type};
+use crate::ir;
 
 #[derive(Clone, Debug)]
 pub enum Local {
     // the builder created this local allocation and must track its lifetime to drop it
     New {
-        id: LocalID,
+        id: ir::LocalID,
         name: Option<String>,
-        ty: Type,
+        ty: ir::Type,
     },
 
     // the builder created this local allocation but we don't want to track its lifetime
     Temp {
-        id: LocalID
+        id: ir::LocalID
     },
 
     // function parameter slots as established by the calling convention - %1.. if the function
@@ -19,9 +19,9 @@ pub enum Local {
 
     // by-value parameter. value is copied into the local by the caller
     Param {
-        id: LocalID,
+        id: ir::LocalID,
         name: String,
-        ty: Type,
+        ty: ir::Type,
 
         // by-ref parameter?
         // if so pointer to the value is copied into the local by the caller, and must
@@ -36,10 +36,10 @@ pub enum Local {
 }
 
 impl Local {
-    pub fn id(&self) -> LocalID {
+    pub fn id(&self) -> ir::LocalID {
         match self {
             Local::New { id, .. } | Local::Temp { id, .. } | Local::Param { id, .. } => *id,
-            Local::Return { .. } => LocalID(0),
+            Local::Return { .. } => ir::LocalID(0),
         }
     }
 
@@ -95,7 +95,7 @@ impl Scope {
         &self.locals
     }
 
-    pub fn local_by_id(&self, id: LocalID) -> Option<&Local> {
+    pub fn local_by_id(&self, id: ir::LocalID) -> Option<&Local> {
         self.locals().iter().find(|l| l.id() == id)
     }
 
@@ -103,12 +103,12 @@ impl Scope {
         self.locals().iter().find(|l| l.name().map(String::as_str) == Some(name))
     }
 
-    pub fn bind_param(&mut self, id: LocalID, name: impl Into<String>, ty: Type, by_ref: bool) {
+    pub fn bind_param(&mut self, id: ir::LocalID, name: impl Into<String>, ty: ir::Type, by_ref: bool) {
         let name = name.into();
 
         if by_ref {
             let is_ptr = match &ty {
-                Type::Pointer(..) => true,
+                ir::Type::Pointer(..) => true,
                 _ => false,
             };
             assert!(is_ptr, "by-ref parameters must have pointer type");
@@ -117,7 +117,7 @@ impl Scope {
         assert!(
             self.local_by_id(id).is_none(),
             "scope must not already have a binding for {}: {:?}",
-            Ref::Local(id),
+            ir::Ref::Local(id),
             self
         );
         assert!(
@@ -131,25 +131,25 @@ impl Scope {
     }
 
     pub fn bind_return(&mut self) {
-        let slot_free = self.local_by_id(LocalID(0)).is_none();
+        let slot_free = self.local_by_id(ir::LocalID(0)).is_none();
         assert!(slot_free, "%0 must not already be bound in bind_return");
 
         self.locals.push(Local::Return);
     }
 
-    pub fn bind_temp(&mut self, id: LocalID) {
+    pub fn bind_temp(&mut self, id: ir::LocalID) {
         assert!(
             self.local_by_id(id).is_none(),
             "scope must not already have a binding for {}: {:?}",
-            Ref::Local(id),
+            ir::Ref::Local(id),
             self
         );
 
         self.locals.push(Local::Temp { id });
     }
 
-    pub fn bind_new(&mut self, id: LocalID, name: Option<String>, ty: Type) {
-        assert_ne!(Type::Nothing, ty);
+    pub fn bind_new(&mut self, id: ir::LocalID, name: Option<String>, ty: ir::Type) {
+        assert_ne!(ir::Type::Nothing, ty);
 
         self.locals.push(Local::New {
             id,
@@ -161,8 +161,8 @@ impl Scope {
 
 #[derive(Debug)]
 pub struct LoopScope {
-    pub continue_label: Label,
-    pub break_label: Label,
+    pub continue_label: ir::Label,
+    pub break_label: ir::Label,
 
     pub block_level: usize,
 }
