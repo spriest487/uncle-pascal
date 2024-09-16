@@ -1,21 +1,12 @@
-use crate::dep_sort::find_deps;
-use crate::dep_sort::sort_defs;
-use crate::metadata::Metadata;
-use crate::metadata::NamePath;
-use crate::metadata::TypeDef;
-use crate::metadata::TypeDefID;
-use crate::syn;
-use crate::syn::Ident;
-use crate::syn::IdentPath;
-use crate::translate;
-use crate::typ;
-use crate::IROptions;
-use common::span::Span;
 use common::BuildOptions;
-use frontend::parse::TokenStream;
-use frontend::TokenTree;
+use common::span::Span;
+use frontend::ast::IdentPath;
 use frontend::pp::Preprocessor;
-use std::collections::HashMap;
+use frontend::{Ident, TokenStream, TokenTree};
+use super::*;
+use crate::{translate, typ, IROptions};
+use crate::metadata::NamePathExt;
+use crate::syn;
 
 fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
@@ -158,7 +149,7 @@ fn sorts_record_deps() {
     let sorted = sort_defs(unsorted_defs, &metadata);
 
     let mut sorted_it = sorted.into_iter();
-    assert_eq!("A", sorted_it.next().unwrap().1.name().unwrap().path.last());
-    assert_eq!("B", sorted_it.next().unwrap().1.name().unwrap().path.last());
-    assert_eq!("C", sorted_it.next().unwrap().1.name().unwrap().path.last());
+    assert_eq!("A", sorted_it.next().unwrap().1.name().unwrap().path.last().unwrap());
+    assert_eq!("B", sorted_it.next().unwrap().1.name().unwrap().path.last().unwrap());
+    assert_eq!("C", sorted_it.next().unwrap().1.name().unwrap().path.last().unwrap());
 }
