@@ -3,17 +3,14 @@ pub mod symbol;
 pub mod ty;
 
 use crate::dep_sort::sort_defs;
-use crate::syn;
-use crate::syn::Ident;
 use crate::typ;
-use syn::IdentPath;
+use ir_lang::*;
 use linked_hash_map::LinkedHashMap;
 pub use name_path::*;
 use std::borrow::Cow;
 use std::collections::hash_map::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use ir_lang::*;
 pub use symbol::*;
 pub use ty::*;
 
@@ -210,35 +207,6 @@ impl Metadata {
             .map(FunctionID)
             .find(|id| !self.functions.contains_key(id))
             .unwrap()
-    }
-
-    pub fn declare_func(
-        &mut self,
-        func_decl: &typ::ast::FunctionDecl,
-        type_args: Option<&typ::TypeList>,
-    ) -> FunctionID {
-        let global_name = match &func_decl.impl_iface {
-            Some(_) => None,
-            None => {
-                let ns: Vec<_> = func_decl
-                    .ident
-                    .parent()
-                    .expect("func always declared in ns")
-                    .iter()
-                    .map(syn::Ident::to_string)
-                    .collect();
-                let name = func_decl.ident.last().to_string();
-
-                let global_name = Symbol::new(name, ns);
-
-                Some(match type_args {
-                    None => global_name,
-                    Some(type_args) => global_name.with_ty_args(type_args.clone()),
-                })
-            },
-        };
-
-        self.insert_func(global_name)
     }
 
     pub fn insert_func(&mut self, global_name: Option<Symbol>) -> FunctionID {
@@ -559,18 +527,6 @@ impl Metadata {
         id
     }
 
-    pub fn find_iface_decl(&self, iface_ident: &IdentPath) -> Option<InterfaceID> {
-        let name = NamePath::from_parts(iface_ident.iter().map(Ident::to_string));
-
-        self.ifaces.iter().find_map(|(id, decl)| {
-            if *decl.name() == name {
-                Some(*id)
-            } else {
-                None
-            }
-        })
-    }
-
     pub fn impl_method(
         &mut self,
         iface_id: InterfaceID,
@@ -635,113 +591,6 @@ impl Metadata {
                 Some((id, impl_for_ty))
             })
             .collect()
-    }
-
-    pub fn find_type(&self, ty: &typ::Type) -> Type {
-        match ty {
-            typ::Type::Nothing => Type::Nothing,
-            typ::Type::Nil => Type::Nothing.ptr(),
-
-            typ::Type::Interface(iface) => {
-                let iface_id = match self.find_iface_decl(iface) {
-                    Some(id) => id,
-                    None => panic!("missing IR definition for interface {}", iface),
-                };
-
-                Type::RcPointer(VirtualTypeID::Interface(iface_id))
-            },
-
-            typ::Type::Primitive(typ::Primitive::Boolean) => Type::Bool,
-
-            typ::Type::Primitive(typ::Primitive::Int8) => Type::I8,
-            typ::Type::Primitive(typ::Primitive::UInt8) => Type::U8,
-            typ::Type::Primitive(typ::Primitive::Int16) => Type::I16,
-            typ::Type::Primitive(typ::Primitive::UInt16) => Type::U16,
-            typ::Type::Primitive(typ::Primitive::Int32) => Type::I32,
-            typ::Type::Primitive(typ::Primitive::UInt32) => Type::U32,
-            typ::Type::Primitive(typ::Primitive::Int64) => Type::I64,
-            typ::Type::Primitive(typ::Primitive::UInt64) => Type::U64,
-            typ::Type::Primitive(typ::Primitive::NativeInt) => Type::ISize,
-            typ::Type::Primitive(typ::Primitive::NativeUInt) => Type::USize,
-
-            typ::Type::Primitive(typ::Primitive::Real32) => Type::F32,
-
-            typ::Type::Primitive(typ::Primitive::Pointer) => Type::Nothing.ptr(),
-
-            typ::Type::Pointer(target) => self.find_type(target).ptr(),
-
-            typ::Type::Record(class) | typ::Type::Class(class) => {
-                expect_no_generic_args(&class, class.type_args.as_ref());
-
-                let ty_name = NamePath::from_decl(*class.clone(), self);
-                let struct_id = match self.find_type_decl(&ty_name) {
-                    Some(id) => id,
-                    None => panic!("{} was not found in metadata (not instantiated)", class),
-                };
-
-                match ty {
-                    typ::Type::Class(..) => {
-                        let class_id = VirtualTypeID::Class(struct_id);
-                        Type::RcPointer(class_id)
-                    },
-
-                    typ::Type::Record(..) => Type::Struct(struct_id),
-
-                    _ => unreachable!(),
-                }
-            },
-
-            typ::Type::Array(array_ty) => {
-                let element = self.find_type(&array_ty.element_ty);
-                Type::Array {
-                    element: Rc::new(element),
-                    dim: array_ty.dim,
-                }
-            },
-
-            typ::Type::DynArray { element } => {
-                let element = self.find_type(element.as_ref());
-
-                let array_struct = match self.find_dyn_array_struct(&element) {
-                    Some(id) => id,
-                    None => panic!(
-                        "missing dyn array IR struct definition for element type {}",
-                        element
-                    ),
-                };
-
-                Type::RcPointer(VirtualTypeID::Class(array_struct))
-            },
-
-            typ::Type::Variant(variant) => {
-                expect_no_generic_args(&variant, variant.type_args.as_ref());
-
-                let ty_name = NamePath::from_decl(*variant.clone(), self);
-
-                match self.find_type_decl(&ty_name) {
-                    Some(id) => Type::Variant(id),
-                    None => panic!("missing IR struct metadata for variant {}", variant),
-                }
-            },
-
-            typ::Type::MethodSelf => panic!("Self is not a real type in this context"),
-
-            typ::Type::GenericParam(param) => panic!(
-                "{} is not a real type in this context: {:?}",
-                param,
-                common::Backtrace::new()
-            ),
-
-            typ::Type::Function(sig) => match self.function_types_by_sig.get(sig) {
-                Some(id) => Type::Function(*id),
-                None => panic!("no type definition for function with sig {}", sig),
-            },
-
-            // TODO: enums may later be variably sized
-            typ::Type::Enum(..) => Type::ISize,
-
-            typ::Type::Any => Type::RcPointer(VirtualTypeID::Any),
-        }
     }
 
     pub fn find_dyn_array_struct(&self, element: &Type) -> Option<TypeDefID> {
@@ -1045,16 +894,5 @@ impl InstructionFormatter for Metadata {
             Some(name) => write!(f, "{}", name),
             _ => RawInstructionFormatter.format_variant_case(of_ty, tag, f),
         }
-    }
-}
-
-fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::TypeList>) {
-    if let Some(type_args) = type_args {
-        let any_generic_args = type_args.items.iter().any(|arg| arg.is_generic_param());
-        assert!(
-            !any_generic_args,
-            "name of translated variant must not contain unspecialized generics: {}",
-            target
-        );
     }
 }

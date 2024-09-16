@@ -171,8 +171,10 @@ pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
     let ptr = ptr_val
         .as_pointer()
         .ok_or_else(|| ExecError::illegal_state("FreeMem expected heap pointer argument"))?;
-
-    state.dynfree(ptr)?;
+    
+    if !ptr.is_null() {
+        state.dynfree(ptr)?;
+    }
 
     Ok(())
 }

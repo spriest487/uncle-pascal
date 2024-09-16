@@ -1,13 +1,12 @@
 use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::typ;
-use crate::Metadata;
 use ir_lang::*;
 use std::borrow::Cow;
 use typ::Specializable;
 
 pub trait NamePathExt {
-    fn from_decl(name: typ::Symbol, metadata: &Metadata) -> Self;
+    fn from_decl(name: typ::Symbol, metadata: &ModuleBuilder) -> Self;
     fn from_ident_path(ident: &syn::IdentPath, type_args: Option<Vec<Type>>) -> Self;
     fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self;
     
@@ -16,7 +15,7 @@ pub trait NamePathExt {
 }
 
 impl NamePathExt for NamePath {
-    fn from_decl(name: typ::Symbol, metadata: &Metadata) -> Self {
+    fn from_decl(name: typ::Symbol, builder: &ModuleBuilder) -> Self {
         let path_parts = name
             .qualified
             .into_parts()
@@ -28,7 +27,7 @@ impl NamePathExt for NamePath {
                 let types = name_type_args
                     .items
                     .iter()
-                    .map(|arg| metadata.find_type(arg))
+                    .map(|arg| builder.find_type(arg))
                     .collect();
 
                 Some(types)

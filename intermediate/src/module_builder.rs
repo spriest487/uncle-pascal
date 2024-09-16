@@ -3,7 +3,7 @@ use crate::build_func_def;
 use crate::build_func_static_closure_def;
 use crate::build_static_closure_impl;
 use crate::builder::Builder;
-use crate::metadata::{translate_closure_struct, translate_sig};
+use crate::metadata::{translate_closure_struct, translate_sig, NamePathExt, Symbol};
 use crate::metadata::translate_iface;
 use crate::metadata::translate_name;
 use crate::metadata::translate_struct_def;
@@ -25,11 +25,12 @@ use frontend::typecheck::ast::specialize_func_decl;
 use frontend::typecheck::builtin_string_name;
 use frontend::typecheck::layout::StructLayout;
 use frontend::typecheck::layout::StructLayoutMember;
-use frontend::typecheck::TypeList;
 use frontend::Ident;
 use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
+use ir_lang::{InterfaceID, NamePath, Type, VirtualTypeID};
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -152,10 +153,7 @@ impl ModuleBuilder {
 
         let sig = typ::FunctionSig::of_decl(&specialized_decl);
 
-        let id = self
-            .module
-            .metadata
-            .declare_func(&func_def.decl, key.type_args.as_ref());
+        let id = self.declare_func(&func_def.decl, key.type_args.as_ref());
 
         // cache the function before translating the instantiation, because
         // it may recurse and instantiate itself in its own body
@@ -196,7 +194,7 @@ impl ModuleBuilder {
             "external function must not be generic"
         );
 
-        let id = self.module.metadata.declare_func(&extern_decl, None);
+        let id = self.declare_func(&extern_decl, None);
         let sig = typ::FunctionSig::of_decl(&extern_decl);
 
         let return_ty = self.translate_type(&sig.return_ty, None);
@@ -231,7 +229,7 @@ impl ModuleBuilder {
     fn instantiate_method(
         &mut self,
         method_key: MethodDeclKey,
-        type_args: Option<TypeList>,
+        type_args: Option<typ::TypeList>,
     ) -> FunctionInstance {
         if method_key.self_ty.is_generic_param() {
             panic!("instantiate_method: method ({} of {}) must not have a generic self-type ({})", method_key.method, method_key.iface, method_key.self_ty);
@@ -244,7 +242,7 @@ impl ModuleBuilder {
             Err(..) => panic!("missing interface def {}", method_key.iface),
         };
 
-        let iface_id = match self.module.metadata.find_iface_decl(&iface_def.name.qualified) {
+        let iface_id = match self.find_iface_decl(&iface_def.name.qualified) {
             Some(iface_id) => iface_id,
             None => {
                 let mut builder = Builder::new(self);
@@ -275,12 +273,9 @@ impl ModuleBuilder {
         // being generated here is the self-type, which we already specialized
         let specialized_decl = method_def.decl.clone();
 
-        let id = self
-            .module
-            .metadata
-            .declare_func(&specialized_decl, type_args.as_ref());
+        let id = self.declare_func(&specialized_decl, type_args.as_ref());
 
-        let self_ty = self.module.metadata.find_type(&method_key.self_ty);
+        let self_ty = self.find_type(&method_key.self_ty);
 
         self.module.metadata
             .impl_method(iface_id, self_ty, method_name, id);
@@ -323,7 +318,7 @@ impl ModuleBuilder {
         iface: IdentPath,
         method: Ident,
         mut self_ty: typ::Type,
-        type_args: Option<TypeList>,
+        type_args: Option<typ::TypeList>,
     ) -> FunctionInstance {
         // while we can't pass type args to an interface method call, we can call one in a
         // context where the self-type is a generic that needs resolving before codegen
@@ -346,10 +341,39 @@ impl ModuleBuilder {
         self.instantiate_func(key)
     }
 
+    pub fn declare_func(
+        &mut self,
+        func_decl: &typ::ast::FunctionDecl,
+        type_args: Option<&typ::TypeList>,
+    ) -> ir::FunctionID {
+        let global_name = match &func_decl.impl_iface {
+            Some(_) => None,
+            None => {
+                let ns: Vec<_> = func_decl
+                    .ident
+                    .parent()
+                    .expect("func always declared in ns")
+                    .iter()
+                    .map(Ident::to_string)
+                    .collect();
+                let name = func_decl.ident.last().to_string();
+
+                let global_name = Symbol::new(name, ns);
+
+                Some(match type_args {
+                    None => global_name,
+                    Some(type_args) => global_name.with_ty_args(type_args.clone()),
+                })
+            },
+        };
+
+        self.module.metadata.insert_func(global_name)
+    }
+
     pub fn translate_func(
         &mut self,
         func_name: IdentPath,
-        type_args: Option<TypeList>,
+        type_args: Option<typ::TypeList>,
     ) -> FunctionInstance {
         let key = FunctionDefKey {
             type_args,
@@ -366,6 +390,18 @@ impl ModuleBuilder {
         );
 
         self.module.functions.insert(id, function);
+    }
+
+    pub fn find_iface_decl(&self, iface_ident: &IdentPath) -> Option<InterfaceID> {
+        let name = NamePath::from_parts(iface_ident.iter().map(Ident::to_string));
+
+        self.module.metadata.ifaces().find_map(|(id, decl)| {
+            if decl.name == name {
+                Some(id)
+            } else {
+                None
+            }
+        })
     }
 
     // interface methods may not be statically referenced for every type that implements them due to
@@ -403,6 +439,113 @@ impl ModuleBuilder {
             } else {
                 last_instance_count = self.type_cache.len();
             }
+        }
+    }
+
+    pub fn find_type(&self, ty: &typ::Type) -> Type {
+        match ty {
+            typ::Type::Nothing => Type::Nothing,
+            typ::Type::Nil => Type::Nothing.ptr(),
+
+            typ::Type::Interface(iface) => {
+                let iface_id = match self.find_iface_decl(iface) {
+                    Some(id) => id,
+                    None => panic!("missing IR definition for interface {}", iface),
+                };
+
+                Type::RcPointer(VirtualTypeID::Interface(iface_id))
+            },
+
+            typ::Type::Primitive(typ::Primitive::Boolean) => Type::Bool,
+
+            typ::Type::Primitive(typ::Primitive::Int8) => Type::I8,
+            typ::Type::Primitive(typ::Primitive::UInt8) => Type::U8,
+            typ::Type::Primitive(typ::Primitive::Int16) => Type::I16,
+            typ::Type::Primitive(typ::Primitive::UInt16) => Type::U16,
+            typ::Type::Primitive(typ::Primitive::Int32) => Type::I32,
+            typ::Type::Primitive(typ::Primitive::UInt32) => Type::U32,
+            typ::Type::Primitive(typ::Primitive::Int64) => Type::I64,
+            typ::Type::Primitive(typ::Primitive::UInt64) => Type::U64,
+            typ::Type::Primitive(typ::Primitive::NativeInt) => Type::ISize,
+            typ::Type::Primitive(typ::Primitive::NativeUInt) => Type::USize,
+
+            typ::Type::Primitive(typ::Primitive::Real32) => Type::F32,
+
+            typ::Type::Primitive(typ::Primitive::Pointer) => Type::Nothing.ptr(),
+
+            typ::Type::Pointer(target) => self.find_type(target).ptr(),
+
+            typ::Type::Record(class) | typ::Type::Class(class) => {
+                expect_no_generic_args(&class, class.type_args.as_ref());
+
+                let ty_name = NamePath::from_decl(*class.clone(), self);
+                let struct_id = match self.metadata().find_type_decl(&ty_name) {
+                    Some(id) => id,
+                    None => panic!("{} was not found in metadata (not instantiated)", class),
+                };
+
+                match ty {
+                    typ::Type::Class(..) => {
+                        let class_id = VirtualTypeID::Class(struct_id);
+                        Type::RcPointer(class_id)
+                    },
+
+                    typ::Type::Record(..) => Type::Struct(struct_id),
+
+                    _ => unreachable!(),
+                }
+            },
+
+            typ::Type::Array(array_ty) => {
+                let element = self.find_type(&array_ty.element_ty);
+                Type::Array {
+                    element: Rc::new(element),
+                    dim: array_ty.dim,
+                }
+            },
+
+            typ::Type::DynArray { element } => {
+                let element = self.find_type(element.as_ref());
+
+                let array_struct = match self.metadata().find_dyn_array_struct(&element) {
+                    Some(id) => id,
+                    None => panic!(
+                        "missing dyn array IR struct definition for element type {}",
+                        element
+                    ),
+                };
+
+                Type::RcPointer(VirtualTypeID::Class(array_struct))
+            },
+
+            typ::Type::Variant(variant) => {
+                expect_no_generic_args(&variant, variant.type_args.as_ref());
+
+                let ty_name = NamePath::from_decl(*variant.clone(), self);
+
+                match self.metadata().find_type_decl(&ty_name) {
+                    Some(id) => Type::Variant(id),
+                    None => panic!("missing IR struct metadata for variant {}", variant),
+                }
+            },
+
+            typ::Type::MethodSelf => panic!("Self is not a real type in this context"),
+
+            typ::Type::GenericParam(param) => panic!(
+                "{} is not a real type in this context: {:?}",
+                param,
+                common::Backtrace::new()
+            ),
+
+            typ::Type::Function(sig) => match self.metadata().find_func_ty(sig) {
+                Some(id) => Type::Function(id),
+                None => panic!("no type definition for function with sig {}", sig),
+            },
+
+            // TODO: enums may later be variably sized
+            typ::Type::Enum(..) => Type::ISize,
+
+            typ::Type::Any => Type::RcPointer(VirtualTypeID::Any),
         }
     }
 
@@ -527,7 +670,7 @@ impl ModuleBuilder {
 
             real_ty => {
                 // nothing to be instantiated
-                let ty = self.module.metadata.find_type(real_ty);
+                let ty = self.find_type(real_ty);
                 self.type_cache.insert(src_ty, ty.clone());
 
                 ty
@@ -617,7 +760,7 @@ impl ModuleBuilder {
     pub fn translate_dyn_array_struct(
         &mut self,
         element_ty: &typ::Type,
-        type_args: Option<&TypeList>,
+        type_args: Option<&typ::TypeList>,
     ) -> ir::TypeDefID {
         let element_ty = self.translate_type(element_ty, type_args);
 
@@ -1132,4 +1275,15 @@ fn gen_class_rc_boilerplate(module: &mut ModuleBuilder, class_ty: &ir::Type) {
         .expect("resource class of translated class type was not a struct");
 
     module.runtime_type(&ir::Type::Struct(resource_struct));
+}
+
+fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::TypeList>) {
+    if let Some(type_args) = type_args {
+        let any_generic_args = type_args.items.iter().any(|arg| arg.is_generic_param());
+        assert!(
+            !any_generic_args,
+            "name of translated variant must not contain unspecialized generics: {}",
+            target
+        );
+    }
 }
