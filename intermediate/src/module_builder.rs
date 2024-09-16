@@ -3,7 +3,7 @@ use crate::build_func_def;
 use crate::build_func_static_closure_def;
 use crate::build_static_closure_impl;
 use crate::builder::Builder;
-use crate::metadata::{translate_closure_struct, translate_sig, NamePathExt, Symbol};
+use crate::metadata::{translate_closure_struct, translate_sig, NamePathExt, Symbol, TypeDecl, TypeDef};
 use crate::metadata::translate_iface;
 use crate::metadata::translate_name;
 use crate::metadata::translate_struct_def;
@@ -30,7 +30,6 @@ use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use ir_lang::{InterfaceID, NamePath, Type, VirtualTypeID};
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -41,6 +40,8 @@ pub struct ModuleBuilder {
     type_cache: LinkedHashMap<typ::Type, ir::Type>,
     
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
+
+    function_types_by_sig: HashMap<typ::FunctionSig, ir::TypeDefID>,
 
     module: Module,
 }
@@ -54,6 +55,8 @@ impl ModuleBuilder {
             type_cache: LinkedHashMap::new(),
             
             translated_funcs: HashMap::new(),
+            
+            function_types_by_sig: HashMap::new(),
 
             module: Module::new(metadata),
         }
@@ -392,8 +395,8 @@ impl ModuleBuilder {
         self.module.functions.insert(id, function);
     }
 
-    pub fn find_iface_decl(&self, iface_ident: &IdentPath) -> Option<InterfaceID> {
-        let name = NamePath::from_parts(iface_ident.iter().map(Ident::to_string));
+    pub fn find_iface_decl(&self, iface_ident: &IdentPath) -> Option<ir::InterfaceID> {
+        let name = ir::NamePath::from_parts(iface_ident.iter().map(Ident::to_string));
 
         self.module.metadata.ifaces().find_map(|(id, decl)| {
             if decl.name == name {
@@ -442,10 +445,10 @@ impl ModuleBuilder {
         }
     }
 
-    pub fn find_type(&self, ty: &typ::Type) -> Type {
+    pub fn find_type(&self, ty: &typ::Type) -> ir::Type {
         match ty {
-            typ::Type::Nothing => Type::Nothing,
-            typ::Type::Nil => Type::Nothing.ptr(),
+            typ::Type::Nothing => ir::Type::Nothing,
+            typ::Type::Nil => ir::Type::Nothing.ptr(),
 
             typ::Type::Interface(iface) => {
                 let iface_id = match self.find_iface_decl(iface) {
@@ -453,32 +456,32 @@ impl ModuleBuilder {
                     None => panic!("missing IR definition for interface {}", iface),
                 };
 
-                Type::RcPointer(VirtualTypeID::Interface(iface_id))
+                ir::Type::RcPointer(ir::VirtualTypeID::Interface(iface_id))
             },
 
-            typ::Type::Primitive(typ::Primitive::Boolean) => Type::Bool,
+            typ::Type::Primitive(typ::Primitive::Boolean) => ir::Type::Bool,
 
-            typ::Type::Primitive(typ::Primitive::Int8) => Type::I8,
-            typ::Type::Primitive(typ::Primitive::UInt8) => Type::U8,
-            typ::Type::Primitive(typ::Primitive::Int16) => Type::I16,
-            typ::Type::Primitive(typ::Primitive::UInt16) => Type::U16,
-            typ::Type::Primitive(typ::Primitive::Int32) => Type::I32,
-            typ::Type::Primitive(typ::Primitive::UInt32) => Type::U32,
-            typ::Type::Primitive(typ::Primitive::Int64) => Type::I64,
-            typ::Type::Primitive(typ::Primitive::UInt64) => Type::U64,
-            typ::Type::Primitive(typ::Primitive::NativeInt) => Type::ISize,
-            typ::Type::Primitive(typ::Primitive::NativeUInt) => Type::USize,
+            typ::Type::Primitive(typ::Primitive::Int8) => ir::Type::I8,
+            typ::Type::Primitive(typ::Primitive::UInt8) => ir::Type::U8,
+            typ::Type::Primitive(typ::Primitive::Int16) => ir::Type::I16,
+            typ::Type::Primitive(typ::Primitive::UInt16) => ir::Type::U16,
+            typ::Type::Primitive(typ::Primitive::Int32) => ir::Type::I32,
+            typ::Type::Primitive(typ::Primitive::UInt32) => ir::Type::U32,
+            typ::Type::Primitive(typ::Primitive::Int64) => ir::Type::I64,
+            typ::Type::Primitive(typ::Primitive::UInt64) => ir::Type::U64,
+            typ::Type::Primitive(typ::Primitive::NativeInt) => ir::Type::ISize,
+            typ::Type::Primitive(typ::Primitive::NativeUInt) => ir::Type::USize,
 
-            typ::Type::Primitive(typ::Primitive::Real32) => Type::F32,
+            typ::Type::Primitive(typ::Primitive::Real32) => ir::Type::F32,
 
-            typ::Type::Primitive(typ::Primitive::Pointer) => Type::Nothing.ptr(),
+            typ::Type::Primitive(typ::Primitive::Pointer) => ir::Type::Nothing.ptr(),
 
             typ::Type::Pointer(target) => self.find_type(target).ptr(),
 
             typ::Type::Record(class) | typ::Type::Class(class) => {
                 expect_no_generic_args(&class, class.type_args.as_ref());
 
-                let ty_name = NamePath::from_decl(*class.clone(), self);
+                let ty_name = ir::NamePath::from_decl(*class.clone(), self);
                 let struct_id = match self.metadata().find_type_decl(&ty_name) {
                     Some(id) => id,
                     None => panic!("{} was not found in metadata (not instantiated)", class),
@@ -486,11 +489,11 @@ impl ModuleBuilder {
 
                 match ty {
                     typ::Type::Class(..) => {
-                        let class_id = VirtualTypeID::Class(struct_id);
-                        Type::RcPointer(class_id)
+                        let class_id = ir::VirtualTypeID::Class(struct_id);
+                        ir::Type::RcPointer(class_id)
                     },
 
-                    typ::Type::Record(..) => Type::Struct(struct_id),
+                    typ::Type::Record(..) => ir::Type::Struct(struct_id),
 
                     _ => unreachable!(),
                 }
@@ -498,7 +501,7 @@ impl ModuleBuilder {
 
             typ::Type::Array(array_ty) => {
                 let element = self.find_type(&array_ty.element_ty);
-                Type::Array {
+                ir::Type::Array {
                     element: Rc::new(element),
                     dim: array_ty.dim,
                 }
@@ -515,16 +518,16 @@ impl ModuleBuilder {
                     ),
                 };
 
-                Type::RcPointer(VirtualTypeID::Class(array_struct))
+                ir::Type::RcPointer(ir::VirtualTypeID::Class(array_struct))
             },
 
             typ::Type::Variant(variant) => {
                 expect_no_generic_args(&variant, variant.type_args.as_ref());
 
-                let ty_name = NamePath::from_decl(*variant.clone(), self);
+                let ty_name = ir::NamePath::from_decl(*variant.clone(), self);
 
                 match self.metadata().find_type_decl(&ty_name) {
-                    Some(id) => Type::Variant(id),
+                    Some(id) => ir::Type::Variant(id),
                     None => panic!("missing IR struct metadata for variant {}", variant),
                 }
             },
@@ -537,15 +540,15 @@ impl ModuleBuilder {
                 common::Backtrace::new()
             ),
 
-            typ::Type::Function(sig) => match self.metadata().find_func_ty(sig) {
-                Some(id) => Type::Function(id),
+            typ::Type::Function(sig) => match self.find_func_ty(sig) {
+                Some(id) => ir::Type::Function(id),
                 None => panic!("no type definition for function with sig {}", sig),
             },
 
             // TODO: enums may later be variably sized
-            typ::Type::Enum(..) => Type::ISize,
+            typ::Type::Enum(..) => ir::Type::ISize,
 
-            typ::Type::Any => Type::RcPointer(VirtualTypeID::Any),
+            typ::Type::Any => ir::Type::RcPointer(ir::VirtualTypeID::Any),
         }
     }
 
@@ -654,12 +657,12 @@ impl ModuleBuilder {
             },
 
             typ::Type::Function(func_sig) => {
-                if let Some(id) = self.module.metadata.find_func_ty(&func_sig) {
+                if let Some(id) = self.find_func_ty(&func_sig) {
                     return ir::Type::Function(id);
                 }
 
                 let ir_sig = translate_sig(&func_sig, type_args, self);
-                let func_ty_id = self.module.metadata.define_func_ty((**func_sig).clone(), ir_sig);
+                let func_ty_id = self.define_func_ty((**func_sig).clone(), ir_sig);
 
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Closure(func_ty_id));
 
@@ -683,6 +686,26 @@ impl ModuleBuilder {
         // println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
 
         ty
+    }
+
+    pub fn find_func_ty(&self, sig: &typ::FunctionSig) -> Option<ir::TypeDefID> {
+        self.function_types_by_sig.get(&sig).cloned()
+    }
+
+    pub fn define_func_ty(
+        &mut self,
+        sig: typ::FunctionSig,
+        func_ty: ir::FunctionSig,
+    ) -> ir::TypeDefID {
+        assert!(!self.function_types_by_sig.contains_key(&sig));
+
+        let decl = TypeDecl::Def(TypeDef::Function(func_ty));
+
+        let id = self.metadata_mut().insert_type_decl(decl);
+
+        self.function_types_by_sig.insert(sig, id);
+
+        id
     }
 
     // get or generate runtime type for a given type, which contains the function IDs etc
@@ -794,11 +817,11 @@ impl ModuleBuilder {
         func_sig: &typ::FunctionSig,
         type_args: Option<&typ::TypeList>,
     ) -> ir::TypeDefID {
-        let func_ty_id = match self.module.metadata.find_func_ty(&func_sig) {
+        let func_ty_id = match self.find_func_ty(&func_sig) {
             Some(id) => id,
             None => {
                 let ir_sig = translate_sig(func_sig, type_args, self);
-                self.module.metadata.define_func_ty(func_sig.clone(), ir_sig)
+                self.define_func_ty(func_sig.clone(), ir_sig)
             },
         };
 

@@ -3,7 +3,6 @@ pub mod symbol;
 pub mod ty;
 
 use crate::dep_sort::sort_defs;
-use crate::typ;
 use ir_lang::*;
 use linked_hash_map::LinkedHashMap;
 pub use name_path::*;
@@ -57,8 +56,6 @@ pub struct Metadata {
     functions: LinkedHashMap<FunctionID, Rc<FunctionDecl>>,
 
     closures: Vec<TypeDefID>,
-
-    function_types_by_sig: HashMap<typ::FunctionSig, TypeDefID>,
 
     runtime_types: HashMap<Type, RuntimeType>,
     dyn_array_runtime_types: HashMap<Type, DynArrayRuntimeType>,
@@ -133,12 +130,6 @@ impl Metadata {
             }
 
             self.runtime_types.insert(ty.clone(), funcs.clone());
-        }
-
-        for (sig, ty_id) in &other.function_types_by_sig {
-            if !self.function_types_by_sig.contains_key(sig) {
-                self.function_types_by_sig.insert(sig.clone(), *ty_id);
-            }
         }
 
         for (el_ty, struct_id) in &other.dyn_array_structs {
@@ -461,26 +452,13 @@ impl Metadata {
             _ => None,
         })
     }
-
-    pub fn find_func_ty(&self, sig: &typ::FunctionSig) -> Option<TypeDefID> {
-        self.function_types_by_sig.get(&sig).cloned()
-    }
-
-    pub fn define_func_ty(
-        &mut self,
-        sig: typ::FunctionSig,
-        func_ty: FunctionSig,
-    ) -> TypeDefID {
-        assert!(!self.function_types_by_sig.contains_key(&sig));
-
+    
+    pub fn insert_type_decl(&mut self, decl: TypeDecl) -> TypeDefID {
         let id = self.next_type_def_id();
-        self.function_types_by_sig.insert(sig, id);
-
-        let replaced = self
-            .type_decls
-            .insert(id, TypeDecl::Def(TypeDef::Function(func_ty)));
+        
+        let replaced = self.type_decls.insert(id, decl);
         assert!(replaced.is_none());
-
+        
         id
     }
 
