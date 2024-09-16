@@ -10,11 +10,9 @@ use crate::stmt::*;
 use frontend::ast as syn;
 use frontend::typecheck as typ;
 pub use ir_lang as ir;
-use metadata::Metadata;
 use ir_lang::InstructionFormatter;
 
 mod builder;
-mod dep_sort;
 mod expr;
 pub mod metadata;
 mod module;
@@ -49,7 +47,7 @@ impl Default for IROptions {
 
 fn write_instruction_list(
     f: &mut fmt::Formatter,
-    metadata: &Metadata,
+    metadata: &ir::Metadata,
     instructions: &[ir::Instruction],
 ) -> fmt::Result {
     let num_len = instructions.len().to_string().len();
@@ -66,7 +64,7 @@ fn write_instruction_list(
 }
 
 pub fn translate(module: &typ::Module, opts: IROptions) -> Module {
-    let metadata = Metadata::new();
+    let metadata = ir::Metadata::new();
     let mut ir_module = ModuleBuilder::new((*module.root_ctx).clone(), metadata, opts);
 
     let builtin_disposable = typ::builtin_disposable_iface();

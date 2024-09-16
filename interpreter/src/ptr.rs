@@ -5,7 +5,6 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
 use intermediate::ir;
-use intermediate::metadata::Metadata;
 
 /// pointer to native memory that is marshalled to/from value cells when accessed
 #[derive(Debug, Clone, Eq)]
@@ -67,10 +66,10 @@ impl Pointer {
         Self { ty: self.ty.clone(), addr: self.addr >> rhs }
     }
 
-    pub fn to_pretty_string(&self, metadata: &Metadata) -> String {
+    pub fn to_pretty_string(&self, metadata: &ir::Metadata) -> String {
         let ty_pretty_name = metadata.pretty_ty_name(&self.ty);
 
-        format!("0x{:0width$x} ({})", self.addr, ty_pretty_name, width = (size_of::<usize>() * 2))
+        format!("0x{:0width$x} ({})", self.addr, ty_pretty_name, width = size_of::<usize>() * 2)
     }
 }
 

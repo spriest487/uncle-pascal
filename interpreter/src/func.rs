@@ -4,7 +4,6 @@ use crate::marshal::MarshalResult;
 use crate::marshal::Marshaller;
 use crate::ExecResult;
 use crate::Interpreter;
-use intermediate::metadata::Metadata;
 use std::fmt;
 
 pub mod ffi;
@@ -38,7 +37,7 @@ impl Function {
     pub fn new_ffi(
         func_ref: &ir::ExternalFunctionRef,
         marshaller: &mut Marshaller,
-        metadata: &Metadata,
+        metadata: &ir::Metadata,
     ) -> MarshalResult<Self> {
         let invoker = marshaller.build_invoker(&func_ref, metadata)?;
 

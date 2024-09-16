@@ -2,16 +2,12 @@ use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::typ;
 use ir_lang::*;
-use std::borrow::Cow;
 use typ::Specializable;
 
 pub trait NamePathExt {
     fn from_decl(name: typ::Symbol, metadata: &ModuleBuilder) -> Self;
     fn from_ident_path(ident: &syn::IdentPath, type_args: Option<Vec<Type>>) -> Self;
     fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self;
-    
-    fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
-        where TyFormat: Fn(&Type) -> Cow<'a, str>;
 }
 
 impl NamePathExt for NamePath {
@@ -55,27 +51,6 @@ impl NamePathExt for NamePath {
             path: iter.into_iter().collect(),
             type_args: None,
         }
-    }
-
-    fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
-        where TyFormat: Fn(&Type) -> Cow<'a, str>,
-    {
-        let mut buf = self.path.join("::");
-
-        if let Some(type_args) = self.type_args.as_ref() {
-            buf.push('<');
-            for (i, ty_arg) in type_args.iter().enumerate() {
-                if i > 0 {
-                    buf.push_str(", ");
-                }
-
-                let ty_name = ty_format(ty_arg);
-                buf.push_str(&ty_name);
-            }
-            buf.push('>');
-        }
-
-        buf
     }
 }
 

@@ -8,7 +8,6 @@ use crate::StructValue;
 use crate::VariantValue;
 use ::dlopen::raw as dlopen;
 use ::dlopen::Error as DlopenError;
-use intermediate::metadata::Metadata;
 use ir_lang::InstructionFormatter;
 use ir_lang::RawInstructionFormatter;
 use libffi::low::ffi_type;
@@ -288,7 +287,7 @@ impl Marshaller {
         &mut self,
         id: ir::TypeDefID,
         def: &ir::Struct,
-        metadata: &Metadata,
+        metadata: &ir::Metadata,
     ) -> MarshalResult<ForeignType> {
         let struct_ty = ir::Type::Struct(id);
         if let Some(cached) = self.types.get(&struct_ty) {
@@ -328,7 +327,7 @@ impl Marshaller {
         &mut self,
         id: ir::TypeDefID,
         def: &ir::VariantDef,
-        metadata: &Metadata,
+        metadata: &ir::Metadata,
     ) -> MarshalResult<ForeignType> {
         let variant_ty = ir::Type::Variant(id);
         if let Some(cached) = self.types.get(&variant_ty) {
@@ -366,7 +365,7 @@ impl Marshaller {
     pub fn build_invoker(
         &mut self,
         func_ref: &ir::ExternalFunctionRef,
-        metadata: &Metadata,
+        metadata: &ir::Metadata,
     ) -> MarshalResult<FfiInvoker> {
         let sym_load_err = |err: DlopenError| MarshalError::ExternSymbolLoadFailed {
             lib: func_ref.src.clone(),
@@ -421,7 +420,7 @@ impl Marshaller {
     fn build_marshalled_type(
         &mut self,
         ty: &ir::Type,
-        metadata: &Metadata,
+        metadata: &ir::Metadata,
     ) -> MarshalResult<ForeignType> {
         if let Some(cached) = self.types.get(ty) {
             return Ok(cached.clone());

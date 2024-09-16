@@ -1,12 +1,19 @@
+use ir_lang::NamePath;
+use ir_lang::Metadata;
+use ir_lang::TypeDefID;
+use ir_lang::TypeDef;
+use common::span::*;
 use common::BuildOptions;
-use common::span::Span;
+use frontend::ast as syn;
+use frontend::ast::Ident;
 use frontend::ast::IdentPath;
+use frontend::parse::*;
 use frontend::pp::Preprocessor;
-use frontend::{Ident, TokenStream, TokenTree};
-use super::*;
-use crate::{translate, typ, IROptions};
-use crate::metadata::NamePathExt;
-use crate::syn;
+use frontend::typecheck as typ;
+use frontend::TokenTree;
+use std::collections::HashMap;
+use ir_lang::dep_sort::{find_deps, sort_defs};
+use crate::{translate, IROptions};
 
 fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
@@ -21,15 +28,15 @@ fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
     let module = typ::Module::typecheck(&[unit]).unwrap();
     let ir = translate(&module, IROptions::default());
 
-    let defs = ir.metadata.type_defs()
+    let defs = ir.metadata().type_defs()
         .map(|(id, def)| (id, def.clone()))
         .collect();
 
-    (defs, ir.metadata)
+    (defs, ir.metadata().clone())
 }
 
 fn get_id(metadata: &Metadata, name: &str) -> TypeDefID {
-    let name_path = NamePath::from_parts(vec!["test".to_string(), name.to_string()]);
+    let name_path = NamePath::new(vec!["test".to_string()], name.to_string());
 
     match metadata.find_struct_def(&name_path) {
         Some((id, _)) => { id },

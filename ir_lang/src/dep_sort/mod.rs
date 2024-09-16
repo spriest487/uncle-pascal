@@ -1,8 +1,10 @@
-#[cfg(test)]
-mod test;
-
 use crate::metadata::Metadata;
-use ir_lang::*;
+use crate::FunctionSig;
+use crate::Struct;
+use crate::Type;
+use crate::TypeDef;
+use crate::TypeDefID;
+use crate::VariantDef;
 use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -43,7 +45,7 @@ where
         .collect()
 }
 
-fn find_deps(def: &TypeDef, metadata: &Metadata) -> HashSet<TypeDefID> {
+pub fn find_deps(def: &TypeDef, metadata: &Metadata) -> HashSet<TypeDefID> {
     let mut deps = HashSet::new();
 
     match def {

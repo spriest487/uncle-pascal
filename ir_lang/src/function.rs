@@ -1,6 +1,6 @@
 use std::fmt;
 use common::span::Span;
-use crate::{Instruction, Label, TypeDefID};
+use crate::{Instruction, Label, NamePath, TypeDefID};
 use crate::LocalID;
 use crate::Ref;
 
@@ -68,6 +68,11 @@ pub struct ExternalFunctionRef {
     pub sig: FunctionSig,
 
     pub src_span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionDecl {
+    pub global_name: Option<NamePath>,
 }
 
 #[derive(Clone, Debug)]

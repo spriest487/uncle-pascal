@@ -7,7 +7,6 @@ use crate::ast::Module;
 use crate::ast::Statement;
 use crate::ast::Type;
 use crate::ast::TypeDefName;
-use intermediate::metadata as ir_meta;
 use crate::ir;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -27,7 +26,7 @@ impl MethodImplFunc {
         method_id: ir::MethodID,
         iface_method: &ir::Method,
         impl_func_id: ir::FunctionID,
-        metadata: &ir_meta::Metadata,
+        metadata: &ir::Metadata,
         module: &mut Module,
     ) -> Self {
         let class_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(self_ty_id));
@@ -124,7 +123,7 @@ impl Class {
     pub fn translate(
         struct_id: ir::TypeDefID,
         _struct_def: &ir::Struct,
-        metadata: &ir_meta::Metadata,
+        metadata: &ir::Metadata,
         module: &mut Module,
     ) -> Self {
         let name = module.type_names[&ir::Type::Struct(struct_id)].clone();

@@ -5,7 +5,9 @@ mod metadata;
 mod ty;
 mod ty_decl;
 mod val;
+pub mod dep_sort;
 
+use std::borrow::Cow;
 pub use formatter::*;
 pub use function::*;
 pub use instruction::*;
@@ -42,6 +44,27 @@ impl NamePath {
             path: self.path,
             type_args: Some(args.into_iter().collect()),
         }
+    }
+
+    pub fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
+    where TyFormat: Fn(&Type) -> Cow<'a, str>,
+    {
+        let mut buf = self.path.join("::");
+
+        if let Some(type_args) = self.type_args.as_ref() {
+            buf.push('<');
+            for (i, ty_arg) in type_args.iter().enumerate() {
+                if i > 0 {
+                    buf.push_str(", ");
+                }
+
+                let ty_name = ty_format(ty_arg);
+                buf.push_str(&ty_name);
+            }
+            buf.push('>');
+        }
+
+        buf
     }
 }
 

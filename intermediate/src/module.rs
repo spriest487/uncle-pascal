@@ -1,10 +1,10 @@
 use crate::write_instruction_list;
-use crate::Metadata;
 use crate::ir;
 use common::span::Span;
 use std::collections::HashMap;
 use std::fmt;
 use ir_lang::InstructionFormatter;
+use ir_lang::Metadata;
 
 #[derive(Clone, Debug)]
 pub struct Module {

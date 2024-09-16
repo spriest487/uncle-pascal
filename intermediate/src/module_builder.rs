@@ -9,7 +9,6 @@ use crate::metadata::translate_name;
 use crate::metadata::translate_struct_def;
 use crate::metadata::translate_variant_def;
 use crate::metadata::ClosureInstance;
-use crate::metadata::Metadata;
 use crate::stmt::translate_stmt;
 use crate::translate_func_params;
 use crate::typ;
@@ -46,7 +45,7 @@ pub struct ModuleBuilder {
 }
 
 impl ModuleBuilder {
-    pub fn new(src_metadata: typ::Context, metadata: Metadata, opts: IROptions) -> Self {
+    pub fn new(src_metadata: typ::Context, metadata: ir::Metadata, opts: IROptions) -> Self {
         ModuleBuilder {
             opts,
             src_metadata,
@@ -89,11 +88,11 @@ impl ModuleBuilder {
         &self.opts
     }
 
-    pub fn metadata(&self) -> &Metadata {
+    pub fn metadata(&self) -> &ir::Metadata {
         &self.module.metadata
     }    
     
-    pub fn metadata_mut(&mut self) -> &mut Metadata {
+    pub fn metadata_mut(&mut self) -> &mut ir::Metadata {
         &mut self.module.metadata
     }
 

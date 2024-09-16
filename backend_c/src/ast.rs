@@ -11,8 +11,6 @@ pub use self::ty::*;
 use crate::ast::string_lit::StringLiteral;
 use crate::ir;
 use crate::Options;
-use intermediate::metadata as ir_meta;
-use intermediate::metadata::NamePathExt;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
@@ -42,7 +40,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(metadata: &ir_meta::Metadata, opts: Options) -> Self {
+    pub fn new(metadata: &ir::Metadata, opts: Options) -> Self {
         let string_ty = Type::DefinedType(TypeDefName::Struct(ir::STRING_ID)).ptr();
 
         let system_funcs = &[
