@@ -21,8 +21,8 @@ use common::span::*;
 use common::BuildOptions;
 use interpreter::Interpreter;
 use interpreter::InterpreterOpts;
-use intermediate as ir;
 use intermediate::IROptions;
+use ir_lang as ir;
 use pp::PreprocessedUnit;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
@@ -218,7 +218,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         debug_info: args.ir_debug,
     };
 
-    let module = ir::translate(&typed_module, ir_opts);
+    let module = intermediate::translate(&typed_module, ir_opts);
     Ok(CompileOutput::IR(module))
 }
 

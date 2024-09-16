@@ -14,7 +14,6 @@ use crate::translate_func_params;
 use crate::typ;
 use crate::FunctionInstance;
 use crate::IROptions;
-use crate::Module;
 use common::span::Span;
 use common::span::Spanned;
 use frontend::ast::{IdentPath, StructKind};
@@ -27,7 +26,6 @@ use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use ir_lang::NamePath;
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -41,7 +39,7 @@ pub struct ModuleBuilder {
 
     function_types_by_sig: HashMap<typ::FunctionSig, ir::TypeDefID>,
 
-    module: Module,
+    module: ir::Module,
 }
 
 impl ModuleBuilder {
@@ -56,7 +54,7 @@ impl ModuleBuilder {
             
             function_types_by_sig: HashMap::new(),
 
-            module: Module::new(metadata),
+            module: ir::Module::new(metadata),
         }
     }
 
@@ -64,7 +62,7 @@ impl ModuleBuilder {
         self.src_metadata.module_span()
     }
 
-    pub fn build(mut self) -> Module {
+    pub fn build(mut self) -> ir::Module {
         self.gen_static_closure_init();
 
         self.gen_iface_impls();
@@ -359,7 +357,7 @@ impl ModuleBuilder {
                     .collect();
                 let name = func_decl.ident.last().to_string();
 
-                let global_name = NamePath::new(ns, name);
+                let global_name = ir::NamePath::new(ns, name);
 
                 Some(match type_args {
                     None => global_name,

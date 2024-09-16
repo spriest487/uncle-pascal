@@ -276,7 +276,7 @@ impl Module {
         }
     }
 
-    pub fn add_ir(&mut self, module: &intermediate::Module) {
+    pub fn add_ir(&mut self, module: &ir::Module) {
         let mut module_type_defs = Vec::new();
 
         for (id, type_def) in module.metadata().type_defs() {

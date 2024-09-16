@@ -10,6 +10,7 @@ frontend = { path = "frontend" }
 intermediate = { path = "intermediate" }
 interpreter = { path = "interpreter" }
 backend_c = { path = "backend_c" }
+ir-lang = { path = "ir_lang" }
 
 structopt = "0.3.25"
 codespan = "0.11.1"
@@ -20,6 +21,7 @@ topological-sort = "0.2.2"
 members = [
     "common",
     "frontend",
-    "intermediate", "ir_lang", 
+    "intermediate", 
+    "ir_lang", 
     "test_runner",
 ]

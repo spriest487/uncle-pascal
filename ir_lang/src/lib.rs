@@ -6,12 +6,14 @@ mod ty;
 mod ty_decl;
 mod val;
 pub mod dep_sort;
+mod module;
 
-use std::borrow::Cow;
 pub use formatter::*;
 pub use function::*;
 pub use instruction::*;
 pub use metadata::*;
+pub use module::*;
+use std::borrow::Cow;
 use std::fmt;
 pub use ty::*;
 pub use ty_decl::*;
@@ -72,4 +74,22 @@ impl fmt::Display for NamePath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         RawInstructionFormatter.format_name(self, f)
     }
+}
+
+pub fn write_instruction_list(
+    f: &mut fmt::Formatter,
+    metadata: &Metadata,
+    instructions: &[Instruction],
+) -> fmt::Result {
+    let num_len = instructions.len().to_string().len();
+
+    let formatter = StatefulIndentedFormatter::new(metadata, 4);
+
+    for (i, instruction) in instructions.iter().enumerate() {
+        write!(f, "{:>width$}|", i, width = num_len)?;
+        formatter.format_instruction(instruction, f)?;
+        writeln!(f)?;
+    }
+
+    Ok(())
 }

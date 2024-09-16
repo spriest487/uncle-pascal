@@ -1,7 +1,4 @@
-use std::fmt;
-
 pub use self::function::*;
-pub use self::module::*;
 use crate::builder::Builder;
 use crate::expr::*;
 use crate::metadata::*;
@@ -10,12 +7,10 @@ use crate::stmt::*;
 use frontend::ast as syn;
 use frontend::typecheck as typ;
 pub use ir_lang as ir;
-use ir_lang::InstructionFormatter;
 
 mod builder;
 mod expr;
 pub mod metadata;
-mod module;
 mod stmt;
 mod pattern;
 mod function;
@@ -45,25 +40,7 @@ impl Default for IROptions {
     }
 }
 
-fn write_instruction_list(
-    f: &mut fmt::Formatter,
-    metadata: &ir::Metadata,
-    instructions: &[ir::Instruction],
-) -> fmt::Result {
-    let num_len = instructions.len().to_string().len();
-
-    let formatter = ir::StatefulIndentedFormatter::new(metadata, 4);
-
-    for (i, instruction) in instructions.iter().enumerate() {
-        write!(f, "{:>width$}|", i, width = num_len)?;
-        formatter.format_instruction(instruction, f)?;
-        writeln!(f)?;
-    }
-
-    Ok(())
-}
-
-pub fn translate(module: &typ::Module, opts: IROptions) -> Module {
+pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Module {
     let metadata = ir::Metadata::new();
     let mut ir_module = ModuleBuilder::new((*module.root_ctx).clone(), metadata, opts);
 

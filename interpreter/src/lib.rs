@@ -19,7 +19,6 @@ use crate::result::ExecResult;
 use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
-use intermediate::Module;
 use ir_lang as ir;
 use ir_lang::InstructionFormatter;
 use std::borrow::Cow;
@@ -1716,7 +1715,7 @@ impl Interpreter {
         }
     }
 
-    pub fn load_module(&mut self, module: &Module) -> ExecResult<()> {
+    pub fn load_module(&mut self, module: &ir::Module) -> ExecResult<()> {
         self.metadata.extend(&module.metadata());
 
         let mut marshaller = (*self.marshaller).clone();

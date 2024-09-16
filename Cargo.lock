@@ -469,6 +469,7 @@ dependencies = [
  "frontend",
  "intermediate",
  "interpreter",
+ "ir-lang",
  "structopt",
  "topological-sort",
 ]
