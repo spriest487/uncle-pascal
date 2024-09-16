@@ -1,5 +1,4 @@
 use crate::ir;
-use crate::metadata::Metadata;
 use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::typ;
@@ -10,76 +9,8 @@ use crate::StructFieldDef;
 use crate::StructIdentity;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
+use ir_lang::FunctionSig;
 use syn::Ident;
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct FunctionSig {
-    pub return_ty: ir::Type,
-    pub param_tys: Vec<ir::Type>,
-}
-
-impl fmt::Display for FunctionSig {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function(")?;
-        for (i, param_ty) in self.param_tys.iter().enumerate() {
-            if i > 0 {
-                write!(f, "; ")?;
-            }
-            write!(f, "{}", param_ty)?;
-        }
-        write!(f, "): {}", self.return_ty)?;
-
-        Ok(())
-    }
-}
-
-impl FunctionSig {
-    pub fn translate(
-        sig: &typ::FunctionSig,
-        type_args: Option<&typ::TypeList>,
-        module: &mut ModuleBuilder,
-    ) -> Self {
-        assert!(
-            sig.type_params.is_none(),
-            "cannot create type for a generic function pointer"
-        );
-
-        let return_ty = module.translate_type(&sig.return_ty, type_args);
-        let mut param_tys = Vec::new();
-        for param in &sig.params {
-            let mut ty = module.translate_type(&param.ty, type_args);
-            if param.is_by_ref() {
-                ty = ty.ptr();
-            }
-
-            param_tys.push(ty);
-        }
-
-        FunctionSig {
-            return_ty,
-            param_tys,
-        }
-    }
-    
-    pub fn to_pretty(&self, metadata: &Metadata) -> String {
-        let mut pretty = String::new();
-
-        pretty.push_str("function(");
-
-        for (i, param_ty) in self.param_tys.iter().enumerate() {
-            if i > 0 {
-                pretty.push_str("; ");
-            }
-            
-            pretty.push_str(metadata.pretty_ty_name(param_ty).as_ref());
-        }
-        
-        pretty.push_str("): ");
-        pretty.push_str(metadata.pretty_ty_name(&self.return_ty).as_ref());
-
-        pretty
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct ClosureInstance {
@@ -156,4 +87,31 @@ pub fn translate_closure_struct(
     );
 
     id
+}
+
+pub fn translate_sig(
+    sig: &typ::FunctionSig,
+    type_args: Option<&typ::TypeList>,
+    module: &mut ModuleBuilder,
+) -> FunctionSig {
+    assert!(
+        sig.type_params.is_none(),
+        "cannot create type for a generic function pointer"
+    );
+
+    let return_ty = module.translate_type(&sig.return_ty, type_args);
+    let mut param_tys = Vec::new();
+    for param in &sig.params {
+        let mut ty = module.translate_type(&param.ty, type_args);
+        if param.is_by_ref() {
+            ty = ty.ptr();
+        }
+
+        param_tys.push(ty);
+    }
+
+    FunctionSig {
+        return_ty,
+        param_tys,
+    }
 }

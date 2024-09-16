@@ -1,4 +1,3 @@
-use crate::metadata::FunctionSig;
 use crate::module_builder::ModuleBuilder;
 use crate::syn;
 use crate::syn::FunctionParamMod;

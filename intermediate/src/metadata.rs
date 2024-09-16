@@ -362,7 +362,7 @@ impl Metadata {
 
                     VirtualTypeID::Closure(func_ty_id) => {
                         Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
-                            Some(sig) => format!("closure of {}", sig.to_pretty(self)),
+                            Some(sig) => format!("closure of {}", self.pretty_func_sig(sig)),
                             None => format!("closure of {}", *func_ty_id),
                         })
                     }
@@ -377,7 +377,7 @@ impl Metadata {
 
             Type::Function(func_ty_id) => {
                 Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
-                    Some(sig) => sig.to_pretty(self),
+                    Some(sig) => self.pretty_func_sig(sig),
                     None => format!("function {}", *func_ty_id),
                 })
             }
@@ -386,6 +386,25 @@ impl Metadata {
 
             ty => Cow::Owned(ty.to_string()),
         }
+    }
+
+    pub fn pretty_func_sig(&self, sig: &FunctionSig) -> String {
+        let mut pretty = String::new();
+
+        pretty.push_str("function(");
+
+        for (i, param_ty) in sig.param_tys.iter().enumerate() {
+            if i > 0 {
+                pretty.push_str("; ");
+            }
+
+            pretty.push_str(self.pretty_ty_name(param_ty).as_ref());
+        }
+
+        pretty.push_str("): ");
+        pretty.push_str(self.pretty_ty_name(&sig.return_ty).as_ref());
+
+        pretty
     }
 
     pub fn reserve_new_struct(&mut self) -> TypeDefID {

@@ -153,7 +153,7 @@ impl fmt::Display for Module {
                 },
 
                 TypeDef::Function(def) => {
-                    write!(f, "{}: {}", id.0, def.to_pretty(&self.metadata))?;
+                    write!(f, "{}: {}", id.0, self.metadata.pretty_func_sig(def))?;
                 },
             }
 

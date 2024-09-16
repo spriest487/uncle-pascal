@@ -3,14 +3,13 @@ use crate::build_func_def;
 use crate::build_func_static_closure_def;
 use crate::build_static_closure_impl;
 use crate::builder::Builder;
-use crate::metadata::translate_closure_struct;
+use crate::metadata::{translate_closure_struct, translate_sig};
 use crate::metadata::translate_iface;
 use crate::metadata::translate_name;
 use crate::metadata::translate_struct_def;
 use crate::metadata::translate_variant_def;
 use crate::metadata::ClosureIdentity;
 use crate::metadata::ClosureInstance;
-use crate::metadata::FunctionSig;
 use crate::metadata::Metadata;
 use crate::metadata::RuntimeType;
 use crate::stmt::translate_stmt;
@@ -221,7 +220,7 @@ impl ModuleBuilder {
                 src: extern_src.to_string(),
                 symbol: extern_decl.ident.last().to_string(),
 
-                sig: FunctionSig { return_ty, param_tys },
+                sig: ir::FunctionSig { return_ty, param_tys },
 
                 src_span: extern_decl.span().clone(),
             }),
@@ -519,7 +518,7 @@ impl ModuleBuilder {
                     return ir::Type::Function(id);
                 }
 
-                let ir_sig = FunctionSig::translate(&func_sig, type_args, self);
+                let ir_sig = translate_sig(&func_sig, type_args, self);
                 let func_ty_id = self.module.metadata.define_func_ty((**func_sig).clone(), ir_sig);
 
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Closure(func_ty_id));
@@ -583,7 +582,7 @@ impl ModuleBuilder {
             funcs.release,
             Function::Local(FunctionDef {
                 body: release_body,
-                sig: FunctionSig {
+                sig: ir::FunctionSig {
                     return_ty: ir::Type::Nothing,
                     param_tys: vec![ty.clone().ptr()],
                 },
@@ -606,7 +605,7 @@ impl ModuleBuilder {
             funcs.retain,
             Function::Local(FunctionDef {
                 body: retain_body,
-                sig: FunctionSig {
+                sig: ir::FunctionSig {
                     return_ty: ir::Type::Nothing,
                     param_tys: vec![ty.clone().ptr()],
                 },
@@ -658,7 +657,7 @@ impl ModuleBuilder {
         let func_ty_id = match self.module.metadata.find_func_ty(&func_sig) {
             Some(id) => id,
             None => {
-                let ir_sig = FunctionSig::translate(func_sig, type_args, self);
+                let ir_sig = translate_sig(func_sig, type_args, self);
                 self.module.metadata.define_func_ty(func_sig.clone(), ir_sig)
             },
         };
@@ -834,7 +833,7 @@ fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id
             "dynarray alloc function for element type {}",
             module.metadata().pretty_ty_name(elem_ty)
         ),
-        sig: FunctionSig {
+        sig: ir::FunctionSig {
             param_tys: vec![ir::Type::any(), ir::Type::I32, ir::Type::any(), ir::Type::any()],
             return_ty: ir::Type::Nothing,
         },
@@ -851,7 +850,7 @@ fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id
             "dynarray length function for element type {}",
             module.metadata().pretty_ty_name(elem_ty)
         ),
-        sig: FunctionSig {
+        sig: ir::FunctionSig {
             param_tys: vec![ir::Type::any()],
             return_ty: ir::Type::I32,
         },
@@ -1099,7 +1098,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, 
         rc_boilerplate.release,
         Function::Local(FunctionDef {
             debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
-            sig: FunctionSig {
+            sig: ir::FunctionSig {
                 return_ty: ir::Type::Nothing,
                 param_tys: vec![array_struct_ty.clone().ptr()],
             },
@@ -1113,7 +1112,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, 
         rc_boilerplate.retain,
         Function::Local(FunctionDef {
             debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
-            sig: FunctionSig {
+            sig: ir::FunctionSig {
                 return_ty: ir::Type::Nothing,
                 param_tys: vec![array_struct_ty.clone().ptr()],
             },
