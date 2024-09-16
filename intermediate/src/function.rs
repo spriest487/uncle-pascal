@@ -70,15 +70,6 @@ pub struct FunctionInstance {
     pub sig: Rc<typ::FunctionSig>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct StaticClosure {
-    pub id: StaticClosureID,
-    pub init_func: FunctionID,
-
-    pub closure_id: TypeDefID,
-    pub func_ty_id: TypeDefID,
-}
-
 fn create_function_body_builder<'m>(
     module: &'m mut ModuleBuilder,
     type_params: Option<&typ::TypeParamList>,

@@ -4,7 +4,6 @@ use crate::ExternalFunctionRef;
 use crate::Function;
 use crate::FunctionDef;
 use crate::Metadata;
-use crate::StaticClosure;
 use crate::TypeDef;
 use crate::ir;
 use common::span::Span;
@@ -18,7 +17,7 @@ pub struct Module {
 
     pub(crate) functions: HashMap<ir::FunctionID, Function>,
 
-    pub(crate) static_closures: Vec<StaticClosure>,
+    pub(crate) static_closures: Vec<ir::StaticClosure>,
     pub(crate) function_static_closures: HashMap<ir::FunctionID, ir::StaticClosureID>,
 
     pub(crate) init: Vec<ir::Instruction>,
@@ -48,7 +47,7 @@ impl Module {
         self.metadata.closures().iter().cloned()
     }
 
-    pub fn static_closures(&self) -> &[StaticClosure] {
+    pub fn static_closures(&self) -> &[ir::StaticClosure] {
         &self.static_closures
     }
 

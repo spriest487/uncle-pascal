@@ -22,7 +22,6 @@ use crate::FunctionDef;
 use crate::FunctionInstance;
 use crate::IROptions;
 use crate::Module;
-use crate::StaticClosure;
 use common::span::Span;
 use common::span::Spanned;
 use frontend::ast::{IdentPath, StructKind};
@@ -710,7 +709,7 @@ impl ModuleBuilder {
         }
     }
 
-    pub fn build_func_static_closure_instance(&mut self, func: &FunctionInstance) -> &StaticClosure {
+    pub fn build_func_static_closure_instance(&mut self, func: &FunctionInstance) -> &ir::StaticClosure {
         if let Some(existing) = self.module.function_static_closures.get(&func.id) {
             return &self.module.static_closures[existing.0];
         }
@@ -764,7 +763,7 @@ impl ModuleBuilder {
         &self.module.static_closures[static_closure_id.0]
     }
 
-    pub fn build_static_closure_instance(&mut self, closure: ClosureInstance) -> &StaticClosure {
+    pub fn build_static_closure_instance(&mut self, closure: ClosureInstance) -> &ir::StaticClosure {
         let existing_index = self.module.static_closures.iter()
             .enumerate()
             .filter_map(|(i, static_closure)| {

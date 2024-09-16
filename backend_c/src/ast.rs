@@ -13,7 +13,6 @@ use crate::ir;
 use crate::Options;
 use intermediate::metadata as ir_meta;
 use intermediate::metadata::{NamePathExt, Symbol};
-use intermediate::StaticClosure;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
@@ -34,7 +33,7 @@ pub struct Module {
     ifaces: Vec<Interface>,
 
     string_literals: HashMap<ir::StringID, StringLiteral>,
-    static_closures: Vec<StaticClosure>,
+    static_closures: Vec<ir::StaticClosure>,
 
     opts: Options,
 

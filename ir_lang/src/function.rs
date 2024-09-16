@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::Label;
+use crate::{Label, TypeDefID};
 use crate::LocalID;
 use crate::Ref;
 
@@ -24,4 +24,13 @@ impl fmt::Display for StaticClosureID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "static closure #{}", self.0)
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct StaticClosure {
+    pub id: StaticClosureID,
+    pub init_func: FunctionID,
+
+    pub closure_id: TypeDefID,
+    pub func_ty_id: TypeDefID,
 }
