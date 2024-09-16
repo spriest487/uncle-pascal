@@ -1,10 +1,10 @@
 use std::fmt;
-use crate::typ;
+use ir_lang::Type;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Symbol {
     path: Vec<String>,
-    type_args: Option<typ::TypeList>,
+    type_args: Option<Vec<Type>>,
 }
 
 impl Symbol {
@@ -22,7 +22,7 @@ impl Symbol {
         self.path.iter()
     }
 
-    pub fn with_ty_args(self, args: typ::TypeList) -> Self {
+    pub fn with_ty_args(self, args: Vec<Type>) -> Self {
         assert_eq!(
             None, self.type_args,
             "shouldn't already have type args when building a specialized GlobalName"
@@ -46,7 +46,7 @@ impl fmt::Display for Symbol {
 
         if let Some(type_args) = self.type_args.as_ref() {
             write!(f, "<")?;
-            for (i, arg) in type_args.items.iter().enumerate() {
+            for (i, arg) in type_args.iter().enumerate() {
                 if i > 0 {
                     write!(f, ", ")?;
                 }

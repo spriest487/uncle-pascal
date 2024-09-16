@@ -363,7 +363,13 @@ impl ModuleBuilder {
 
                 Some(match type_args {
                     None => global_name,
-                    Some(type_args) => global_name.with_ty_args(type_args.clone()),
+                    Some(type_args) => {
+                        let types = type_args.iter()
+                            .map(|ty| self.translate_type(ty, Some(type_args)))
+                            .collect();
+
+                        global_name.with_ty_args(types)
+                    },
                 })
             },
         };
