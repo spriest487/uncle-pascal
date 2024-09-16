@@ -1,8 +1,5 @@
 use crate::metadata::*;
 use crate::write_instruction_list;
-use crate::ExternalFunctionRef;
-use crate::Function;
-use crate::FunctionDef;
 use crate::Metadata;
 use crate::TypeDef;
 use crate::ir;
@@ -15,7 +12,7 @@ use ir_lang::InstructionFormatter;
 pub struct Module {
     pub(crate) metadata: Metadata,
 
-    pub(crate) functions: HashMap<ir::FunctionID, Function>,
+    pub(crate) functions: HashMap<ir::FunctionID, ir::Function>,
 
     pub(crate) static_closures: Vec<ir::StaticClosure>,
     pub(crate) function_static_closures: HashMap<ir::FunctionID, ir::StaticClosureID>,
@@ -67,7 +64,7 @@ impl Module {
         &self.metadata
     }
     
-    pub fn functions(&self) -> &HashMap<ir::FunctionID, Function> {
+    pub fn functions(&self) -> &HashMap<ir::FunctionID, ir::Function> {
         &self.functions
     }
 }
@@ -206,11 +203,11 @@ impl fmt::Display for Module {
             }
 
             match func {
-                Function::Local(FunctionDef { body, .. }) => {
+                ir::Function::Local(ir::FunctionDef { body, .. }) => {
                     write_instruction_list(f, &self.metadata, body)?;
                 },
 
-                Function::External(ExternalFunctionRef { symbol, src, .. }) => {
+                ir::Function::External(ir::ExternalFunctionRef { symbol, src, .. }) => {
                     writeln!(f, "<external function '{}' in module '{}'>", symbol, src)?;
                 },
             }

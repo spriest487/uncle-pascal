@@ -14,56 +14,6 @@ use std::rc::Rc;
 use crate::builder::jmp_exists;
 
 #[derive(Clone, Debug)]
-pub struct ExternalFunctionRef {
-    pub symbol: String,
-    pub src: String,
-
-    pub sig: FunctionSig,
-
-    pub src_span: Span,
-}
-
-#[derive(Clone, Debug)]
-pub struct FunctionDef {
-    pub debug_name: String,
-
-    pub body: Vec<Instruction>,
-
-    pub sig: FunctionSig,
-
-    pub src_span: Span,
-}
-
-#[derive(Clone, Debug)]
-pub enum Function {
-    External(ExternalFunctionRef),
-    Local(FunctionDef),
-}
-
-impl Function {
-    pub fn debug_name(&self) -> &str {
-        match self {
-            Function::External(ExternalFunctionRef { symbol, .. }) => symbol.as_str(),
-            Function::Local(FunctionDef { debug_name, .. }) => debug_name.as_str(),
-        }
-    }
-
-    pub fn sig(&self) -> &FunctionSig {
-        match self {
-            Function::External(external_func) => &external_func.sig,
-            Function::Local(local_func) => &local_func.sig,
-        }
-    }
-
-    pub fn src_span(&self) -> &Span {
-        match self {
-            Function::External(external_func) => &external_func.src_span,
-            Function::Local(local_func) => &local_func.src_span,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct FunctionInstance {
     pub id: FunctionID,
     pub sig: Rc<typ::FunctionSig>,

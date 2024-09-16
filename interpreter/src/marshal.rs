@@ -1,4 +1,5 @@
 use crate::func::ffi::FfiInvoker;
+use crate::ir;
 use crate::ArrayValue;
 use crate::DynValue;
 use crate::Pointer;
@@ -10,7 +11,6 @@ use ::dlopen::Error as DlopenError;
 use intermediate::metadata::Metadata;
 use intermediate::metadata::Struct;
 use intermediate::metadata::VariantDef;
-use intermediate::{ir, ExternalFunctionRef};
 use ir_lang::FieldID;
 use ir_lang::FunctionID;
 use ir_lang::InstructionFormatter;
@@ -371,7 +371,7 @@ impl Marshaller {
 
     pub fn build_invoker(
         &mut self,
-        func_ref: &ExternalFunctionRef,
+        func_ref: &ir::ExternalFunctionRef,
         metadata: &Metadata,
     ) -> MarshalResult<FfiInvoker> {
         let sym_load_err = |err: DlopenError| MarshalError::ExternSymbolLoadFailed {

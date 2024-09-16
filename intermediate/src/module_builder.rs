@@ -15,9 +15,6 @@ use crate::metadata::RuntimeType;
 use crate::stmt::translate_stmt;
 use crate::translate_func_params;
 use crate::typ;
-use crate::ExternalFunctionRef;
-use crate::Function;
-use crate::FunctionDef;
 use crate::FunctionInstance;
 use crate::IROptions;
 use crate::Module;
@@ -184,7 +181,7 @@ impl ModuleBuilder {
             debug_name,
         );
 
-        self.module.functions.insert(id, Function::Local(ir_func));
+        self.module.functions.insert(id, ir::Function::Local(ir_func));
 
         cached_func
     }
@@ -216,7 +213,7 @@ impl ModuleBuilder {
 
         self.module.functions.insert(
             id,
-            Function::External(ExternalFunctionRef {
+            ir::Function::External(ir::ExternalFunctionRef {
                 src: extern_src.to_string(),
                 symbol: extern_decl.ident.last().to_string(),
 
@@ -313,7 +310,7 @@ impl ModuleBuilder {
             method_def.span().clone(),
             debug_name,
         );
-        self.module.functions.insert(id, Function::Local(ir_func));
+        self.module.functions.insert(id, ir::Function::Local(ir_func));
 
         cached_func
     }
@@ -362,7 +359,7 @@ impl ModuleBuilder {
         self.instantiate_func(key)
     }
 
-    pub fn insert_func(&mut self, id: ir::FunctionID, function: Function) {
+    pub fn insert_func(&mut self, id: ir::FunctionID, function: ir::Function) {
         assert!(
             self.module.metadata.get_function(id).is_some(),
             "function passed to insert_func must have been previously registered in metadata"
@@ -580,7 +577,7 @@ impl ModuleBuilder {
 
         self.insert_func(
             funcs.release,
-            Function::Local(FunctionDef {
+            ir::Function::Local(ir::FunctionDef {
                 body: release_body,
                 sig: ir::FunctionSig {
                     return_ty: ir::Type::Nothing,
@@ -603,7 +600,7 @@ impl ModuleBuilder {
 
         self.insert_func(
             funcs.retain,
-            Function::Local(FunctionDef {
+            ir::Function::Local(ir::FunctionDef {
                 body: retain_body,
                 sig: ir::FunctionSig {
                     return_ty: ir::Type::Nothing,
@@ -699,7 +696,7 @@ impl ModuleBuilder {
         let src_span = func.span().clone();
         let ir_func = build_closure_function_def(self, &func, closure_id, src_span, debug_name);
 
-        self.module.functions.insert(id, Function::Local(ir_func));
+        self.module.functions.insert(id, ir::Function::Local(ir_func));
 
         ClosureInstance {
             func_instance: cached_func,
@@ -745,7 +742,7 @@ impl ModuleBuilder {
         let thunk_id = self.module.metadata.insert_func(None);
         let thunk_def = build_func_static_closure_def(self, func, &ir_func);
 
-        self.module.functions.insert(thunk_id, Function::Local(thunk_def));
+        self.module.functions.insert(thunk_id, ir::Function::Local(thunk_def));
 
         let closure = ClosureInstance {
             closure_id,
@@ -828,7 +825,7 @@ fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id
     let dyn_array_rtti = module.metadata().get_dynarray_runtime_type(elem_ty)
         .expect("missing dynarray rtti for type");
 
-    module.insert_func(dyn_array_rtti.alloc, Function::Local(FunctionDef {
+    module.insert_func(dyn_array_rtti.alloc, ir::Function::Local(ir::FunctionDef {
         debug_name: format!(
             "dynarray alloc function for element type {}",
             module.metadata().pretty_ty_name(elem_ty)
@@ -845,7 +842,7 @@ fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id
     gen_dyn_array_length_func(&mut length_builder, struct_id);
     let length_body = length_builder.finish();
 
-    module.insert_func(dyn_array_rtti.length, Function::Local(FunctionDef {
+    module.insert_func(dyn_array_rtti.length, ir::Function::Local(ir::FunctionDef {
         debug_name: format!(
             "dynarray length function for element type {}",
             module.metadata().pretty_ty_name(elem_ty)
@@ -1096,7 +1093,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, 
 
     module.insert_func(
         rc_boilerplate.release,
-        Function::Local(FunctionDef {
+        ir::Function::Local(ir::FunctionDef {
             debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
             sig: ir::FunctionSig {
                 return_ty: ir::Type::Nothing,
@@ -1110,7 +1107,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, 
     // no custom retain behaviour (dynarrays can't be retained!)
     module.insert_func(
         rc_boilerplate.retain,
-        Function::Local(FunctionDef {
+        ir::Function::Local(ir::FunctionDef {
             debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
             sig: ir::FunctionSig {
                 return_ty: ir::Type::Nothing,

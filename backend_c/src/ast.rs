@@ -350,15 +350,15 @@ impl Module {
 
         for (id, func) in module.functions() {
             match func {
-                intermediate::Function::Local(func_def) => {
+                ir::Function::Local(func_def) => {
                     let c_func = FunctionDef::translate(*id, func_def, self);
 
                     self.functions.push(c_func);
                 },
 
-                intermediate::Function::External(func_ref) if func_ref.src == ir::BUILTIN_SRC => {},
+                ir::Function::External(func_ref) if func_ref.src == ir::BUILTIN_SRC => {},
 
-                intermediate::Function::External(func_ref) => {
+                ir::Function::External(func_ref) => {
                     let ffi_func = FfiFunction::translate(*id, func_ref, self);
 
                     self.ffi_funcs.push(ffi_func);

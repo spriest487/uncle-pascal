@@ -18,7 +18,6 @@ use crate::result::ExecError;
 use crate::result::ExecResult;
 use crate::stack::{StackFrame, StackTrace, StackTraceFrame};
 use intermediate::metadata::*;
-use intermediate::Function as IRFunction;
 use intermediate::Module;
 use ir_lang as ir;
 use std::borrow::Cow;
@@ -1599,16 +1598,16 @@ impl Interpreter {
             let func_ref = ir::GlobalRef::Function(*func_id);
 
             let func = match ir_func {
-                IRFunction::Local(ir_func_def) => {
+                ir::Function::Local(ir_func_def) => {
                     let ir_func = Function::IR(ir_func_def.clone());
                     Some(ir_func)
                 }
 
-                IRFunction::External(external_ref) if external_ref.src == ir::BUILTIN_SRC => {
+                ir::Function::External(external_ref) if external_ref.src == ir::BUILTIN_SRC => {
                     None
                 }
 
-                IRFunction::External(external_ref) => {
+                ir::Function::External(external_ref) => {
                     let ffi_func = Function::new_ffi(external_ref, &mut marshaller, &self.metadata)
                         .map_err(|err| ExecError::WithStackTrace {
                             err: Box::new(ExecError::MarshalError(err)),

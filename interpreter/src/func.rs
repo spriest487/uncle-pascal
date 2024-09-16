@@ -1,12 +1,10 @@
 use crate::func::ffi::FfiInvoker;
+use crate::ir;
 use crate::marshal::MarshalResult;
 use crate::marshal::Marshaller;
 use crate::ExecResult;
 use crate::Interpreter;
 use intermediate::metadata::Metadata;
-use intermediate::ir;
-use intermediate::ExternalFunctionRef;
-use intermediate::FunctionDef;
 use std::fmt;
 
 pub mod ffi;
@@ -33,12 +31,12 @@ pub struct FfiFunction {
 pub enum Function {
     Builtin(BuiltinFunction),
     External(FfiFunction),
-    IR(FunctionDef),
+    IR(ir::FunctionDef),
 }
 
 impl Function {
     pub fn new_ffi(
-        func_ref: &ExternalFunctionRef,
+        func_ref: &ir::ExternalFunctionRef,
         marshaller: &mut Marshaller,
         metadata: &Metadata,
     ) -> MarshalResult<Self> {

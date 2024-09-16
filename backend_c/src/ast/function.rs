@@ -5,12 +5,7 @@ use crate::ast::Module;
 use crate::ast::Statement;
 use crate::ast::Type;
 use crate::ast::TypeDecl;
-use intermediate as ir;
-use ir_lang::FunctionID;
-use ir_lang::InterfaceID;
-use ir_lang::LocalID;
-use ir_lang::MethodID;
-use ir_lang::TypeDefID;
+use ir_lang as ir;
 use std::fmt;
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
@@ -24,9 +19,9 @@ pub enum FunctionName {
     // function to initialize an external symbol at runtime
     LoadSymbol,
 
-    ID(FunctionID),
-    Method(InterfaceID, MethodID),
-    MethodWrapper(InterfaceID, MethodID, TypeDefID),
+    ID(ir::FunctionID),
+    Method(ir::InterfaceID, ir::MethodID),
+    MethodWrapper(ir::InterfaceID, ir::MethodID, ir::TypeDefID),
 
     // runtime functions
     RcAlloc,
@@ -111,7 +106,7 @@ pub struct FunctionDecl {
 }
 
 impl FunctionDecl {
-    pub fn translate(id: FunctionID, func: &ir::FunctionDef, module: &mut Module) -> Self {
+    pub fn translate(id: ir::FunctionID, func: &ir_lang::FunctionDef, module: &mut Module) -> Self {
         let name = FunctionName::ID(id);
         let return_ty = Type::from_metadata(&func.sig.return_ty, module);
         let params = func
@@ -182,7 +177,7 @@ pub struct FunctionDef {
 }
 
 impl FunctionDef {
-    pub fn translate(id: FunctionID, func: &ir::FunctionDef, module: &mut Module) -> Self {
+    pub fn translate(id: ir::FunctionID, func: &ir::FunctionDef, module: &mut Module) -> Self {
         let mut builder = Builder::new(module);
         builder.translate_instructions(&func.body);
 
@@ -206,7 +201,7 @@ impl fmt::Display for FunctionDef {
         }
 
         if self.decl.return_ty != Type::Void {
-            write!(f, "{}", Statement::Return(Expr::Local(LocalID(0))))?;
+            write!(f, "{}", Statement::Return(Expr::Local(ir::LocalID(0))))?;
         }
 
         write!(f, "}}")
@@ -221,7 +216,7 @@ pub struct FfiFunction {
 
 impl FfiFunction {
     pub fn translate(
-        id: FunctionID,
+        id: ir::FunctionID,
         func_ref: &ir::ExternalFunctionRef,
         module: &mut Module,
     ) -> Self {
@@ -303,7 +298,7 @@ impl FuncAliasDef {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct FuncAliasID(pub TypeDefID);
+pub struct FuncAliasID(pub ir::TypeDefID);
 
 impl fmt::Display for FuncAliasID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
