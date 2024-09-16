@@ -25,7 +25,7 @@ impl MethodImplFunc {
         iface_id: ir::InterfaceID,
         self_ty_id: ir::TypeDefID,
         method_id: ir::MethodID,
-        iface_method: &ir_meta::Method,
+        iface_method: &ir::Method,
         impl_func_id: ir::FunctionID,
         metadata: &ir_meta::Metadata,
         module: &mut Module,
@@ -376,7 +376,7 @@ pub struct Interface {
 impl Interface {
     pub fn translate(
         iface_id: ir::InterfaceID,
-        iface: &ir_meta::Interface,
+        iface: &ir::Interface,
         module: &mut Module,
     ) -> Self {
         let methods = iface

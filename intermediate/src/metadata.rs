@@ -18,21 +18,6 @@ pub struct FunctionDecl {
     pub global_name: Option<Symbol>,
 }
 
-#[derive(Debug, Clone)]
-pub enum InterfaceDecl {
-    Forward(NamePath),
-    Def(Interface),
-}
-
-impl InterfaceDecl {
-    pub fn name(&self) -> &NamePath {
-        match self {
-            InterfaceDecl::Def(def) => &def.name,
-            InterfaceDecl::Forward(name) => name,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct RuntimeType {
     pub release: FunctionID,

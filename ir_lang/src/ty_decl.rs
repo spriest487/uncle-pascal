@@ -1,5 +1,6 @@
-mod struct_def;
-mod variant_def;
+mod r#struct;
+mod variant;
+mod interface;
 
 use crate::FunctionSig;
 use crate::NamePath;
@@ -8,8 +9,9 @@ use crate::TypeDefID;
 use common::span::Location;
 use common::span::Span;
 use std::fmt;
-pub use struct_def::*;
-pub use variant_def::*;
+pub use r#struct::*;
+pub use variant::*;
+pub use interface::*;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StructIdentity {
