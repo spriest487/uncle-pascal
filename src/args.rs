@@ -62,15 +62,6 @@ pub struct Args {
     pub debug_codeview: bool,
 }
 
-impl Args {
-    pub fn wants_stage(&self, stage: CompileStage) -> bool {
-        match self.print_stage {
-            None => true,
-            Some(print_stage) => print_stage >= stage,
-        }
-    }
-}
-
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
 pub enum CompileStage {
     Preprocess,

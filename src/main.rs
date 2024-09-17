@@ -62,6 +62,11 @@ fn preprocess(filename: &PathBuf, opts: BuildOptions) -> Result<PreprocessedUnit
 }
 
 fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
+    if args.output.is_some() && args.print_stage.is_some() {
+        let msg = "output file and print stage arguments are mutually exclusive".to_string();
+        return Err(CompileError::InvalidArguments(msg));
+    }
+    
     let mut opts = BuildOptions::default();
     opts.verbose = args.verbose;
     opts.lang_mode = args.lang_mode;

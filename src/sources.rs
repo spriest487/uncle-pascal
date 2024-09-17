@@ -77,7 +77,11 @@ impl SourceCollection {
         };
 
         // auto-add system units if we're going beyond parsing
-        if args.wants_stage(CompileStage::Typecheck) {
+        let will_typecheck = args.print_stage
+            .map(|print_stage| print_stage >= CompileStage::Typecheck)
+            .unwrap_or(true);
+
+        if will_typecheck {
             sources.add(&PathBuf::from("System.pas"), None)?;
         }
 

@@ -39,6 +39,7 @@ pub enum CompileError {
     InternalError(String),
     UnknownOutputFormat(String),
     ClangBuildFailed(io::Error),
+    InvalidArguments(String),
 }
 
 impl From<TracedError<TokenizeError>> for CompileError {
@@ -139,6 +140,11 @@ impl DiagnosticOutput for CompileError {
                 title: err.to_string(),
                 notes: Vec::new(),
                 label: None,
+            },
+            CompileError::InvalidArguments(err) => DiagnosticMessage {
+                title: err.to_string(),
+                notes: Vec::new(),
+                label: None,
             }
         }
     }
@@ -181,6 +187,7 @@ impl fmt::Display for CompileError {
             CompileError::InternalError(..) => write!(f, "internal compiler error"),
             CompileError::UnknownOutputFormat(..) => write!(f, "unknown output format"),
             CompileError::ClangBuildFailed(..) => write!(f, "clang build failed"),
+            CompileError::InvalidArguments(..) => write!(f, "invalid arguments"),
         }
     }
 }
