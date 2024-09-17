@@ -153,10 +153,7 @@ impl TestCase {
     fn run_clang<RunFn>(&self, opts: &Opts, run: RunFn) -> io::Result<ExitStatus>
         where RunFn: FnOnce(&mut dyn Write, &mut dyn Read, &mut dyn Read)
     {
-        let exe_path = target_file_path(&self.path, opts, match env::consts::OS {
-            "windows" => "exe",
-            _ => "",
-        })?;
+        let exe_path = target_file_path(&self.path, opts, env::consts::EXE_EXTENSION)?;
 
         let mut build_stdout = Vec::new();
         let mut build_stderr = Vec::new();

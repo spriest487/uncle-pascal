@@ -37,6 +37,8 @@ pub enum CompileError {
         span: Span,
     },
     InternalError(String),
+    UnknownOutputFormat(String),
+    ClangBuildFailed(io::Error),
 }
 
 impl From<TracedError<TokenizeError>> for CompileError {
@@ -127,6 +129,16 @@ impl DiagnosticOutput for CompileError {
                 title: msg.to_string(),
                 label: None,
                 notes: Vec::new(),
+            },
+            CompileError::UnknownOutputFormat(ext) => DiagnosticMessage {
+                title: format!("extension {} is not supported on this platform", ext),
+                label: None,
+                notes: Vec::new(),
+            },
+            CompileError::ClangBuildFailed(err) => DiagnosticMessage {
+                title: err.to_string(),
+                notes: Vec::new(),
+                label: None,
             }
         }
     }
@@ -167,6 +179,8 @@ impl fmt::Display for CompileError {
             CompileError::FileNotFound(_, _) => write!(f, "file not found"),
             CompileError::CircularDependency { .. } => write!(f, "circular unit reference"),
             CompileError::InternalError(..) => write!(f, "internal compiler error"),
+            CompileError::UnknownOutputFormat(..) => write!(f, "unknown output format"),
+            CompileError::ClangBuildFailed(..) => write!(f, "clang build failed"),
         }
     }
 }

@@ -55,8 +55,11 @@ pub struct Args {
     #[structopt(long = "verbose", short = "v")]
     pub verbose: bool,
 
-    #[structopt(long = "debug")]
+    #[structopt(short = "g", long = "debug")]
     pub debug: bool,
+
+    #[structopt(long = "gcodeview")]
+    pub debug_codeview: bool,
 }
 
 impl Args {

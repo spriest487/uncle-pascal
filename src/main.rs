@@ -8,6 +8,7 @@ use crate::compile_error::*;
 use crate::reporting::report_err;
 use crate::sources::*;
 use backend_c as backend_c;
+use backend_c::c;
 use codespan_reporting::diagnostic::Severity;
 use common::read_source_file;
 use common::span::*;
@@ -23,12 +24,18 @@ use ir_lang as ir;
 use pp::PreprocessedUnit;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
+use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 use std::process;
+use std::process::Command;
+use std::process::Stdio;
 use structopt::StructOpt;
 use topological_sort::TopologicalSort;
 
@@ -285,30 +292,31 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
                 return print_output(args.output.as_ref(), |dst| write!(dst, "{}", module));
             }
             
-            let output_ext = args.output.as_ref()
-                .map(|out_path| get_extension(out_path))
-                .unwrap_or_else(String::new);
+            if let Some(output_arg) = args.output.as_ref() {
+                let output_ext = args.output.as_ref()
+                    .map(|out_path| get_extension(out_path))
+                    .unwrap_or_else(String::new);
 
-            if output_ext.eq_ignore_ascii_case("c") {
-                // output C code
-                let c_opts = backend_c::Options {
-                    trace_heap: args.trace_heap,
-                    trace_rc: args.trace_rc,
-                    trace_ir: args.trace_ir,
-                };
+                if output_ext.eq_ignore_ascii_case("c") {
+                    // output C code
+                    let c_module = translate_c(&module, args);
 
-                let c_module = backend_c::translate(&module, c_opts);
+                    print_output(args.output.as_ref(), |dst| {
+                        write!(dst, "{}", c_module)
+                    })
+                } else if output_ext.eq_ignore_ascii_case(IR_LIB_EXT) {
+                    // the IR object is the output
+                    let module_bytes = bincode::serialize(&module)?;
 
-                print_output(args.output.as_ref(), |dst| {
-                    write!(dst, "{}", c_module)
-                })
-            } else if output_ext.eq_ignore_ascii_case(IR_LIB_EXT) {
-                // the IR object is the output
-                let module_bytes = bincode::serialize(&module)?;
-
-                print_output(args.output.as_ref(), |dst| {
-                    dst.write_all(&module_bytes)
-                })
+                    print_output(args.output.as_ref(), |dst| {
+                        dst.write_all(&module_bytes)
+                    })
+                } else if output_ext.eq_ignore_ascii_case(env::consts::EXE_EXTENSION) {
+                    clang_compile(&module, args, output_arg.as_os_str())
+                        .map_err(|err| CompileError::ClangBuildFailed(err))
+                } else {
+                    return Err(CompileError::UnknownOutputFormat(output_ext))
+                }
             } else {
                 // execute the IR immediately
                 let interpret_opts = InterpreterOpts {
@@ -325,6 +333,54 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
             }
         }
     }
+}
+
+fn translate_c(module: &ir::Module, args: &Args) -> c::Module {
+    let c_opts = backend_c::Options {
+        trace_heap: args.trace_heap,
+        trace_rc: args.trace_rc,
+        trace_ir: args.trace_ir,
+    };
+
+    backend_c::translate(&module, c_opts)
+}
+
+fn clang_compile(module: &ir::Module, args: &Args, out_path: &OsStr) -> io::Result<()> {
+    let c_module = translate_c(module, args);
+    
+    let mut clang_cmd = Command::new("clang");
+        
+    clang_cmd
+        .arg("-x").arg("c")
+        .arg("-o").arg(out_path)
+        .arg("-")
+        .stdin(Stdio::piped());
+    
+    if args.debug || args.debug_codeview {
+        clang_cmd
+            .arg("-g")
+            .arg("-O0");
+    }
+    if args.debug_codeview {
+        clang_cmd.arg("-gcodeview");
+    }
+
+    let mut clang = clang_cmd.spawn()?;
+    
+    let mut clang_in = clang.stdin
+        .take()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "unable to write to stdin"))?;
+    
+    write!(clang_in, "{}", c_module)?;
+    drop(clang_in);
+
+    let status = clang.wait()?;
+
+    if !status.success() {
+        return Err(io::Error::new(io::ErrorKind::Other, status.to_string()));
+    }
+    
+    Ok(())
 }
 
 fn get_extension(path: &Path) -> String {
