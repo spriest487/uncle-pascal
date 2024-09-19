@@ -55,16 +55,16 @@ pub fn builtin_string_class() -> ast::StructDef {
     ast::StructDef {
         name: builtin_string_name(),
         members: vec![
-            ast::Member {
+            ast::Field {
                 ident: Ident::new(STRING_CHARS_FIELD, builtin_span.clone()),
                 ty: Type::from(Primitive::UInt8).ptr(),
                 span: builtin_span.clone(),
-            },
-            ast::Member {
+            }.into(),
+            ast::Field {
                 ident: Ident::new(STRING_LEN_FIELD, builtin_span.clone()),
                 ty: Type::from(Primitive::Int32),
                 span: builtin_span.clone(),
-            },
+            }.into(),
         ],
         kind: StructKind::Class,
         span: builtin_span,

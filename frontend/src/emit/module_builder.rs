@@ -146,7 +146,6 @@ impl ModuleBuilder {
             Some(key_type_args) => specialize_func_decl(
                 &func_def.decl,
                 key_type_args,
-                func_def.span(),
                 &self.src_metadata,
             )
                 .expect("function specialization must be valid after typechecking"),
@@ -687,7 +686,7 @@ impl ModuleBuilder {
         // ensure the runtime type info exists for all referenced types
         self.runtime_type(&ty);
 
-        // println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
+        // println!("{} <- {}", src_ty, self.pretty_ty_name(&ty_def));
 
         ty
     }

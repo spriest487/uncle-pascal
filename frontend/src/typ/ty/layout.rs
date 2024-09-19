@@ -1,5 +1,5 @@
 use crate::ast::StructKind;
-use crate::ast::StructMember;
+use crate::ast::Field;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VARIANT_TAG_TYPE;
 use crate::typ::Context;
@@ -42,8 +42,8 @@ impl StructLayout {
                     let struct_def = ctx.instantiate_struct_def(&record_sym)?;
 
                     let mut max_member_align = 1;
-                    for def_member in &struct_def.members {
-                        let member_align = self.align_of(&def_member.ty, ctx)?;
+                    for field in struct_def.fields() {
+                        let member_align = self.align_of(&field.ty, ctx)?;
                         max_member_align = usize::max(max_member_align, member_align);
                     }
 
@@ -158,9 +158,9 @@ impl StructLayout {
             _ => (0, 1),
         };
 
-        for def_member in &def.members {
-            let member_size = self.size_of(&def_member.ty, ctx)?;
-            let member_align = self.align_of(&def_member.ty, ctx)?;
+        for field in def.fields() {
+            let member_size = self.size_of(&field.ty, ctx)?;
+            let member_align = self.align_of(&field.ty, ctx)?;
 
             max_align = usize::max(max_align, member_align);
 
@@ -169,7 +169,7 @@ impl StructLayout {
                 members.push(StructLayoutMember::PaddingByte);
             }
             members.push(StructLayoutMember::Data {
-                member: def_member,
+                member: field,
                 size: member_size,
             });
 
@@ -203,7 +203,7 @@ impl StructLayout {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StructLayoutMember<'a> {
     Data {
-        member: &'a StructMember<Typed>,
+        member: &'a Field<Typed>,
         size: usize,
     },
     PaddingByte,

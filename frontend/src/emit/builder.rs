@@ -715,7 +715,7 @@ impl<'m> Builder<'m> {
         Ref::Local(id)
     }
 
-    // creates a managed local with type `ty`
+    // creates a managed local with type `ty_def`
     pub fn local_new(&mut self, ty: Type, name: Option<String>) -> Ref {
         assert_ne!(Type::Nothing, ty);
 
@@ -747,7 +747,7 @@ impl<'m> Builder<'m> {
         Ref::Local(id)
     }
 
-    /// call `f` for every structural member of the object of type `ty` found at the `at`
+    /// call `f` for every structural member of the object of type `ty_def` found at the `at`
     /// reference.
     ///
     /// returns `true` if calling `f` for any of the members (or members of members) returns `true`

@@ -9,11 +9,11 @@ use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
-use crate::typ::ast::const_eval_integer;
+use crate::typ::ast::{const_eval_integer, specialize_func_decl};
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
-use crate::typ::ast::Member;
+use crate::typ::ast::Field;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::context;
@@ -153,24 +153,25 @@ impl Type {
         }
     }
 
-    pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NameResult<Option<Member>> {
+    pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NameResult<Option<Field>> {
         match self {
             Type::Class(class_name) | Type::Record(class_name) => {
                 let def = ctx.instantiate_struct_def(class_name)?;
 
-                Ok(def.find_member(member).cloned())
+                Ok(def.find_field(member).cloned())
             },
 
             _ => Ok(None),
         }
     }
 
-    pub fn get_member(&self, index: usize, ctx: &Context) -> NameResult<Option<Member>> {
+    pub fn get_field(&self, index: usize, ctx: &Context) -> NameResult<Option<Field>> {
         match self {
             Type::Record(class) | Type::Class(class) => {
                 let class = ctx.instantiate_struct_def(class)?;
-
-                Ok(class.members.get(index).cloned())
+                let field = class.fields().nth(index).cloned();
+                
+                Ok(field)
             },
 
             _ => Ok(None),
@@ -188,10 +189,10 @@ impl Type {
         }
     }
 
-    pub fn members(&self, ctx: &Context) -> NameResult<Vec<Member>> {
+    pub fn members(&self, ctx: &Context) -> NameResult<Vec<Field>> {
         let mut members = Vec::new();
         for i in 0..self.members_len(ctx)? {
-            let member = self.get_member(i, ctx)?.unwrap();
+            let member = self.get_field(i, ctx)?.unwrap();
 
             members.push(member);
         }
@@ -840,20 +841,29 @@ pub fn specialize_generic_name<'a>(
     Ok(Cow::Owned(name))
 }
 
-pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList) -> GenericResult<StructDef> {
+pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList, ctx: &Context) -> GenericResult<StructDef> {
     let parameterized_name = specialize_generic_name(&class.name, ty_args)?;
 
     let members: Vec<_> = class
         .members
         .iter()
         .map(|member| {
-            //            let ty = specialize_member(&member.ty, &args, span)?;
-            let ty = member.ty.clone().substitute_type_args(ty_args);
+            match member {
+                ast::StructMember::Field(field) => {
+                    let ty = field.ty.clone().substitute_type_args(ty_args);
 
-            Ok(ast::StructMember {
-                ty,
-                ..member.clone()
-            })
+                    Ok(ast::StructMember::Field(ast::Field {
+                        ty,
+                        ..field.clone()
+                    }))
+                }
+                
+                ast::StructMember::MethodDecl(method) => {
+                    let method= specialize_func_decl(method, ty_args, ctx)?;
+                    
+                    Ok(ast::StructMember::MethodDecl(method))
+                }
+            }
         })
         .collect::<GenericResult<_>>()?;
 

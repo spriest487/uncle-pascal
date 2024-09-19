@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use crate::ast;
 use crate::ast::Ident;
 use crate::ast::StructKind;
@@ -6,7 +9,6 @@ use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_func_decl;
 use crate::typ::ast::InterfaceMethodDecl;
-use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::NameError;
 use crate::typ::Primitive;
@@ -15,12 +17,14 @@ use crate::typ::Type;
 use crate::typ::TypecheckError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
+use crate::typ::typecheck_type;
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
 
 pub type StructDef = ast::StructDef<Typed>;
-pub type Member = ast::StructMember<Typed>;
+pub type StructMember = ast::StructMember<Typed>;
+pub type Field = ast::Field<Typed>;
 pub type InterfaceDecl = ast::InterfaceDecl<Typed>;
 pub type VariantDef = ast::VariantDef<Typed>;
 pub type AliasDecl = ast::AliasDecl<Typed>;
@@ -47,25 +51,50 @@ pub fn typecheck_struct_decl(
 
     let mut members = Vec::new();
     for member in &class.members {
-        let ty = typecheck_type(&member.ty, ctx)?.clone();
+        match member {
+            ast::StructMember::Field(field) => {
+                let ty = typecheck_type(&field.ty, ctx)?.clone();
 
-        let is_unsized = ctx
-            .is_unsized_ty(&ty)
-            .map_err(|err| TypecheckError::from_name_err(err, class.span().clone()))?;
+                let is_unsized = ctx
+                    .is_unsized_ty(&ty)
+                    .map_err(|err| TypecheckError::from_name_err(err, class.span().clone()))?;
 
-        if is_unsized {
-            return Err(TypecheckError::UnsizedMember {
-                decl: name.qualified,
-                member: member.ident.clone(),
-                member_ty: ty,
-            });
+                if is_unsized {
+                    return Err(TypecheckError::UnsizedMember {
+                        decl: name.qualified,
+                        member: field.ident.clone(),
+                        member_ty: ty,
+                    });
+                }
+
+                members.push(Field {
+                    ty,
+                    span: field.span.clone(),
+                    ident: field.ident.clone(),
+                }.into());
+            }
+            
+            ast::StructMember::MethodDecl(decl) => {
+                let decl = typecheck_func_decl(decl, ctx)?;
+
+                if !decl.mods.is_empty() {
+                    return Err(TypecheckError::InvalidMethodModifiers {
+                        mods: decl.mods.clone(),
+                        span: {
+                            let start = decl.mods[0].span();
+                            let end = decl.mods[decl.mods.len() - 1].span();
+                            start.to(end)
+                        },
+                    });
+                }
+                
+                if decl.impl_iface.is_some() || decl.ident.len() > 1 {
+                    unimplemented!("only basic method decls are supported")
+                }
+                
+                members.push(decl.into());
+            }
         }
-
-        members.push(Member {
-            ty,
-            span: member.span.clone(),
-            ident: member.ident.clone(),
-        });
     }
 
     Ok(StructDef {

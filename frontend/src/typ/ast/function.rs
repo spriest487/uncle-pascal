@@ -6,7 +6,7 @@ use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::InterfaceDecl;
-use crate::typ::string_type;
+use crate::typ::{string_type, GenericResult};
 use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
@@ -332,12 +332,10 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
 pub fn specialize_func_decl(
     decl: &FunctionDecl,
     args: &TypeList,
-    span: &Span,
     ctx: &Context,
-) -> TypecheckResult<FunctionDecl> {
+) -> GenericResult<FunctionDecl> {
     FunctionSig::of_decl(&decl)
-        .validate_type_args(args, ctx)
-        .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?;
+        .validate_type_args(args, ctx)?;
 
     let mut params = Vec::new();
     for param in decl.params.iter() {

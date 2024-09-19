@@ -69,7 +69,7 @@ where
         .substitute_type_args(&partial_args_resolver);
     
     if expect_ty.is_generic_param() || expect_ty.is_unspecialized_generic() {
-        // not enough info to resolve this generic type fully yet: arg expr ty drives param type
+        // not enough info to resolve this generic type fully yet: arg expr ty_def drives param type
         expect_ty = Type::Nothing;
     }
 
@@ -89,8 +89,8 @@ fn infer_from_structural_ty_args(
     // in param_ty, find all the references to generic params within the type and their
     // corresponding values in the actual type, in the order they appear.
     // for example if the expected type is `array of T`, and the actual
-    // arg is `array of Int32`, `T` is added to the param ty args and `Int32` is added to the 
-    // actual ty args.
+    // arg is `array of Int32`, `T` is added to the param ty_def args and `Int32` is added to the 
+    // actual ty_def args.
     // at this point, if the types are fundamentally incompatible we should bail
     let (param_ty_args, actual_ty_args) = match (param_ty, actual_ty) {
         // plain generic param can be substituted for anything

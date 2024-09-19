@@ -255,7 +255,7 @@ pub fn translate_compound_assignment(
         let lhs = translate_expr(&assignment.lhs, builder);
         let rhs = expr_to_val(&assignment.rhs, builder);
 
-        // result type must be the same as the lhs ty, that's where we're storing it
+        // result type must be the same as the lhs ty_def, that's where we're storing it
         let lhs_ty = builder.translate_type(&assignment.lhs.annotation().ty());
 
         let op_result = builder.local_temp(lhs_ty.clone());

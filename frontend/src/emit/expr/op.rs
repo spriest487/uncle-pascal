@@ -42,7 +42,7 @@ pub fn translate_bin_op(
                 Type::Struct(id) => *id,
                 Type::RcPointer(VirtualTypeID::Class(id)) => *id,
                 other => panic!(
-                    "lhs ty of member binop must be a struct or class, was: {}",
+                    "lhs ty_def of member binop must be a struct or class, was: {}",
                     other
                 ),
             };

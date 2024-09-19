@@ -1,35 +1,21 @@
-use crate::parse::MatchOneOf;
+mod member;
+
+use crate::ast::Annotation;
+use crate::ast::FunctionDecl;
+use crate::ast::Ident;
+use crate::ast::TypeDeclName;
 use crate::parse::Matcher;
-use crate::parse::Parse;
 use crate::parse::ParseResult;
 use crate::parse::TokenStream;
-use crate::parse::MatchSequenceOf;
-use crate::ast::Annotation;
-use crate::ast::TypeDeclName;
-use crate::ast::Ident;
 use crate::Keyword;
-use crate::Separator;
-use derivative::*;
 use common::span::Span;
 use common::span::Spanned;
+use derivative::*;
+pub use member::*;
 use std::fmt;
-use crate::ast::type_name::TypeName;
-use crate::parse::TryParse;
 
 #[cfg(test)]
 mod test;
-
-#[derive(Clone, Eq, Derivative)]
-#[derivative(Debug, PartialEq, Hash)]
-pub struct StructMember<A: Annotation> {
-    pub ident: Ident,
-    pub ty: A::Type,
-
-    #[derivative(Debug = "ignore")]
-    #[derivative(PartialEq = "ignore")]
-    #[derivative(Hash = "ignore")]
-    pub span: Span,
-}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StructKind {
@@ -47,7 +33,7 @@ pub enum StructKind {
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
-pub struct StructDef<A: Annotation> {
+pub struct StructDef<A: Annotation = Span> {
     pub kind: StructKind,
     pub name: A::Name,
     pub members: Vec<StructMember<A>>,
@@ -60,54 +46,43 @@ pub struct StructDef<A: Annotation> {
 
 impl<A: Annotation> StructDef<A> {
     pub fn find_member(&self, by_ident: &Ident) -> Option<&StructMember<A>> {
-        self.members.iter().find(|m| m.ident == *by_ident)
+        self.members.iter().find(|m| m.ident() == by_ident)
     }
-}
-
-fn parse_struct_members(tokens: &mut TokenStream) -> ParseResult<Vec<StructMember<Span>>> {
-    let mut members = Vec::new();
-    loop {
-        if !members.is_empty() {
-            tokens.match_one(Separator::Semicolon)?;
-        }
-
-        let ident = match Ident::try_parse(tokens)? {
-            Some(ident) => ident,
-            None => break,
-        };
-
-        let mut idents = vec![ident];
-        while tokens.match_one_maybe(Separator::Comma).is_some() {
-            let ident = Ident::parse(tokens)?;
-            idents.push(ident);
-        }
-
-        tokens.match_one(Separator::Colon)?;
-        let ty = TypeName::parse(tokens)?;
-
-        for ident in idents {
-            members.push(StructMember {
-                span: ident.span().to(&ty),
-                ty: ty.clone(),
-                ident,
-            });
-        }
-
-        if tokens
-            .look_ahead()
-            .match_sequence(Separator::Semicolon.and_then(Matcher::AnyIdent))
-            .is_none()
-        {
-            break;
-        }
+    
+    pub fn find_field(&self, by_ident: &Ident) -> Option<&Field<A>> {
+        self.members.iter().find_map(|m| match m {
+            StructMember::Field(field) if field.ident == *by_ident => Some(field),
+            _ => None,
+        })
     }
 
-    Ok(members)
+    pub fn find_method(&self, by_ident: &Ident) -> Option<&FunctionDecl<A>> {
+        self.members.iter().find_map(|m| match m {
+            StructMember::MethodDecl(decl) if decl.ident.single() == by_ident => Some(decl),
+            _ => None,
+        })
+    }
+    
+    pub fn fields(&self) -> impl Iterator<Item=&Field<A>> {
+        self.members.iter()
+            .filter_map(|m| match m {
+                StructMember::Field(field) => Some(field),
+                _ => None,
+            })
+    }
+
+    pub fn methods(&self) -> impl Iterator<Item=&FunctionDecl<A>> {
+        self.members.iter()
+            .filter_map(|m| match m {
+                StructMember::MethodDecl(method) => Some(method),
+                _ => None,
+            })
+    }
 }
 
 impl StructDef<Span> {
     pub fn match_kw() -> Matcher {
-        Keyword::Class.or(Keyword::Record).or(Keyword::Packed)
+        Keyword::Class | Keyword::Record | Keyword::Packed
     }
 
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
@@ -123,7 +98,6 @@ impl StructDef<Span> {
         };
 
         let members = parse_struct_members(tokens)?;
-        tokens.match_one_maybe(Separator::Semicolon);
 
         let end_token = tokens.match_one(Keyword::End)?;
 
@@ -144,17 +118,18 @@ impl<A: Annotation> Spanned for StructDef<A> {
 
 impl<A: Annotation> fmt::Display for StructDef<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(
-            f,
-            "{}",
-            match self.kind {
-                StructKind::Record => "record",
-                StructKind::PackedRecord => "packed record",
-                StructKind::Class => "class",
-            }
-        )?;
+        let kind = match self.kind {
+            StructKind::Record => "record",
+            StructKind::PackedRecord => "packed record",
+            StructKind::Class => "class",
+        };
+        writeln!(f, "{}", kind)?;
+        
         for member in &self.members {
-            writeln!(f, "{}: {};", member.ident, member.ty)?;
+            match member {
+                StructMember::Field(field) => writeln!(f, "  {};", field)?,
+                StructMember::MethodDecl(decl) => writeln!(f, "  {};", decl)?,
+            }
         }
         write!(f, "end")
     }

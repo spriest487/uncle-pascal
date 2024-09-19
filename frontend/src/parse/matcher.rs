@@ -1,5 +1,6 @@
 use crate::token_tree::*;
 use std::fmt;
+use std::ops::BitOr;
 use crate::ast::keyword::*;
 use crate::ast::operators::*;
 use crate::parse::{LookAheadTokenStream, ParseResult, TokenStream};
@@ -78,6 +79,14 @@ pub trait MatchSequenceOf {
 impl<M: Into<Matcher>> MatchSequenceOf for M {
     fn and_then(self, next: impl Into<Matcher>) -> SequenceMatcher {
         self.into().and_then(next.into())
+    }
+}
+
+impl<Rhs> BitOr<Rhs> for Matcher where Rhs: Into<Matcher> {
+    type Output = Self;
+
+    fn bitor(self, rhs: Rhs) -> Self::Output {
+        self.or(rhs.into())
     }
 }
 
@@ -253,18 +262,6 @@ impl Matchable for TokenTree {
     fn as_matcher(&self) -> Matcher {
         Matcher::Exact(self.clone())
     }
-}
-
-impl Matchable for Keyword {
-    fn as_matcher(&self) -> Matcher {
-        Matcher::Keyword(*self)
-    }
-}
-
-impl Matchable for Operator {
-   fn as_matcher(&self) -> Matcher {
-       Matcher::Operator(*self)
-   }
 }
 
 #[derive(Clone, Debug)]

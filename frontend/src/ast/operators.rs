@@ -1,23 +1,6 @@
 use std::fmt;
-
-#[derive(Eq, PartialEq, Clone, Debug, Copy)]
-pub enum Position {
-    Prefix,
-    Postfix,
-    Binary,
-}
-
-impl fmt::Display for Position {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let name = match self {
-            Position::Prefix => "prefix",
-            Position::Binary => "binary",
-            Position::Postfix => "postfix",
-        };
-
-        write!(f, "{}", name)
-    }
-}
+use std::ops::BitOr;
+use crate::parse::{Matchable, Matcher};
 
 #[derive(Eq, PartialEq, Clone, Debug, Copy, Hash)]
 pub enum Operator {
@@ -65,6 +48,76 @@ pub enum Operator {
     // not used as a syntactical operator, but included so it can easily
     // participate in precedence comparisons
     Call,
+}
+
+impl fmt::Display for Operator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Operator::Period => write!(f, "."),
+            Operator::Caret => write!(f, "^"),
+            Operator::AddressOf => write!(f, "@"),
+            Operator::Assignment => write!(f, ":="),
+            Operator::CompoundAssignment(a) => write!(f, "{}", a),
+            Operator::Equals => write!(f, "="),
+            Operator::NotEquals => write!(f, "<>"),
+            Operator::Shl => write!(f, "shl"),
+            Operator::Shr => write!(f, "shr"),
+            Operator::Add => write!(f, "+"),
+            Operator::Sub => write!(f, "-"),
+            Operator::Mul => write!(f, "*"),
+            Operator::FDiv => write!(f, "/"),
+            Operator::IDiv => write!(f, "div"),
+            Operator::Mod => write!(f, "mod"),
+            Operator::And => write!(f, "and"),
+            Operator::Not => write!(f, "not"),
+            Operator::Or => write!(f, "or"),
+            Operator::Gt => write!(f, ">"),
+            Operator::Gte => write!(f, ">="),
+            Operator::Lt => write!(f, "<"),
+            Operator::Lte => write!(f, "<="),
+            Operator::In => write!(f, "in"),
+            Operator::RangeInclusive => write!(f, ".."),
+            Operator::Call => write!(f, "(...)"),
+            Operator::Index => write!(f, "[...]"),
+            Operator::As => write!(f, "as"),
+            Operator::BitAnd => write!(f, "&"),
+            Operator::BitNot => write!(f, "~"),
+            Operator::BitOr => write!(f, "|"),
+        }
+    }
+}
+
+impl Matchable for Operator {
+    fn as_matcher(&self) -> Matcher {
+        Matcher::Operator(*self)
+    }
+}
+
+impl BitOr for Operator {
+    type Output = Matcher;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.as_matcher().or(rhs)
+    }
+}
+
+#[derive(Eq, PartialEq, Clone, Debug, Copy)]
+pub enum Position {
+    Prefix,
+    Postfix,
+    Binary,
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let name = match self {
+            Position::Prefix => "prefix",
+            Position::Binary => "binary",
+            Position::Postfix => "postfix",
+        };
+
+        write!(f, "{}", name)
+    }
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Copy, Hash)]
@@ -188,43 +241,6 @@ impl Operator {
             Self::try_parse_text_lowercase(from)
         } else {
             Self::try_parse_text_lowercase(&from.to_ascii_lowercase())
-        }
-    }
-}
-
-impl fmt::Display for Operator {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Operator::Period => write!(f, "."),
-            Operator::Caret => write!(f, "^"),
-            Operator::AddressOf => write!(f, "@"),
-            Operator::Assignment => write!(f, ":="),
-            Operator::CompoundAssignment(a) => write!(f, "{}", a),
-            Operator::Equals => write!(f, "="),
-            Operator::NotEquals => write!(f, "<>"),
-            Operator::Shl => write!(f, "shl"),
-            Operator::Shr => write!(f, "shr"),
-            Operator::Add => write!(f, "+"),
-            Operator::Sub => write!(f, "-"),
-            Operator::Mul => write!(f, "*"),
-            Operator::FDiv => write!(f, "/"),
-            Operator::IDiv => write!(f, "div"),
-            Operator::Mod => write!(f, "mod"),
-            Operator::And => write!(f, "and"),
-            Operator::Not => write!(f, "not"),
-            Operator::Or => write!(f, "or"),
-            Operator::Gt => write!(f, ">"),
-            Operator::Gte => write!(f, ">="),
-            Operator::Lt => write!(f, "<"),
-            Operator::Lte => write!(f, "<="),
-            Operator::In => write!(f, "in"),
-            Operator::RangeInclusive => write!(f, ".."),
-            Operator::Call => write!(f, "(...)"),
-            Operator::Index => write!(f, "[...]"),
-            Operator::As => write!(f, "as"),
-            Operator::BitAnd => write!(f, "&"),
-            Operator::BitNot => write!(f, "~"),
-            Operator::BitOr => write!(f, "|"),
         }
     }
 }

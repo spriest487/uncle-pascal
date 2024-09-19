@@ -88,7 +88,7 @@ fn build_args_for_params(
         params
     };
 
-    // typ each arg (don't do conversions yet, we haven't figured out the self ty yet)
+    // typ each arg (don't do conversions yet, we haven't figured out the self ty_def yet)
     for (arg, expected_param) in src_args.iter().zip(rest_args.iter()) {
         let arg_expr = typecheck_expr(arg, &expected_param.ty, ctx)?;
         checked_args.push(arg_expr);
@@ -99,7 +99,7 @@ fn build_args_for_params(
         return Err(invalid_args(checked_args, params, span.clone()));
     }
 
-    // find the self ty - take the actual type of the first arg that is passed to a Self-typed param
+    // find the self ty_def - take the actual type of the first arg that is passed to a Self-typed param
     let mut self_ty: Option<Type> = None;
     let mut params = params.to_vec();
 
@@ -110,14 +110,14 @@ fn build_args_for_params(
         }
 
         match &self_ty {
-            // this is the first arg passed as a Self param, use this as the self ty from now on
+            // this is the first arg passed as a Self param, use this as the self ty_def from now on
             None => {
                 let actual_self_ty = checked_args[i].annotation().ty().into_owned();
                 params[i].ty = actual_self_ty.clone();
                 self_ty = Some(actual_self_ty);
             },
 
-            // we have already deduced a self ty and are using that one
+            // we have already deduced a self ty_def and are using that one
             Some(actual_self_ty) => {
                 params[i].ty = actual_self_ty.clone();
             },

@@ -2,12 +2,12 @@ mod function;
 mod stmt;
 mod expr;
 mod string_lit;
-mod ty;
+mod ty_def;
 
 pub use self::expr::*;
 pub use self::function::*;
 pub use self::stmt::*;
-pub use self::ty::*;
+pub use self::ty_def::*;
 use crate::ast::string_lit::StringLiteral;
 use crate::ir;
 use crate::Options;

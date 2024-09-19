@@ -226,18 +226,18 @@ pub fn typecheck_collection_ctor(
     };
 
     let collection_ty = match expect_ty {
-        // known dyn array ty
+        // known dyn array ty_def
         Type::DynArray { .. } => Type::DynArray {
             element: Box::new(element_ty),
         },
 
-        // known static array ty
+        // known static array ty_def
         Type::Array(array_ty) => {
             default_fill_elements(array_ty.dim, &element_ty, &mut elements, ctor.annotation.span());
             ArrayType::new(element_ty, elements.len()).into()
         }
 
-        // unknown ty - construct a static array of these elements
+        // unknown ty_def - construct a static array of these elements
         _ => ArrayType::new(element_ty, elements.len()).into(),
     };
 

@@ -1,7 +1,7 @@
 use crate::ast::expr::Expr;
 use crate::ast::expr::InfixOp;
 use crate::ast::expr::PrefixOp;
-use crate::ast::ty::FieldName;
+use crate::ast::ty_def::FieldName;
 use crate::ast::FunctionName;
 use crate::ast::Module;
 use crate::ast::Type;

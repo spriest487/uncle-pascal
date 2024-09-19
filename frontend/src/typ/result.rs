@@ -172,6 +172,11 @@ pub enum TypecheckError {
         member_ty: Type,
     },
 
+    InvalidMethodModifiers {
+        mods: Vec<DeclMod>,
+        span: Span
+    },
+
     InvalidMethodInterface {
         ty: Type,
         span: Span,
@@ -241,7 +246,7 @@ pub enum TypecheckError {
 
         next_ident: Ident,
         next_val: i128,
-    }
+    },
 }
 
 impl TypecheckError {
@@ -302,6 +307,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
             TypecheckError::NoFunctionContext { stmt, .. } => stmt.annotation().span(),
             TypecheckError::UnsizedMember { member, .. } => member.span(),
+            TypecheckError::InvalidMethodModifiers { span, .. } => span,
             TypecheckError::InvalidMethodInterface { span, .. } => span,
             TypecheckError::InterfaceNotImplemented { span, .. } => span,
             TypecheckError::Private { span, .. } => span,
@@ -400,10 +406,11 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::NoFunctionContext { .. } => "Statement requires function context".to_string(),
 
             TypecheckError::UnsizedMember { .. } => "Unsized member".to_string(),
+            TypecheckError::InvalidMethodModifiers { .. } => "Invalid method modifier(s)".to_string(),
 
             TypecheckError::InvalidMethodInterface { .. } => {
                 "Invalid interface type for method".to_string()
-            }
+            },
 
             TypecheckError::InterfaceNotImplemented { .. } => {
                 "Interface not implemented".to_string()
@@ -763,6 +770,18 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UnsizedMember { decl, member_ty, .. } => {
                 write!(f, "`{}` cannot have member of type `{}` because its size is unknown in this context", decl, member_ty)
+            }
+
+            TypecheckError::InvalidMethodModifiers { mods, .. } => {
+                if mods.len() > 1 {
+                    write!(f, "the following modifiers can not appear on a method declaration:")?;
+                    write!(f, "{}", mods.iter()
+                        .map(|m| format!("`{}`", m))
+                        .collect::<Vec<_>>()
+                        .join(", "))
+                } else {
+                    write!(f, "the modifier `{}` can not appear on a method declaration:", mods[0])
+                }
             }
 
             TypecheckError::InvalidMethodInterface { ty, .. } => {

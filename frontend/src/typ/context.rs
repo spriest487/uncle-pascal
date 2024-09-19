@@ -156,7 +156,7 @@ pub struct Context {
     next_scope_id: ScopeID,
     scopes: ScopeStack,
 
-    /// iface ident -> self ty -> impl details
+    /// iface ident -> self ty_def -> impl details
     iface_impls: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
 
     /// decl ident -> definition location
@@ -952,7 +952,7 @@ impl Context {
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
-                let instance_def = specialize_struct_def(base_def.as_ref(), type_args)?;
+                let instance_def = specialize_struct_def(base_def.as_ref(), type_args, self)?;
                 Rc::new(instance_def)
             }
             None => base_def,

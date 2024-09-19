@@ -62,8 +62,12 @@ pub fn semicolon_separator_is_valid() {
     ");
     
     let class_def = get_single_struct_def(&unit);
-    assert_eq!(&class_def.members[0].ident, "i");
-    assert_eq!(&class_def.members[0].ty.to_string(), "Int32");
+    assert_eq!(0, class_def.methods().count());
+    assert_eq!(1, class_def.fields().count());
+    
+    let field = class_def.fields().nth(0).unwrap();
+    assert_eq!("i",field.ident.name.as_str());
+    assert_eq!("Int32", field.ty.to_string());
 }
 
 #[test]
@@ -79,8 +83,10 @@ pub fn semicolon_separator_is_optional() {
     ");
 
     let class_def = get_single_struct_def(&unit);
-    assert_eq!(&class_def.members[0].ident, "i");
-    assert_eq!(&class_def.members[0].ty.to_string(), "Int32");
+    assert_eq!(0, class_def.methods().count());
+    assert_eq!(1, class_def.fields().count());
+    assert_eq!("i", class_def.fields().nth(0).unwrap().ident.name.as_str());
+    assert_eq!("Int32", &class_def.fields().nth(0).unwrap().ty.to_string());
 }
 
 #[test]
@@ -116,8 +122,61 @@ pub fn multi_field_def_is_valid() {
     ");
 
     let class_def = get_single_struct_def(&unit);
-    assert_eq!(&class_def.members[0].ident, "a");
-    assert_eq!(&class_def.members[0].ty.to_string(), "Int32");
-    assert_eq!(&class_def.members[1].ident, "b");
-    assert_eq!(&class_def.members[1].ty.to_string(), "Int32");
+    assert_eq!(0, class_def.methods().count());
+    assert_eq!(2, class_def.fields().count());
+    assert_eq!(&class_def.fields().nth(0).unwrap().ident, "a");
+    assert_eq!(&class_def.fields().nth(0).unwrap().ty.to_string(), "Int32");
+    assert_eq!(&class_def.fields().nth(1).unwrap().ident, "b");
+    assert_eq!(&class_def.fields().nth(1).unwrap().ty.to_string(), "Int32");
+}
+
+#[test]
+pub fn method_decl_is_valid() {
+    let unit = unit_from_string("method_decl_is_valid", r"
+        implementation
+        
+        type MyClass = class
+            function Greet: Int32;
+        end;
+
+        end
+    ");
+
+    let class_def = get_single_struct_def(&unit);
+    assert_eq!(1, class_def.methods().count());
+    assert_eq!(0, class_def.fields().count());
+    
+    let method = class_def.methods().nth(0).unwrap();
+    assert_eq!("Greet", method.ident.to_string());
+
+    assert!(&method.return_ty.is_some());
+    assert_eq!("Int32", class_def.methods().nth(0).unwrap().return_ty.as_ref().unwrap().to_string());
+}
+
+
+#[test]
+pub fn mixed_method_and_fields_is_valid() {
+    let unit = unit_from_string("method_decl_is_valid", r"
+        implementation
+        
+        type MyClass = class
+            function Greet1;
+            Value1: Int32;
+            Value2: Int32;
+            function Greet2;
+            function Greet3;
+        end;
+
+        end
+    ");
+
+    let class_def = get_single_struct_def(&unit);
+    assert_eq!(3, class_def.methods().count());
+    assert_eq!(2, class_def.fields().count());
+
+    assert!(class_def.members[0].as_method().is_some());
+    assert!(class_def.members[1].as_field().is_some());
+    assert!(class_def.members[2].as_field().is_some());
+    assert!(class_def.members[3].as_method().is_some());
+    assert!(class_def.members[4].as_method().is_some());
 }

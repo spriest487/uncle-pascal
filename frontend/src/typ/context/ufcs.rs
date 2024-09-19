@@ -30,10 +30,10 @@ impl InstanceMethod {
     }
 }
 
-/// an instance method is an interface impl method for `ty` that takes Self as the first argument
-/// OR a virtual method of the interface type referenced by `ty`
-/// OR any free function taking `ty` as its first parameter (UFCS syntax)
-/// OR any free function taking a generic type, or a parameterized type into which `ty` can
+/// an instance method is an interface impl method for `ty_def` that takes Self as the first argument
+/// OR a virtual method of the interface type referenced by `ty_def`
+/// OR any free function taking `ty_def` as its first parameter (UFCS syntax)
+/// OR any free function taking a generic type, or a parameterized type into which `ty_def` can
 ///    be substituted, as its first parameter (generic UFCS)
 pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>> {
     match ty {

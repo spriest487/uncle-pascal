@@ -1,4 +1,6 @@
 use std::fmt;
+use std::ops::BitOr;
+use crate::parse::{Matchable, Matcher};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Keyword {
@@ -174,5 +176,19 @@ impl fmt::Display for Keyword {
             Keyword::SizeOf => "sizeof",
             Keyword::In => "in",
         })
+    }
+}
+
+impl Matchable for Keyword {
+    fn as_matcher(&self) -> Matcher {
+        Matcher::Keyword(*self)
+    }
+}
+
+impl BitOr for Keyword {
+    type Output = Matcher;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.as_matcher().or(rhs)
     }
 }

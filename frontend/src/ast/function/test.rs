@@ -97,7 +97,7 @@ fn parses_method_of_interface_with_type_args() {
     assert_eq!(1, decl.ident.as_slice().len());
     assert_eq!(make_ident_path(["TestFunc"]), decl.ident);
 
-    let impl_ty = decl.impl_iface.expect("expected an impl ty to be parsed");
+    let impl_ty = decl.impl_iface.expect("expected an impl ty_def to be parsed");
     let expect_iface = make_iface_ty(make_ident_path(["A"]), ["B"]);
     assert_eq!(expect_iface, impl_ty.iface);
 }
@@ -106,7 +106,7 @@ fn parses_method_of_interface_with_type_args() {
 fn parses_method_of_interface_with_type_args_with_type_params() {
     let decl = parse_func_decl("function TestFunc[C] of A[B]()");
 
-    let impl_ty = decl.impl_iface.expect("expected an impl ty to be parsed");
+    let impl_ty = decl.impl_iface.expect("expected an impl ty_def to be parsed");
     let expect_iface = make_iface_ty(make_ident_path(["A"]), ["B"]);
     assert_eq!(expect_iface, impl_ty.iface);
 

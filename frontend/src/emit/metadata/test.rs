@@ -1,19 +1,18 @@
-use ir_lang::NamePath;
-use ir_lang::Metadata;
-use ir_lang::TypeDefID;
-use ir_lang::TypeDef;
+use crate::ast::Ident;
+use crate::ast::IdentPath;
+use crate::emit::{translate, IROptions};
+use crate::parse::*;
+use crate::pp::Preprocessor;
+use crate::TokenTree;
+use crate::{ast as syn, typ};
 use common::span::*;
 use common::BuildOptions;
-use frontend::ast as syn;
-use frontend::ast::Ident;
-use frontend::ast::IdentPath;
-use frontend::parse::*;
-use frontend::pp::Preprocessor;
-use frontend::typecheck as typ;
-use frontend::TokenTree;
-use std::collections::HashMap;
 use ir_lang::dep_sort::{find_deps, sort_defs};
-use crate::{translate, IROptions};
+use ir_lang::Metadata;
+use ir_lang::NamePath;
+use ir_lang::TypeDef;
+use ir_lang::TypeDefID;
+use std::collections::HashMap;
 
 fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
