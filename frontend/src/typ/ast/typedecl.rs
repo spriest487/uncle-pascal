@@ -88,8 +88,8 @@ pub fn typecheck_struct_decl(
                     });
                 }
                 
-                if decl.impl_iface.is_some() || decl.ident.len() > 1 {
-                    unimplemented!("only basic method decls are supported")
+                if decl.impl_iface.is_some() {
+                    todo!("interface impls are not yet supported")
                 }
                 
                 members.push(decl.into());
@@ -123,7 +123,7 @@ pub fn typecheck_iface(
             let method_path = name
                 .qualified
                 .clone()
-                .child(method.decl.ident.single().clone());
+                .child(method.decl.ident.clone());
 
             return Err(TypecheckError::NameError {
                 err: NameError::AlreadyDefined {

@@ -1,5 +1,4 @@
 use crate::ast::Ident;
-use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::StructKind;
 use crate::ast::TypeDeclName;
@@ -103,7 +102,7 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
         name: builtin_disposable_name(),
         methods: vec![ast::InterfaceMethodDecl {
             decl: ast::FunctionDecl {
-                ident: IdentPath::from(builtin_disposable_dispose_name()),
+                ident: builtin_disposable_dispose_name(),
                 return_ty: None,
                 impl_iface: None,
                 mods: Vec::new(),

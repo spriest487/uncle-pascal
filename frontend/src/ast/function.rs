@@ -8,7 +8,6 @@ use crate::ast::Block;
 use crate::ast::DeclMod;
 use crate::ast::Expr;
 use crate::ast::Ident;
-use crate::ast::IdentPath;
 use crate::ast::TypeList;
 use crate::ast::TypeParam;
 use crate::ast::WhereClause;
@@ -24,11 +23,11 @@ use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
 use crate::TokenTree;
-use derivative::*;
-use linked_hash_map::LinkedHashMap;
 use common::span::Span;
 use common::span::Spanned;
 use common::TracedError;
+use derivative::*;
+use linked_hash_map::LinkedHashMap;
 use std::fmt;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -87,7 +86,7 @@ pub struct InterfaceImpl<A: Annotation> {
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Hash, Debug)]
 pub struct FunctionDecl<A: Annotation> {
-    pub ident: IdentPath,
+    pub ident: Ident,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -237,7 +236,7 @@ impl FunctionDecl<Span> {
         });
 
         Ok(FunctionDecl {
-            ident: IdentPath::from(func_ident),
+            ident: func_ident,
             impl_iface,
             span,
             return_ty,

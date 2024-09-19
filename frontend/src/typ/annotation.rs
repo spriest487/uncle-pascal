@@ -63,7 +63,7 @@ impl OverloadTyped {
             self_arg: Some(Box::new(self_arg)),
             sig: Some(sig.clone()),
             candidates: vec![OverloadCandidate::Method {
-                ident: decl.ident.last().clone(),
+                ident: decl.ident.clone(),
                 decl,
                 sig,
                 iface_ty,
@@ -122,7 +122,7 @@ impl MethodTyped {
 
         Self {
             iface_ty,
-            method_ident: decl.ident.last().clone(),
+            method_ident: decl.ident.clone(),
             span,
             method_sig: Rc::new(sig),
         }

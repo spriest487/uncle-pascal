@@ -25,7 +25,7 @@ impl InstanceMethod {
     pub fn ident(&self) -> &Ident {
         match self {
             InstanceMethod::FreeFunction { func_name, .. } => func_name.last(),
-            InstanceMethod::Method { decl, .. } => decl.ident.last(),
+            InstanceMethod::Method { decl, .. } => &decl.ident,
         }
     }
 }

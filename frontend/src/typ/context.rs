@@ -726,7 +726,7 @@ impl Context {
             .method_impl_entry(
                 iface.clone(),
                 self_ty.clone(),
-                method_def.decl.ident.last().clone(),
+                method_def.decl.ident.clone(),
             )
             .map_err(|err| TypecheckError::from_name_err(err, method_def.decl.span().clone()))?;
 
@@ -735,7 +735,7 @@ impl Context {
                 if entry.get().is_some() {
                     return Err(TypecheckError::NameError {
                         err: NameError::AlreadyImplemented {
-                            method: method_def.decl.ident.last().clone(),
+                            method: method_def.decl.ident.clone(),
                             for_ty: self_ty,
                             iface: iface.clone(),
                             existing: entry.key().span.clone(),
@@ -1158,7 +1158,7 @@ impl Context {
             (None, 1) => match matching_methods.last().unwrap() {
                 ufcs::InstanceMethod::Method { iface_ty, decl } => Ok(InstanceMember::Method {
                     iface_ty: iface_ty.clone(),
-                    method: decl.ident.last().clone(),
+                    method: decl.ident.clone(),
                 }),
 
                 ufcs::InstanceMethod::FreeFunction { func_name, sig } => {
@@ -1419,7 +1419,7 @@ fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident
         .iter()
         .map(|im| match im {
             ufcs::InstanceMethod::Method { iface_ty, decl } => {
-                (iface_ty.clone(), decl.ident.last().clone())
+                (iface_ty.clone(), decl.ident.clone())
             }
 
             ufcs::InstanceMethod::FreeFunction { sig, func_name, .. } => {

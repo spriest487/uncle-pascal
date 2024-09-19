@@ -52,8 +52,7 @@ fn make_iface_ty<const N: usize>(name: IdentPath, ty_args: [&str; N]) -> TypeNam
 fn parses_simple_name_decl() {
     let decl = parse_func_decl("function TestFunc()");
 
-    assert_eq!(1, decl.ident.as_slice().len());
-    assert_eq!(make_ident_path(["TestFunc"]), decl.ident);
+    assert_eq!("TestFunc", decl.ident.name.as_str());
 }
 
 #[test]
@@ -64,7 +63,7 @@ fn parses_unqualified_iface_impl_decl() {
         Some(make_iface_ty(make_ident_path(["I"]), [])),
         decl.impl_iface.map(|i| i.iface)
     );
-    assert_eq!(make_ident_path(["TestFunc"]), decl.ident);
+    assert_eq!("TestFunc", decl.ident.name.as_str());
 }
 
 #[test]
@@ -75,15 +74,14 @@ fn parses_qualified_iface_impl_decl() {
         Some(make_iface_ty(make_ident_path(["NS_A", "I"]), [])),
         decl.impl_iface.map(|i| i.iface)
     );
-    assert_eq!(make_ident_path(["TestFunc"]), decl.ident);
+    assert_eq!("TestFunc", decl.ident.name.as_str());
 }
 
 #[test]
 fn parses_func_with_type_params() {
     let decl = parse_func_decl("function TestFunc[A]()");
 
-    assert_eq!(1, decl.ident.as_slice().len());
-    assert_eq!(make_ident_path(["TestFunc"]), decl.ident);
+    assert_eq!("TestFunc", decl.ident.name.as_str());
 
     let decl_ty_params = decl.type_params.expect("expected type params to be parsed");
     assert_eq!(1, decl_ty_params.items.len());
@@ -94,8 +92,7 @@ fn parses_func_with_type_params() {
 fn parses_method_of_interface_with_type_args() {
     let decl = parse_func_decl("function TestFunc of A[B]()");
 
-    assert_eq!(1, decl.ident.as_slice().len());
-    assert_eq!(make_ident_path(["TestFunc"]), decl.ident);
+    assert_eq!("TestFunc", decl.ident.name.as_str());
 
     let impl_ty = decl.impl_iface.expect("expected an impl ty_def to be parsed");
     let expect_iface = make_iface_ty(make_ident_path(["A"]), ["B"]);
@@ -110,8 +107,7 @@ fn parses_method_of_interface_with_type_args_with_type_params() {
     let expect_iface = make_iface_ty(make_ident_path(["A"]), ["B"]);
     assert_eq!(expect_iface, impl_ty.iface);
 
-    assert_eq!(1, decl.ident.as_slice().len());
-    assert_eq!(make_ident_path(["TestFunc"]), decl.ident);
+    assert_eq!("TestFunc", decl.ident.name.as_str());
 
     let decl_ty_params = decl.type_params.expect("expected type params to be found");
     assert_eq!(1, decl_ty_params.items.len());

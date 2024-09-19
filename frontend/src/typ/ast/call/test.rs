@@ -15,6 +15,7 @@ use crate::TokenTree;
 use common::span::Span;
 use common::BuildOptions;
 use std::cmp::Ordering;
+use crate::ast::IdentPath;
 
 fn parse_expr(src: &str) -> ast::Expr<Span> {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
@@ -44,14 +45,14 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
 
         match &func.decl.impl_iface {
             Some(impl_iface) => OverloadCandidate::Method {
-                ident: func.decl.ident.last().clone(),
+                ident: func.decl.ident.clone(),
                 iface_ty: impl_iface.iface.clone(),
                 sig: Rc::new(sig),
                 decl: func.decl.clone(),
             },
 
             None => OverloadCandidate::Function {
-                decl_name: func.decl.ident.clone(),
+                decl_name: IdentPath::from(func.decl.ident.clone()),
                 sig: Rc::new(sig),
             },
         }

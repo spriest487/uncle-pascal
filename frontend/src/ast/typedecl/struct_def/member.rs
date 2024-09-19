@@ -42,7 +42,7 @@ impl<A: Annotation> StructMember<A> {
     pub fn ident(&self) -> &Ident {
         match self {
             StructMember::Field(field) => &field.ident,
-            StructMember::MethodDecl(decl) => decl.ident.last()
+            StructMember::MethodDecl(decl) => &decl.ident,
         }
     } 
 }

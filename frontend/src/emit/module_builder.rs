@@ -143,18 +143,23 @@ impl ModuleBuilder {
         key: FunctionDefKey,
     ) -> FunctionInstance {
         let specialized_decl = match &key.type_args {
-            Some(key_type_args) => specialize_func_decl(
-                &func_def.decl,
-                key_type_args,
-                &self.src_metadata,
-            )
-                .expect("function specialization must be valid after typechecking"),
+            Some(key_type_args) => {
+                let specialized = specialize_func_decl(
+                    &func_def.decl,
+                    key_type_args,
+                    &self.src_metadata,
+                );
+
+                specialized.expect("function specialization must be valid after typechecking")
+            },
             None => func_def.decl.clone(),
         };
 
         let sig = typ::FunctionSig::of_decl(&specialized_decl);
+        
+        let ns = key.decl_key.namespace();
 
-        let id = self.declare_func(&func_def.decl, key.type_args.as_ref());
+        let id = self.declare_func(&func_def.decl, ns, key.type_args.as_ref());
 
         // cache the function before translating the instantiation, because
         // it may recurse and instantiate itself in its own body
@@ -195,7 +200,7 @@ impl ModuleBuilder {
             "external function must not be generic"
         );
 
-        let id = self.declare_func(&extern_decl, None);
+        let id = self.declare_func(&extern_decl, key.decl_key.namespace(), None);
         let sig = typ::FunctionSig::of_decl(&extern_decl);
 
         let return_ty = self.translate_type(&sig.return_ty, None);
@@ -214,7 +219,7 @@ impl ModuleBuilder {
             id,
             ir::Function::External(ir::ExternalFunctionRef {
                 src: extern_src.to_string(),
-                symbol: extern_decl.ident.last().to_string(),
+                symbol: extern_decl.ident.to_string(),
 
                 sig: ir::FunctionSig { return_ty, param_tys },
 
@@ -274,7 +279,8 @@ impl ModuleBuilder {
         // being generated here is the self-type, which we already specialized
         let specialized_decl = method_def.decl.clone();
 
-        let id = self.declare_func(&specialized_decl, type_args.as_ref());
+        let ns = method_key.iface.clone();
+        let id = self.declare_func(&specialized_decl, ns, type_args.as_ref());
 
         let self_ty = self.find_type(&method_key.self_ty);
 
@@ -345,19 +351,17 @@ impl ModuleBuilder {
     pub fn declare_func(
         &mut self,
         func_decl: &typ::ast::FunctionDecl,
+        namespace: IdentPath,
         type_args: Option<&typ::TypeList>,
     ) -> ir::FunctionID {
         let global_name = match &func_decl.impl_iface {
             Some(_) => None,
             None => {
-                let ns: Vec<_> = func_decl
-                    .ident
-                    .parent()
-                    .expect("func always declared in ns")
+                let ns: Vec<_> = namespace
                     .iter()
-                    .map(Ident::to_string)
+                    .map(|part| part.to_string())
                     .collect();
-                let name = func_decl.ident.last().to_string();
+                let name = func_decl.ident.to_string();
 
                 let global_name = ir::NamePath::new(ns, name);
 
@@ -971,6 +975,22 @@ impl ModuleBuilder {
 pub enum FunctionDeclKey {
     Function { name: IdentPath },
     Method(MethodDeclKey),
+}
+
+impl FunctionDeclKey {
+    pub fn namespace(&self) -> IdentPath {
+        match self {
+            FunctionDeclKey::Function { name } => name.parent()
+                .expect("all functions must be declared within a namespace!"),
+
+            FunctionDeclKey::Method(key) => {
+                let name = key.method.clone();
+                let iface_name = key.iface.iter().cloned();
+
+                IdentPath::new(name, iface_name)
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

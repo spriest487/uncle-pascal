@@ -21,12 +21,7 @@ pub struct InterfaceMethodDecl<A: Annotation> {
 
 impl<A: Annotation> InterfaceMethodDecl<A> {
     pub fn ident(&self) -> &Ident {
-        assert_eq!(
-            1,
-            self.decl.ident.len(),
-            "interface methods should always have a single-part ident path after parsing"
-        );
-        self.decl.ident.single()
+        &self.decl.ident
     }
 }
 

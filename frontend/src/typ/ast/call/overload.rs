@@ -43,7 +43,7 @@ impl OverloadCandidate {
         match im {
             InstanceMethod::Method { iface_ty, decl } => OverloadCandidate::Method {
                 iface_ty,
-                ident: decl.ident.last().clone(),
+                ident: decl.ident.clone(),
                 sig: Rc::new(FunctionSig::of_decl(&decl)),
                 decl,
             },
@@ -59,13 +59,6 @@ impl OverloadCandidate {
         match self {
             OverloadCandidate::Function { sig, .. } => sig,
             OverloadCandidate::Method { sig, .. } => sig,
-        }
-    }
-
-    pub fn ident(&self) -> &IdentPath {
-        match self {
-            OverloadCandidate::Method { decl, .. } => &decl.ident,
-            OverloadCandidate::Function { decl_name, .. } => decl_name,
         }
     }
 

@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
 use crate::typ::ast::const_eval::ConstEval;
@@ -6,7 +7,8 @@ use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::InterfaceDecl;
-use crate::typ::{string_type, GenericResult};
+use crate::typ::string_type;
+use crate::typ::GenericResult;
 use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
@@ -28,7 +30,8 @@ use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::ast::Ident;
 use linked_hash_map::LinkedHashMap;
-use common::span::{Span, Spanned};
+use common::span::Span;
+use common::span::Spanned;
 use std::rc::Rc;
 
 pub type FunctionDecl = ast::FunctionDecl<Typed>;
@@ -72,7 +75,7 @@ pub fn typecheck_func_decl(
                     .name
                     .span());
                 return Err(TypecheckError::ExternalGenericFunction {
-                    func: decl.ident.last().clone(),
+                    func: decl.ident.clone(),
                     extern_modifier: extern_mod.span().clone(),
                     ty_args: ty_args_span,
                 });
@@ -99,43 +102,42 @@ pub fn typecheck_func_decl(
             params.push(param);
         }
 
-        let (ident, impl_iface) = match &decl.impl_iface {
-            Some(iface_impl) => {
+        let impl_iface = match &decl.impl_iface {
+            Some(decl_impl) => {
                 let param_sigs = params.iter().cloned().map(FunctionParamSig::from).collect();
 
                 let method_sig = FunctionSig::new(return_ty.clone(), param_sigs, type_params.clone());
 
-                let iface_def = match typecheck_type(&iface_impl.iface, ctx)? {
-                    Type::Interface(iface) => ctx.find_iface_def(&iface).map_err(|err| {
-                        TypecheckError::from_name_err(err, iface_impl.iface.span().clone())
-                    })?,
+                let iface_def = match typecheck_type(&decl_impl.iface, ctx)? {
+                    Type::Interface(iface) => ctx.find_iface_def(&iface)
+                        .map_err(|err| {
+                            TypecheckError::from_name_err(err, iface.span().clone())
+                        })?,
 
                     not_iface => {
                         return Err(TypecheckError::InvalidMethodInterface {
                             ty: not_iface,
-                            span: iface_impl.iface.span().clone(),
+                            span: decl_impl.iface.span().clone(),
                         });
                     },
                 };
 
                 let iface_impl = 
-                    find_iface_impl(iface_def, decl.ident.single(), &method_sig)
+                    find_iface_impl(iface_def, &decl.ident, &method_sig)
                         .map_err(|err| {
-                            TypecheckError::from_name_err(err, iface_impl.iface.span().clone())
+                            TypecheckError::from_name_err(err, decl_impl.iface.span().clone())
                         })?;
 
-                (decl.ident.clone(), Some(iface_impl))
-            },
-            None => {
-                let name = ctx.qualify_name(decl.ident.single().clone());
-                (name, None)
-            },
+                Some(iface_impl)
+            }
+
+            None => None,
         };
 
         let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
         Ok(FunctionDecl {
-            ident,
+            ident: decl.ident.clone(),
             impl_iface,
             params,
             type_params: type_params.clone(),
@@ -281,9 +283,9 @@ pub fn typecheck_func_def(
         // functions are always declared within their own bodies (allowing recursive calls)
         // but forward-declared functions may already be present in the scope - in which case we
         // don't need to declare it again
-        let find_existing_decl = ctx.find_function(&decl.ident);
+        let find_existing_decl = ctx.find_function(&IdentPath::from(decl.ident.clone()));
         if find_existing_decl.is_err() {
-            ctx.declare_function(decl.ident.last().clone(), &decl, Visibility::Implementation)?;
+            ctx.declare_function(decl.ident.clone(), &decl, Visibility::Implementation)?;
         }
     
         // declare decl's type params within the body too

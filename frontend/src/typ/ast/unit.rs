@@ -115,7 +115,7 @@ fn typecheck_unit_func_def(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<UnitDecl> {
-    let name = func_def.decl.ident.single().clone();
+    let name = func_def.decl.ident.clone();
 
     let func_def = typecheck_func_def(func_def, ctx)?;
     if let Some(impl_iface) = &func_def.decl.impl_iface {
@@ -126,9 +126,10 @@ fn typecheck_unit_func_def(
 
         ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), func_def.clone())?;
     } else {
-        if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_def.decl.ident) {
+        let func_name = IdentPath::from(func_def.decl.ident.clone());
+        if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name) {
             let func_decl = &func_def.decl;
-            ctx.declare_function(func_def.decl.ident.last().clone(), func_decl, visibility)?;
+            ctx.declare_function(func_def.decl.ident.clone(), func_decl, visibility)?;
         }
 
         ctx.define_function(name, func_def.clone())?;
@@ -142,7 +143,7 @@ fn typecheck_unit_func_decl(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<UnitDecl> {
-    let name = func_decl.ident.single().clone();
+    let name = func_decl.ident.clone();
     let func_decl = typecheck_func_decl(func_decl, ctx)?;
 
     assert!(
