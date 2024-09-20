@@ -96,7 +96,7 @@ impl DefDeclMatch {
 pub enum Environment {
     Global,
     Namespace { namespace: IdentPath },
-    TypeDecl,
+    TypeDecl { full_name: Symbol },
     FunctionDecl,
     FunctionBody(FunctionBodyEnvironment),
     ClosureBody(ClosureBodyEnvironment),
@@ -115,7 +115,7 @@ impl Environment {
         match self {
             Environment::Global => "Global",
             Environment::Namespace { .. } => "Namespace",
-            Environment::TypeDecl => "TypeDecl",
+            Environment::TypeDecl { .. } => "TypeDecl",
             Environment::FunctionDecl => "FunctionDecl",
             Environment::FunctionBody { .. } => "FunctionBody",
             Environment::ClosureBody { .. } => "ClosureBody",
@@ -388,7 +388,7 @@ impl Context {
 
         // the last `uses` import always wins
         results.into_iter().last()
-    } 
+    }
     
     pub fn current_closure_env(&self) -> Option<&ClosureBodyEnvironment> {
         for scope in self.scopes.iter().rev() {
@@ -416,6 +416,17 @@ impl Context {
         self.current_function_env().map(|env| &env.result_ty)
             .or_else(|| self.current_closure_env()
                 .and_then(|env| env.result_ty.as_ref()))
+    }
+    
+    pub fn current_enclosing_ty(&self) -> Option<&Symbol> {
+        for scope in self.scopes.iter().rev() {
+            match scope.env() {
+                Environment::TypeDecl { full_name } => return Some(full_name),
+                _ => continue,
+            }
+        }
+        
+        None
     }
 
     pub fn allow_unsafe(&self) -> bool {

@@ -51,7 +51,7 @@ impl fmt::Display for FunctionParamMod {
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
-pub struct FunctionParam<A: Annotation> {
+pub struct FunctionParam<A: Annotation = Span> {
     pub ident: Ident,
     pub ty: A::Type,
     pub modifier: Option<FunctionParamMod>,
@@ -78,14 +78,36 @@ impl<A: Annotation> Spanned for FunctionParam<A> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct InterfaceImpl<A: Annotation> {
+pub struct InterfaceImpl<A: Annotation = Span> {
     pub for_ty: A::Type,
     pub iface: A::Type,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum MethodKind<A: Annotation = Span> {
+    InstanceMethod(A::Type),
+    ClassMethod(A::Type), // unimplemented
+    InterfaceImpl(InterfaceImpl<A>),
+}
+
+impl<A: Annotation> MethodKind<A> {
+    pub fn as_iface_impl(&self) -> Option<&InterfaceImpl<A>> {
+        match self {
+            MethodKind::InterfaceImpl(i) => Some(i),
+            _ => None,
+        }
+    }
+}
+
+impl<A: Annotation> From<InterfaceImpl<A>> for MethodKind<A> {
+    fn from(value: InterfaceImpl<A>) -> Self {
+        MethodKind::InterfaceImpl(value)
+    }
+}
+
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Hash, Debug)]
-pub struct FunctionDecl<A: Annotation> {
+pub struct FunctionDecl<A: Annotation = Span> {
     pub ident: Ident,
 
     #[derivative(Debug = "ignore")]
@@ -98,7 +120,7 @@ pub struct FunctionDecl<A: Annotation> {
 
     pub return_ty: Option<A::Type>,
 
-    pub impl_iface: Option<InterfaceImpl<A>>,
+    pub method_kind: Option<MethodKind<A>>,
 
     pub mods: Vec<DeclMod<A>>,
 }
@@ -228,16 +250,16 @@ impl FunctionDecl<Span> {
             (None, None) => None,
         };
 
-        let impl_iface = iface_ty.map(|ty| {
+        let method_kind = iface_ty.map(|ty| {
             // we'll fill this in during typechecking, the parser doesn't care
             let for_ty = TypeName::Unknown(ty.span().clone());
-
-            InterfaceImpl { for_ty, iface: ty }
+            
+            MethodKind::from(InterfaceImpl { for_ty, iface: ty })
         });
 
         Ok(FunctionDecl {
             ident: func_ident,
-            impl_iface,
+            method_kind,
             span,
             return_ty,
             params,
@@ -318,7 +340,8 @@ impl<A: Annotation> Spanned for FunctionDecl<A> {
 impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "function ")?;
-        if let Some(iface_impl) = &self.impl_iface {
+
+        if let Some(MethodKind::InterfaceImpl(iface_impl)) = &self.method_kind {
             write!(f, "{}.", iface_impl.iface)?;
         }
 

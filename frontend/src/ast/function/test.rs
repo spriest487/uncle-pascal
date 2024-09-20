@@ -2,6 +2,7 @@ use super::*;
 use crate::ast::type_name::IdentTypeName;
 use crate::pp::Preprocessor;
 use common::BuildOptions;
+use crate::ast::IdentPath;
 
 fn parse_func_decl(src: &str) -> FunctionDecl<Span> {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
@@ -20,6 +21,13 @@ fn make_ident_path<const N: usize>(names: [&str; N]) -> IdentPath {
     IdentPath::from_parts(names.iter()
         .map(|n| Ident::new(n, Span::zero("test")))
     )
+}
+
+fn func_iface(decl: &FunctionDecl) -> Option<TypeName> {
+    decl.method_kind.as_ref()
+        .and_then(|m| m.as_iface_impl())
+        .map(|i| &i.iface)
+        .cloned()
 }
 
 fn make_iface_ty<const N: usize>(name: IdentPath, ty_args: [&str; N]) -> TypeName {
@@ -61,7 +69,7 @@ fn parses_unqualified_iface_impl_decl() {
 
     assert_eq!(
         Some(make_iface_ty(make_ident_path(["I"]), [])),
-        decl.impl_iface.map(|i| i.iface)
+        func_iface(&decl)
     );
     assert_eq!("TestFunc", decl.ident.name.as_str());
 }
@@ -72,7 +80,7 @@ fn parses_qualified_iface_impl_decl() {
 
     assert_eq!(
         Some(make_iface_ty(make_ident_path(["NS_A", "I"]), [])),
-        decl.impl_iface.map(|i| i.iface)
+        func_iface(&decl)
     );
     assert_eq!("TestFunc", decl.ident.name.as_str());
 }
@@ -94,18 +102,17 @@ fn parses_method_of_interface_with_type_args() {
 
     assert_eq!("TestFunc", decl.ident.name.as_str());
 
-    let impl_ty = decl.impl_iface.expect("expected an impl ty_def to be parsed");
     let expect_iface = make_iface_ty(make_ident_path(["A"]), ["B"]);
-    assert_eq!(expect_iface, impl_ty.iface);
+    assert_eq!(Some(expect_iface), func_iface(&decl));
 }
 
 #[test]
 fn parses_method_of_interface_with_type_args_with_type_params() {
     let decl = parse_func_decl("function TestFunc[C] of A[B]()");
 
-    let impl_ty = decl.impl_iface.expect("expected an impl ty_def to be parsed");
+    let impl_ty = func_iface(&decl);
     let expect_iface = make_iface_ty(make_ident_path(["A"]), ["B"]);
-    assert_eq!(expect_iface, impl_ty.iface);
+    assert_eq!(Some(expect_iface), impl_ty);
 
     assert_eq!("TestFunc", decl.ident.name.as_str());
 

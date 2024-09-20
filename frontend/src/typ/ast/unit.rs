@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::ast::BindingDeclKind;
+use crate::ast::{BindingDeclKind, MethodKind};
 use crate::ast::IdentPath;
 use crate::ast::Visibility;
 use crate::typ::ast::const_eval::ConstEval;
@@ -118,21 +118,33 @@ fn typecheck_unit_func_def(
     let name = func_def.decl.ident.clone();
 
     let func_def = typecheck_func_def(func_def, ctx)?;
-    if let Some(impl_iface) = &func_def.decl.impl_iface {
-        let iface_decl = impl_iface
-            .iface
-            .as_iface()
-            .expect("implemented type must be an interface");
+    
+    match &func_def.decl.method_kind {
+        Some(MethodKind::ClassMethod(..) | MethodKind::InstanceMethod(..)) => {
+            return Err(TypecheckError::NoMethodContext {
+                method_ident: func_def.decl.ident,
+                span: func_def.decl.span,
+            });
+        }
+        
+        Some(MethodKind::InterfaceImpl(impl_iface)) => {
+            let iface_decl = impl_iface
+                .iface
+                .as_iface()
+                .expect("implemented type must be an interface");
 
-        ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), func_def.clone())?;
-    } else {
-        let func_name = IdentPath::from(func_def.decl.ident.clone());
-        if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name) {
-            let func_decl = &func_def.decl;
-            ctx.declare_function(func_def.decl.ident.clone(), func_decl, visibility)?;
+            ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), func_def.clone())?;
         }
 
-        ctx.define_function(name, func_def.clone())?;
+        None => {
+            let func_name = IdentPath::from(func_def.decl.ident.clone());
+            if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name) {
+                let func_decl = &func_def.decl;
+                ctx.declare_function(func_def.decl.ident.clone(), func_decl, visibility)?;
+            }
+
+            ctx.define_function(name, func_def.clone())?;
+        }
     }
 
     Ok(UnitDecl::FunctionDef { def: func_def })
@@ -147,7 +159,7 @@ fn typecheck_unit_func_decl(
     let func_decl = typecheck_func_decl(func_decl, ctx)?;
 
     assert!(
-        func_decl.impl_iface.is_none(),
+        func_decl.method_kind.is_none(),
         "not yet implemented: can't forward-declare method impls"
     );
 
@@ -189,15 +201,17 @@ fn typecheck_type_decl_item(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<TypeDeclItem> {
-    // type decls have an inner scope
-    let ty_scope = ctx.push_scope(Environment::TypeDecl);
-
     let decl_name = type_decl.name().clone();
     let full_name = Symbol {
         qualified: ctx.qualify_name(decl_name.ident.clone()),
         decl_name,
         type_args: None,
     };
+
+    // type decls have an inner scope
+    let ty_scope = ctx.push_scope(Environment::TypeDecl {
+        full_name: full_name.clone(),
+    });
 
     if let Some(decl_name_type_params) = &full_name.decl_name.type_params {
         let type_params = {

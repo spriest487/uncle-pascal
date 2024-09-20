@@ -12,6 +12,7 @@ use crate::typ::Type;
 #[derive(Clone, Debug)]
 pub enum InstanceMethod {
     FreeFunction {
+        /// fully-qualified function name, starting with the namespace the function is declared in
         func_name: IdentPath,
         sig: Rc<FunctionSig>,
     },

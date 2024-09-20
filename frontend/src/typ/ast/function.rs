@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
@@ -7,8 +8,6 @@ use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::InterfaceDecl;
-use crate::typ::string_type;
-use crate::typ::GenericResult;
 use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
@@ -18,6 +17,7 @@ use crate::typ::Environment;
 use crate::typ::FunctionBodyEnvironment;
 use crate::typ::FunctionParamSig;
 use crate::typ::FunctionSig;
+use crate::typ::GenericResult;
 use crate::typ::NameContainer;
 use crate::typ::NameError;
 use crate::typ::NameResult;
@@ -28,16 +28,17 @@ use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::ast::Ident;
-use linked_hash_map::LinkedHashMap;
+use crate::typ::string_type;
 use common::span::Span;
 use common::span::Spanned;
+use linked_hash_map::LinkedHashMap;
 use std::rc::Rc;
 
 pub type FunctionDecl = ast::FunctionDecl<Typed>;
 pub type DeclMod = ast::DeclMod<Typed>;
 pub type FunctionDef = ast::FunctionDef<Typed>;
 pub type FunctionParam = ast::FunctionParam<Typed>;
+pub type MethodKind = ast::MethodKind<Typed>;
 pub type InterfaceImpl = ast::InterfaceImpl<Typed>;
 pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Typed>;
 pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<Typed>;
@@ -102,8 +103,8 @@ pub fn typecheck_func_decl(
             params.push(param);
         }
 
-        let impl_iface = match &decl.impl_iface {
-            Some(decl_impl) => {
+        let method_kind = match &decl.method_kind {
+            Some(ast::MethodKind::InterfaceImpl(decl_impl)) => {
                 let param_sigs = params.iter().cloned().map(FunctionParamSig::from).collect();
 
                 let method_sig = FunctionSig::new(return_ty.clone(), param_sigs, type_params.clone());
@@ -128,17 +129,31 @@ pub fn typecheck_func_decl(
                             TypecheckError::from_name_err(err, decl_impl.iface.span().clone())
                         })?;
 
-                Some(iface_impl)
+                Some(MethodKind::InterfaceImpl(iface_impl))
             }
 
-            None => None,
+            Some(ast::MethodKind::InstanceMethod(of_ty)) => {
+                assert!(!of_ty.is_known(), "parsed methods should not know their type yet");
+
+                let of_ty = expect_current_enclosing_ty(ctx, decl)?;
+                Some(MethodKind::InstanceMethod(of_ty))
+            },
+            
+            Some(ast::MethodKind::ClassMethod(of_ty)) => {
+                assert!(!of_ty.is_known(), "parsed methods should not know their type yet");
+                
+                let of_ty = expect_current_enclosing_ty(ctx, decl)?;
+                Some(MethodKind::ClassMethod(of_ty))
+            }
+
+            _ => None,
         };
 
         let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
         Ok(FunctionDecl {
             ident: decl.ident.clone(),
-            impl_iface,
+            method_kind,
             params,
             type_params: type_params.clone(),
             return_ty: Some(return_ty),
@@ -146,6 +161,30 @@ pub fn typecheck_func_decl(
             mods: decl_mods,
         })
     })
+}
+
+fn expect_current_enclosing_ty(ctx: &Context, decl: &ast::FunctionDecl) -> TypecheckResult<Type> {
+    let type_name = ctx.current_enclosing_ty()
+        .cloned()
+        .ok_or_else(|| TypecheckError::NoMethodContext {
+            method_ident: decl.ident.clone(),
+            span: decl.span.clone(),
+        })?;
+    
+    let (_, ty) = ctx.find_type(&type_name.qualified)
+        .map_err(|err| TypecheckError::from_name_err(err, decl.span.clone()))?;
+
+    match type_name.type_args {
+        Some(ty_args) => {
+            let specialized = ty.specialize_generic(&ty_args, ctx)
+                .map_err(|err| TypecheckError::from_generic_err(err, decl.span.clone()))?
+                .into_owned();
+
+            Ok(specialized)
+        }
+
+        None => Ok(ty.clone())
+    }
 }
 
 fn typecheck_decl_mods(

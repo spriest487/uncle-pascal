@@ -2,13 +2,14 @@
 mod test;
 
 use crate::ast;
-use crate::ast::Ident;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
+use crate::ast::{Ident, MethodKind};
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_func_decl;
 use crate::typ::ast::InterfaceMethodDecl;
+use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::NameError;
 use crate::typ::Primitive;
@@ -17,7 +18,6 @@ use crate::typ::Type;
 use crate::typ::TypecheckError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
-use crate::typ::typecheck_type;
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
@@ -45,7 +45,7 @@ pub fn typecheck_struct_decl(
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(
         class.name.ident.clone(),
-        self_ty,
+        self_ty.clone(),
         Visibility::Implementation,
     )?;
 
@@ -75,7 +75,7 @@ pub fn typecheck_struct_decl(
             }
             
             ast::StructMember::MethodDecl(decl) => {
-                let decl = typecheck_func_decl(decl, ctx)?;
+                let mut decl = typecheck_func_decl(decl, ctx)?;
 
                 if !decl.mods.is_empty() {
                     return Err(TypecheckError::InvalidMethodModifiers {
@@ -88,9 +88,16 @@ pub fn typecheck_struct_decl(
                     });
                 }
                 
-                if decl.impl_iface.is_some() {
-                    todo!("interface impls are not yet supported")
+                // at this point the only way to have a method kind is if it explicitly implements
+                // an interface, which is not allowed
+                if decl.method_kind.is_some() {
+                    return Err(TypecheckError::InvalidMethodExplicitInterface {
+                        decl: decl.clone(),
+                    });
                 }
+
+                let method_kind = MethodKind::ClassMethod(self_ty.clone());
+                decl.method_kind = Some(method_kind);
                 
                 members.push(decl.into());
             }

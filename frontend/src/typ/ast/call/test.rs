@@ -43,8 +43,8 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
     let candidates = unit.unit.func_defs().map(|(_vis, func)| {
         let sig = FunctionSig::of_decl(&func.decl);
 
-        match &func.decl.impl_iface {
-            Some(impl_iface) => OverloadCandidate::Method {
+        match &func.decl.method_kind {
+            Some(ast::MethodKind::InterfaceImpl(impl_iface)) => OverloadCandidate::Method {
                 ident: func.decl.ident.clone(),
                 iface_ty: impl_iface.iface.clone(),
                 sig: Rc::new(sig),
@@ -55,6 +55,9 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
                 decl_name: IdentPath::from(func.decl.ident.clone()),
                 sig: Rc::new(sig),
             },
+            
+            // todo: remove method_kind again, we can figure it out from context
+            _ => unreachable!("should be no unit-level func defs that are methods"),
         }
     });
 

@@ -1,27 +1,27 @@
 use crate::ast::{IdentPath, StructKind};
+use crate::emit::build_closure_function_def;
 use crate::emit::build_func_def;
 use crate::emit::build_func_static_closure_def;
 use crate::emit::build_static_closure_impl;
 use crate::emit::builder::Builder;
+use crate::emit::ir;
+use crate::emit::metadata::translate_closure_struct;
 use crate::emit::metadata::translate_iface;
 use crate::emit::metadata::translate_name;
+use crate::emit::metadata::translate_sig;
 use crate::emit::metadata::translate_struct_def;
 use crate::emit::metadata::translate_variant_def;
 use crate::emit::metadata::ClosureInstance;
-use crate::emit::metadata::translate_closure_struct;
-use crate::emit::metadata::translate_sig;
 use crate::emit::metadata::NamePathExt;
 use crate::emit::stmt::translate_stmt;
 use crate::emit::translate_func_params;
 use crate::emit::typ;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
-use crate::emit::build_closure_function_def;
-use crate::emit::ir;
 use crate::typ::ast::specialize_func_decl;
-use crate::typ::builtin_string_name;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
+use crate::typ::builtin_string_name;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
@@ -354,8 +354,9 @@ impl ModuleBuilder {
         namespace: IdentPath,
         type_args: Option<&typ::TypeList>,
     ) -> ir::FunctionID {
-        let global_name = match &func_decl.impl_iface {
-            Some(_) => None,
+        let global_name = match &func_decl.method_kind {
+            Some(..) => None,
+            
             None => {
                 let ns: Vec<_> = namespace
                     .iter()

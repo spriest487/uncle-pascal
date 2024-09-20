@@ -7,6 +7,7 @@ use crate::typ::annotation::Typed;
 use crate::typ::ast::Call;
 use crate::typ::ast::DeclMod;
 use crate::typ::ast::Expr;
+use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::Stmt;
 use crate::typ::ast::VariantDef;
@@ -176,6 +177,13 @@ pub enum TypecheckError {
         mods: Vec<DeclMod>,
         span: Span
     },
+    InvalidMethodExplicitInterface {
+        decl: FunctionDecl,
+    },
+    NoMethodContext {
+        method_ident: Ident,
+        span: Span,
+    },
 
     InvalidMethodInterface {
         ty: Type,
@@ -307,8 +315,12 @@ impl Spanned for TypecheckError {
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
             TypecheckError::NoFunctionContext { stmt, .. } => stmt.annotation().span(),
             TypecheckError::UnsizedMember { member, .. } => member.span(),
+            
             TypecheckError::InvalidMethodModifiers { span, .. } => span,
+            TypecheckError::InvalidMethodExplicitInterface { decl, .. } => decl.span(),
             TypecheckError::InvalidMethodInterface { span, .. } => span,
+            TypecheckError::NoMethodContext { span, .. } => span,
+            
             TypecheckError::InterfaceNotImplemented { span, .. } => span,
             TypecheckError::Private { span, .. } => span,
             TypecheckError::PrivateConstructor { span, .. } => span,
@@ -406,6 +418,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::NoFunctionContext { .. } => "Statement requires function context".to_string(),
 
             TypecheckError::UnsizedMember { .. } => "Unsized member".to_string(),
+            
+            TypecheckError::InvalidMethodExplicitInterface { .. } => "Explicit interface implementation for method is invalid".to_string(),
             TypecheckError::InvalidMethodModifiers { .. } => "Invalid method modifier(s)".to_string(),
 
             TypecheckError::InvalidMethodInterface { .. } => {
@@ -415,6 +429,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InterfaceNotImplemented { .. } => {
                 "Interface not implemented".to_string()
             }
+            
+            TypecheckError::NoMethodContext { .. } => "Method requires enclosing type".to_string(),
 
             TypecheckError::Private { .. } => "Name not exported".to_string(),
 
@@ -782,6 +798,14 @@ impl fmt::Display for TypecheckError {
                 } else {
                     write!(f, "the modifier `{}` can not appear on a method declaration:", mods[0])
                 }
+            }
+
+            TypecheckError::InvalidMethodExplicitInterface { decl } => {
+                write!(f, "method `{}` declared in this scope cannot explicitly implement an interface", decl.ident)
+            }
+            
+            TypecheckError::NoMethodContext { method_ident, .. } => {
+                write!(f, "method `{}` is not declared within a type", method_ident)
             }
 
             TypecheckError::InvalidMethodInterface { ty, .. } => {
