@@ -104,7 +104,7 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
             decl: ast::FunctionDecl {
                 ident: builtin_disposable_dispose_name(),
                 return_ty: None,
-                method_kind: None,
+                explicit_impl: None,
                 mods: Vec::new(),
                 type_params: None,
                 params: vec![ast::FunctionParam {

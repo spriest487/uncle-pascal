@@ -78,31 +78,9 @@ impl<A: Annotation> Spanned for FunctionParam<A> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct InterfaceImpl<A: Annotation = Span> {
+pub struct ExplicitImpl<A: Annotation = Span> {
     pub for_ty: A::Type,
     pub iface: A::Type,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum MethodKind<A: Annotation = Span> {
-    InstanceMethod(A::Type),
-    ClassMethod(A::Type), // unimplemented
-    InterfaceImpl(InterfaceImpl<A>),
-}
-
-impl<A: Annotation> MethodKind<A> {
-    pub fn as_iface_impl(&self) -> Option<&InterfaceImpl<A>> {
-        match self {
-            MethodKind::InterfaceImpl(i) => Some(i),
-            _ => None,
-        }
-    }
-}
-
-impl<A: Annotation> From<InterfaceImpl<A>> for MethodKind<A> {
-    fn from(value: InterfaceImpl<A>) -> Self {
-        MethodKind::InterfaceImpl(value)
-    }
 }
 
 #[derive(Clone, Eq, Derivative)]
@@ -120,7 +98,7 @@ pub struct FunctionDecl<A: Annotation = Span> {
 
     pub return_ty: Option<A::Type>,
 
-    pub method_kind: Option<MethodKind<A>>,
+    pub explicit_impl: Option<ExplicitImpl<A>>,
 
     pub mods: Vec<DeclMod<A>>,
 }
@@ -142,7 +120,7 @@ impl FunctionDecl<Span> {
             None => None,
         };
 
-        let iface_ty = match tokens.match_one_maybe(Keyword::Of) {
+        let explicit_iface_ty = match tokens.match_one_maybe(Keyword::Of) {
             Some(..) => {
                 let ty = TypeName::parse(tokens)?;
                 span = span.to(ty.span());
@@ -250,16 +228,16 @@ impl FunctionDecl<Span> {
             (None, None) => None,
         };
 
-        let method_kind = iface_ty.map(|ty| {
+        let explicit_impl = explicit_iface_ty.map(|ty| {
             // we'll fill this in during typechecking, the parser doesn't care
             let for_ty = TypeName::Unknown(ty.span().clone());
             
-            MethodKind::from(InterfaceImpl { for_ty, iface: ty })
+            ExplicitImpl { for_ty, iface: ty }
         });
 
         Ok(FunctionDecl {
             ident: func_ident,
-            method_kind,
+            explicit_impl,
             span,
             return_ty,
             params,
@@ -341,8 +319,8 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "function ")?;
 
-        if let Some(MethodKind::InterfaceImpl(iface_impl)) = &self.method_kind {
-            write!(f, "{}.", iface_impl.iface)?;
+        if let Some(explicit_impl) = &self.explicit_impl {
+            write!(f, "{}.", explicit_impl.iface)?;
         }
 
         write!(f, "{}(", self.ident)?;

@@ -1,7 +1,7 @@
 use crate::ast;
-use crate::ast::{BindingDeclKind, MethodKind};
 use crate::ast::IdentPath;
 use crate::ast::Visibility;
+use crate::ast::BindingDeclKind;
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::expr::expect_stmt_initialized;
 use crate::typ::ast::typecheck_alias;
@@ -119,15 +119,8 @@ fn typecheck_unit_func_def(
 
     let func_def = typecheck_func_def(func_def, ctx)?;
     
-    match &func_def.decl.method_kind {
-        Some(MethodKind::ClassMethod(..) | MethodKind::InstanceMethod(..)) => {
-            return Err(TypecheckError::NoMethodContext {
-                method_ident: func_def.decl.ident,
-                span: func_def.decl.span,
-            });
-        }
-        
-        Some(MethodKind::InterfaceImpl(impl_iface)) => {
+    match &func_def.decl.explicit_impl {        
+        Some(impl_iface) => {
             let iface_decl = impl_iface
                 .iface
                 .as_iface()
@@ -159,7 +152,7 @@ fn typecheck_unit_func_decl(
     let func_decl = typecheck_func_decl(func_decl, ctx)?;
 
     assert!(
-        func_decl.method_kind.is_none(),
+        func_decl.explicit_impl.is_none(),
         "not yet implemented: can't forward-declare method impls"
     );
 

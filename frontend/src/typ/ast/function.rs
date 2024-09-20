@@ -8,6 +8,7 @@ use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::InterfaceDecl;
+use crate::typ::string_type;
 use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
@@ -28,7 +29,6 @@ use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::typ::string_type;
 use common::span::Span;
 use common::span::Spanned;
 use linked_hash_map::LinkedHashMap;
@@ -38,8 +38,7 @@ pub type FunctionDecl = ast::FunctionDecl<Typed>;
 pub type DeclMod = ast::DeclMod<Typed>;
 pub type FunctionDef = ast::FunctionDef<Typed>;
 pub type FunctionParam = ast::FunctionParam<Typed>;
-pub type MethodKind = ast::MethodKind<Typed>;
-pub type InterfaceImpl = ast::InterfaceImpl<Typed>;
+pub type InterfaceImpl = ast::ExplicitImpl<Typed>;
 pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Typed>;
 pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<Typed>;
 pub type FunctionLocalDecl = ast::FunctionLocalBinding<Typed>;
@@ -102,9 +101,16 @@ pub fn typecheck_func_decl(
             let param = typecheck_param(param, ctx)?;
             params.push(param);
         }
+        
+        let explicit_impl = match &decl.explicit_impl {
+            Some(decl_impl) => {
+                if ctx.current_enclosing_ty().is_some() {
+                    return Err(TypecheckError::InvalidMethodExplicitInterface {
+                        method_ident: decl.ident.clone(),
+                        span: decl_impl.iface.span().clone()
+                    })
+                }
 
-        let method_kind = match &decl.method_kind {
-            Some(ast::MethodKind::InterfaceImpl(decl_impl)) => {
                 let param_sigs = params.iter().cloned().map(FunctionParamSig::from).collect();
 
                 let method_sig = FunctionSig::new(return_ty.clone(), param_sigs, type_params.clone());
@@ -123,37 +129,22 @@ pub fn typecheck_func_decl(
                     },
                 };
 
-                let iface_impl = 
-                    find_iface_impl(iface_def, &decl.ident, &method_sig)
-                        .map_err(|err| {
-                            TypecheckError::from_name_err(err, decl_impl.iface.span().clone())
-                        })?;
-
-                Some(MethodKind::InterfaceImpl(iface_impl))
+                let explicit_impl = find_iface_impl(iface_def, &decl.ident, &method_sig)
+                    .map_err(|err| {
+                        TypecheckError::from_name_err(err, decl_impl.iface.span().clone())
+                    })?;
+                Some(explicit_impl)
             }
-
-            Some(ast::MethodKind::InstanceMethod(of_ty)) => {
-                assert!(!of_ty.is_known(), "parsed methods should not know their type yet");
-
-                let of_ty = expect_current_enclosing_ty(ctx, decl)?;
-                Some(MethodKind::InstanceMethod(of_ty))
-            },
-            
-            Some(ast::MethodKind::ClassMethod(of_ty)) => {
-                assert!(!of_ty.is_known(), "parsed methods should not know their type yet");
-                
-                let of_ty = expect_current_enclosing_ty(ctx, decl)?;
-                Some(MethodKind::ClassMethod(of_ty))
+            _ => {
+                None
             }
-
-            _ => None,
         };
 
         let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
         Ok(FunctionDecl {
             ident: decl.ident.clone(),
-            method_kind,
+            explicit_impl,
             params,
             type_params: type_params.clone(),
             return_ty: Some(return_ty),
@@ -161,30 +152,6 @@ pub fn typecheck_func_decl(
             mods: decl_mods,
         })
     })
-}
-
-fn expect_current_enclosing_ty(ctx: &Context, decl: &ast::FunctionDecl) -> TypecheckResult<Type> {
-    let type_name = ctx.current_enclosing_ty()
-        .cloned()
-        .ok_or_else(|| TypecheckError::NoMethodContext {
-            method_ident: decl.ident.clone(),
-            span: decl.span.clone(),
-        })?;
-    
-    let (_, ty) = ctx.find_type(&type_name.qualified)
-        .map_err(|err| TypecheckError::from_name_err(err, decl.span.clone()))?;
-
-    match type_name.type_args {
-        Some(ty_args) => {
-            let specialized = ty.specialize_generic(&ty_args, ctx)
-                .map_err(|err| TypecheckError::from_generic_err(err, decl.span.clone()))?
-                .into_owned();
-
-            Ok(specialized)
-        }
-
-        None => Ok(ty.clone())
-    }
 }
 
 fn typecheck_decl_mods(

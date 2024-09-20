@@ -24,9 +24,8 @@ fn make_ident_path<const N: usize>(names: [&str; N]) -> IdentPath {
 }
 
 fn func_iface(decl: &FunctionDecl) -> Option<TypeName> {
-    decl.method_kind.as_ref()
-        .and_then(|m| m.as_iface_impl())
-        .map(|i| &i.iface)
+    decl.explicit_impl.as_ref()
+        .map(|explicit_impl| &explicit_impl.iface)
         .cloned()
 }
 

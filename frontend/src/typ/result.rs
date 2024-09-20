@@ -7,7 +7,6 @@ use crate::typ::annotation::Typed;
 use crate::typ::ast::Call;
 use crate::typ::ast::DeclMod;
 use crate::typ::ast::Expr;
-use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::Stmt;
 use crate::typ::ast::VariantDef;
@@ -178,7 +177,8 @@ pub enum TypecheckError {
         span: Span
     },
     InvalidMethodExplicitInterface {
-        decl: FunctionDecl,
+        method_ident: Ident,
+        span: Span,
     },
     NoMethodContext {
         method_ident: Ident,
@@ -317,7 +317,7 @@ impl Spanned for TypecheckError {
             TypecheckError::UnsizedMember { member, .. } => member.span(),
             
             TypecheckError::InvalidMethodModifiers { span, .. } => span,
-            TypecheckError::InvalidMethodExplicitInterface { decl, .. } => decl.span(),
+            TypecheckError::InvalidMethodExplicitInterface { span, .. } => span,
             TypecheckError::InvalidMethodInterface { span, .. } => span,
             TypecheckError::NoMethodContext { span, .. } => span,
             
@@ -800,8 +800,8 @@ impl fmt::Display for TypecheckError {
                 }
             }
 
-            TypecheckError::InvalidMethodExplicitInterface { decl } => {
-                write!(f, "method `{}` declared in this scope cannot explicitly implement an interface", decl.ident)
+            TypecheckError::InvalidMethodExplicitInterface { method_ident, .. } => {
+                write!(f, "method `{}` declared in this scope cannot explicitly implement an interface", method_ident)
             }
             
             TypecheckError::NoMethodContext { method_ident, .. } => {

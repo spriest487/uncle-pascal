@@ -354,7 +354,7 @@ impl ModuleBuilder {
         namespace: IdentPath,
         type_args: Option<&typ::TypeList>,
     ) -> ir::FunctionID {
-        let global_name = match &func_decl.method_kind {
+        let global_name = match &func_decl.explicit_impl {
             Some(..) => None,
             
             None => {

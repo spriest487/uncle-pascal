@@ -4,7 +4,7 @@ mod test;
 use crate::ast;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
-use crate::ast::{Ident, MethodKind};
+use crate::ast::Ident;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_func_decl;
@@ -75,7 +75,7 @@ pub fn typecheck_struct_decl(
             }
             
             ast::StructMember::MethodDecl(decl) => {
-                let mut decl = typecheck_func_decl(decl, ctx)?;
+                let decl = typecheck_func_decl(decl, ctx)?;
 
                 if !decl.mods.is_empty() {
                     return Err(TypecheckError::InvalidMethodModifiers {
@@ -88,16 +88,13 @@ pub fn typecheck_struct_decl(
                     });
                 }
                 
-                // at this point the only way to have a method kind is if it explicitly implements
-                // an interface, which is not allowed
-                if decl.method_kind.is_some() {
+                // explicit impls inside types are not allowed
+                if let Some(..) = &decl.explicit_impl {
                     return Err(TypecheckError::InvalidMethodExplicitInterface {
-                        decl: decl.clone(),
+                        method_ident: decl.ident.clone(),
+                        span: decl.span.clone(),
                     });
                 }
-
-                let method_kind = MethodKind::ClassMethod(self_ty.clone());
-                decl.method_kind = Some(method_kind);
                 
                 members.push(decl.into());
             }
