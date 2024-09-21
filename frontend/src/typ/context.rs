@@ -27,7 +27,6 @@ use crate::typ::ast::Literal;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
-use crate::typ::specialize_generic_variant;
 use crate::typ::specialize_struct_def;
 use crate::typ::FunctionSig;
 use crate::typ::Primitive;
@@ -37,8 +36,9 @@ use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
 use crate::typ::TypecheckError;
 use crate::typ::TypecheckResult;
-use linked_hash_map::LinkedHashMap;
+use crate::typ::specialize_generic_variant;
 use common::span::*;
+use linked_hash_map::LinkedHashMap;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
 use std::rc::Rc;
@@ -180,17 +180,27 @@ impl Context {
             loop_stack: Default::default(),
         };
 
-        let declare_builtin = |ctx: &mut Self, name: &str, ty: Type| {
-            let ident = Ident::new(name, module_span.clone());
-            ctx.declare_type(ident, ty, Visibility::Interface)
-                .expect("builtin type decl must not fail");
-        };
+        let builtin_ifaces = [
+            builtin_disposable_iface(),
+            builtin_displayable_iface(),
+            builtin_comparable_iface(),
+        ];
 
-        declare_builtin(&mut root_ctx, NOTHING_TYPE_NAME, Type::Nothing);
-        declare_builtin(&mut root_ctx, ANY_TYPE_NAME, Type::Any);
+        for builtin_iface in builtin_ifaces {
+            root_ctx
+                .declare_iface(Rc::new(builtin_iface), Visibility::Interface)
+                .expect("builtin interface decl must not fail");
+        }
+
+        declare_builtin_ty(&mut root_ctx, NOTHING_TYPE_NAME, Type::Nothing, false, false)
+            .expect("builtin type decl must not fail");
+        declare_builtin_ty(&mut root_ctx, ANY_TYPE_NAME, Type::Any, false, false)
+            .expect("builtin type decl must not fail");
 
         for primitive in &Primitive::ALL {
-            declare_builtin(&mut root_ctx, primitive.name(), Type::Primitive(*primitive));
+            let primitive_ty = Type::Primitive(*primitive);
+            declare_builtin_ty(&mut root_ctx, primitive.name(), primitive_ty, true, true)
+                .expect("primitive type decl must not fail");
         }
 
         root_ctx
@@ -472,7 +482,7 @@ impl Context {
                 }
             }
 
-            Some(old_ref) => {
+            Some(old_ref) if !is_valid_builtin_redecl(&decl) => {
                 let old_kind = old_ref.kind();
                 let old_ident = match old_ref {
                     ScopeMemberRef::Decl {
@@ -480,7 +490,7 @@ impl Context {
                     } => Path::new(key.clone(), parent_path.keys().cloned()),
                     ScopeMemberRef::Scope { path } => Path::from_parts(path.keys().cloned()),
                 };
-
+                
                 Err(TypecheckError::NameError {
                     span: name.span().clone(),
                     err: NameError::AlreadyDeclared {
@@ -491,7 +501,7 @@ impl Context {
                 })
             }
 
-            None => {
+            _ => {
                 self.scopes.insert_decl(name.clone(), decl).map_err(|err| {
                     TypecheckError::NameError {
                         err,

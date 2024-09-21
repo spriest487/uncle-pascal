@@ -198,20 +198,20 @@ impl Type {
         }
     }
 
-    pub fn members_len(&self, ctx: &Context) -> NameResult<usize> {
+    pub fn field_count(&self, ctx: &Context) -> NameResult<usize> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                let class = ctx.instantiate_struct_def(class)?;
-                Ok(class.members.len())
+                let class = ctx.find_struct_def(&class.qualified)?;
+                Ok(class.fields().count())
             },
 
             _ => Ok(0),
         }
     }
 
-    pub fn members(&self, ctx: &Context) -> NameResult<Vec<Field>> {
+    pub fn fields(&self, ctx: &Context) -> NameResult<Vec<Field>> {
         let mut members = Vec::new();
-        for i in 0..self.members_len(ctx)? {
+        for i in 0..self.field_count(ctx)? {
             let member = self.get_field(i, ctx)?.unwrap();
 
             members.push(member);

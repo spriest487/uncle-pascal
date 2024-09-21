@@ -65,7 +65,7 @@ pub fn typecheck_object_ctor(
     }
 
     let mut expect_members: LinkedHashMap<_, _> = ctor_ty
-        .members(ctx)
+        .fields(ctx)
         .map_err(|err| TypecheckError::NameError {
             err,
             span: span.clone(),

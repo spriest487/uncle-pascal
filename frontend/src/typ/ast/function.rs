@@ -56,7 +56,25 @@ pub struct TypedFunctionName {
     pub span: Span,
 }
 
-impl FunctionName for TypedFunctionName {
+impl TypedFunctionName {
+    pub fn new_method(ident: impl Into<Ident>, owning_ty: impl Into<Type>, span: impl Into<Span>) -> Self {
+        Self {
+            ident: ident.into(),
+            span: span.into(),
+            owning_ty: Some(owning_ty.into()),
+        }
+    }
+    
+    pub fn new_free_func(ident: impl Into<Ident>, span: impl Into<Span>) -> Self {
+        Self {
+            ident: ident.into(),
+            span: span.into(),
+            owning_ty: None,
+        }
+    }
+}
+
+impl FunctionName for TypedFunctionName {    
     fn ident(&self) -> &Ident {
         &self.ident
     }
@@ -127,15 +145,16 @@ pub fn typecheck_func_decl(
         match (&decl.name.owning_ty_qual, ctx.current_enclosing_ty()) {
             // free function with no owning type
             (None, None) => {
-                params = typecheck_params(decl, false, ctx)?;
+                params = typecheck_params(decl, None, ctx)?;
                 owning_ty = None;
             },
             
             // method definition or free interface implementation decl
             (Some(owning_ty_qual), None) => {
                 let explicit_ty_span = owning_ty_qual.span();
+                let explicit_owning_ty = typecheck_type(owning_ty_qual, ctx)?;
 
-                params = typecheck_params(decl, true, ctx)?;
+                params = typecheck_params(decl, Some(explicit_owning_ty.clone()), ctx)?;
 
                 let param_sigs = params.iter()
                     .cloned()
@@ -146,8 +165,7 @@ pub fn typecheck_func_decl(
                     param_sigs,
                     type_params.clone());
 
-                let instance_ty = typecheck_type(&owning_ty_qual, ctx)?;
-                match &instance_ty {
+                match &explicit_owning_ty {
                     // free interface implementation decl
                     Type::Interface(iface) => {
                         validate_iface_method(
@@ -163,7 +181,7 @@ pub fn typecheck_func_decl(
                     Type::Class(name) | Type::Record(name) => {
                         validate_struct_method(
                             name,
-                            &instance_ty,
+                            &explicit_owning_ty,
                             &decl.name.ident,
                             &method_sig,
                             ctx,
@@ -180,13 +198,13 @@ pub fn typecheck_func_decl(
                     },
                 }
 
-                owning_ty = Some(instance_ty);
+                owning_ty = Some(explicit_owning_ty);
             }
 
             // method decl
             (None, Some(enclosing_ty)) => {
                 owning_ty = Some(enclosing_ty.clone());
-                params = typecheck_params(decl, true, ctx)?;
+                params = typecheck_params(decl, Some(enclosing_ty.clone()), ctx)?;
             }
 
             (Some(owning_ty_qual), Some(..)) => {
@@ -216,16 +234,15 @@ pub fn typecheck_func_decl(
 
 fn typecheck_params(
     decl: &ast::FunctionDecl,
-    implicit_self: bool,
+    implicit_self: Option<Type>,
     ctx: &mut Context
 ) -> TypecheckResult<Vec<FunctionParam>> {
     let mut params = Vec::new();
 
-    if implicit_self {
+    if let Some(self_ty) = implicit_self {
         let self_span = decl.name.span().clone();
         params.push(FunctionParam {
-            // ty: enclosing_ty.clone(),
-            ty: Type::MethodSelf,
+            ty: self_ty,
             ident: Ident::new("self", self_span.clone()),
             modifier: None,
             span: self_span,

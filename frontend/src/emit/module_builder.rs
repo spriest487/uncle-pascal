@@ -21,7 +21,6 @@ use crate::emit::IROptions;
 use crate::typ::ast::specialize_func_decl;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
-use crate::typ::builtin_string_name;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
@@ -606,7 +605,7 @@ impl ModuleBuilder {
 
             typ::Type::Record(name) | typ::Type::Class(name) => {
                 // handle builtin types
-                if **name == builtin_string_name() {
+                if **name == typ::builtin_string_name() {
                     let string_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(ir::STRING_ID));
 
                     self.type_cache.insert(src_ty, string_ty.clone());

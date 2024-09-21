@@ -13,6 +13,7 @@ use crate::typ::TypeList;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Symbol {
+    // TODO: can we get rid of this and just store the type params etc separately?
     pub decl_name: TypeDeclName,
     pub qualified: IdentPath,
 
@@ -27,6 +28,20 @@ impl Symbol {
             Err(GenericError::IllegalUnspecialized {
                 ty: Type::Class(Box::new(self.clone())),
             })
+        }
+    }
+}
+
+impl From<IdentPath> for Symbol {
+    fn from(value: IdentPath) -> Self {
+        Symbol {
+            decl_name: TypeDeclName {
+                span: value.path_span(),
+                ident: value.last().clone(),
+                type_params: None,
+            },
+            qualified: value,
+            type_args: None,
         }
     }
 }

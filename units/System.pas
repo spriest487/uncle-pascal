@@ -14,6 +14,8 @@ type
     String = class
         chars: ^Byte;
         len: Int32;
+        
+        function Compare(other: String): Int32;
     end;
 
     Disposable = interface
