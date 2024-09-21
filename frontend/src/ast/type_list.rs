@@ -107,6 +107,7 @@ impl TypeList<TypeName> {
 }
 
 impl TypeList<Ident> {
+    // type params lists are normal type lists that can't be empty
     pub(crate) fn parse_type_params(tokens: &mut TokenStream) -> ParseResult<Self> {
         let type_args = Self::parse(tokens)?;
 
@@ -119,36 +120,49 @@ impl TypeList<Ident> {
     }
 }
 
-impl<Item> TypeList<Item> {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self>
-    where
-        Item: Spanned + Parse + Match,
-    {
+impl<Item> TypeList<Item>
+where
+    Item: Parse + Match,
+{
+    // parse the type list inside the square brackets, for usages where we already consumed the
+    // outer group
+    pub(crate) fn parse_items(tokens: &mut TokenStream) -> ParseResult<Vec<Item>> {
+        // empty type lists aren't valid, but we parse them first then check that later
+        // so accept them for now
+        let mut items = Vec::new();
+        loop {
+            let mut tokens_ahead = tokens.look_ahead();
+            if !items.is_empty() && tokens_ahead.match_one(Separator::Comma).is_none() {
+                break;
+            }
+
+            if !Item::is_match(&mut tokens_ahead) {
+                break;
+            }
+
+            if !items.is_empty() {
+                tokens.match_one(Separator::Comma)?;
+            }
+
+            let item = Item::parse(tokens)?;
+            items.push(item);
+        }
+        
+        Ok(items)
+    }
+}
+
+impl<Item> Parse for TypeList<Item>
+where
+    Item: Spanned + Parse + Match
+{
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let (span, mut items_tokens) = match tokens.match_one(DelimiterPair::SquareBracket)? {
             TokenTree::Delimited(group) => (group.span.clone(), group.to_inner_tokens()),
             _ => unreachable!(),
         };
 
-        // empty type lists aren't valid, but we parse them first then check that later
-        // so accept them for now
-        let mut items = Vec::new();
-        loop {
-            let mut items_tokens_ahead = items_tokens.look_ahead();
-            if !items.is_empty() && items_tokens_ahead.match_one(Separator::Comma).is_none() {
-                break;
-            }
-
-            if !Item::is_match(&mut items_tokens_ahead) {
-                break;
-            }
-
-            if !items.is_empty() {
-                items_tokens.match_one(Separator::Comma)?;
-            }
-
-            let item = Item::parse(&mut items_tokens)?;
-            items.push(item);
-        }
+        let items = Self::parse_items(&mut items_tokens)?;
 
         // allow redundant comma after final item
         items_tokens.match_one_maybe(Separator::Comma);

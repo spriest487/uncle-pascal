@@ -1,5 +1,17 @@
 use super::*;
 
+fn instructions_without_comments(actual: &[Instruction], count: usize) -> Vec<Instruction> {
+    actual
+        .iter()
+        .filter(|i| match i {
+            Instruction::Comment(..) => false,
+            _ => true,
+        })
+        .cloned()
+        .take(count)
+        .collect::<Vec<_>>()
+}
+
 #[test]
 fn end_loop_scope_ends_at_right_scope_level() {
     let ctx = typ::Context::root(Span::zero("test"));
@@ -58,6 +70,11 @@ fn break_cleans_up_loop_locals() {
         // and the final jmp for the break
         Instruction::Jump { dest: break_label },
     ];
+    
+    let actual = instructions_without_comments(
+        &builder.instructions[from + 1..], 
+        expect.len()
+    );
 
-    assert_eq!(expect, &builder.instructions[from + 1..]);
+    assert_eq!(expect.as_slice(), actual.as_slice());
 }

@@ -1,5 +1,7 @@
+use std::fmt;
+use std::fmt::Formatter;
 use crate::ast;
-use crate::ast::Ident;
+use crate::ast::{FunctionName, Ident};
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
@@ -38,10 +40,32 @@ pub type FunctionDecl = ast::FunctionDecl<Typed>;
 pub type DeclMod = ast::DeclMod<Typed>;
 pub type FunctionDef = ast::FunctionDef<Typed>;
 pub type FunctionParam = ast::FunctionParam<Typed>;
-pub type InterfaceImpl = ast::ExplicitImpl<Typed>;
 pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Typed>;
 pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<Typed>;
 pub type FunctionLocalDecl = ast::FunctionLocalBinding<Typed>;
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct TypedFunctionName {
+    pub ident: Ident,
+    pub explicit_impl: Option<Type>,
+    
+    pub span: Span,
+}
+
+impl FunctionName for TypedFunctionName {
+    fn ident(&self) -> &Ident {
+        &self.ident
+    }
+}
+
+impl fmt::Display for TypedFunctionName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if let Some(explicit_impl) = &self.explicit_impl {
+            write!(f, "{}.", explicit_impl)?;
+        }
+        write!(f, "{}", self.ident)
+    }
+}
 
 fn typecheck_param(
     param: &ast::FunctionParam<Span>,
@@ -75,7 +99,7 @@ pub fn typecheck_func_decl(
                     .name
                     .span());
                 return Err(TypecheckError::ExternalGenericFunction {
-                    func: decl.ident.clone(),
+                    func: decl.name.ident.clone(),
                     extern_modifier: extern_mod.span().clone(),
                     ty_args: ty_args_span,
                 });
@@ -102,12 +126,12 @@ pub fn typecheck_func_decl(
             params.push(param);
         }
         
-        let explicit_impl = match &decl.explicit_impl {
-            Some(decl_impl) => {
+        let explicit_impl = match &decl.name.instance_ty {
+            Some(instance_ty) => {
                 if ctx.current_enclosing_ty().is_some() {
                     return Err(TypecheckError::InvalidMethodExplicitInterface {
-                        method_ident: decl.ident.clone(),
-                        span: decl_impl.iface.span().clone()
+                        method_ident: decl.name.ident.clone(),
+                        span: instance_ty.span().clone()
                     })
                 }
 
@@ -115,7 +139,7 @@ pub fn typecheck_func_decl(
 
                 let method_sig = FunctionSig::new(return_ty.clone(), param_sigs, type_params.clone());
 
-                let iface_def = match typecheck_type(&decl_impl.iface, ctx)? {
+                let iface_def = match typecheck_type(&instance_ty, ctx)? {
                     Type::Interface(iface) => ctx.find_iface_def(&iface)
                         .map_err(|err| {
                             TypecheckError::from_name_err(err, iface.span().clone())
@@ -124,16 +148,16 @@ pub fn typecheck_func_decl(
                     not_iface => {
                         return Err(TypecheckError::InvalidMethodInterface {
                             ty: not_iface,
-                            span: decl_impl.iface.span().clone(),
+                            span: instance_ty.span().clone(),
                         });
                     },
                 };
 
-                let explicit_impl = find_iface_impl(iface_def, &decl.ident, &method_sig)
+                let explicit_impl = find_iface_impl(iface_def, decl.name.ident(), &method_sig)
                     .map_err(|err| {
-                        TypecheckError::from_name_err(err, decl_impl.iface.span().clone())
+                        TypecheckError::from_name_err(err, instance_ty.span().clone())
                     })?;
-                Some(explicit_impl)
+                Some(explicit_impl.iface)
             }
             _ => {
                 None
@@ -143,8 +167,11 @@ pub fn typecheck_func_decl(
         let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
         Ok(FunctionDecl {
-            ident: decl.ident.clone(),
-            explicit_impl,
+            name: TypedFunctionName {
+                ident: decl.name.ident.clone(),
+                explicit_impl,
+                span: decl.name.span(),
+            },
             params,
             type_params: type_params.clone(),
             return_ty: Some(return_ty),
@@ -187,6 +214,12 @@ fn typecheck_decl_mods(
     }
 
     Ok(results)
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+struct InterfaceImpl {
+    pub iface: Type,
+    pub for_ty: Type,
 }
 
 fn find_iface_impl(
@@ -289,9 +322,9 @@ pub fn typecheck_func_def(
         // functions are always declared within their own bodies (allowing recursive calls)
         // but forward-declared functions may already be present in the scope - in which case we
         // don't need to declare it again
-        let find_existing_decl = ctx.find_function(&IdentPath::from(decl.ident.clone()));
+        let find_existing_decl = ctx.find_function(&IdentPath::from(decl.name.ident().clone()));
         if find_existing_decl.is_err() {
-            ctx.declare_function(decl.ident.clone(), &decl, Visibility::Implementation)?;
+            ctx.declare_function(decl.name.ident().clone(), &decl, Visibility::Implementation)?;
         }
     
         // declare decl's type params within the body too

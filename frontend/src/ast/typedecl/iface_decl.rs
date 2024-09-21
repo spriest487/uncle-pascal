@@ -1,4 +1,4 @@
-use crate::ast::Annotation;
+use crate::ast::{Annotation, FunctionName};
 use crate::ast::FunctionDecl;
 use crate::ast::Ident;
 use crate::ast::TypeDeclName;
@@ -21,7 +21,7 @@ pub struct InterfaceMethodDecl<A: Annotation> {
 
 impl<A: Annotation> InterfaceMethodDecl<A> {
     pub fn ident(&self) -> &Ident {
-        &self.decl.ident
+        self.decl.name.ident()
     }
 }
 

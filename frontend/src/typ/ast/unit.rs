@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::ast::IdentPath;
+use crate::ast::{FunctionName, IdentPath};
 use crate::ast::Visibility;
 use crate::ast::BindingDeclKind;
 use crate::typ::ast::const_eval::ConstEval;
@@ -14,7 +14,7 @@ use crate::typ::ast::typecheck_stmt;
 use crate::typ::ast::typecheck_struct_decl;
 use crate::typ::ast::typecheck_variant;
 use crate::typ::ast::Expr;
-use crate::typ::typecheck_type;
+use crate::typ::{typecheck_type, FunctionSig, NameContainer};
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
 use crate::typ::ConstTyped;
@@ -115,28 +115,58 @@ fn typecheck_unit_func_def(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<UnitDecl> {
-    let name = func_def.decl.ident.clone();
-
     let func_def = typecheck_func_def(func_def, ctx)?;
-    
-    match &func_def.decl.explicit_impl {        
+    let func_decl = &func_def.decl;
+    let func_name = &func_decl.name;
+
+    match &func_decl.name.explicit_impl {        
         Some(impl_iface) => {
-            let iface_decl = impl_iface
-                .iface
+            // calculate the implementor type from a) the interface's definition of the method and
+            // b) the arguments provided in equivalent positions
+            let iface_name = impl_iface
                 .as_iface()
                 .expect("implemented type must be an interface");
+            let iface_def = ctx
+                .find_iface_def(&iface_name)
+                .map_err(|err| {
+                    TypecheckError::from_name_err(err, func_name.span.clone())
+                })?;
+            
+            let method = iface_def.get_method(&func_name.ident)
+                .ok_or_else(|| {
+                    let err = NameError::MemberNotFound {
+                        base: NameContainer::Type(impl_iface.clone()),
+                        member: func_name.ident.clone(),
+                    };
+                    TypecheckError::from_name_err(err, func_decl.span.clone())
+                })?;
 
-            ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), func_def.clone())?;
+            let impl_params = func_decl.params
+                .iter()
+                .map(|param| param.ty.clone())
+                .collect::<Vec<_>>();
+
+            let method_sig = FunctionSig::of_decl(&method.decl);
+
+            let impl_ty = method_sig.self_ty_from_args(&impl_params)
+                .cloned()
+                .ok_or_else(|| TypecheckError::AmbiguousSelfType {
+                    span: func_decl.span.clone(),
+                    iface: impl_iface.clone(),
+                    method: method.ident().clone(),
+                })?;
+            
+            ctx.define_method_impl(iface_name, impl_ty, func_def.clone())?;
         }
 
         None => {
-            let func_name = IdentPath::from(func_def.decl.ident.clone());
-            if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name) {
-                let func_decl = &func_def.decl;
-                ctx.declare_function(func_def.decl.ident.clone(), func_decl, visibility)?;
+            let func_name_path = IdentPath::from(func_name.ident.clone());
+            if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name_path) {
+                let func_decl = &func_decl;
+                ctx.declare_function(func_name.ident().clone(), func_decl, visibility)?;
             }
 
-            ctx.define_function(name, func_def.clone())?;
+            ctx.define_function(func_name.ident().clone(), func_def.clone())?;
         }
     }
 
@@ -148,15 +178,15 @@ fn typecheck_unit_func_decl(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<UnitDecl> {
-    let name = func_decl.ident.clone();
+    let name = func_decl.name.clone();
     let func_decl = typecheck_func_decl(func_decl, ctx)?;
 
     assert!(
-        func_decl.explicit_impl.is_none(),
+        func_decl.name.explicit_impl.is_none(),
         "not yet implemented: can't forward-declare method impls"
     );
 
-    ctx.declare_function(name.clone(), &func_decl, visibility)?;
+    ctx.declare_function(name.ident().clone(), &func_decl, visibility)?;
 
     Ok(UnitDecl::FunctionDecl { decl: func_decl })
 }

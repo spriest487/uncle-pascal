@@ -22,8 +22,8 @@ pub enum Def {
 impl Def {
     pub fn ident(&self) -> &Ident {
         match self {
-            Def::External(func_decl) => &func_decl.ident,
-            Def::Function(func_def) => &func_def.decl.ident,
+            Def::External(func_decl) => &func_decl.name.ident,
+            Def::Function(func_def) => &func_def.decl.name.ident,
             Def::Class(class) => &class.name.decl_name.ident,
             Def::Interface(iface) => &iface.name.decl_name.ident,
             Def::Variant(variant) => &variant.name.decl_name.ident,

@@ -10,17 +10,17 @@ end;
 type C = class
 end;
 
-function First of I(a: C; b: Integer);
+function I.First(a: C; b: Integer);
 begin
     WriteLn('first');
 end;
 
-function Second of I(a: Integer; b: C);
+function I.Second(a: Integer; b: C);
 begin
     WriteLn('second');
 end;
 
-function Both of I(a, b: C);
+function I.Both(a, b: C);
 begin
     WriteLn('both');
 end;

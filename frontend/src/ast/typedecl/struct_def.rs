@@ -1,6 +1,6 @@
 mod member;
 
-use crate::ast::Annotation;
+use crate::ast::{Annotation, FunctionName};
 use crate::ast::FunctionDecl;
 use crate::ast::Ident;
 use crate::ast::TypeDeclName;
@@ -58,7 +58,7 @@ impl<A: Annotation> StructDef<A> {
 
     pub fn find_method(&self, by_ident: &Ident) -> Option<&FunctionDecl<A>> {
         self.members.iter().find_map(|m| match m {
-            StructMember::MethodDecl(decl) if decl.ident == *by_ident => Some(decl),
+            StructMember::MethodDecl(decl) if decl.name.ident() == by_ident => Some(decl),
             _ => None,
         })
     }

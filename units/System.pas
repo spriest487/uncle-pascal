@@ -312,72 +312,72 @@ begin
     Box(value: value)
 end;
 
-function Compare of Comparable(self: String; other: String): Integer;
+function Comparable.Compare(self: String; other: String): Integer;
 begin
     CompareStr(self, other)
 end;
 
-function Compare of Comparable(self: Integer; other: Integer): Integer;
+function Comparable.Compare(self: Integer; other: Integer): Integer;
 begin
     self - other
 end;
 
-function ToString of Displayable(self: Int8): String;
+function Displayable.ToString(self: Int8): String;
 begin
     Int8ToStr(self)
 end;
 
-function ToString of Displayable(self: Byte): String;
+function Displayable.ToString(self: Byte): String;
 begin
     ByteToStr(self)
 end;
 
-function ToString of Displayable(self: Int16): String;
+function Displayable.ToString(self: Int16): String;
 begin
     Int16ToStr(self)
 end;
 
-function ToString of Displayable(self: UInt16): String;
+function Displayable.ToString(self: UInt16): String;
 begin
     UInt16ToStr(self)
 end;
 
-function ToString of Displayable(self: Integer): String;
+function Displayable.ToString(self: Integer): String;
 begin
     IntToStr(self)
 end;
 
-function ToString of Displayable(self: UInt32): String;
+function Displayable.ToString(self: UInt32): String;
 begin
     UInt32ToStr(self)
 end;
 
-function ToString of Displayable(self: Int64): String;
+function Displayable.ToString(self: Int64): String;
 begin
     Int64ToStr(self)
 end;
 
-function ToString of Displayable(self: UInt64): String;
+function Displayable.ToString(self: UInt64): String;
 begin
     UInt64ToStr(self)
 end;
 
-function ToString of Displayable(self: NativeInt): String;
+function Displayable.ToString(self: NativeInt): String;
 begin
     NativeIntToStr(self)
 end;
 
-function ToString of Displayable(self: NativeUInt): String;
+function Displayable.ToString(self: NativeUInt): String;
 begin
     NativeUIntToStr(self)
 end;
 
-function ToString of Displayable(self: Boolean): String;
+function Displayable.ToString(self: Boolean): String;
 begin
     if self then 'true' else 'false'
 end;
 
-function ToString of Displayable(self: String): String;
+function Displayable.ToString(self: String): String;
 begin
     self
 end;

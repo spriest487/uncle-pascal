@@ -17,17 +17,17 @@ type Impl = class
     value: Integer;
 end;
 
-function Greet of A(self: Impl);
+function A.Greet(self: Impl);
 begin
     WriteLn('hello from A');
 end;
 
-function Greet of B(self: Impl);
+function B.Greet(self: Impl);
 begin
     WriteLn('hello from B');
 end;
 
-function Greet of C(self: Impl);
+function C.Greet(self: Impl);
 begin
     WriteLn('hello from C');
 end;

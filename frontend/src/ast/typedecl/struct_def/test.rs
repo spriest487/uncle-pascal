@@ -147,7 +147,7 @@ pub fn method_decl_is_valid() {
     assert_eq!(0, class_def.fields().count());
     
     let method = class_def.methods().nth(0).unwrap();
-    assert_eq!("Greet", method.ident.to_string());
+    assert_eq!("Greet", method.name.to_string());
 
     assert!(&method.return_ty.is_some());
     assert_eq!("Int32", class_def.methods().nth(0).unwrap().return_ty.as_ref().unwrap().to_string());

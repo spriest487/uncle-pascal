@@ -7,14 +7,14 @@ end;
 
 type Cat = class end;
 
-function Speak of Animal(self: Cat);
+function Animal.Speak(self: Cat);
 begin
     WriteLn('nya');
 end;
 
 type Dog = class end;
 
-function Speak of Animal(self: Dog);
+function Animal.Speak(self: Dog);
 begin
     WriteLn('wan');
 end;

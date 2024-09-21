@@ -43,16 +43,16 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
     let candidates = unit.unit.func_defs().map(|(_vis, func)| {
         let sig = FunctionSig::of_decl(&func.decl);
 
-        match &func.decl.explicit_impl {
+        match &func.decl.name.explicit_impl {
             Some(explicit_impl) => OverloadCandidate::Method {
-                ident: func.decl.ident.clone(),
-                iface_ty: explicit_impl.iface.clone(),
+                ident: func.decl.name.ident.clone(),
+                iface_ty: explicit_impl.clone(),
                 sig: Rc::new(sig),
                 decl: func.decl.clone(),
             },
 
             None => OverloadCandidate::Function {
-                decl_name: IdentPath::from(func.decl.ident.clone()),
+                decl_name: IdentPath::from(func.decl.name.ident.clone()),
                 sig: Rc::new(sig),
             },
         }
@@ -102,11 +102,11 @@ fn resolves_method_by_args() {
             function M(self: Self; b: Boolean);
         end;
 
-        function M of I1(self: String; i: Int32);
+        function I1.M(self: String; i: Int32);
         begin
         end;
 
-        function M of I2(self: String; b: Boolean);
+        function I2.M(self: String; b: Boolean);
         begin
         end;
         

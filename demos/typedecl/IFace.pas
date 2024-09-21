@@ -13,12 +13,12 @@ type Cat = class
     name: String;
 end;
 
-function Speak of Speaker(self: Dog): String;
+function Speaker.Speak(self: Dog): String;
 begin
     'woof!'
 end;
 
-function Speak of Speaker(self: Cat): String;
+function Speaker.Speak(self: Cat): String;
 begin
     'meow!'
 end;

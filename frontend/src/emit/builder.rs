@@ -1126,7 +1126,7 @@ impl<'m> Builder<'m> {
         self.cleanup_scope(break_scope);
 
         // jump to the label (presumably somewhere outside the broken scope!)
-        self.append(Instruction::Jump { dest: break_label })
+        self.append(Instruction::Jump { dest: break_label });
     }
 
     pub fn continue_loop(&mut self) {

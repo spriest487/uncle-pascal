@@ -8,7 +8,7 @@ end;
 type Dog = class
 end;
 
-function Speak of Animal(self: Dog; i: Integer);
+function Animal.Speak(self: Dog; i: Integer);
 begin
     WriteLn('woof!')
 end;

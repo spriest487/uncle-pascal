@@ -12,7 +12,7 @@ use crate::typ::TypecheckResult;
 use common::span::Span;
 use common::span::Spanned;
 use crate::ast;
-use crate::ast::TypeList;
+use crate::ast::{FunctionName, TypeList};
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use std::fmt;
@@ -43,7 +43,7 @@ impl OverloadCandidate {
         match im {
             InstanceMethod::Method { iface_ty, decl } => OverloadCandidate::Method {
                 iface_ty,
-                ident: decl.ident.clone(),
+                ident: decl.name.ident().clone(),
                 sig: Rc::new(FunctionSig::of_decl(&decl)),
                 decl,
             },

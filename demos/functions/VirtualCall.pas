@@ -9,7 +9,7 @@ type NumberHolder = class
     number: Integer;
 end;
 
-function GetNumber of NumberSource(self: NumberHolder): Integer;
+function NumberSource.GetNumber(self: NumberHolder): Integer;
 begin
     self.number
 end;

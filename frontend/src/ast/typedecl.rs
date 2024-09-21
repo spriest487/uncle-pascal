@@ -17,7 +17,7 @@ use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
 use crate::ast::unit::AliasDecl;
 use crate::ast::Annotation;
-use crate::ast::DeclNamed;
+use crate::ast::ParameterizedName;
 use crate::ast::TypeList;
 use crate::ast::Ident;
 use crate::ast::Keyword;
@@ -136,7 +136,7 @@ pub struct TypeDeclName {
     pub span: Span,
 }
 
-impl DeclNamed for TypeDeclName {
+impl ParameterizedName for TypeDeclName {
     fn as_local(&self) -> &Self {
         self
     }

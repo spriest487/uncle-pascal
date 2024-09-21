@@ -2,13 +2,13 @@
 mod test;
 
 use crate::ast;
-use crate::ast::StructKind;
-use crate::ast::Visibility;
 use crate::ast::Ident;
-use crate::typ::ast::const_eval_integer;
+use crate::ast::Visibility;
+use crate::ast::{FunctionName, StructKind};
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_func_decl;
 use crate::typ::ast::InterfaceMethodDecl;
+use crate::typ::ast::const_eval_integer;
 use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::NameError;
@@ -89,9 +89,9 @@ pub fn typecheck_struct_decl(
                 }
                 
                 // explicit impls inside types are not allowed
-                if let Some(..) = &decl.explicit_impl {
+                if let Some(..) = &decl.name.explicit_impl {
                     return Err(TypecheckError::InvalidMethodExplicitInterface {
-                        method_ident: decl.ident.clone(),
+                        method_ident: decl.name.ident().clone(),
                         span: decl.span.clone(),
                     });
                 }
@@ -122,26 +122,23 @@ pub fn typecheck_iface(
     for method in &iface.methods {
         if let Some(existing) = methods
             .iter()
-            .find(|other| other.decl.ident == method.decl.ident)
+            .find(|other| other.decl.name.ident == method.decl.name.ident)
         {
             let method_path = name
                 .qualified
                 .clone()
-                .child(method.decl.ident.clone());
+                .child(method.decl.name.ident().clone());
 
             return Err(TypecheckError::NameError {
                 err: NameError::AlreadyDefined {
                     ident: method_path,
                     existing: existing.span().clone(),
                 },
-                span: method.decl.ident.span().clone(),
+                span: method.decl.name.span().clone(),
             });
         }
 
-        let mut method_decl = typecheck_func_decl(&method.decl, ctx)?;
-        // todo: better type so we don't have to do this
-        // methods don't have qualified names
-        method_decl.ident = method.decl.ident.clone();
+        let method_decl = typecheck_func_decl(&method.decl, ctx)?;
 
         methods.push(ast::InterfaceMethodDecl { decl: method_decl });
     }

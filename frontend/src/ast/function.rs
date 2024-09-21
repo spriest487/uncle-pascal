@@ -2,7 +2,7 @@
 mod test;
 
 use crate::ast::type_name::TypeName;
-use crate::ast::Annotation;
+use crate::ast::{Annotation, FunctionName, IdentPath, IdentTypeName};
 use crate::ast::BindingDeclKind;
 use crate::ast::Block;
 use crate::ast::DeclMod;
@@ -29,6 +29,7 @@ use common::TracedError;
 use derivative::*;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
+use crate::token_tree::DelimitedGroup;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {
@@ -77,16 +78,10 @@ impl<A: Annotation> Spanned for FunctionParam<A> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ExplicitImpl<A: Annotation = Span> {
-    pub for_ty: A::Type,
-    pub iface: A::Type,
-}
-
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Hash, Debug)]
 pub struct FunctionDecl<A: Annotation = Span> {
-    pub ident: Ident,
+    pub name: A::FunctionName,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -98,35 +93,18 @@ pub struct FunctionDecl<A: Annotation = Span> {
 
     pub return_ty: Option<A::Type>,
 
-    pub explicit_impl: Option<ExplicitImpl<A>>,
-
     pub mods: Vec<DeclMod<A>>,
 }
 
 impl FunctionDecl<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let func_kw = tokens.match_one(Keyword::Function.or(Keyword::Procedure))?;
+        let func_kw = tokens.match_one(Keyword::Function | Keyword::Procedure)?;
+        
+        let (ident, type_params_list) = Self::parse_ident(tokens)?;
 
-        let func_ident = Ident::parse(tokens)?;
-
-        let mut span = func_kw.span().to(&func_ident);
-
-        let type_params_list = match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
-            Some(..) => {
-                let type_list = TypeList::parse_type_params(tokens)?;
-                span = span.to(type_list.span());
-                Some(type_list)
-            },
-            None => None,
-        };
-
-        let explicit_iface_ty = match tokens.match_one_maybe(Keyword::Of) {
-            Some(..) => {
-                let ty = TypeName::parse(tokens)?;
-                span = span.to(ty.span());
-                Some(ty)
-            },
-            None => None,
+        let mut span = match &type_params_list {
+            None => func_kw.span().to(&ident.span()),
+            Some(type_list) => func_kw.span().to(type_list.span()),
         };
 
         let params = if let Some(params_tt) = tokens.match_one_maybe(DelimiterPair::Bracket) {
@@ -228,22 +206,107 @@ impl FunctionDecl<Span> {
             (None, None) => None,
         };
 
-        let explicit_impl = explicit_iface_ty.map(|ty| {
-            // we'll fill this in during typechecking, the parser doesn't care
-            let for_ty = TypeName::Unknown(ty.span().clone());
-            
-            ExplicitImpl { for_ty, iface: ty }
-        });
-
         Ok(FunctionDecl {
-            ident: func_ident,
-            explicit_impl,
+            name: ident,
             span,
             return_ty,
             params,
             type_params,
             mods,
         })
+    }
+    
+    fn parse_ident(tokens: &mut TokenStream) -> ParseResult<(QualifiedFunctionName, Option<TypeList<Ident>>)> {
+        let mut instance_ty_path = Vec::new();
+        
+        // the name always starts with at least one ident
+        instance_ty_path.push(Ident::parse(tokens)?);
+        
+        let mut instance_ty_params = None;
+        let mut type_params_list = None;
+        
+        loop {
+            // nested types aren't supported, so if we get a type arg list, the next
+            // tokens must be the method name and that's the end of the path
+            let match_next = if type_params_list.is_none() || instance_ty_params.is_none() {
+                Operator::Period | DelimiterPair::SquareBracket
+            } else {
+                Matcher::from(Operator::Period)
+            };
+            
+            match tokens.match_one_maybe(match_next) {
+                // followed by subsequent path parts for a potentially namespace-qualified type name
+                Some(TokenTree::Operator { op: Operator::Period, .. }) => {
+                    // if there's a period following the type list, it's actually the type params
+                    // for the instance type of this method decl
+                    if type_params_list.is_some() {
+                        assert!(instance_ty_params.is_none(), "matcher shouldn't allow this");
+                        instance_ty_params = type_params_list.take();
+                    }
+                    
+                    instance_ty_path.push(Ident::parse(tokens)?);
+                },
+
+                // or a type list in a [] group, which can either be a type param list for
+                // the instance type of the method, or the type param list of the function itself
+                Some(TokenTree::Delimited(DelimitedGroup {
+                    delim: DelimiterPair::SquareBracket,
+                    inner: type_list_inner,
+                    span: type_list_span,
+                    ..
+                })) => {                    
+                    // we parse all type lists as a list of typenames. if the type list turns out
+                    // to the type params list, rather than the type args for a method's base type,
+                    // we can convert try to the typenames to idents                    
+                    let mut type_list_tokens = TokenStream::new(type_list_inner, type_list_span.clone());
+                    
+                    let type_list_items: Vec<Ident> = TypeList::parse_items(&mut type_list_tokens)?;
+                    type_list_tokens.finish()?;
+
+                    let type_list = TypeList::new(type_list_items, type_list_span);
+                    type_params_list = Some(type_list);
+                },
+                
+                None => break,
+                
+                _ => unreachable!("patterns above must match the matchable tokens"),
+            }
+        }
+        
+        let name_ident = instance_ty_path.remove(instance_ty_path.len() - 1);
+        
+        let instance_ty = if instance_ty_path.is_empty() {
+            None
+        } else {
+            let last_ident = &instance_ty_path[instance_ty_path.len() - 1];
+            let span = instance_ty_path[0].span().to(last_ident.span());
+            
+            // todo: can TypeName distinguish between type args and type params so we don't need
+            // to convert these idents to TypeNames here?
+            let instance_ty_params = instance_ty_params
+                .map(|ty_list| {
+                    let span = ty_list.span().clone();
+                    let items = ty_list.items
+                        .into_iter()
+                        .map(|ident| TypeName::from(ident));
+    
+                    TypeList::new(items, span)
+                });
+
+            Some(Box::new(TypeName::Ident(IdentTypeName {
+                span,
+                ident: IdentPath::from_vec(instance_ty_path),
+                type_args: instance_ty_params,
+                indirection: 0,
+            })))
+        };
+        
+        let qualified_name = QualifiedFunctionName {
+            ident: name_ident,
+            instance_ty,
+        }; 
+
+        Ok((qualified_name, type_params_list))
     }
 
     pub fn parse_params(tokens: &mut TokenStream) -> ParseResult<Vec<FunctionParam<Span>>> {
@@ -319,18 +382,22 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "function ")?;
 
-        if let Some(explicit_impl) = &self.explicit_impl {
-            write!(f, "{}.", explicit_impl.iface)?;
-        }
+        write!(f, "{}", self.name)?;
+        if let Some(ty_list) = &self.type_params {
+            write!(f, "{}", ty_list)?;
+        } 
+        
+        if !self.params.is_empty() {
+            write!(f, "(")?;
 
-        write!(f, "{}(", self.ident)?;
-        for (i, param) in self.params.iter().enumerate() {
-            if i > 0 {
-                write!(f, "; ")?;
+            for (i, param) in self.params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, "; ")?;
+                }
+                write!(f, "{}", param)?;
             }
-            write!(f, "{}", param)?;
+            write!(f, ")")?;
         }
-        write!(f, ")")?;
 
         if let Some(ty) = &self.return_ty {
             write!(f, ": {}", ty)?;
@@ -666,5 +733,35 @@ impl Parse for AnonymousFunctionDef<Span> {
         };
 
         Ok(function_def)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct QualifiedFunctionName {
+    pub instance_ty: Option<Box<TypeName>>,
+    pub ident: Ident,
+}
+
+impl QualifiedFunctionName {
+    pub fn span(&self) -> Span {
+        match &self.instance_ty {
+            Some(instance_ty) => instance_ty.span().to(self.ident.span()),
+            None => self.ident.span.clone(),
+        }
+    }
+}
+
+impl FunctionName for QualifiedFunctionName {
+    fn ident(&self) -> &Ident {
+        &self.ident
+    }
+}
+
+impl fmt::Display for QualifiedFunctionName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(instance_ty) = &self.instance_ty {
+            write!(f, "{}.", instance_ty)?;
+        }
+        write!(f, "{}", self.ident)
     }
 }

@@ -8,6 +8,7 @@ use crate::typ::Symbol;
 use crate::typ::Type;
 use common::span::*;
 use std::rc::Rc;
+use crate::typ::ast::TypedFunctionName;
 
 pub const SYSTEM_UNIT_NAME: &str = "System";
 pub const NOTHING_TYPE_NAME: &str = "Nothing";
@@ -71,10 +72,14 @@ pub fn builtin_string_class() -> ast::StructDef {
 }
 
 // builtin name of the dispose method of the builtin disposable interface
-pub fn builtin_disposable_dispose_name() -> Ident {
-    Ident {
-        name: Rc::new(DISPOSABLE_DISPOSE_METHOD.to_string()),
+pub fn builtin_disposable_dispose_name() -> TypedFunctionName {
+    TypedFunctionName {
+        ident: Ident {
+            name: Rc::new(DISPOSABLE_DISPOSE_METHOD.to_string()),
+            span: builtin_span(),
+        },
         span: builtin_span(),
+        explicit_impl: None,
     }
 }
 
@@ -102,9 +107,8 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
         name: builtin_disposable_name(),
         methods: vec![ast::InterfaceMethodDecl {
             decl: ast::FunctionDecl {
-                ident: builtin_disposable_dispose_name(),
+                name: builtin_disposable_dispose_name(),
                 return_ty: None,
-                explicit_impl: None,
                 mods: Vec::new(),
                 type_params: None,
                 params: vec![ast::FunctionParam {

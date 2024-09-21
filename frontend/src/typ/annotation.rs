@@ -6,7 +6,7 @@ use crate::ast::Annotation;
 use crate::ast::TypeDeclName;
 use crate::ast::TypeList;
 use crate::ast::IdentPath;
-use crate::typ::ast::Expr;
+use crate::typ::ast::{Expr, TypedFunctionName};
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
 use crate::typ::ast::OverloadCandidate;
@@ -63,7 +63,7 @@ impl OverloadTyped {
             self_arg: Some(Box::new(self_arg)),
             sig: Some(sig.clone()),
             candidates: vec![OverloadCandidate::Method {
-                ident: decl.ident.clone(),
+                ident: decl.name.ident.clone(),
                 decl,
                 sig,
                 iface_ty,
@@ -122,7 +122,7 @@ impl MethodTyped {
 
         Self {
             iface_ty,
-            method_ident: decl.ident.clone(),
+            method_ident: decl.name.ident.clone(),
             span,
             method_sig: Rc::new(sig),
         }
@@ -386,6 +386,8 @@ impl Annotation for Typed {
     type Type = Type;
     type Name = Symbol;
     type Pattern = TypePattern;
+    type FunctionName = TypedFunctionName;
+    
     type ConstStringExpr = String;
     type ConstIntegerExpr = IntConstant;
     type ConstExpr = Literal;

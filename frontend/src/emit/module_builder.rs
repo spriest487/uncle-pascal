@@ -219,7 +219,7 @@ impl ModuleBuilder {
             id,
             ir::Function::External(ir::ExternalFunctionRef {
                 src: extern_src.to_string(),
-                symbol: extern_decl.ident.to_string(),
+                symbol: extern_decl.name.to_string(),
 
                 sig: ir::FunctionSig { return_ty, param_tys },
 
@@ -354,7 +354,7 @@ impl ModuleBuilder {
         namespace: IdentPath,
         type_args: Option<&typ::TypeList>,
     ) -> ir::FunctionID {
-        let global_name = match &func_decl.explicit_impl {
+        let global_name = match &func_decl.name.explicit_impl {
             Some(..) => None,
             
             None => {
@@ -362,7 +362,7 @@ impl ModuleBuilder {
                     .iter()
                     .map(|part| part.to_string())
                     .collect();
-                let name = func_decl.ident.to_string();
+                let name = func_decl.name.to_string();
 
                 let global_name = ir::NamePath::new(ns, name);
 

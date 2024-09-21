@@ -1,7 +1,7 @@
 use std::fmt;
 use common::span::Span;
 use common::span::Spanned;
-use crate::ast::DeclNamed;
+use crate::ast::ParameterizedName;
 use crate::ast::TypeDeclName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
@@ -54,7 +54,7 @@ impl Specializable for Symbol {
     }
 }
 
-impl DeclNamed for Symbol {
+impl ParameterizedName for Symbol {
     fn as_local(&self) -> &TypeDeclName {
         &self.decl_name
     }

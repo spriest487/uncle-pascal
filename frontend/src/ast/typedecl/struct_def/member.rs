@@ -1,4 +1,4 @@
-use crate::ast::Annotation;
+use crate::ast::{Annotation, FunctionName};
 use crate::ast::FunctionDecl;
 use crate::ast::TypeName;
 use crate::parse::Matcher;
@@ -42,7 +42,7 @@ impl<A: Annotation> StructMember<A> {
     pub fn ident(&self) -> &Ident {
         match self {
             StructMember::Field(field) => &field.ident,
-            StructMember::MethodDecl(decl) => &decl.ident,
+            StructMember::MethodDecl(decl) => decl.name.ident(),
         }
     } 
 }

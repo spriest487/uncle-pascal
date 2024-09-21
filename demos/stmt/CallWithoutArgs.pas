@@ -20,7 +20,7 @@ type C = interface
     function M(self: Self): Int32;
 end;
 
-function M of C(self: Int32): Int32;
+function C.M(self: Int32): Int32;
 begin
     self + 1
 end;

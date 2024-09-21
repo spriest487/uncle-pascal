@@ -9,7 +9,7 @@ type Cat = class
     name: String;
 end;
 
-function Say of Animal(self: Cat);
+function Animal.Say(self: Cat);
 begin
     WriteLn(self.name + ' says meow!');
 end;
@@ -18,7 +18,7 @@ type Dog = class
     name: String;
 end;
 
-function Say of Animal(self: Dog);
+function Animal.Say(self: Dog);
 begin
     WriteLn(self.name + ' says woof!');
 end;

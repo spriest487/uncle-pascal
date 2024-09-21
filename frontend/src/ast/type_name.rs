@@ -11,7 +11,7 @@ use crate::parse::Parse;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
-use crate::DelimiterPair;
+use crate::{DelimiterPair, Ident};
 use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
@@ -28,6 +28,12 @@ pub struct IdentTypeName {
     pub type_args: Option<TypeList<TypeName>>,
     pub indirection: usize,
     pub span: Span,
+}
+
+impl IdentTypeName {
+    pub fn is_single_ident(&self) -> bool {
+        self.ident.len() == 1 && self.indirection == 0 && self.type_args.is_none()
+    }
 }
 
 impl PartialEq for IdentTypeName {
@@ -279,6 +285,17 @@ impl Parse for TypeName {
     }
 }
 
+impl From<Ident> for TypeName {
+    fn from(value: Ident) -> Self {
+        TypeName::Ident(IdentTypeName {
+            span: value.span().clone(),
+            ident: IdentPath::from(value),
+            type_args: None,
+            indirection: 0,
+        })
+    }
+}
+
 impl Match for TypeName {
     fn is_match(tokens: &mut LookAheadTokenStream) -> bool {
         tokens.match_one(Self::start_matcher()).is_some()
@@ -413,6 +430,15 @@ impl TypeName {
             span,
         }))
     }
+    
+    pub fn into_single_ident(self) -> Result<Ident, Self> {
+        match self {
+            TypeName::Ident(name) if name.is_single_ident() => {
+                Ok(name.ident.into_parts().remove(0))
+            }
+            other => Err(other)
+        }
+    } 
 }
 
 impl fmt::Display for TypeName {

@@ -8,12 +8,12 @@ end;
 type HelloWorld = class
 end;
 
-function Greet of Greeting(self: HelloWorld);
+function Greeting.Greet(self: HelloWorld);
 begin
     WriteLn('Hello, world');
 end;
 
-function Greet of Greeting(self: String);
+function Greeting.Greet(self: String);
 begin
     WriteLn('Hello, ' + self);
 end;

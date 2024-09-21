@@ -9,7 +9,7 @@ type Person = record
     name: String;
 end;
 
-function Name of Greetable(self: Person): String;
+function Greetable.Name(self: Person): String;
 begin
     self.name
 end;
@@ -17,7 +17,7 @@ end;
 type Cat = class
 end;
 
-function Name of Greetable(self: Cat): String;
+function Greetable.Name(self: Cat): String;
 begin
     'kitty'
 end;

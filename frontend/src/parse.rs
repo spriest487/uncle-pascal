@@ -38,24 +38,32 @@ impl<A: Annotation> From<Expr<A>> for InvalidStatement<A> {
 #[derive(Debug)]
 pub enum ParseError {
     InvalidUnitFilename(Span),
+    
     UnexpectedToken(Box<TokenTree>, Option<Matcher>),
     UnexpectedEOF(Matcher, Span),
     EmptyOperand { operator: Span, before: bool },
     UnexpectedOperator { operator: Span },
+    
     InvalidStatement(InvalidStatement<Span>),
+    UnterminatedStatement { span: Span },
+    InvalidForLoopInit(Stmt<Span>),
+    
     DuplicateModifier { new: DeclMod<Span>, existing: DeclMod<Span> },
+    
     CtorWithTypeArgs { span: Span },
+    InvalidAssignmentExpr { span: Span },
+    
     EmptyTypeParamList(TypeList<Ident>),
     EmptyTypeArgList(TypeList<TypeName>),
+    InvalidTypeParamName(Span),
+    
     EmptyWhereClause(WhereClause<TypeName>),
     TypeConstraintAlreadySpecified(TypeConstraint<TypeName>),
     NoMatchingParamForTypeConstraint(TypeConstraint<TypeName>),
-    UnterminatedStatement { span: Span },
+    
     InvalidFunctionImplType(TypeName),
-    InvalidAssignmentExpr { span: Span },
     EmptyConstDecl { span: Span },
     EmptyTypeDecl { span: Span },
-    InvalidForLoopInit(Stmt<Span>),
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -85,6 +93,7 @@ impl Spanned for ParseError {
             ParseError::EmptyConstDecl { span, .. } => span,
             ParseError::EmptyTypeDecl { span, .. } => span,
             ParseError::InvalidForLoopInit(stmt) => stmt.span(),
+            ParseError::InvalidTypeParamName(span) => span,
         }
     }
 }
@@ -93,24 +102,31 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ParseError::InvalidUnitFilename(..) => write!(f, "Invalid unit filename"),
+
             ParseError::UnexpectedToken(..) => write!(f, "Unexpected token"),
             ParseError::UnexpectedEOF(..) => write!(f, "Unexpected end of sequence"),
             ParseError::EmptyOperand { .. } => write!(f, "Empty operand"),
             ParseError::UnexpectedOperator { .. } => write!(f, "Unexpected operator"),
+
             ParseError::InvalidStatement(invalid) => write!(f, "{}", invalid.title()),
+            ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated stmt"),
+            ParseError::InvalidForLoopInit( .. ) => write!(f, "Invalid for-loop initialization stmt"),
+            
             ParseError::DuplicateModifier { .. } => write!(f, "Duplicate modifier"),
             ParseError::CtorWithTypeArgs { .. } => write!(f, "Constructor with type args"),
+
             ParseError::TypeConstraintAlreadySpecified(..) => write!(f, "Type constraint already specified"),
+            ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
+
             ParseError::NoMatchingParamForTypeConstraint(..) => write!(f, "No matching parameter for type constraint"),
             ParseError::EmptyTypeParamList { .. } => write!(f, "Empty type parameter list"),
             ParseError::EmptyTypeArgList { .. } => write!(f, "Empty type argument list"),
-            ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
-            ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated stmt"),
+            ParseError::InvalidTypeParamName( .. ) => write!(f, "Invalid type parameter name"),
+
             ParseError::InvalidFunctionImplType(..) => write!(f, "Invalid interface type for method"),
             ParseError::InvalidAssignmentExpr { .. } => write!(f, "Illegal assignment"),
             ParseError::EmptyConstDecl { .. } => write!(f, "Empty const declaration"),
             ParseError::EmptyTypeDecl { .. } => write!(f, "Empty type declaration"),
-            ParseError::InvalidForLoopInit( .. ) => write!(f, "Invalid for-loop initialization stmt"),
         }
     }
 }
@@ -171,6 +187,8 @@ impl DiagnosticOutput for ParseError {
             ParseError::NoMatchingParamForTypeConstraint(c) => {
                 Some(format!("type constraint was specified for parameter `{}` which does not exist", c.param_ident))
             }
+            
+            ParseError::InvalidTypeParamName(..) => None,
 
             ParseError::UnterminatedStatement { .. } => {
                 Some("stmt here is unterminated".to_string())
