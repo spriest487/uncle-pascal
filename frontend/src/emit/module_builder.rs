@@ -238,14 +238,14 @@ impl ModuleBuilder {
         type_args: Option<typ::TypeList>,
     ) -> FunctionInstance {
         if method_key.self_ty.is_generic_param() {
-            panic!("instantiate_method: method ({} of {}) must not have a generic self-type ({})", method_key.method, method_key.iface, method_key.self_ty);
+            panic!("instantiate_method: method ({} of {}) must not have a generic self-type ({})", method_key.method, method_key.instance_ty, method_key.self_ty);
         }
 
         let method_name = method_key.method.to_string();
 
-        let iface_def = match self.src_metadata.find_iface_def(&method_key.iface) {
+        let iface_def = match self.src_metadata.find_iface_def(&method_key.instance_ty) {
             Ok(def) => def,
-            Err(..) => panic!("missing interface def {}", method_key.iface),
+            Err(..) => panic!("missing interface def {}", method_key.instance_ty),
         };
 
         let iface_id = match self.find_iface_decl(&iface_def.name.qualified) {
@@ -279,7 +279,7 @@ impl ModuleBuilder {
         // being generated here is the self-type, which we already specialized
         let specialized_decl = method_def.decl.clone();
 
-        let ns = method_key.iface.clone();
+        let ns = method_key.instance_ty.clone();
         let id = self.declare_func(&specialized_decl, ns, type_args.as_ref());
 
         let self_ty = self.find_type(&method_key.self_ty);
@@ -335,7 +335,7 @@ impl ModuleBuilder {
 
         let key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
-                iface,
+                instance_ty: iface,
                 method,
                 self_ty,
             }),
@@ -354,7 +354,7 @@ impl ModuleBuilder {
         namespace: IdentPath,
         type_args: Option<&typ::TypeList>,
     ) -> ir::FunctionID {
-        let global_name = match &func_decl.name.explicit_impl {
+        let global_name = match &func_decl.name.owning_ty {
             Some(..) => None,
             
             None => {
@@ -435,7 +435,7 @@ impl ModuleBuilder {
                             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                                 self_ty: real_ty.clone(),
                                 method: method.ident().clone(),
-                                iface: iface.clone(),
+                                instance_ty: iface.clone(),
                             }),
                             type_args: None,
                         };
@@ -981,12 +981,14 @@ pub enum FunctionDeclKey {
 impl FunctionDeclKey {
     pub fn namespace(&self) -> IdentPath {
         match self {
-            FunctionDeclKey::Function { name } => name.parent()
-                .expect("all functions must be declared within a namespace!"),
+            FunctionDeclKey::Function { name } => {
+                name.parent()
+                    .expect("all functions must be declared within a namespace!")
+            },
 
             FunctionDeclKey::Method(key) => {
                 let name = key.method.clone();
-                let iface_name = key.iface.iter().cloned();
+                let iface_name = key.instance_ty.iter().cloned();
 
                 IdentPath::new(name, iface_name)
             },
@@ -996,7 +998,7 @@ impl FunctionDeclKey {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct MethodDeclKey {
-    pub iface: IdentPath,
+    pub instance_ty: IdentPath,
     pub self_ty: typ::Type,
     pub method: Ident,
 }

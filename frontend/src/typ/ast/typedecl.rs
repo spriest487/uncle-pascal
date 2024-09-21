@@ -89,7 +89,7 @@ pub fn typecheck_struct_decl(
                 }
                 
                 // explicit impls inside types are not allowed
-                if let Some(..) = &decl.name.explicit_impl {
+                if let Some(..) = &decl.name.owning_ty {
                     return Err(TypecheckError::InvalidMethodExplicitInterface {
                         method_ident: decl.name.ident().clone(),
                         span: decl.span.clone(),

@@ -73,6 +73,26 @@ impl From<ArrayType> for Type {
 }
 
 impl Type {
+    pub fn record(sym: impl Into<Symbol>) -> Self {
+        Type::Record(Box::new(sym.into()))
+    }
+
+    pub fn class(sym: impl Into<Symbol>) -> Self {
+        Type::Class(Box::new(sym.into()))
+    }
+
+    pub fn variant(sym: impl Into<Symbol>) -> Self {
+        Type::Variant(Box::new(sym.into()))
+    }
+
+    pub fn enumeration(sym: impl Into<Symbol>) -> Self {
+        Type::Enum(Box::new(sym.into()))
+    }
+    
+    pub fn interface(name: impl Into<IdentPath>) -> Self {
+        Type::Interface(Box::new(name.into()))
+    }
+    
     pub fn full_path(&self) -> Option<IdentPath> {
         fn builtin_path(name: &str) -> IdentPath {
             let builtin_span = Span::zero("<builtin>");

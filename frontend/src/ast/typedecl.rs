@@ -34,7 +34,7 @@ use std::rc::Rc;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Debug, Hash)]
-pub struct TypeDecl<A: Annotation> {
+pub struct TypeDecl<A: Annotation = Span> {
     pub items: Vec<TypeDeclItem<A>>,
 
     #[derivative(Debug = "ignore")]
@@ -82,7 +82,7 @@ impl<A: Annotation> fmt::Display for TypeDecl<A> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum TypeDeclItem<A: Annotation> {
+pub enum TypeDeclItem<A: Annotation = Span> {
     Struct(Rc<StructDef<A>>),
     Interface(Rc<InterfaceDecl<A>>),
     Variant(Rc<VariantDef<A>>),

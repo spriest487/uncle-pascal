@@ -28,7 +28,7 @@ fn make_ident_path<const N: usize>(names: [&str; N]) -> IdentPath {
 }
 
 fn func_iface(decl: &FunctionDecl) -> Option<TypeName> {
-    decl.name.instance_ty.clone().map(|boxed_ty| *boxed_ty)
+    decl.name.owning_ty_qual.clone().map(|boxed_ty| *boxed_ty)
 }
 
 fn make_iface_ty<const N: usize>(name: IdentPath, ty_args: [&str; N]) -> TypeName {

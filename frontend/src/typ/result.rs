@@ -111,6 +111,11 @@ pub enum TypecheckError {
         members: Vec<Ident>,
         span: Span,
     },
+    DuplicateParamName {
+        name: Ident,
+        previous: Span,
+        span: Span,
+    },
     DuplicateNamedArg {
         name: Ident,
         previous: Span,
@@ -185,7 +190,7 @@ pub enum TypecheckError {
         span: Span,
     },
 
-    InvalidMethodInterface {
+    InvalidMethodInstanceType {
         ty: Type,
         span: Span,
     },
@@ -299,7 +304,10 @@ impl Spanned for TypecheckError {
             TypecheckError::AmbiguousSelfType { span, .. } => span,
             TypecheckError::InvalidCtorType { span, .. } => span,
             TypecheckError::CtorMissingMembers { span, .. } => span,
+            
             TypecheckError::DuplicateNamedArg { span, .. } => span,
+            TypecheckError::DuplicateParamName { span, .. } => span,
+            
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
             TypecheckError::UnableToInferType { expr } => expr.annotation().span(),
             TypecheckError::UnableToInferFunctionExprType { func } => func.span(),
@@ -318,7 +326,7 @@ impl Spanned for TypecheckError {
             
             TypecheckError::InvalidMethodModifiers { span, .. } => span,
             TypecheckError::InvalidMethodExplicitInterface { span, .. } => span,
-            TypecheckError::InvalidMethodInterface { span, .. } => span,
+            TypecheckError::InvalidMethodInstanceType { span, .. } => span,
             TypecheckError::NoMethodContext { span, .. } => span,
             
             TypecheckError::InterfaceNotImplemented { span, .. } => span,
@@ -422,8 +430,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidMethodExplicitInterface { .. } => "Explicit interface implementation for method is invalid".to_string(),
             TypecheckError::InvalidMethodModifiers { .. } => "Invalid method modifier(s)".to_string(),
 
-            TypecheckError::InvalidMethodInterface { .. } => {
-                "Invalid interface type for method".to_string()
+            TypecheckError::InvalidMethodInstanceType { .. } => {
+                "Invalid instance type for method".to_string()
             },
 
             TypecheckError::InterfaceNotImplemented { .. } => {
@@ -435,6 +443,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::Private { .. } => "Name not exported".to_string(),
 
             TypecheckError::PrivateConstructor { .. } => "Type has private constructor".to_string(),
+            TypecheckError::DuplicateParamName { .. } => "Duplicate parameter name".to_string(),
             TypecheckError::DuplicateNamedArg { .. } => "Duplicate named argument".to_string(),
             TypecheckError::UnsafeConversionNotAllowed { .. } => "Conversion not allowed in a safe context".to_string(),
             TypecheckError::UnsafeAddressoOfNotAllowed { .. } => "Address operator not allowed on this type in a safe context".to_string(),
@@ -578,14 +587,16 @@ impl DiagnosticOutput for TypecheckError {
                 notes: Vec::new(),
             }],
 
-            TypecheckError::DuplicateNamedArg { name, previous, .. } => vec![DiagnosticMessage {
-                title: format!("previous occurrence of `{}`", name),
-                label: Some(DiagnosticLabel {
-                    text: None,
-                    span: previous.clone(),
-                }),
-                notes: Vec::new(),
-            }],
+            TypecheckError::DuplicateNamedArg { name, previous, .. } 
+            | TypecheckError::DuplicateParamName { name, previous, .. } => 
+                vec![DiagnosticMessage {
+                    title: format!("previous occurrence of `{}`", name),
+                    label: Some(DiagnosticLabel {
+                        text: None,
+                        span: previous.clone(),
+                    }),
+                    notes: Vec::new(),
+                }],
 
             TypecheckError::AmbiguousFunction { candidates, .. } => {
                 candidates.iter()
@@ -808,8 +819,8 @@ impl fmt::Display for TypecheckError {
                 write!(f, "method `{}` is not declared within a type", method_ident)
             }
 
-            TypecheckError::InvalidMethodInterface { ty, .. } => {
-                write!(f, "`{}` is not an interface type and cannot have methods", ty)
+            TypecheckError::InvalidMethodInstanceType { ty, .. } => {
+                write!(f, "`{}` is not a type which supports methods", ty)
             }
 
             TypecheckError::InterfaceNotImplemented { self_ty, iface_ty, .. } => {
@@ -826,6 +837,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::DuplicateNamedArg { name, .. } => {
                 write!(f, "named argument `{}` already occurred in this argument list", name)
+            }
+            
+            TypecheckError::DuplicateParamName { name, .. } => {
+                write!(f, "parameter named `{}` was already declared previously", name)
             }
 
             TypecheckError::UnsafeConversionNotAllowed { from, to, .. } => {

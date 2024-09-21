@@ -10,7 +10,7 @@ use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::InterfaceDecl;
-use crate::typ::string_type;
+use crate::typ::{string_type, Symbol};
 use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
@@ -47,7 +47,11 @@ pub type FunctionLocalDecl = ast::FunctionLocalBinding<Typed>;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TypedFunctionName {
     pub ident: Ident,
-    pub explicit_impl: Option<Type>,
+    
+    // if the function is a method, the type that implements this method.
+    // either an interface type for interface method implementaions, or the enclosing type
+    // that is declaring its own method
+    pub owning_ty: Option<Type>,
     
     pub span: Span,
 }
@@ -60,7 +64,7 @@ impl FunctionName for TypedFunctionName {
 
 impl fmt::Display for TypedFunctionName {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if let Some(explicit_impl) = &self.explicit_impl {
+        if let Some(explicit_impl) = &self.owning_ty {
             write!(f, "{}.", explicit_impl)?;
         }
         write!(f, "{}", self.ident)
@@ -86,11 +90,7 @@ pub fn typecheck_func_decl(
     ctx: &mut Context,
 ) -> TypecheckResult<FunctionDecl> {
     ctx.scope(Environment::FunctionDecl, |ctx| {
-        if let Some(extern_mod) = decl
-            .mods
-            .iter()
-            .find(|m| m.keyword() == DeclMod::EXTERNAL_WORD)
-        {
+        if let Some(extern_mod) = decl.get_mod(DeclMod::EXTERNAL_WORD) {
             if let Some(decl_type_params) = &decl.type_params {
                 let ty_args_span = decl_type_params.items[0].name.span().to(decl_type_params
                     .items
@@ -115,52 +115,85 @@ pub fn typecheck_func_decl(
             None => None,
         };
 
+
         let return_ty = match &decl.return_ty {
             Some(ty_name) => typecheck_type(ty_name, ctx)?.clone(),
             None => Type::Nothing,
         };
 
-        let mut params = Vec::new();
-        for param in &decl.params {
-            let param = typecheck_param(param, ctx)?;
-            params.push(param);
-        }
+        let params;
+        let owning_ty;
         
-        let explicit_impl = match &decl.name.instance_ty {
-            Some(instance_ty) => {
-                if ctx.current_enclosing_ty().is_some() {
-                    return Err(TypecheckError::InvalidMethodExplicitInterface {
-                        method_ident: decl.name.ident.clone(),
-                        span: instance_ty.span().clone()
-                    })
-                }
+        match (&decl.name.owning_ty_qual, ctx.current_enclosing_ty()) {
+            // free function with no owning type
+            (None, None) => {
+                params = typecheck_params(decl, false, ctx)?;
+                owning_ty = None;
+            },
+            
+            // method definition or free interface implementation decl
+            (Some(owning_ty_qual), None) => {
+                let explicit_ty_span = owning_ty_qual.span();
 
-                let param_sigs = params.iter().cloned().map(FunctionParamSig::from).collect();
+                params = typecheck_params(decl, true, ctx)?;
 
-                let method_sig = FunctionSig::new(return_ty.clone(), param_sigs, type_params.clone());
+                let param_sigs = params.iter()
+                    .cloned()
+                    .map(FunctionParamSig::from)
+                    .collect();
+                let method_sig = FunctionSig::new(
+                    return_ty.clone(),
+                    param_sigs,
+                    type_params.clone());
 
-                let iface_def = match typecheck_type(&instance_ty, ctx)? {
-                    Type::Interface(iface) => ctx.find_iface_def(&iface)
-                        .map_err(|err| {
-                            TypecheckError::from_name_err(err, iface.span().clone())
-                        })?,
+                let instance_ty = typecheck_type(&owning_ty_qual, ctx)?;
+                match &instance_ty {
+                    // free interface implementation decl
+                    Type::Interface(iface) => {
+                        validate_iface_method(
+                            iface.as_ref(),
+                            &decl.name.ident,
+                            &method_sig,
+                            ctx,
+                            explicit_ty_span
+                        )?;
+                    }
+
+                    // method definition
+                    Type::Class(name) | Type::Record(name) => {
+                        validate_struct_method(
+                            name,
+                            &instance_ty,
+                            &decl.name.ident,
+                            &method_sig,
+                            ctx,
+                            explicit_ty_span,
+                            decl.span(),
+                        )?;
+                    }
 
                     not_iface => {
-                        return Err(TypecheckError::InvalidMethodInterface {
-                            ty: not_iface,
-                            span: instance_ty.span().clone(),
+                        return Err(TypecheckError::InvalidMethodInstanceType {
+                            ty: not_iface.clone(),
+                            span: explicit_ty_span.clone(),
                         });
                     },
-                };
+                }
 
-                let explicit_impl = find_iface_impl(iface_def, decl.name.ident(), &method_sig)
-                    .map_err(|err| {
-                        TypecheckError::from_name_err(err, instance_ty.span().clone())
-                    })?;
-                Some(explicit_impl.iface)
+                owning_ty = Some(instance_ty);
             }
-            _ => {
-                None
+
+            // method decl
+            (None, Some(enclosing_ty)) => {
+                owning_ty = Some(enclosing_ty.clone());
+                params = typecheck_params(decl, true, ctx)?;
+            }
+
+            (Some(owning_ty_qual), Some(..)) => {
+                return Err(TypecheckError::InvalidMethodExplicitInterface {
+                    method_ident: decl.name.ident.clone(),
+                    span: owning_ty_qual.span().clone()
+                });
             }
         };
 
@@ -169,7 +202,7 @@ pub fn typecheck_func_decl(
         Ok(FunctionDecl {
             name: TypedFunctionName {
                 ident: decl.name.ident.clone(),
-                explicit_impl,
+                owning_ty,
                 span: decl.name.span(),
             },
             params,
@@ -179,6 +212,98 @@ pub fn typecheck_func_decl(
             mods: decl_mods,
         })
     })
+}
+
+fn typecheck_params(
+    decl: &ast::FunctionDecl,
+    implicit_self: bool,
+    ctx: &mut Context
+) -> TypecheckResult<Vec<FunctionParam>> {
+    let mut params = Vec::new();
+
+    if implicit_self {
+        let self_span = decl.name.span().clone();
+        params.push(FunctionParam {
+            // ty: enclosing_ty.clone(),
+            ty: Type::MethodSelf,
+            ident: Ident::new("self", self_span.clone()),
+            modifier: None,
+            span: self_span,
+        });
+    }
+    
+    for param in &decl.params {
+        if let Some(prev) = params.iter().find(|p| p.ident == param.ident) {
+            return Err(TypecheckError::DuplicateNamedArg {
+                name: param.ident.clone(),
+                span: param.span.clone(),
+                previous: prev.span().clone(),
+            });
+        }
+
+        let param = typecheck_param(param, ctx)?;
+        params.push(param);
+    }
+    
+    Ok(params)
+}
+
+fn validate_iface_method(
+    iface: &IdentPath,
+    method_name: &Ident,
+    method_sig: &FunctionSig,
+    ctx: &Context,
+    span: &Span
+) -> TypecheckResult<()> {
+    let iface_def = ctx.find_iface_def(&iface)
+        .map_err(|err| {
+            TypecheckError::from_name_err(err, span.clone())
+        })?;
+
+    find_iface_impl(iface_def, method_name, &method_sig)
+        .map_err(|err| {
+            TypecheckError::from_name_err(err, span.clone())
+        })?;
+
+    Ok(())
+}
+
+fn validate_struct_method(
+    struct_name: &Symbol,
+    struct_ty: &Type,
+    method_ident: &Ident,
+    method_sig: &FunctionSig,
+    ctx: &Context,
+    span: &Span,
+    def_span: &Span,
+) -> TypecheckResult<()> {
+    let struct_def = ctx
+        .instantiate_struct_def(struct_name)
+        .map_err(|err| {
+            TypecheckError::from_name_err(err, span.clone())
+        })?;
+
+    let method_decl = struct_def
+        .find_method(&method_ident)
+        .ok_or_else(|| {
+            let missing_method = NameError::MemberNotFound {
+                base: NameContainer::Type(struct_ty.clone()),
+                member: method_ident.clone(),
+            };
+            TypecheckError::from_name_err(missing_method, span.clone())
+        })?;
+    
+    if *method_sig != FunctionSig::of_decl(method_decl) {
+        let mismatch = NameError::DefDeclMismatch {
+            def: def_span.clone(),
+            decl: method_decl.span.clone(),
+            ident: struct_name.qualified.clone().child(method_ident.clone()),
+        };
+
+        return Err(TypecheckError::from_name_err(mismatch, span.clone()));
+    }
+    
+    Ok(())
 }
 
 fn typecheck_decl_mods(
@@ -263,7 +388,7 @@ pub fn typecheck_func_def(
     let body_env = FunctionBodyEnvironment {
         result_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
         ty_params: decl.type_params.clone(),
-    }; 
+    };
     
     ctx.scope(body_env, |ctx| {
         let mut locals = Vec::new();

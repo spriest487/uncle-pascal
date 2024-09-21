@@ -79,7 +79,7 @@ pub fn builtin_disposable_dispose_name() -> TypedFunctionName {
             span: builtin_span(),
         },
         span: builtin_span(),
-        explicit_impl: None,
+        owning_ty: None,
     }
 }
 

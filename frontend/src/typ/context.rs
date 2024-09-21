@@ -96,7 +96,7 @@ impl DefDeclMatch {
 pub enum Environment {
     Global,
     Namespace { namespace: IdentPath },
-    TypeDecl { full_name: Symbol },
+    TypeDecl { ty: Type },
     FunctionDecl,
     FunctionBody(FunctionBodyEnvironment),
     ClosureBody(ClosureBodyEnvironment),
@@ -418,10 +418,10 @@ impl Context {
                 .and_then(|env| env.result_ty.as_ref()))
     }
     
-    pub fn current_enclosing_ty(&self) -> Option<&Symbol> {
+    pub fn current_enclosing_ty(&self) -> Option<&Type> {
         for scope in self.scopes.iter().rev() {
             match scope.env() {
-                Environment::TypeDecl { full_name } => return Some(full_name),
+                Environment::TypeDecl { ty, .. } => return Some(ty),
                 _ => continue,
             }
         }

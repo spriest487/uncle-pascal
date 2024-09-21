@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::ast::{FunctionName, IdentPath};
+use crate::ast::{FunctionName, IdentPath, StructKind};
 use crate::ast::Visibility;
 use crate::ast::BindingDeclKind;
 use crate::typ::ast::const_eval::ConstEval;
@@ -119,7 +119,7 @@ fn typecheck_unit_func_def(
     let func_decl = &func_def.decl;
     let func_name = &func_decl.name;
 
-    match &func_decl.name.explicit_impl {        
+    match &func_decl.name.owning_ty {        
         Some(impl_iface) => {
             // calculate the implementor type from a) the interface's definition of the method and
             // b) the arguments provided in equivalent positions
@@ -182,7 +182,7 @@ fn typecheck_unit_func_decl(
     let func_decl = typecheck_func_decl(func_decl, ctx)?;
 
     assert!(
-        func_decl.name.explicit_impl.is_none(),
+        func_decl.name.owning_ty.is_none(),
         "not yet implemented: can't forward-declare method impls"
     );
 
@@ -202,7 +202,7 @@ pub fn typecheck_unit_type_decl(
 }
 
 fn typecheck_type_decl(
-    type_decl: &ast::TypeDecl<Span>,
+    type_decl: &ast::TypeDecl,
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<TypeDecl> {
@@ -220,7 +220,7 @@ fn typecheck_type_decl(
 }
 
 fn typecheck_type_decl_item(
-    type_decl: &ast::TypeDeclItem<Span>,
+    type_decl: &ast::TypeDeclItem,
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypecheckResult<TypeDeclItem> {
@@ -231,9 +231,57 @@ fn typecheck_type_decl_item(
         type_args: None,
     };
 
+    match type_decl {
+        // except aliases, we can skip the rest of the type decl code for them
+        ast::TypeDeclItem::Alias(alias_decl) => {
+            let alias = typecheck_alias(full_name, alias_decl, ctx)?;
+
+            ctx.declare_type(
+                alias.name.decl_name.ident.clone(),
+                (*alias.ty).clone(),
+                visibility,
+            )?;
+
+            Ok(TypeDeclItem::Alias(Rc::new(alias)))
+        }
+
+        ast::TypeDeclItem::Struct(def) => match def.kind {
+            StructKind::Class => {
+                let ty = Type::class(full_name.clone());
+                typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
+            },
+            StructKind::Record | StructKind::PackedRecord => {
+                let ty = Type::record(full_name.clone());
+                typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
+            },
+        }
+
+        ast::TypeDeclItem::Interface(_) => {
+            let ty = Type::interface(full_name.qualified.clone());
+            typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
+        },
+        ast::TypeDeclItem::Variant(_) => {
+            let ty = Type::variant(full_name.clone());
+            typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
+        },
+        ast::TypeDeclItem::Enum(_) => {
+            let ty = Type::enumeration(full_name.clone());
+            typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
+        },
+    }
+}
+
+// for all cases other than aliases
+fn typecheck_type_decl_item_with_def(
+    full_name: Symbol,
+    ty: Type,
+    type_decl: &ast::TypeDeclItem,
+    visibility: Visibility,
+    ctx: &mut Context
+) -> TypecheckResult<TypeDeclItem> {
     // type decls have an inner scope
     let ty_scope = ctx.push_scope(Environment::TypeDecl {
-        full_name: full_name.clone(),
+        ty,
     });
 
     if let Some(decl_name_type_params) = &full_name.decl_name.type_params {
@@ -280,13 +328,7 @@ fn typecheck_type_decl_item(
             ctx.declare_enum(enum_decl.clone(), visibility)?;
         }
 
-        TypeDeclItem::Alias(alias) => {
-            ctx.declare_type(
-                alias.name.decl_name.ident.clone(),
-                (*alias.ty).clone(),
-                visibility,
-            )?;
-        },
+        _ => unreachable!(),
     }
 
     Ok(type_decl)

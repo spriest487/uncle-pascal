@@ -1,6 +1,6 @@
 implementation
 uses System;
-{
+
 type Greeting = record
     message: String;
     
@@ -17,7 +17,6 @@ function Greeting.Print();
 begin
     WriteLn(self.GetMessage());
 end;
-}
 
 initialization
 end

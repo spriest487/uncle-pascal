@@ -43,7 +43,7 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
     let candidates = unit.unit.func_defs().map(|(_vis, func)| {
         let sig = FunctionSig::of_decl(&func.decl);
 
-        match &func.decl.name.explicit_impl {
+        match &func.decl.name.owning_ty {
             Some(explicit_impl) => OverloadCandidate::Method {
                 ident: func.decl.name.ident.clone(),
                 iface_ty: explicit_impl.clone(),

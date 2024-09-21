@@ -303,7 +303,7 @@ impl FunctionDecl<Span> {
         
         let qualified_name = QualifiedFunctionName {
             ident: name_ident,
-            instance_ty,
+            owning_ty_qual: instance_ty,
         }; 
 
         Ok((qualified_name, type_params_list))
@@ -369,6 +369,12 @@ impl<A: Annotation> FunctionDecl<A> {
                 _ => None,
             })
             .next()
+    }
+
+
+    pub fn get_mod(&self, keyword: &str) -> Option<&DeclMod<A>> {
+        self.mods.iter()
+            .find(|decl_mod| decl_mod.keyword() == keyword)
     }
 }
 
@@ -738,13 +744,16 @@ impl Parse for AnonymousFunctionDef<Span> {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct QualifiedFunctionName {
-    pub instance_ty: Option<Box<TypeName>>,
+    /// if the declaration is qualified with the owning type of this method, the name of that type.
+    /// e.g. in `function A.B`, this is `Some(A)`, and in `function B` this is `None` 
+    pub owning_ty_qual: Option<Box<TypeName>>,
+
     pub ident: Ident,
 }
 
 impl QualifiedFunctionName {
     pub fn span(&self) -> Span {
-        match &self.instance_ty {
+        match &self.owning_ty_qual {
             Some(instance_ty) => instance_ty.span().to(self.ident.span()),
             None => self.ident.span.clone(),
         }
@@ -759,7 +768,7 @@ impl FunctionName for QualifiedFunctionName {
 
 impl fmt::Display for QualifiedFunctionName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(instance_ty) = &self.instance_ty {
+        if let Some(instance_ty) = &self.owning_ty_qual {
             write!(f, "{}.", instance_ty)?;
         }
         write!(f, "{}", self.ident)

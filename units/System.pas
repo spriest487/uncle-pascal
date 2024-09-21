@@ -17,7 +17,7 @@ type
     end;
 
     Disposable = interface
-        function Dispose(self: Self);
+        function Dispose();
     end;
 
 function GetMem(count: Int32): ^Byte; external 'rt';
@@ -63,11 +63,11 @@ type
     end;
 
     Comparable = interface
-        function Compare(self: Self; other: Self): Integer;
+        function Compare(other: Self): Integer;
     end;
 
     Displayable = interface
-        function ToString(self: Self): String;
+        function ToString(): String;
     end;
 
 function Unbox[T](b: Box[T]): T;
@@ -312,72 +312,72 @@ begin
     Box(value: value)
 end;
 
-function Comparable.Compare(self: String; other: String): Integer;
+function String.Compare(other: String): Integer;
 begin
     CompareStr(self, other)
 end;
 
-function Comparable.Compare(self: Integer; other: Integer): Integer;
+function Integer.Compare(other: Integer): Integer;
 begin
     self - other
 end;
 
-function Displayable.ToString(self: Int8): String;
+function Int8.ToString(): String;
 begin
     Int8ToStr(self)
 end;
 
-function Displayable.ToString(self: Byte): String;
+function Byte.ToString(): String;
 begin
     ByteToStr(self)
 end;
 
-function Displayable.ToString(self: Int16): String;
+function Byte.ToString(): String;
 begin
     Int16ToStr(self)
 end;
 
-function Displayable.ToString(self: UInt16): String;
+function UInt16.ToString(): String;
 begin
     UInt16ToStr(self)
 end;
 
-function Displayable.ToString(self: Integer): String;
+function Integer.ToString(): String;
 begin
     IntToStr(self)
 end;
 
-function Displayable.ToString(self: UInt32): String;
+function UInt32.ToString(): String;
 begin
     UInt32ToStr(self)
 end;
 
-function Displayable.ToString(self: Int64): String;
+function Int64.ToString(): String;
 begin
     Int64ToStr(self)
 end;
 
-function Displayable.ToString(self: UInt64): String;
+function UInt64.ToString(): String;
 begin
     UInt64ToStr(self)
 end;
 
-function Displayable.ToString(self: NativeInt): String;
+function NativeInt.ToString(): String;
 begin
     NativeIntToStr(self)
 end;
 
-function Displayable.ToString(self: NativeUInt): String;
+function NativeUInt.ToString(): String;
 begin
     NativeUIntToStr(self)
 end;
 
-function Displayable.ToString(self: Boolean): String;
+function Boolean.ToString(): String;
 begin
     if self then 'true' else 'false'
 end;
 
-function Displayable.ToString(self: String): String;
+function String.ToString(): String;
 begin
     self
 end;
