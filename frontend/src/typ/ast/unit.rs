@@ -120,22 +120,20 @@ fn typecheck_unit_func_def(
     let func_name = &func_decl.name;
 
     match &func_decl.name.owning_ty {        
-        Some(impl_iface) => {
+        Some(Type::Interface(iface_name)) => {
             // calculate the implementor type from a) the interface's definition of the method and
             // b) the arguments provided in equivalent positions
-            let iface_name = impl_iface
-                .as_iface()
-                .expect("implemented type must be an interface");
             let iface_def = ctx
                 .find_iface_def(&iface_name)
                 .map_err(|err| {
                     TypecheckError::from_name_err(err, func_name.span.clone())
                 })?;
             
-            let method = iface_def.get_method(&func_name.ident)
+            let method = iface_def
+                .get_method(&func_name.ident)
                 .ok_or_else(|| {
                     let err = NameError::MemberNotFound {
-                        base: NameContainer::Type(impl_iface.clone()),
+                        base: NameContainer::Type(Type::Interface(iface_name.clone())),
                         member: func_name.ident.clone(),
                     };
                     TypecheckError::from_name_err(err, func_decl.span.clone())
@@ -148,15 +146,31 @@ fn typecheck_unit_func_def(
 
             let method_sig = FunctionSig::of_decl(&method.decl);
 
-            let impl_ty = method_sig.self_ty_from_args(&impl_params)
+            let impl_ty = method_sig
+                .self_ty_from_args(&impl_params)
                 .cloned()
                 .ok_or_else(|| TypecheckError::AmbiguousSelfType {
                     span: func_decl.span.clone(),
-                    iface: impl_iface.clone(),
+                    iface: Type::Interface(iface_name.clone()).clone(),
                     method: method.ident().clone(),
                 })?;
             
             ctx.define_method_impl(iface_name, impl_ty, func_def.clone())?;
+        }
+        
+        Some(ty) => {
+            match ty.full_path() {
+                Some(ty_name) => {
+                    ctx.define_method_impl(&ty_name, ty.clone(), func_def.clone())?;
+                }
+                
+                None => {
+                    return Err(TypecheckError::InvalidMethodInstanceType {
+                        ty: ty.clone(),
+                        span: func_def.decl.span.clone(),
+                    });
+                }
+            }
         }
 
         None => {

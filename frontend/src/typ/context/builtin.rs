@@ -1,13 +1,20 @@
-use crate::ast::{Ident, IdentPath, Visibility};
+use crate::ast::Ident;
+use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::StructKind;
 use crate::ast::TypeDeclName;
-use crate::typ::{ast, Context, Decl, Environment, TypecheckResult};
+use crate::ast::Visibility;
+use crate::typ::ast;
+use crate::typ::Context;
+use crate::typ::Decl;
+use crate::typ::Environment;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
+use crate::typ::TypecheckResult;
 use common::span::*;
 use std::rc::Rc;
+use crate::typ::ast::SELF_PARAM_NAME;
 
 pub const SYSTEM_UNIT_NAME: &str = "System";
 pub const NOTHING_TYPE_NAME: &str = "Nothing";
@@ -81,14 +88,11 @@ pub fn builtin_string_class() -> ast::StructDef {
 
 // builtin name of the dispose method of the builtin disposable interface
 pub fn builtin_disposable_dispose_name() -> ast::TypedFunctionName {
-    ast::TypedFunctionName {
-        ident: Ident {
-            name: Rc::new(DISPOSABLE_DISPOSE_METHOD.to_string()),
-            span: builtin_span(),
-        },
-        span: builtin_span(),
-        owning_ty: None,
-    }
+    ast::TypedFunctionName::new_method(
+        builtin_ident(DISPOSABLE_DISPOSE_METHOD), 
+        Type::interface(builtin_disposable_name().qualified), 
+        builtin_span()
+    )
 }
 
 pub fn builtin_disposable_name() -> Symbol {
@@ -106,11 +110,12 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
         methods: vec![ast::InterfaceMethodDecl {
             decl: ast::FunctionDecl {
                 name: builtin_disposable_dispose_name(),
-                return_ty: None,
+                // TODO: this shouldn't be optional, use unspecified type for parsed functions
+                return_ty: Some(Type::Nothing),
                 mods: Vec::new(),
                 type_params: None,
                 params: vec![ast::FunctionParam {
-                    ident: Ident::new("self", builtin_span.clone()),
+                    ident: Ident::new(SELF_PARAM_NAME, builtin_span.clone()),
                     ty: Type::MethodSelf,
                     modifier: None,
                     span: builtin_span.clone(),
@@ -131,31 +136,41 @@ pub fn builtin_comparable_name() -> Symbol {
 
 pub fn builtin_comparable_iface() -> ast::InterfaceDecl {
     let builtin_span = builtin_span();
+    
+    let iface_ty = Type::interface(builtin_comparable_name().qualified);
 
     ast::InterfaceDecl {
         name: builtin_comparable_name(),
         methods: vec![
             ast::InterfaceMethodDecl {
-                decl: builtin_comparable_compare_method(Type::MethodSelf),
+                decl: builtin_comparable_compare_method(iface_ty, Type::MethodSelf),
             }
         ],
         span: builtin_span.clone(),
     }
 }
 
-pub fn builtin_comparable_compare_method(self_ty: Type) -> ast::FunctionDecl {
+pub fn builtin_comparable_compare_method(owning_ty: Type, self_ty: Type) -> ast::FunctionDecl {
     let builtin_span = builtin_span();
 
     ast::FunctionDecl {
-        params: vec![ast::FunctionParam {
-            ident: builtin_ident("other"),
-            ty: self_ty.clone(),
-            modifier: None,
-            span: builtin_span.clone(),
-        }],
+        params: vec![
+            ast::FunctionParam {
+                ident: builtin_ident(SELF_PARAM_NAME),
+                ty: self_ty.clone(),
+                modifier: None,
+                span: builtin_span.clone(),
+            },
+            ast::FunctionParam {
+                ident: builtin_ident("other"),
+                ty: self_ty.clone(),
+                modifier: None,
+                span: builtin_span.clone(),
+            }
+        ],
         name: ast::TypedFunctionName::new_method(
             builtin_ident(COMPARABLE_COMPARE_NAME),
-            self_ty.clone(),
+            owning_ty.clone(),
             builtin_span.clone(),
         ),
         return_ty: Some(Type::from(Primitive::Int32)),
@@ -174,29 +189,41 @@ pub fn builtin_displayable_name() -> Symbol {
 
 pub fn builtin_displayable_iface() -> ast::InterfaceDecl {
     let builtin_span = builtin_span();
+    
+    let iface_ty = Type::interface(builtin_displayable_name().qualified); 
 
     ast::InterfaceDecl {
         name: builtin_displayable_name(),
         methods: vec![
             ast::InterfaceMethodDecl {
-                decl: builtin_displayable_display_method(Type::MethodSelf),
+                decl: builtin_displayable_display_method(iface_ty, Type::MethodSelf),
             }
         ],
         span: builtin_span.clone(),
     }
 }
 
-pub fn builtin_displayable_display_method(self_ty: Type) -> ast::FunctionDecl {
+pub fn builtin_displayable_display_method(owning_ty: Type, self_ty: Type) -> ast::FunctionDecl {
     let builtin_span = builtin_span();
 
     ast::FunctionDecl {
-        params: Vec::new(),
+        params: vec![
+            ast::FunctionParam {
+                ident: builtin_ident(SELF_PARAM_NAME),
+                ty: self_ty,
+                modifier: None,
+                span: builtin_span.clone(),
+            }
+        ],
         name: ast::TypedFunctionName::new_method(
             builtin_ident(DISPLAYABLE_TOSTRING_METHOD),
-            self_ty.clone(),
+            owning_ty.clone(),
             builtin_span.clone(),
         ),
-        return_ty: None,
+        return_ty: Some(Type::class(IdentPath::from_vec(vec![
+            Ident::new(SYSTEM_UNIT_NAME, builtin_span.clone()),
+            Ident::new(STRING_TYPE_NAME, builtin_span.clone()),
+        ]))),
         type_params: None,
         mods: Vec::new(),
         span: builtin_span.clone(),
@@ -218,12 +245,12 @@ pub fn declare_builtin_ty(
     let type_env = Environment::TypeDecl { ty: ty.clone() };
     ctx.scope(type_env, |ctx| {
         if displayable {
-            let display_method = builtin_displayable_display_method(ty.clone());
+            let display_method = builtin_displayable_display_method(ty.clone(), ty.clone());
             ctx.declare_function(display_method.name.ident.clone(), &display_method, Visibility::Interface)?;
         }
 
         if comparable {
-            let compare_method = builtin_comparable_compare_method(ty.clone());
+            let compare_method = builtin_comparable_compare_method(ty.clone(), ty.clone());
             ctx.declare_function(compare_method.name.ident.clone(), &compare_method, Visibility::Interface)?;
         }
 
@@ -235,18 +262,14 @@ pub fn declare_builtin_ty(
 
 // builtin types are OK to redeclare in System.pas
 pub fn is_valid_builtin_redecl(decl: &Decl) -> bool {
-    if decl.visibility() != Visibility::Interface {
-        return false;
-    }
-    
     match decl {
-        Decl::Type { ty: Type::Interface(iface), visibility: Visibility::Interface } => {
+        Decl::Type { ty: Type::Interface(iface), .. } => {            
             **iface == builtin_displayable_name().qualified 
                 || **iface == builtin_comparable_name().qualified 
                 || **iface == builtin_disposable_name().qualified
         },
         
-        Decl::Type { ty: Type::Class(sym), visibility: Visibility::Interface } => {
+        Decl::Type { ty: Type::Class(sym), .. } => {
             **sym == builtin_string_name()
         },
         

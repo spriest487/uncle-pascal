@@ -19,7 +19,6 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::Visibility;
-use crate::typ::ast::EnumDecl;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
@@ -27,6 +26,8 @@ use crate::typ::ast::Literal;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
+use crate::typ::ast::{EnumDecl, SELF_TY_NAME};
+use crate::typ::specialize_generic_variant;
 use crate::typ::specialize_struct_def;
 use crate::typ::FunctionSig;
 use crate::typ::Primitive;
@@ -36,7 +37,6 @@ use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
 use crate::typ::TypecheckError;
 use crate::typ::TypecheckResult;
-use crate::typ::specialize_generic_variant;
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
 use std::collections::hash_map::Entry;
@@ -180,28 +180,33 @@ impl Context {
             loop_stack: Default::default(),
         };
 
-        let builtin_ifaces = [
-            builtin_disposable_iface(),
-            builtin_displayable_iface(),
-            builtin_comparable_iface(),
-        ];
+        let system_path = IdentPath::new(builtin_ident(SYSTEM_UNIT_NAME), []);
+        root_ctx.unit_scope(system_path, |ctx| {
+            let builtin_ifaces = [
+                builtin_disposable_iface(),
+                builtin_displayable_iface(),
+                builtin_comparable_iface(),
+            ];
 
-        for builtin_iface in builtin_ifaces {
-            root_ctx
-                .declare_iface(Rc::new(builtin_iface), Visibility::Interface)
-                .expect("builtin interface decl must not fail");
-        }
+            for builtin_iface in builtin_ifaces {
+                ctx
+                    .declare_iface(Rc::new(builtin_iface), Visibility::Interface)
+                    .expect("builtin interface decl must not fail");
+            }
 
-        declare_builtin_ty(&mut root_ctx, NOTHING_TYPE_NAME, Type::Nothing, false, false)
-            .expect("builtin type decl must not fail");
-        declare_builtin_ty(&mut root_ctx, ANY_TYPE_NAME, Type::Any, false, false)
-            .expect("builtin type decl must not fail");
+            declare_builtin_ty(ctx, NOTHING_TYPE_NAME, Type::Nothing, false, false)
+                .expect("builtin type decl must not fail");
+            declare_builtin_ty(ctx, ANY_TYPE_NAME, Type::Any, false, false)
+                .expect("builtin type decl must not fail");
 
-        for primitive in &Primitive::ALL {
-            let primitive_ty = Type::Primitive(*primitive);
-            declare_builtin_ty(&mut root_ctx, primitive.name(), primitive_ty, true, true)
-                .expect("primitive type decl must not fail");
-        }
+            for primitive in &Primitive::ALL {
+                let primitive_ty = Type::Primitive(*primitive);
+                declare_builtin_ty(ctx, primitive.name(), primitive_ty, true, true)
+                    .expect("primitive type decl must not fail");
+            }
+            
+            Ok(())
+        }).expect("builtin unit definition must not fail");
 
         root_ctx
     }
@@ -482,13 +487,23 @@ impl Context {
                 }
             }
 
-            Some(old_ref) if !is_valid_builtin_redecl(&decl) => {
+            Some(old_ref) => {
+                if let ScopeMemberRef::Decl { value: old_decl, .. } = old_ref {
+                    if is_valid_builtin_redecl(&decl) 
+                        && old_decl.visibility() == decl.visibility() {
+                        return Ok(())
+                    }
+                }
+                
                 let old_kind = old_ref.kind();
                 let old_ident = match old_ref {
-                    ScopeMemberRef::Decl {
-                        key, parent_path, ..
-                    } => Path::new(key.clone(), parent_path.keys().cloned()),
-                    ScopeMemberRef::Scope { path } => Path::from_parts(path.keys().cloned()),
+                    ScopeMemberRef::Decl { key, parent_path, .. } => {
+                        Path::new(key.clone(), parent_path.keys().cloned())
+                    },
+
+                    ScopeMemberRef::Scope { path } => {
+                        Path::from_parts(path.keys().cloned())
+                    },
                 };
                 
                 Err(TypecheckError::NameError {
@@ -502,12 +517,14 @@ impl Context {
             }
 
             _ => {
-                self.scopes.insert_decl(name.clone(), decl).map_err(|err| {
-                    TypecheckError::NameError {
-                        err,
-                        span: name.span().clone(),
-                    }
-                })
+                self.scopes
+                    .insert_decl(name.clone(), decl)
+                    .map_err(|err| {
+                        TypecheckError::NameError {
+                            err,
+                            span: name.span().clone(),
+                        }
+                    })
             }
         }
     }
@@ -625,7 +642,7 @@ impl Context {
     }
 
     pub fn declare_self_ty(&mut self, ty: Type, span: Span) -> TypecheckResult<()> {
-        let self_ident = Ident::new("Self", span);
+        let self_ident = Ident::new(SELF_TY_NAME, span);
         self.declare_type(self_ident, ty, Visibility::Implementation)
     }
 
@@ -702,76 +719,106 @@ impl Context {
 
     fn method_impl_entry(
         &mut self,
-        iface_ident: IdentPath,
+        owning_ty_name: IdentPath,
         self_ty: Type,
-        method: Ident,
-    ) -> NameResult<Entry<Ident, Option<FunctionDef>>> {
-        // check the method exists
-        let iface = self.find_iface_def(&iface_ident)?;
-        if iface.get_method(&method).is_none() {
-            let base_ty = Type::Interface(Box::new(iface.name.qualified.clone()));
-            return Err(NameError::MemberNotFound {
-                base: NameContainer::Type(base_ty),
-                member: method,
-            });
-        }
+        def: FunctionDef
+    ) -> NameResult<()> {
+        let method = &def.decl.name.ident;
+        
+        match self.find_type(&owning_ty_name)? {
+            (_, owning_ty @ Type::Interface(..)) => {
+                // check the method exists
+                let iface = self.find_iface_def(&owning_ty_name)?;
 
-        let ty_impls = self
-            .iface_impls
-            .entry(iface_ident)
-            .or_insert_with(HashMap::new);
-        let impl_for_ty = ty_impls.entry(self_ty).or_insert_with(InterfaceImpl::new);
-
-        Ok(impl_for_ty.methods.entry(method))
-    }
-    //
-    // pub fn declare_method_impl(
-    //     &mut self,
-    //     iface_ident: IdentPath,
-    //     self_ty: Type,
-    //     method: Ident,
-    // ) -> TypecheckResult<()> {
-    //     self.method_impl_entry(iface_ident, self_ty, method)
-    //         .map_err(|err| TypecheckError::from_name_err(err, method.span().clone()))?
-    //         .or_insert_with(|| None);
-    //     Ok(())
-    // }
-
-    pub fn define_method_impl(
-        &mut self,
-        iface: &IdentPath,
-        self_ty: Type,
-        method_def: FunctionDef,
-    ) -> TypecheckResult<()> {
-        let entry = self
-            .method_impl_entry(
-                iface.clone(),
-                self_ty.clone(),
-                method_def.decl.name.ident.clone(),
-            )
-            .map_err(|err| TypecheckError::from_name_err(err, method_def.decl.span().clone()))?;
-
-        match entry {
-            Entry::Occupied(mut entry) => {
-                if entry.get().is_some() {
-                    return Err(TypecheckError::NameError {
-                        err: NameError::AlreadyImplemented {
-                            method: method_def.decl.name.ident.clone(),
-                            for_ty: self_ty,
-                            iface: iface.clone(),
-                            existing: entry.key().span.clone(),
-                        },
-                        span: method_def.decl.span,
+                if iface.get_method(&def.decl.name.ident).is_none() {
+                    return Err(NameError::MemberNotFound {
+                        base: NameContainer::Type(owning_ty.clone()),
+                        member: method.clone(),
                     });
-                } else {
-                    *entry.get_mut() = Some(method_def);
+                }
+
+                let ty_impls = self
+                    .iface_impls
+                    .entry(owning_ty_name.clone())
+                    .or_insert_with(HashMap::new);
+                let impl_for_ty = ty_impls
+                    .entry(self_ty.clone())
+                    .or_insert_with(InterfaceImpl::new);
+                
+                match impl_for_ty.methods.entry(method.clone()) {
+                    Entry::Occupied(mut occupied) => {
+                        match occupied.get_mut() {
+                            empty @ None => {
+                                *empty = Some(def);
+                                Ok(())
+                            }
+
+                            Some(..) => Err(NameError::AlreadyImplemented {
+                                method: def.decl.name.ident.clone(),
+                                for_ty: self_ty,
+                                owning_ty: owning_ty_name,
+                                existing: occupied.key().span.clone(),
+                            }) 
+                        }
+                    }
+
+                    Entry::Vacant(vacant) => {
+                        vacant.insert(Some(def));
+                        Ok(())
+                    }
                 }
             }
 
-            Entry::Vacant(entry) => {
-                entry.insert(Some(method_def));
+            (_, owning_ty @ Type::Record(..) | owning_ty @ Type::Class(..)) => {
+                let struct_def = self.find_struct_def(&owning_ty_name)?;
+
+                if struct_def.find_method(&method).is_none() {
+                    return Err(NameError::MemberNotFound {
+                        base: NameContainer::Type(owning_ty.clone()),
+                        member: method.clone(),
+                    });
+                }
+                
+                let method_name_qualified = owning_ty_name.clone().child(method.clone());
+                match self.defs.entry(method_name_qualified) {
+                    Entry::Occupied(occupied) => {
+                        Err(NameError::AlreadyImplemented {
+                            method: def.decl.name.ident.clone(),
+                            for_ty: self_ty,
+                            owning_ty: owning_ty_name.clone(),
+                            existing: occupied.key().last().span.clone(),
+                        })
+                    }
+
+                    Entry::Vacant(vacant) => {
+                        vacant.insert(Def::Function(def));
+                        Ok(())
+                    }
+                }
+            }
+
+            _ => {
+                unreachable!("should only call this with struct and interface types")
             }
         }
+    }
+
+    pub fn define_method_impl(
+        &mut self,
+        owning_ty_name: &IdentPath,
+        self_ty: Type,
+        method_def: FunctionDef,
+    ) -> TypecheckResult<()> {
+        let span = method_def.decl.span().clone();
+        self
+            .method_impl_entry(
+                owning_ty_name.clone(),
+                self_ty.clone(),
+                method_def
+            )
+            .map_err(|err| {
+                TypecheckError::from_name_err(err, span) 
+            })?;
 
         Ok(())
     }
@@ -812,18 +859,6 @@ impl Context {
     {
         let full_name = IdentPath::new(name.clone(), self.scopes.current_path().keys().cloned());
 
-        if let Some(existing) = self.defs.get(&full_name) {
-            let err = NameError::AlreadyDefined {
-                ident: full_name,
-                existing: existing.ident().span().clone(),
-            };
-
-            return Err(TypecheckError::NameError {
-                err,
-                span: def.ident().span().clone(),
-            });
-        }
-
         match self.scopes.current_path().find(&name) {
             None => {
                 return Err(TypecheckError::NameError {
@@ -841,7 +876,24 @@ impl Context {
             }) => {
                 match decl_predicate(value) {
                     DefDeclMatch::Match => {
-                        // ok
+                        if let Some(existing) = self.defs.get(&full_name) {
+                            // allow the redeclaration of certain builtin types in System.pas,
+                            // as long as the new definition matches the builtin one exactly
+                            if !is_valid_builtin_redecl(value) || *existing != def {
+                                dbg!(existing);
+                                dbg!(&def);
+                                
+                                let err = NameError::AlreadyDefined {
+                                    ident: full_name,
+                                    existing: existing.ident().span().clone(),
+                                };
+
+                                return Err(TypecheckError::NameError {
+                                    err,
+                                    span: def.ident().span().clone(),
+                                });    
+                            }
+                        }
                     }
 
                     DefDeclMatch::Mismatch => {

@@ -221,7 +221,7 @@ pub enum NameError {
         existing: Span,
     },
     AlreadyImplemented {
-        iface: IdentPath,
+        owning_ty: IdentPath,
         for_ty: Type,
         method: Ident,
         existing: Span,
@@ -278,7 +278,7 @@ impl fmt::Display for NameError {
             },
 
             NameError::AlreadyImplemented {
-                iface,
+                owning_ty: iface,
                 method,
                 for_ty,
                 ..

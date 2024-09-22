@@ -1,16 +1,13 @@
-use std::fmt;
-use std::fmt::Formatter;
 use crate::ast;
-use crate::ast::{FunctionName, Ident};
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
+use crate::ast::{FunctionName, Ident};
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::InterfaceDecl;
-use crate::typ::{string_type, Symbol};
 use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
@@ -31,10 +28,17 @@ use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
+use crate::typ::string_type;
 use common::span::Span;
 use common::span::Spanned;
 use linked_hash_map::LinkedHashMap;
+use std::fmt;
+use std::fmt::Formatter;
 use std::rc::Rc;
+use derivative::Derivative;
+
+pub const SELF_PARAM_NAME: &str = "self";
+pub const SELF_TY_NAME: &str = "Self";
 
 pub type FunctionDecl = ast::FunctionDecl<Typed>;
 pub type DeclMod = ast::DeclMod<Typed>;
@@ -44,15 +48,19 @@ pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Typed>;
 pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<Typed>;
 pub type FunctionLocalDecl = ast::FunctionLocalBinding<Typed>;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct TypedFunctionName {
     pub ident: Ident,
     
     // if the function is a method, the type that implements this method.
-    // either an interface type for interface method implementaions, or the enclosing type
+    // either an interface type for interface method implementations, or the enclosing type
     // that is declaring its own method
     pub owning_ty: Option<Type>,
-    
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(Hash = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub span: Span,
 }
 
@@ -87,20 +95,6 @@ impl fmt::Display for TypedFunctionName {
         }
         write!(f, "{}", self.ident)
     }
-}
-
-fn typecheck_param(
-    param: &ast::FunctionParam<Span>,
-    ctx: &mut Context,
-) -> TypecheckResult<FunctionParam> {
-    let ty = typecheck_type(&param.ty, ctx)?.clone();
-
-    Ok(FunctionParam {
-        modifier: param.modifier.clone(),
-        ident: param.ident.clone(),
-        span: param.span.clone(),
-        ty,
-    })
 }
 
 pub fn typecheck_func_decl(
@@ -154,7 +148,13 @@ pub fn typecheck_func_decl(
                 let explicit_ty_span = owning_ty_qual.span();
                 let explicit_owning_ty = typecheck_type(owning_ty_qual, ctx)?;
 
-                params = typecheck_params(decl, Some(explicit_owning_ty.clone()), ctx)?;
+                // if this is an interface, it's the *implementation* of one, so it has the 
+                // real types substituted into for any `Self` occurrences. if it's a method
+                // definition, Self is a known type and should already be translated as the
+                // actual type itself
+                let implicit_self_ty = Some(explicit_owning_ty.clone());
+                
+                params = typecheck_params(decl, implicit_self_ty, ctx)?;
 
                 let param_sigs = params.iter()
                     .cloned()
@@ -178,24 +178,25 @@ pub fn typecheck_func_decl(
                     }
 
                     // method definition
-                    Type::Class(name) | Type::Record(name) => {
-                        validate_struct_method(
-                            name,
-                            &explicit_owning_ty,
-                            &decl.name.ident,
-                            &method_sig,
-                            ctx,
-                            explicit_ty_span,
-                            decl.span(),
-                        )?;
+                    _ => match explicit_owning_ty.full_path() {
+                        Some(ty_name) => {
+                            validate_method(
+                                &ty_name,
+                                &decl.name.ident,
+                                &method_sig,
+                                ctx,
+                                explicit_ty_span,
+                                decl.span(),
+                            )?;
+                        }
+                        
+                        None => {
+                            return Err(TypecheckError::InvalidMethodInstanceType {
+                                ty: explicit_owning_ty.clone(),
+                                span: explicit_ty_span.clone(),
+                            });
+                        }
                     }
-
-                    not_iface => {
-                        return Err(TypecheckError::InvalidMethodInstanceType {
-                            ty: not_iface.clone(),
-                            span: explicit_ty_span.clone(),
-                        });
-                    },
                 }
 
                 owning_ty = Some(explicit_owning_ty);
@@ -203,8 +204,17 @@ pub fn typecheck_func_decl(
 
             // method decl
             (None, Some(enclosing_ty)) => {
+                // if the owning type is an interface, this is an interface method definition,
+                // and the type of `self` is the generic `Self` (to stand in for implementing
+                // types in static interfaces). if it's NOT an interface, it must be a concrete
+                // type, in which case the type of self is just that type itself
+                let self_param_ty = match &enclosing_ty {
+                    Type::Interface(..) => Type::MethodSelf,
+                    _ => enclosing_ty.clone(),
+                };
+                
                 owning_ty = Some(enclosing_ty.clone());
-                params = typecheck_params(decl, Some(enclosing_ty.clone()), ctx)?;
+                params = typecheck_params(decl, Some(self_param_ty), ctx)?;
             }
 
             (Some(owning_ty_qual), Some(..)) => {
@@ -241,16 +251,21 @@ fn typecheck_params(
 
     if let Some(self_ty) = implicit_self {
         let self_span = decl.name.span().clone();
+
         params.push(FunctionParam {
             ty: self_ty,
-            ident: Ident::new("self", self_span.clone()),
+            ident: Ident::new(SELF_PARAM_NAME, self_span.clone()),
             modifier: None,
             span: self_span,
         });
     }
     
     for param in &decl.params {
-        if let Some(prev) = params.iter().find(|p| p.ident == param.ident) {
+        let find_name_dup = params
+            .iter()
+            .find(|p| p.ident == param.ident);
+
+        if let Some(prev) = find_name_dup {
             return Err(TypecheckError::DuplicateNamedArg {
                 name: param.ident.clone(),
                 span: param.span.clone(),
@@ -258,10 +273,17 @@ fn typecheck_params(
             });
         }
 
-        let param = typecheck_param(param, ctx)?;
+        let ty = typecheck_type(&param.ty, ctx)?;
+
+        let param = FunctionParam {
+            modifier: param.modifier.clone(),
+            ident: param.ident.clone(),
+            span: param.span.clone(),
+            ty,
+        };
         params.push(param);
     }
-    
+
     Ok(params)
 }
 
@@ -285,41 +307,35 @@ fn validate_iface_method(
     Ok(())
 }
 
-fn validate_struct_method(
-    struct_name: &Symbol,
-    struct_ty: &Type,
+fn validate_method(
+    owning_ty_name: &IdentPath,
     method_ident: &Ident,
     method_sig: &FunctionSig,
     ctx: &Context,
     span: &Span,
     def_span: &Span,
 ) -> TypecheckResult<()> {
-    let struct_def = ctx
-        .instantiate_struct_def(struct_name)
+    let method_path = owning_ty_name
+        .clone()
+        .child(method_ident.clone());
+
+    let (decl_path, method_decl_sig) =  ctx
+        .find_function(&method_path)
         .map_err(|err| {
+            eprintln!("{}", ctx.root_scope().to_debug_string().unwrap());
             TypecheckError::from_name_err(err, span.clone())
         })?;
-
-    let method_decl = struct_def
-        .find_method(&method_ident)
-        .ok_or_else(|| {
-            let missing_method = NameError::MemberNotFound {
-                base: NameContainer::Type(struct_ty.clone()),
-                member: method_ident.clone(),
-            };
-            TypecheckError::from_name_err(missing_method, span.clone())
-        })?;
     
-    if *method_sig != FunctionSig::of_decl(method_decl) {
+    if *method_sig != *method_decl_sig {
         let mismatch = NameError::DefDeclMismatch {
             def: def_span.clone(),
-            decl: method_decl.span.clone(),
-            ident: struct_name.qualified.clone().child(method_ident.clone()),
+            decl: decl_path.path_span(),
+            ident: method_path,
         };
 
         return Err(TypecheckError::from_name_err(mismatch, span.clone()));
     }
-    
+
     Ok(())
 }
 

@@ -503,7 +503,7 @@ impl DiagnosticOutput for TypecheckError {
                 }],
 
                 NameError::AlreadyImplemented {
-                    iface,
+                    owning_ty: iface,
                     method,
                     existing,
                     ..

@@ -56,6 +56,9 @@ impl ScopeStack {
         decl: Decl,
     ) -> NameResult<()> {
         let member_key = member_key.into();
+
+        // eprintln!("{}.{}: {} ", self.current_path().to_namespace(), member_key, decl.to_string());
+
         let top = self.current_mut();
 
         top.insert_member(member_key.clone(), ScopeMember::Decl(decl))

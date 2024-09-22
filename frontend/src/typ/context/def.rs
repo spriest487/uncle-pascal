@@ -9,7 +9,7 @@ use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Def {
     External(FunctionDecl),
     Function(FunctionDef),

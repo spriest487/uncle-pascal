@@ -15,7 +15,7 @@ type
         chars: ^Byte;
         len: Int32;
         
-        function Compare(other: String): Int32;
+        function Compare(other: String): Integer;
     end;
 
     Disposable = interface
@@ -46,8 +46,6 @@ function ArrayLengthInternal(arr: Pointer): Int32; external 'rt';
 
 function ByteToStr(i: Byte): String;
 function IntToStr(i: Integer): String;
-
-{$IFNDEF NO_STDLIB}
 
 type
     Box[T] = class
@@ -97,8 +95,6 @@ function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer): An
 function Length[T](arr: array of T): Integer;
 function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);
 
-{$ENDIF}
-
 implementation
 
 function ByteToStr(i: Byte): String;
@@ -110,8 +106,6 @@ function IntToStr(i: Integer): String;
 begin
     Int32ToStr(i)
 end;
-
-{$IFNDEF NO_STDLIB}
 
 function StringLen(s: String): Integer;
 begin
@@ -413,7 +407,5 @@ begin
             else raise 'unreachable';
     end;
 end;
-
-{$ENDIF}
 
 end.

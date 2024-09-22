@@ -42,6 +42,7 @@ pub fn typecheck_struct_decl(
         StructKind::Record | StructKind::PackedRecord => Type::Record(Box::new(name.clone())),
         StructKind::Class => Type::Class(Box::new(name.clone())),
     };
+
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(
         class.name.ident.clone(),

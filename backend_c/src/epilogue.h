@@ -17,8 +17,6 @@ static void Raise(STRING_STRUCT* msg_str) {
     abort();
 }
 
-#if !NO_STDLIB
-
 static int32_t System_StrToInt(STRING_STRUCT* str) {
     if (!str || str->rc.strong_count == 0) {
         fprintf(stderr, "called StrToInt for an invalid string pointer\n");
@@ -31,8 +29,8 @@ static int32_t System_StrToInt(STRING_STRUCT* str) {
 
 #define INT_TO_STR_IMPL(FuncName, DataType, FormatString, BufSize) \
 static STRING_STRUCT* FuncName(DataType i) { \
-    char buf[BufSize]; \
-    sprintf_s(buf, BufSize, "%" FormatString, i); \
+    char buf[(BufSize)]; \
+    sprintf_s(buf, (BufSize), "%" FormatString, i); \
     \
     size_t len = strlen(buf); \
     unsigned char* chars = Alloc(len); \
@@ -44,17 +42,17 @@ static STRING_STRUCT* FuncName(DataType i) { \
     \
     return str; \
 }
-
-INT_TO_STR_IMPL(System_Int8ToStr, int8_t, PRId8, 5)
-INT_TO_STR_IMPL(System_ByteToStr, uint8_t, PRIu8, 4)
-INT_TO_STR_IMPL(System_Int16ToStr, int16_t, PRId16, 9)
-INT_TO_STR_IMPL(System_UInt16ToStr, uint16_t, PRIu16, 8)
-INT_TO_STR_IMPL(System_IntToStr, int32_t, PRId32, 13)
-INT_TO_STR_IMPL(System_UInt32ToStr, uint32_t, PRIu32, 12)
-INT_TO_STR_IMPL(System_Int64ToStr, int64_t, PRId64, 25)
-INT_TO_STR_IMPL(System_UInt64ToStr, uint64_t, PRIu64, 24)
-INT_TO_STR_IMPL(System_NativeIntToStr, ptrdiff_t, "zd", 25)
-INT_TO_STR_IMPL(System_NativeUIntToStr, size_t, "zu", 24)
+ 
+INT_TO_STR_IMPL(System_ByteToStr,       uint8_t,    PRIu8,  4  + 0)
+INT_TO_STR_IMPL(System_Int8ToStr,       int8_t,     PRId8,  4  + 1)
+INT_TO_STR_IMPL(System_UInt16ToStr,     uint16_t,   PRIu16, 8  + 0)
+INT_TO_STR_IMPL(System_Int16ToStr,      int16_t,    PRId16, 8  + 1)
+INT_TO_STR_IMPL(System_UInt32ToStr,     uint32_t,   PRIu32, 12 + 0)
+INT_TO_STR_IMPL(System_IntToStr,        int32_t,    PRId32, 12 + 1)
+INT_TO_STR_IMPL(System_UInt64ToStr,     uint64_t,   PRIu64, 24 + 0)
+INT_TO_STR_IMPL(System_Int64ToStr,      int64_t,    PRId64, 24 + 1)
+INT_TO_STR_IMPL(System_NativeUIntToStr, size_t,     "zu",   24 + 0)
+INT_TO_STR_IMPL(System_NativeIntToStr,  ptrdiff_t,  "zd",   24 + 1)
 
 static unsigned char* System_GetMem(int32_t len) {
     return (unsigned char*) Alloc(len);
@@ -151,5 +149,3 @@ static void* LoadSymbol(const char* src, const char* sym) {
 
     return sym_ptr;
 }
-
-#endif
