@@ -139,7 +139,7 @@ impl MethodTyped {
 
 impl From<MethodTyped> for Typed {
     fn from(a: MethodTyped) -> Self {
-        Typed::InterfaceMethod(Rc::new(a))
+        Typed::Method(Rc::new(a))
     }
 }
 
@@ -246,7 +246,7 @@ pub enum Typed {
     UfcsFunction(Rc<UfcsTyped>),
 
     // direct method reference e.g. `Interface.Method`
-    InterfaceMethod(Rc<MethodTyped>),
+    Method(Rc<MethodTyped>),
     Type(Type, Span),
     Namespace(IdentPath, Span),
     VariantCtor(Rc<VariantCtorTyped>),
@@ -263,7 +263,7 @@ impl Typed {
         assert_ne!(Type::Nothing, *expect_ty);
 
         let (actual_ty, span) = match self {
-            Typed::InterfaceMethod(method) => (method.func_ty(), &method.span),
+            Typed::Method(method) => (method.func_ty(), &method.span),
             Typed::Overload(overload) => (overload.func_ty(), &overload.span),
             Typed::Function(func) => (func.func_ty(), &func.span),
             Typed::TypedValue(val) => (val.ty.clone(), &val.span),
@@ -316,7 +316,7 @@ impl Typed {
 
             Typed::Function(func) => Cow::Owned(func.func_ty()),
             Typed::UfcsFunction(call) => Cow::Owned(call.func_ty()),
-            Typed::InterfaceMethod(method) => Cow::Owned(method.func_ty()),
+            Typed::Method(method) => Cow::Owned(method.func_ty()),
             Typed::Overload(overload) => Cow::Owned(overload.func_ty()),
 
             Typed::Const(const_val) => Cow::Borrowed(&const_val.ty),
@@ -328,7 +328,7 @@ impl Typed {
         match self {
             Typed::Type(..) => None,
             Typed::Function { .. } => None, // TODO
-            Typed::InterfaceMethod(..) => None, // TODO
+            Typed::Method(..) => None, // TODO
             Typed::UfcsFunction { .. } => None, // TODO
             Typed::Overload { .. } => None, // TODO
 
@@ -367,7 +367,7 @@ impl fmt::Display for Typed {
 impl Spanned for Typed {
     fn span(&self) -> &Span {
         match self {
-            Typed::InterfaceMethod(method) => &method.span,
+            Typed::Method(method) => &method.span,
             Typed::VariantCtor(ctor) => &ctor.span,
             Typed::Overload(overload) => &overload.span,
             Typed::TypedValue(val) => &val.span,

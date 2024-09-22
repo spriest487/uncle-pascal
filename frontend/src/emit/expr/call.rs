@@ -105,7 +105,7 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
         },
 
         syn::Call::MethodNoArgs(method_call) => match method_call.target.annotation() {
-            Typed::InterfaceMethod(method) => {
+            Typed::Method(method) => {
                 let self_arg = method_call.self_arg.clone();
                 let self_ty = self_arg.annotation().ty().into_owned();
                 let args = vec![self_arg];

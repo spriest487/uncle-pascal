@@ -120,8 +120,11 @@ impl ScopeStack {
             if next_path.is_parent_of(&current_path) {
                 // if the next named part in the current path is the part we're looking for, the
                 // path we're looking for is the current path
-                let next_named_part = current_path.namespaces[next_path.namespaces.len()..].iter()
+                let next_named_part = current_path.namespaces
+                    .iter()
+                    .skip(next_path.namespaces.len())
                     .find_map(|s| s.key());
+
                 if next_named_part == Some(part) {
                     next_path = current_path.clone();
                     continue;

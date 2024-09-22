@@ -16,6 +16,7 @@ type
         len: Int32;
         
         function Compare(other: String): Integer;
+        function ToString: String;
     end;
 
     Disposable = interface
@@ -328,7 +329,7 @@ begin
     ByteToStr(self)
 end;
 
-function Byte.ToString(): String;
+function Int16.ToString(): String;
 begin
     Int16ToStr(self)
 end;

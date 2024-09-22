@@ -243,7 +243,7 @@ impl ModuleBuilder {
         let method_name = method_key.method.to_string();
 
         let iface_def = match self.src_metadata.find_iface_def(&method_key.instance_ty) {
-            Ok(def) => def,
+            Ok(def) => def.clone(),
             Err(..) => panic!("missing interface def {}", method_key.instance_ty),
         };
 
@@ -427,7 +427,10 @@ impl ModuleBuilder {
                 let ifaces = self.src_metadata.implemented_ifaces(&real_ty);
 
                 for iface in &ifaces {
-                    let iface_def = self.src_metadata.find_iface_def(iface).unwrap();
+                    let iface_def = self.src_metadata
+                        .find_iface_def(iface)
+                        .cloned()
+                        .unwrap();
 
                     for method in &iface_def.methods {
                         let cache_key = FunctionDefKey {
@@ -639,7 +642,10 @@ impl ModuleBuilder {
             },
 
             typ::Type::Interface(iface_def) => {
-                let iface_def = self.src_metadata.find_iface_def(iface_def).unwrap();
+                let iface_def = self.src_metadata
+                    .find_iface_def(iface_def)
+                    .cloned()
+                    .unwrap();
 
                 let iface_name = translate_name(&iface_def.name, type_args, self);
                 let id = self.module.metadata.declare_iface(&iface_name);

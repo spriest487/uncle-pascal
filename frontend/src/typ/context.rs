@@ -27,7 +27,6 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::{EnumDecl, SELF_TY_NAME};
-use crate::typ::specialize_generic_variant;
 use crate::typ::specialize_struct_def;
 use crate::typ::FunctionSig;
 use crate::typ::Primitive;
@@ -37,6 +36,7 @@ use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
 use crate::typ::TypecheckError;
 use crate::typ::TypecheckResult;
+use crate::typ::specialize_generic_variant;
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
 use std::collections::hash_map::Entry;
@@ -157,7 +157,10 @@ pub struct Context {
     scopes: ScopeStack,
 
     /// iface ident -> self ty_def -> impl details
-    iface_impls: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
+    method_defs: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
+
+    // builtin methods declarations for primitive types that can't be declared normally in code
+    primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, FunctionDecl>>,
 
     /// decl ident -> definition location
     defs: HashMap<IdentPath, Def>,
@@ -175,9 +178,11 @@ impl Context {
 
             defs: Default::default(),
 
-            iface_impls: Default::default(),
+            method_defs: Default::default(),
 
             loop_stack: Default::default(),
+
+            primitive_methods: HashMap::new(),
         };
 
         let system_path = IdentPath::new(builtin_ident(SYSTEM_UNIT_NAME), []);
@@ -201,8 +206,10 @@ impl Context {
 
             for primitive in &Primitive::ALL {
                 let primitive_ty = Type::Primitive(*primitive);
-                declare_builtin_ty(ctx, primitive.name(), primitive_ty, true, true)
+                let methods = declare_builtin_ty(ctx, primitive.name(), primitive_ty, true, true)
                     .expect("primitive type decl must not fail");
+                
+                ctx.primitive_methods.insert(*primitive, methods); 
             }
             
             Ok(())
@@ -717,7 +724,7 @@ impl Context {
         }
     }
 
-    fn method_impl_entry(
+    fn insert_method_impl_def(
         &mut self,
         owning_ty_name: IdentPath,
         self_ty: Type,
@@ -736,69 +743,72 @@ impl Context {
                         member: method.clone(),
                     });
                 }
-
-                let ty_impls = self
-                    .iface_impls
-                    .entry(owning_ty_name.clone())
-                    .or_insert_with(HashMap::new);
-                let impl_for_ty = ty_impls
-                    .entry(self_ty.clone())
-                    .or_insert_with(InterfaceImpl::new);
                 
-                match impl_for_ty.methods.entry(method.clone()) {
-                    Entry::Occupied(mut occupied) => {
-                        match occupied.get_mut() {
-                            empty @ None => {
-                                *empty = Some(def);
-                                Ok(())
-                            }
-
-                            Some(..) => Err(NameError::AlreadyImplemented {
-                                method: def.decl.name.ident.clone(),
-                                for_ty: self_ty,
-                                owning_ty: owning_ty_name,
-                                existing: occupied.key().span.clone(),
-                            }) 
-                        }
-                    }
-
-                    Entry::Vacant(vacant) => {
-                        vacant.insert(Some(def));
-                        Ok(())
-                    }
-                }
+                self.insert_method_def(def, owning_ty_name, self_ty)
             }
 
             (_, owning_ty @ Type::Record(..) | owning_ty @ Type::Class(..)) => {
                 let struct_def = self.find_struct_def(&owning_ty_name)?;
 
-                if struct_def.find_method(&method).is_none() {
-                    return Err(NameError::MemberNotFound {
+                struct_def.find_method(&method)
+                    .ok_or_else(|| NameError::MemberNotFound {
                         base: NameContainer::Type(owning_ty.clone()),
                         member: method.clone(),
-                    });
-                }
-                
-                let method_name_qualified = owning_ty_name.clone().child(method.clone());
-                match self.defs.entry(method_name_qualified) {
-                    Entry::Occupied(occupied) => {
-                        Err(NameError::AlreadyImplemented {
-                            method: def.decl.name.ident.clone(),
-                            for_ty: self_ty,
-                            owning_ty: owning_ty_name.clone(),
-                            existing: occupied.key().last().span.clone(),
-                        })
-                    }
+                    })?;
 
-                    Entry::Vacant(vacant) => {
-                        vacant.insert(Def::Function(def));
-                        Ok(())
-                    }
-                }
+                self.insert_method_def(def, owning_ty_name.clone(), self_ty)
+            }
+
+            (_, Type::Primitive(primitive)) => {
+                let ty_methods = self.get_primitive_methods(*primitive);
+                ty_methods.get(method)
+                    .ok_or_else(|| NameError::MemberNotFound {
+                        base: NameContainer::Type(Type::Primitive(*primitive)),
+                        member: method.clone(),
+                    })?;
+                
+                self.insert_method_def(def, owning_ty_name.clone(), self_ty)
             }
 
             _ => {
                 unreachable!("should only call this with struct and interface types")
+            }
+        }
+    }
+
+    fn insert_method_def(&mut self,
+        def: FunctionDef,
+        owning_ty_name: IdentPath,
+        self_ty: Type,
+    ) -> NameResult<()> {
+        let impls = self.method_defs
+            .entry(owning_ty_name.clone())
+            .or_insert_with(HashMap::new);
+        
+        let ty_impls = impls
+            .entry(self_ty.clone())
+            .or_insert_with(InterfaceImpl::new);
+
+        match ty_impls.methods.entry(def.decl.name.ident.clone()) {
+            Entry::Vacant(vacant) => {
+                vacant.insert(Some(def));
+                Ok(())
+            }
+
+            Entry::Occupied(mut occupied) => {
+                match occupied.get_mut() {
+                    Some(existing) => Err(NameError::AlreadyImplemented {
+                        method: def.decl.name.ident.clone(),
+                        for_ty: self_ty,
+                        owning_ty: owning_ty_name,
+                        existing: existing.decl.span().clone(),
+                    }),
+                    
+                    empty => {
+                        *empty = Some(def);
+                        Ok(())
+                    }
+                }
             }
         }
     }
@@ -811,7 +821,7 @@ impl Context {
     ) -> TypecheckResult<()> {
         let span = method_def.decl.span().clone();
         self
-            .method_impl_entry(
+            .insert_method_impl_def(
                 owning_ty_name.clone(),
                 self_ty.clone(),
                 method_def
@@ -829,7 +839,7 @@ impl Context {
         for_ty: &Type,
         method: &Ident,
     ) -> Option<&FunctionDef> {
-        let impls = self.iface_impls.get(iface)?;
+        let impls = self.method_defs.get(iface)?;
 
         let impls_for_ty = impls.get(for_ty)?;
 
@@ -857,14 +867,15 @@ impl Context {
         DeclPred: Fn(&Decl) -> DefDeclMatch,
         MapUnexpected: Fn(IdentPath, Named) -> NameError,
     {
-        let full_name = IdentPath::new(name.clone(), self.scopes.current_path().keys().cloned());
+        let full_name = IdentPath::new(
+            name.clone(), 
+            self.scopes.current_path().keys().cloned()
+        );
 
         match self.scopes.current_path().find(&name) {
             None => {
                 return Err(TypecheckError::NameError {
-                    err: NameError::NotFound {
-                        ident: IdentPath::from(name.clone()),
-                    },
+                    err: NameError::not_found(name.clone()),
                     span: def.ident().span().clone(),
                 });
             }
@@ -986,7 +997,7 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound { ident: name.clone() }),
+            None => Err(NameError::not_found(name.clone()))
         }
     }
 
@@ -994,9 +1005,9 @@ impl Context {
         self.defs.get(name)
     }
 
-    pub fn find_struct_def(&self, name: &IdentPath) -> NameResult<Rc<StructDef>> {
+    pub fn find_struct_def(&self, name: &IdentPath) -> NameResult<&Rc<StructDef>> {
         match self.defs.get(name) {
-            Some(Def::Class(class_def)) => Ok(class_def.clone()),
+            Some(Def::Class(class_def)) => Ok(class_def),
 
             Some(..) => {
                 let decl = self.find_path(&name);
@@ -1014,7 +1025,7 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound { ident: name.clone() }),
+            None => Err(NameError::not_found(name.clone())),
         }
     }
 
@@ -1028,7 +1039,7 @@ impl Context {
                 let instance_def = specialize_struct_def(base_def.as_ref(), type_args, self)?;
                 Rc::new(instance_def)
             }
-            None => base_def,
+            None => base_def.clone(),
         };
 
         Ok(instance_def)
@@ -1054,7 +1065,7 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound { ident: name.clone() }),
+            None => Err(NameError::not_found(name.clone())),
         }
     }
 
@@ -1107,13 +1118,15 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound { ident: name.clone() }),
+            None => {
+                Err(NameError::not_found(name.clone()))
+            },
         }
     }
 
-    pub fn find_iface_def(&self, name: &IdentPath) -> NameResult<Rc<InterfaceDecl>> {
+    pub fn find_iface_def(&self, name: &IdentPath) -> NameResult<&Rc<InterfaceDecl>> {
         match self.defs.get(name) {
-            Some(Def::Interface(iface_def)) => Ok(iface_def.clone()),
+            Some(Def::Interface(iface_def)) => Ok(iface_def),
 
             Some(..) => {
                 let decl = self.find_path(&name);
@@ -1131,7 +1144,7 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound { ident: name.clone() }),
+            None => Err(NameError::not_found(name.clone())),
         }
     }
     
@@ -1149,7 +1162,7 @@ impl Context {
                 None => false,
             },
 
-            _ => match self.iface_impls.get(iface_name) {
+            _ => match self.method_defs.get(iface_name) {
                 None => false,
                 Some(impls) => impls.contains_key(self_ty),
             },
@@ -1171,7 +1184,7 @@ impl Context {
 
             _ => {
                 let mut result = Vec::new();
-                for (iface_id, iface_impl) in &self.iface_impls {
+                for (iface_id, iface_impl) in &self.method_defs {
                     if iface_impl.contains_key(self_ty) {
                         result.push(iface_id.clone());
                     }
@@ -1213,6 +1226,13 @@ impl Context {
             None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
+    
+    pub fn get_primitive_methods(
+        &self, 
+        primitive: Primitive
+    ) -> &LinkedHashMap<Ident, FunctionDecl> {
+        &self.primitive_methods[&primitive]
+    }
 
     pub fn find_instance_member<'ty, 'ctx: 'ty>(
         &'ctx self,
@@ -1229,7 +1249,7 @@ impl Context {
 
             // unambiguous method
             (None, 1) => match matching_methods.last().unwrap() {
-                ufcs::InstanceMethod::Method { iface_ty, decl } => Ok(InstanceMember::Method {
+                ufcs::InstanceMethod::Method { owning_ty: iface_ty, decl } => Ok(InstanceMember::Method {
                     iface_ty: iface_ty.clone(),
                     method: decl.name.ident.clone(),
                 }),
@@ -1491,7 +1511,7 @@ fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident
     methods
         .iter()
         .map(|im| match im {
-            ufcs::InstanceMethod::Method { iface_ty, decl } => {
+            ufcs::InstanceMethod::Method { owning_ty: iface_ty, decl } => {
                 (iface_ty.clone(), decl.name.ident.clone())
             }
 

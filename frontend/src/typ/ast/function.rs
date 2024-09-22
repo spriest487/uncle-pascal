@@ -99,22 +99,34 @@ impl fmt::Display for TypedFunctionName {
 
 pub fn typecheck_func_decl(
     decl: &ast::FunctionDecl<Span>,
+    is_def: bool,
     ctx: &mut Context,
 ) -> TypecheckResult<FunctionDecl> {
     ctx.scope(Environment::FunctionDecl, |ctx| {
-        if let Some(extern_mod) = decl.get_mod(DeclMod::EXTERNAL_WORD) {
-            if let Some(decl_type_params) = &decl.type_params {
-                let ty_args_span = decl_type_params.items[0].name.span().to(decl_type_params
-                    .items
-                    .last()
-                    .unwrap()
-                    .name
-                    .span());
-                return Err(TypecheckError::ExternalGenericFunction {
-                    func: decl.name.ident.clone(),
-                    extern_modifier: extern_mod.span().clone(),
-                    ty_args: ty_args_span,
-                });
+        let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
+
+        if is_def {
+            if !decl.mods.is_empty() {
+                return Err(TypecheckError::InvalidMethodModifiers {
+                    mods: decl_mods,
+                    span: decl.span.clone(),
+                })
+            }
+        } else {
+            if let Some(extern_mod) = decl.get_mod(DeclMod::EXTERNAL_WORD) {
+                if let Some(decl_type_params) = &decl.type_params {
+                    let ty_args_span = decl_type_params.items[0].name.span().to(decl_type_params
+                        .items
+                        .last()
+                        .unwrap()
+                        .name
+                        .span());
+                    return Err(TypecheckError::ExternalGenericFunction {
+                        func: decl.name.ident.clone(),
+                        extern_modifier: extern_mod.span().clone(),
+                        ty_args: ty_args_span,
+                    });
+                }
             }
         }
 
@@ -126,7 +138,6 @@ pub fn typecheck_func_decl(
             },
             None => None,
         };
-
 
         let return_ty = match &decl.return_ty {
             Some(ty_name) => typecheck_type(ty_name, ctx)?.clone(),
@@ -185,9 +196,10 @@ pub fn typecheck_func_decl(
                                 &decl.name.ident,
                                 &method_sig,
                                 ctx,
-                                explicit_ty_span,
                                 decl.span(),
-                            )?;
+                            ).map_err(|err| {
+                                TypecheckError::from_name_err(err, decl.span.clone())
+                            })?;
                         }
                         
                         None => {
@@ -224,8 +236,6 @@ pub fn typecheck_func_decl(
                 });
             }
         };
-
-        let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
         Ok(FunctionDecl {
             name: TypedFunctionName {
@@ -312,31 +322,29 @@ fn validate_method(
     method_ident: &Ident,
     method_sig: &FunctionSig,
     ctx: &Context,
-    span: &Span,
     def_span: &Span,
-) -> TypecheckResult<()> {
-    let method_path = owning_ty_name
-        .clone()
-        .child(method_ident.clone());
+) -> NameResult<()> {
+    let (_, owning_ty) = ctx.find_type(owning_ty_name)?;
 
-    let (decl_path, method_decl_sig) =  ctx
-        .find_function(&method_path)
-        .map_err(|err| {
-            eprintln!("{}", ctx.root_scope().to_debug_string().unwrap());
-            TypecheckError::from_name_err(err, span.clone())
-        })?;
-    
-    if *method_sig != *method_decl_sig {
-        let mismatch = NameError::DefDeclMismatch {
-            def: def_span.clone(),
-            decl: decl_path.path_span(),
-            ident: method_path,
-        };
+    match owning_ty.get_method(method_ident, ctx)? {
+        None => Err(NameError::MemberNotFound {
+            base: NameContainer::Type(owning_ty.clone()),
+            member: method_ident.clone(),
+        }),
+        Some(method_decl) => {
+            let method_decl_sig = FunctionSig::of_decl(method_decl);
 
-        return Err(TypecheckError::from_name_err(mismatch, span.clone()));
+            if *method_sig != method_decl_sig {
+                Err(NameError::DefDeclMismatch {
+                    def: def_span.clone(),
+                    decl: method_decl.span.clone(),
+                    ident: owning_ty_name.clone().child(method_ident.clone()),
+                })
+            } else {
+                Ok(())
+            }
+        }
     }
-
-    Ok(())
 }
 
 fn typecheck_decl_mods(
@@ -381,7 +389,7 @@ struct InterfaceImpl {
 }
 
 fn find_iface_impl(
-    iface_def: Rc<InterfaceDecl>,
+    iface_def: &InterfaceDecl,
     method_ident: &Ident,
     sig: &FunctionSig,
 ) -> NameResult<InterfaceImpl> {
@@ -416,8 +424,8 @@ pub fn typecheck_func_def(
     def: &ast::FunctionDef<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<FunctionDef> {
-    let decl = typecheck_func_decl(&def.decl, ctx)?;
-    
+    let decl = typecheck_func_decl(&def.decl, true, ctx)?;
+
     let body_env = FunctionBodyEnvironment {
         result_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
         ty_params: decl.type_params.clone(),

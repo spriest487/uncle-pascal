@@ -439,8 +439,46 @@ impl Type {
             _ => false,
         }
     }
+    
+    pub fn methods<'c>(&self, ctx: &'c Context) -> NameResult<Vec<&'c FunctionDecl>> {
+        match self {
+            Type::Interface(iface) => {
+                let iface_def = ctx.find_iface_def(iface)?;
+                let methods = iface_def
+                    .methods
+                    .iter()
+                    .map(|m| &m.decl)
+                    .collect();
+                
+                Ok(methods)
+            },
 
-    pub fn get_method(&self, method: &Ident, ctx: &Context) -> NameResult<Option<FunctionDecl>> {
+            Type::Record(name) | Type::Class(name) => {
+                let struct_def = ctx.find_struct_def(&name.qualified)?;
+                let methods = struct_def.methods().collect();
+
+                Ok(methods)
+            }
+
+            Type::Primitive(primitive) => {
+                let methods = ctx
+                    .get_primitive_methods(*primitive)
+                    .values()
+                    .collect();
+
+                Ok(methods)
+            }
+
+            Type::GenericParam(param) => match &param.is_iface {
+                Some(is_iface) => is_iface.methods(ctx),
+                None => Ok(Vec::new()),
+            }
+
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    pub fn get_method<'c>(&self, method: &Ident, ctx: &'c Context) -> NameResult<Option<&'c FunctionDecl>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
@@ -448,10 +486,29 @@ impl Type {
                     .methods
                     .iter()
                     .find(|m| *m.ident() == *method)
-                    .map(|m| m.decl.clone());
+                    .map(|m| &m.decl);
 
                 Ok(method_decl)
             },
+
+            Type::Record(name) | Type::Class(name) => {
+                let struct_def = ctx.find_struct_def(&name.qualified)?;
+                let method = struct_def.find_method(method);
+                
+                Ok(method)
+            }
+            
+            Type::Primitive(primitive) => {
+                let methods = ctx.get_primitive_methods(*primitive);
+                let method = methods.get(method);
+
+                Ok(method)
+            }
+            
+            Type::GenericParam(param) => match &param.is_iface {
+                Some(is_iface) => is_iface.get_method(method, ctx),
+                None => Ok(None),
+            }
 
             _ => Ok(None),
         }

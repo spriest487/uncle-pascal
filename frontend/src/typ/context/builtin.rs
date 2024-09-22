@@ -1,4 +1,3 @@
-use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::StructKind;
@@ -14,7 +13,9 @@ use crate::typ::Type;
 use crate::typ::TypecheckResult;
 use common::span::*;
 use std::rc::Rc;
-use crate::typ::ast::SELF_PARAM_NAME;
+use linked_hash_map::LinkedHashMap;
+use crate::Ident;
+use crate::typ::ast::{FunctionDecl, SELF_PARAM_NAME};
 
 pub const SYSTEM_UNIT_NAME: &str = "System";
 pub const NOTHING_TYPE_NAME: &str = "Nothing";
@@ -236,28 +237,33 @@ pub fn declare_builtin_ty(
     ty: Type,
     comparable: bool,
     displayable: bool
-) -> TypecheckResult<()> {
+) -> TypecheckResult<LinkedHashMap<Ident, FunctionDecl>> {
     let builtin_span = builtin_span();
     
     let ident = Ident::new(name, builtin_span.clone());
     ctx.declare_type(ident, ty.clone(), Visibility::Interface)?;
+    
 
     let type_env = Environment::TypeDecl { ty: ty.clone() };
     ctx.scope(type_env, |ctx| {
+        let mut methods = LinkedHashMap::new();
+        
         if displayable {
             let display_method = builtin_displayable_display_method(ty.clone(), ty.clone());
             ctx.declare_function(display_method.name.ident.clone(), &display_method, Visibility::Interface)?;
+
+            methods.insert(display_method.name.ident.clone(), display_method);
         }
 
         if comparable {
             let compare_method = builtin_comparable_compare_method(ty.clone(), ty.clone());
             ctx.declare_function(compare_method.name.ident.clone(), &compare_method, Visibility::Interface)?;
+
+            methods.insert(compare_method.name.ident.clone(), compare_method);
         }
 
-        Ok(())
-    })?;
-
-    Ok(())
+        Ok(methods)
+    })
 }
 
 // builtin types are OK to redeclare in System.pas

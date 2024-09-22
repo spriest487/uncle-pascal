@@ -233,6 +233,12 @@ pub enum NameError {
     GenericError(GenericError),
 }
 
+impl NameError {
+    pub fn not_found(name: impl Into<IdentPath>) -> Self {
+        NameError::NotFound { ident: name.into() }
+    }
+}
+
 impl From<GenericError> for NameError {
     fn from(err: GenericError) -> Self {
         NameError::GenericError(err)

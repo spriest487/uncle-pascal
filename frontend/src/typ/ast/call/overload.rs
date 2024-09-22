@@ -41,7 +41,7 @@ pub enum OverloadCandidate {
 impl OverloadCandidate {
     pub fn from_instance_method(im: InstanceMethod) -> Self {
         match im {
-            InstanceMethod::Method { iface_ty, decl } => OverloadCandidate::Method {
+            InstanceMethod::Method { owning_ty: iface_ty, decl } => OverloadCandidate::Method {
                 iface_ty,
                 ident: decl.name.ident().clone(),
                 sig: Rc::new(FunctionSig::of_decl(&decl)),

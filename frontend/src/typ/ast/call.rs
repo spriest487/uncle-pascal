@@ -219,8 +219,8 @@ pub fn typecheck_call(
                 .map(Invocation::Call)?
         },
 
-        Typed::InterfaceMethod(iface_method) => {
-            typecheck_iface_method_call(iface_method, func_call, self_arg, ctx)
+        Typed::Method(iface_method) => {
+            typecheck_method_call(iface_method, func_call, self_arg, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
@@ -364,7 +364,7 @@ fn typecheck_func_overload(
 ///     the `a` reference is the self-arg, but isn't part of the argument list `()` of the outer
 ///     call expression, so needs to be provided separately
 /// * `ctx` - current typechecking context
-fn typecheck_iface_method_call(
+fn typecheck_method_call(
     iface_method: &MethodTyped,
     func_call: &ast::FunctionCall<Span>,
     with_self_arg: Option<Expr>,

@@ -99,9 +99,7 @@ fn typecheck_unit_uses_decl(use_item: &ast::UseDeclItem, ctx: &mut Context) -> T
         // path does not exist
         None => {
             return Err(TypecheckError::from_name_err(
-                NameError::NotFound {
-                    ident: use_item.ident.clone(),
-                },
+                NameError::not_found(use_item.ident.clone()),
                 use_item.ident.path_span(),
             ));
         },
@@ -173,7 +171,7 @@ fn typecheck_unit_func_def(
             }
         }
 
-        None => {
+        _ => {
             let func_name_path = IdentPath::from(func_name.ident.clone());
             if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name_path) {
                 let func_decl = &func_decl;
@@ -193,7 +191,7 @@ fn typecheck_unit_func_decl(
     ctx: &mut Context,
 ) -> TypecheckResult<UnitDecl> {
     let name = func_decl.name.clone();
-    let func_decl = typecheck_func_decl(func_decl, ctx)?;
+    let func_decl = typecheck_func_decl(func_decl, false, ctx)?;
 
     assert!(
         func_decl.name.owning_ty.is_none(),

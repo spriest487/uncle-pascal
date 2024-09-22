@@ -471,7 +471,7 @@ fn typecheck_member_of(
                     Ok(Expr::from(call))
                 },
 
-                Typed::InterfaceMethod(method) if method.should_call_noargs_in_expr(expect_ty, &lhs_ty) => {
+                Typed::Method(method) if method.should_call_noargs_in_expr(expect_ty, &lhs_ty) => {
                     let sig = method.method_sig.clone();
                     let self_arg = member_op.lhs.clone();
                     let call = Call::MethodNoArgs(sig.new_no_args_method_call(Expr::from(member_op), self_arg));
@@ -628,74 +628,18 @@ pub fn typecheck_member_value(
 
     let annotation = match member {
         InstanceMember::Method { iface_ty, method } => {
-            let iface_id = match &iface_ty {
-                Type::Interface(iface_id) => iface_id,
-                _ => unimplemented!("non-interface interface types"),
-            };
+            let method_decl = iface_ty
+                .get_method(&method, ctx)
+                .ok()
+                .flatten()
+                .expect("find_instance_member should only return methods that exist");
 
-            // if it's being called through an interface, it's a virtual call
-            let method = if base_ty.as_iface().is_ok() {
-                // calling the virtual method
-                let iface_decl = ctx
-                    .find_iface_def(iface_id)
-                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
-
-                let method_decl = iface_decl
-                    .get_method(&method)
-                    .expect("method must exist, it was found by find_instance_member");
-
-                let iface_ty = Type::Interface(iface_id.clone());
-
-                OverloadTyped::method(
-                    iface_ty,
-                    lhs.clone(),
-                    method_decl.decl.clone(),
-                    span.clone(),
-                )
-            } else {
-                let method_decl = match base_ty {
-                    Type::GenericParam(type_param_ty) => {
-                        match &type_param_ty.is_iface {
-                            None => None,
-                            Some(is_iface) => {
-                                // the implementor type is generic - so unknown during typechecking
-                                // get the declared method from the interface. we'll have to look up
-                                // which implementation to call during codegen
-                                let iface_ident = is_iface
-                                    .as_iface()
-                                    .expect("type constraint must be an interface");
-                                let method_iface =
-                                    ctx.find_iface_def(iface_ident).map_err(|err| {
-                                        TypecheckError::from_name_err(err, span.clone())
-                                    })?;
-
-                                method_iface.get_method(&method).map(|m| m.decl.clone())
-                            },
-                        }
-                    },
-
-                    _ => ctx
-                        .find_method_impl_def(iface_id, base_ty, &method)
-                        .map(|def| &def.decl)
-                        .cloned(),
-                };
-
-                match method_decl {
-                    Some(method_decl) => {
-                        OverloadTyped::method(iface_ty, lhs.clone(), method_decl, span.clone())
-                    },
-
-                    None => {
-                        return Err(TypecheckError::from_name_err(
-                            NameError::MemberNotFound {
-                                base: NameContainer::Type(base_ty.clone()),
-                                member: method,
-                            },
-                            span,
-                        ))
-                    },
-                }
-            };
+            let method = OverloadTyped::method(
+                iface_ty,
+                lhs.clone(),
+                method_decl.clone(),
+                span.clone(),
+            );
 
             Typed::from(method)
         },
