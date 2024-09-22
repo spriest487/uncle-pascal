@@ -237,29 +237,28 @@ impl ModuleBuilder {
         type_args: Option<typ::TypeList>,
     ) -> FunctionInstance {
         if method_key.self_ty.is_generic_param() {
-            panic!("instantiate_method: method ({} of {}) must not have a generic self-type ({})", method_key.method, method_key.instance_ty, method_key.self_ty);
+            panic!(
+                "instantiate_method: method ({} of {}) must not have a generic self-type ({})", 
+                method_key.method, 
+                method_key.owning_ty, 
+                method_key.self_ty
+            );
         }
 
         let method_name = method_key.method.to_string();
-
-        let iface_def = match self.src_metadata.find_iface_def(&method_key.instance_ty) {
-            Ok(def) => def.clone(),
-            Err(..) => panic!("missing interface def {}", method_key.instance_ty),
-        };
-
-        let iface_id = match self.find_iface_decl(&iface_def.name.qualified) {
-            Some(iface_id) => iface_id,
-            None => {
-                let mut builder = Builder::new(self);
-                let iface_meta = builder.translate_iface(&iface_def);
-                self.module.metadata.define_iface(iface_meta)
-            },
-        };
+        
+        let iface_ty = self.src_metadata
+            .find_type(&method_key.owning_ty)
+            .map(|(_, ty)| ty.clone())
+            .unwrap_or_else(|_| panic!(
+                "failed to get interface type {} referenced in metadata", 
+                method_key.owning_ty
+            ));
 
         let method_def = self
             .src_metadata
             .find_method_impl_def(
-                &iface_def.name.qualified,
+                &method_key.owning_ty,
                 &method_key.self_ty,
                 &method_key.method,
             )
@@ -269,7 +268,7 @@ impl ModuleBuilder {
                 // has been defined somewhere
                 panic!(
                     "missing method def: {}.{} for {}",
-                    iface_def.name.qualified, method_key.method, method_key.self_ty,
+                    iface_ty, method_key.method, method_key.self_ty,
                 )
             });
 
@@ -278,13 +277,30 @@ impl ModuleBuilder {
         // being generated here is the self-type, which we already specialized
         let specialized_decl = method_def.decl.clone();
 
-        let ns = method_key.instance_ty.clone();
+        let ns = method_key.owning_ty.clone();
         let id = self.declare_func(&specialized_decl, ns, type_args.as_ref());
 
         let self_ty = self.find_type(&method_key.self_ty);
-
-        self.module.metadata
-            .impl_method(iface_id, self_ty, method_name, id);
+        
+        if let typ::Type::Interface(iface_ty_name) = &iface_ty {
+            let iface_id = self
+                .find_iface_decl(iface_ty_name)
+                .unwrap_or_else(|| {
+                    let src_iface_def = self.src_metadata
+                        .find_iface_def(iface_ty_name)
+                        .cloned()
+                        .unwrap_or_else(|_err| panic!(
+                            "failed to get interface def {} referenced in metadata",
+                            iface_ty_name,
+                        ));
+                    
+                    let mut builder = Builder::new(self);
+                    let iface_meta = builder.translate_iface(&src_iface_def);
+                    self.module.metadata.define_iface(iface_meta)
+                });
+            
+            self.module.metadata.impl_method(iface_id, self_ty, method_name, id);
+        }
 
         // cache the function before translating the instantiation, because
         // it may recurse and instantiate itself in its own body
@@ -334,7 +350,7 @@ impl ModuleBuilder {
 
         let key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
-                instance_ty: iface,
+                owning_ty: iface,
                 method,
                 self_ty,
             }),
@@ -427,17 +443,23 @@ impl ModuleBuilder {
                 let ifaces = self.src_metadata.implemented_ifaces(&real_ty);
 
                 for iface in &ifaces {
-                    let iface_def = self.src_metadata
-                        .find_iface_def(iface)
+                    let (_, iface_ty) = self.src_metadata
+                        .find_type(iface)
+                        .unwrap_or_else(|_| panic!("interface type {} was missing!", iface));
+                    
+                    let iface_methods: Vec<_> = iface_ty
+                        .methods(&self.src_metadata)
+                        .unwrap()
+                        .into_iter()
                         .cloned()
-                        .unwrap();
+                        .collect();
 
-                    for method in &iface_def.methods {
+                    for method in iface_methods {
                         let cache_key = FunctionDefKey {
                             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                                 self_ty: real_ty.clone(),
-                                method: method.ident().clone(),
-                                instance_ty: iface.clone(),
+                                method: method.name.ident.clone(),
+                                owning_ty: iface.clone(),
                             }),
                             type_args: None,
                         };
@@ -993,7 +1015,7 @@ impl FunctionDeclKey {
 
             FunctionDeclKey::Method(key) => {
                 let name = key.method.clone();
-                let iface_name = key.instance_ty.iter().cloned();
+                let iface_name = key.owning_ty.iter().cloned();
 
                 IdentPath::new(name, iface_name)
             },
@@ -1003,7 +1025,7 @@ impl FunctionDeclKey {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct MethodDeclKey {
-    pub instance_ty: IdentPath,
+    pub owning_ty: IdentPath,
     pub self_ty: typ::Type,
     pub method: Ident,
 }

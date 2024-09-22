@@ -16,7 +16,7 @@ use crate::typ::ast::Literal;
 use crate::typ::ast::Field;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
-use crate::typ::context;
+use crate::typ::{builtin_span, context, SYSTEM_UNIT_NAME};
 use crate::typ::result::*;
 use crate::typ::Context;
 use crate::typ::GenericError;
@@ -95,14 +95,18 @@ impl Type {
     
     pub fn full_path(&self) -> Option<IdentPath> {
         fn builtin_path(name: &str) -> IdentPath {
-            let builtin_span = Span::zero("<builtin>");
-            IdentPath::new(Ident::new(name, builtin_span), vec![])
+            let builtin_span = builtin_span();
+
+            IdentPath::new(
+                Ident::new(name, builtin_span.clone()), 
+                vec![Ident::new(SYSTEM_UNIT_NAME, builtin_span)]
+            )
         }
 
         match self {
             Type::Nothing => Some(builtin_path("Nothing")),
             Type::Any => Some(builtin_path("Any")),
-            Type::MethodSelf => Some(builtin_path("Self")),
+            Type::MethodSelf => Some(IdentPath::from(Ident::new("Self", builtin_span()))),
             Type::Primitive(p) => Some(builtin_path(p.name())),
             Type::Interface(iface) => Some((**iface).clone()),
             Type::Record(class) | Type::Class(class) => Some(class.qualified.clone()),

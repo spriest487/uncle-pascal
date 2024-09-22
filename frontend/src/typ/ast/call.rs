@@ -405,15 +405,13 @@ fn typecheck_method_call(
         }
     };
 
-    let iface_ident = match iface_method.iface_ty.as_iface() {
-        Ok(iface_ident) => iface_ident,
-        Err(not_iface) => panic!(
-            "expect all method-defining types to be interfaces currently, found: {}",
-            not_iface
-        ),
-    };
+    let iface_ident = iface_method.iface_ty.full_path()
+        .unwrap_or_else(|| panic!(
+            "expect all method-defining types to be named types, found: {}", 
+            iface_method.iface_ty
+        ));
 
-    if !ctx.is_iface_callable(&self_type, iface_ident) {
+    if !ctx.is_iface_callable(&self_type, &iface_ident) {
         return Err(TypecheckError::InterfaceNotImplemented {
             iface_ty: iface_method.iface_ty.clone(),
             span: func_call.span().clone(),
