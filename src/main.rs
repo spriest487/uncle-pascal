@@ -400,8 +400,9 @@ fn main() {
     let print_bt = args.backtrace;
 
     if let Err(err) = compile(&args).and_then(|output| handle_output(output, &args)) {
-        if report_err(&err, Severity::Error).is_err() {
+        if let Err(output_err) = report_err(&err, Severity::Error) {
             eprintln!("error: {}", err);
+            eprintln!("error reporting output: {}", output_err);
         }
 
         if print_bt {
