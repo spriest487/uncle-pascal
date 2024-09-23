@@ -52,17 +52,6 @@ pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<Inst
                 }));
         }
 
-        // todo these should be considered iface impls but that system is about to be removed anyway
-        Type::Primitive(primitive) => {
-            methods.extend(ctx
-                .get_primitive_methods(*primitive)
-                .values()
-                .map(|decl| InstanceMethod::Method {
-                    owning_ty: Type::Primitive(*primitive),
-                    decl: decl.clone()
-                }));
-        }
-
         Type::GenericParam(generic_param_ty) => {
             if let Some(is_iface) = &generic_param_ty.is_iface {
                 let mut iface_methods = &mut find_instance_methods_of(is_iface, ctx)?;

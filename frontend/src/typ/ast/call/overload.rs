@@ -204,7 +204,8 @@ pub fn resolve_overload(
 
         // ran out of candidates or arguments, couldn't resolve a single sig
         if arg_index >= arg_count || valid_candidates.len() == 0 {
-            //            println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
+            // println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
+            // dbg!(&candidates);
 
             break Err(TypecheckError::AmbiguousFunction {
                 candidates: candidates.to_vec(),
@@ -212,7 +213,7 @@ pub fn resolve_overload(
             });
         }
 
-        //        println!("matching {} (arg {}/{}), {} candidates remain)", args[arg_index], arg_index + 1, arg_count, valid_candidates.len());
+        // println!("matching {} (arg {}/{}), {} candidates remain)", args[arg_index], arg_index + 1, arg_count, valid_candidates.len());
 
         let arg = typecheck_expr(&args[arg_index], &Type::Nothing, ctx)?;
         let arg_span = args[arg_index].span();

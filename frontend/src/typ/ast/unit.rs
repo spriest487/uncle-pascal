@@ -171,7 +171,7 @@ fn typecheck_unit_func_def(
             }
         }
 
-        _ => {
+        None => {
             let func_name_path = IdentPath::from(func_name.ident.clone());
             if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name_path) {
                 let func_decl = &func_decl;

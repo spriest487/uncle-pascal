@@ -1241,17 +1241,22 @@ impl Context {
         let data_member = of_ty.find_data_member(member, self)?;
 
         let methods = ufcs::find_instance_methods_of(of_ty, self)?;
-        let matching_methods: Vec<_> = methods.iter().filter(|m| *m.ident() == *member).collect();
+        let matching_methods: Vec<_> = methods
+            .iter()
+            .filter(|m| *m.ident() == *member)
+            .collect();
 
         match (data_member, matching_methods.len()) {
             (Some(data_member), 0) => Ok(InstanceMember::Data { ty: data_member.ty }),
 
             // unambiguous method
             (None, 1) => match matching_methods.last().unwrap() {
-                ufcs::InstanceMethod::Method { owning_ty: iface_ty, decl } => Ok(InstanceMember::Method {
-                    iface_ty: iface_ty.clone(),
-                    method: decl.name.ident.clone(),
-                }),
+                ufcs::InstanceMethod::Method { owning_ty: iface_ty, decl } => {
+                    Ok(InstanceMember::Method {
+                        iface_ty: iface_ty.clone(),
+                        method: decl.name.ident.clone(),
+                    })
+                },
 
                 ufcs::InstanceMethod::FreeFunction { func_name, sig } => {
                     Ok(InstanceMember::UFCSCall {

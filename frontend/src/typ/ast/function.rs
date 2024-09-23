@@ -485,12 +485,14 @@ pub fn typecheck_func_def(
             });
         }
     
-        // functions are always declared within their own bodies (allowing recursive calls)
-        // but forward-declared functions may already be present in the scope - in which case we
-        // don't need to declare it again
-        let find_existing_decl = ctx.find_function(&IdentPath::from(decl.name.ident().clone()));
-        if find_existing_decl.is_err() {
-            ctx.declare_function(decl.name.ident().clone(), &decl, Visibility::Implementation)?;
+        if decl.name.owning_ty.is_none() {
+            // functions are always declared within their own bodies (allowing recursive calls)
+            // but forward-declared functions may already be present in the scope - in which case we
+            // don't need to declare it again
+            let find_existing_decl = ctx.find_function(&IdentPath::from(decl.name.ident().clone()));
+            if find_existing_decl.is_err() {
+                ctx.declare_function(decl.name.ident().clone(), &decl, Visibility::Implementation)?;
+            }
         }
     
         // declare decl's type params within the body too

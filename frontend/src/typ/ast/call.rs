@@ -268,7 +268,7 @@ fn typecheck_func_overload(
     target: &Expr,
     overloaded: &OverloadTyped,
 ) -> TypecheckResult<Call> {
-    let overload = overload::resolve_overload(
+    let overload = resolve_overload(
         &overloaded.candidates,
         &func_call.args,
         overloaded.self_arg.as_ref().map(|arg| arg.as_ref()),
