@@ -136,8 +136,9 @@ impl<'m> Builder<'m> {
         iface: IdentPath,
         method: Ident,
         self_ty: typ::Type,
+        type_args: Option<typ::TypeList>
     ) -> FunctionInstance {
-        self.module.translate_method_impl(iface, method, self_ty, self.type_args.clone())
+        self.module.translate_method_impl(iface, method, self_ty, type_args)
     }
 
     pub fn translate_func(

@@ -227,22 +227,17 @@ fn build_func_call(
 }
 
 fn build_method_call(
-    iface_ty: &typ::Type,
+    owning_ty: &typ::Type,
     method_ident: &Ident,
     method_sig: &typ::FunctionSig,
     self_ty: &typ::Type,
     args: &[typ::ast::Expr],
     ty_args: Option<&typ::TypeList>,
     builder: &mut Builder,
-) -> Option<Ref> {
-    if ty_args.is_some() {
-        unimplemented!("method call with type args")
-    }
-
-    let iface = match iface_ty.as_iface() {
-        Some(iface) => iface.clone(),
-        None => unreachable!("can't have non-interface interface types in method calls (trying to call method on {})", iface_ty),
-    };
+) -> Option<Ref> {    
+    let owning_ty_name = owning_ty
+        .full_path()
+        .unwrap_or_else(|| panic!("can't have unnamed owning types in method calls (trying to call method {} on {})",method_ident, owning_ty));
 
     let actual_self_ty = match builder.type_args() {
         Some(builder_type_args) => self_ty.clone().substitute_type_args(builder_type_args),
@@ -252,16 +247,26 @@ fn build_method_call(
     let self_ir_ty = builder.translate_type(&actual_self_ty);
 
     let call_target = match &self_ir_ty {
-        Type::RcPointer(VirtualTypeID::Interface(iface_id)) => CallTarget::Virtual {
-            iface_id: *iface_id,
-            method: method_ident.to_string(),
+        Type::RcPointer(VirtualTypeID::Interface(iface_id)) => {
+            if ty_args.is_some() {
+                unimplemented!("virtual call with type args")
+            }
+
+            CallTarget::Virtual {
+                iface_id: *iface_id,
+                method: method_ident.to_string(),
+            }
         },
 
         _ => {
             //            println!("translating method {}::{} of {}", iface, method_call.ident, method_call.self_type);
 
-            let method_decl =
-                builder.translate_method_impl(iface, method_ident.clone(), self_ty.clone());
+            let method_decl = builder.translate_method_impl(
+                owning_ty_name,
+                method_ident.clone(),
+                self_ty.clone(),
+                ty_args.cloned(),
+            );
 
             let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
 

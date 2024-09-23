@@ -19,4 +19,6 @@ begin
 end;
 
 initialization
+    var greeting := Greeting(message: 'Hello, world!');
+    greeting.Print();
 end
