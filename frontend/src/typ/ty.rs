@@ -93,6 +93,7 @@ impl Type {
         Type::Interface(Box::new(name.into()))
     }
     
+    // todo: this can return Cow
     pub fn full_path(&self) -> Option<IdentPath> {
         fn builtin_path(name: &str) -> IdentPath {
             let builtin_span = builtin_span();
@@ -555,10 +556,10 @@ impl Type {
         }
     }
 
-    pub fn as_iface(&self) -> Result<&IdentPath, &Self> {
+    pub fn as_iface(&self) -> Option<&IdentPath> {
         match self {
-            Type::Interface(iface) => Ok(iface),
-            other => Err(other),
+            Type::Interface(iface) => Some(iface),
+            _ => None,
         }
     }
 

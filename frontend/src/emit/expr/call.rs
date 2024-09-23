@@ -240,8 +240,8 @@ fn build_method_call(
     }
 
     let iface = match iface_ty.as_iface() {
-        Ok(iface) => iface.clone(),
-        Err(bad_ty) => unreachable!("can't have non-interface interface types in method calls (trying to call method on {})", bad_ty),
+        Some(iface) => iface.clone(),
+        None => unreachable!("can't have non-interface interface types in method calls (trying to call method on {})", iface_ty),
     };
 
     let actual_self_ty = match builder.type_args() {

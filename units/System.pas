@@ -40,6 +40,8 @@ function Int64ToStr(i: Int64): String; external 'rt';
 function UInt64ToStr(i: UInt64): String; external 'rt';
 function NativeIntToStr(i: NativeInt): String; external 'rt';
 function NativeUIntToStr(i: NativeUInt): String; external 'rt';
+function RealToStr(value: Real32): String; external 'rt';
+function PointerToStr(value: Pointer): String; external 'rt';
 
 function StrToInt(s: String): Int32; external 'rt';
 
@@ -309,14 +311,98 @@ begin
     Box(value: value)
 end;
 
+function UInt8.Compare(other: UInt8): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function UInt16.Compare(other: UInt16): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function UInt32.Compare(other: UInt32): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function UInt64.Compare(other: UInt64): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function NativeUInt.Compare(other: NativeUInt): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function Int8.Compare(other: Int8): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function Int16.Compare(other: Int16): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function Int32.Compare(other: Int32): Integer;
+begin
+    self - other
+end;
+
+function Int64.Compare(other: Int64): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function NativeInt.Compare(other: NativeInt): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function Pointer.Compare(other: Pointer): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function Real32.Compare(other: Real32): Integer;
+begin
+    if self > other then 1
+    else if self < other then -1
+    else 0
+end;
+
+function Boolean.Compare(other: Boolean): Integer;
+begin
+    if self and not other then 1
+    else if other and not self then -1
+    else 0
+end;
+
 function String.Compare(other: String): Integer;
 begin
     CompareStr(self, other)
-end;
-
-function Integer.Compare(other: Integer): Integer;
-begin
-    self - other
 end;
 
 function Int8.ToString(): String;
@@ -372,6 +458,16 @@ end;
 function Boolean.ToString(): String;
 begin
     if self then 'true' else 'false'
+end;
+
+function Real32.ToString(): String;
+begin
+    RealToStr(self)
+end;
+
+function Pointer.ToString(): String;
+begin
+    PointerToStr(self)
 end;
 
 function String.ToString(): String;

@@ -840,7 +840,6 @@ impl Context {
         method: &Ident,
     ) -> Option<&FunctionDef> {
         let impls = self.method_defs.get(iface)?;
-
         let impls_for_ty = impls.get(for_ty)?;
 
         let method = impls_for_ty.methods.get(method)?.as_ref()?;
@@ -1158,7 +1157,7 @@ impl Context {
     pub fn is_iface_impl(&self, self_ty: &Type, iface_name: &IdentPath) -> bool {
         match self_ty {
             Type::GenericParam(param_ty) => match &param_ty.is_iface {
-                Some(as_iface) => as_iface.as_iface() == Ok(iface_name),
+                Some(as_iface) => as_iface.as_iface() == Some(iface_name),
                 None => false,
             },
 
@@ -1346,7 +1345,7 @@ impl Context {
         }
     }
 
-    pub fn undefined_syms(&self) -> Vec<Ident> {
+    pub fn undefined_syms(&self) -> Vec<IdentPath> {
         let mut syms = Vec::new();
 
         let current_path = self.scopes.current_path();
@@ -1355,25 +1354,73 @@ impl Context {
         for i in (0..current_scopes.len()).rev() {
             let scope = current_scopes[i];
 
-            let current_scope_ns = IdentPath::from_parts(current_scopes[0..=i].iter()
+            let current_scope_ns = IdentPath::from_parts(current_scopes[0..=i]
+                .iter()
                 .flat_map(|s| s.key())
                 .cloned());
 
+            // only functions and methods can possibly be undefined
             for (ident, decl) in scope.members() {
-                // only functions can possibly be undefined
-                if let ScopeMember::Decl(Decl::Function { .. }) = decl {
-                    let decl_path = current_scope_ns.clone()
-                        .child(ident.clone());
+                match decl {
+                    // all types except interfaces must define any methods they declare
+                    ScopeMember::Decl(Decl::Type { ty, .. }) => {
+                        syms.append(&mut self.undefined_ty_members(ty));
+                    },
+                    
+                    ScopeMember::Decl(Decl::Function { .. }) => {
+                        let decl_path = current_scope_ns
+                            .clone()
+                            .child(ident.clone());
 
-                    if self.defs.get(&decl_path).is_none() {
-                        // eprintln!("undefined: {}", decl_path);
-                        syms.push(ident.clone());
+                        if self.defs.get(&decl_path).is_none() {
+                            // eprintln!("undefined: {}", decl_path);
+                            syms.push(decl_path);
+                        }
                     }
+                    
+                    _ => {}
                 }
             }
         }
 
         syms
+    }
+    
+    fn undefined_ty_members(self: &Context, ty: &Type) -> Vec<IdentPath> {
+        if ty.as_iface().is_some() {
+            return Vec::new();
+        }
+        
+        let ty_name = match ty.full_path() {
+            Some(path) => path,
+            None => return Vec::new(),
+        };
+        
+        let ty_method_defs = self.method_defs.get(&ty_name);
+        
+        let ty_methods = ty.methods(self)
+            .expect("illegal state: undefined_ty_members failed to get methods from type");
+        
+        let mut missing = Vec::new();
+
+        for method in ty_methods {
+            // don't need to check the sigs again, they wouldn't be added
+            // if they didn't match
+            let has_def = ty_method_defs
+                .and_then(|impls| impls.get(ty))
+                .and_then(|own_impl| {
+                    own_impl.methods
+                        .get(&method.name.ident)
+                        .map(|def| def.is_some())
+                })
+                .unwrap_or(false);
+                
+            if !has_def {
+                missing.push(ty_name.clone().child(method.name.ident.clone()));
+            }
+        }
+        
+        missing
     }
 
     /// Mark a local decl as initialized.

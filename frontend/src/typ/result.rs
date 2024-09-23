@@ -123,7 +123,7 @@ pub enum TypecheckError {
     },
     UndefinedSymbols {
         unit: IdentPath,
-        syms: Vec<Ident>,
+        syms: Vec<IdentPath>,
     },
     UnableToInferType {
         expr: Box<ast::Expr<Span>>,

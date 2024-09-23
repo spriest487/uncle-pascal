@@ -266,10 +266,20 @@ impl ModuleBuilder {
             .unwrap_or_else(|| {
                 // typechecking should have already ensured any specialization of a method
                 // has been defined somewhere
-                panic!(
-                    "missing method def: {}.{} for {}",
-                    iface_ty, method_key.method, method_key.self_ty,
-                )
+                if iface_ty != method_key.self_ty {
+                    panic!(
+                        "missing method def: {}.{} for {}",
+                        iface_ty, 
+                        method_key.method, 
+                        method_key.self_ty,
+                    )
+                } else {
+                    panic!(
+                        "missing method def: {}.{}",
+                        iface_ty,
+                        method_key.method
+                    )
+                }
             });
 
         // the definition we found should already be correctly specialized - you can't pass

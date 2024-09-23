@@ -36,9 +36,11 @@ pub const STRING_TYPE_NAME: &str = "String";
 const STRING_CHARS_FIELD: &str = "chars";
 const STRING_LEN_FIELD: &str = "len";
 
+pub const BUILTIN_FILENAME: &str = "<builtin>";
+
 pub fn builtin_span() -> Span {
     Span {
-        file: Rc::new("<builtin>".into()),
+        file: Rc::new(BUILTIN_FILENAME.into()),
         start: Location { line: 0, col: 0 },
         end: Location { line: 0, col: 0 },
     }
