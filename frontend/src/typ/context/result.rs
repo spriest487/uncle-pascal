@@ -220,6 +220,10 @@ pub enum NameError {
         ident: IdentPath,
         existing: Span,
     },
+    NoImplementationFound {
+        owning_ty: IdentPath,
+        impl_ty: Type,
+    },
     AlreadyImplemented {
         owning_ty: IdentPath,
         for_ty: Type,
@@ -278,10 +282,16 @@ impl fmt::Display for NameError {
             NameError::AlreadyDeclared { new, .. } => {
                 write!(f, "`{}` was already declared in this scope", new)
             },
-            NameError::AlreadyDefined { ident, .. } => write!(f, "`{}` was already defined", ident),
+            NameError::AlreadyDefined { ident, .. } => {
+                write!(f, "`{}` was already defined", ident)
+                },
             NameError::Ambiguous { ident, .. } => {
                 write!(f, "`{}` is ambiguous in this context", ident)
             },
+            
+            NameError::NoImplementationFound { owning_ty, impl_ty } => {
+                write!(f, "type `{}` does not implement `{}`", impl_ty, owning_ty)
+            }
 
             NameError::AlreadyImplemented {
                 owning_ty: iface,

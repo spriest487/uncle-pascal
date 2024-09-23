@@ -50,6 +50,15 @@ pub fn builtin_ident(name: &str) -> Ident {
     Ident::new(name, builtin_span())
 }
 
+pub fn builtin_unit_path(name: &str) -> IdentPath {
+    let builtin_span = builtin_span();
+
+    IdentPath::new(
+        Ident::new(name, builtin_span.clone()),
+        vec![Ident::new(SYSTEM_UNIT_NAME, builtin_span)]
+    )
+}
+
 pub fn builtin_string_name() -> Symbol {
     let builtin_span = builtin_span();
 
@@ -83,6 +92,10 @@ pub fn builtin_string_class() -> ast::StructDef {
                 ty: Type::from(Primitive::Int32),
                 span: builtin_span.clone(),
             }.into(),
+        ],
+        implements: vec![
+            Type::interface(builtin_displayable_name().qualified),
+            Type::interface(builtin_comparable_name().qualified),
         ],
         kind: StructKind::Class,
         span: builtin_span,

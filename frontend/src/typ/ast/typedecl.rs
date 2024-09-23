@@ -43,12 +43,21 @@ pub fn typecheck_struct_decl(
         StructKind::Class => Type::Class(Box::new(name.clone())),
     };
 
+    let implements = class.implements
+        .iter()
+        .map(|implements_ty| typecheck_type(implements_ty, ctx))
+        .collect::<TypecheckResult<_>>()?;
+
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(
         class.name.ident.clone(),
         self_ty.clone(),
         Visibility::Implementation,
     )?;
+
+    for implements_ty in &implements {
+        ctx.declare_implements(self_ty.clone(), implements_ty);
+    }
 
     let mut members = Vec::new();
     for member in &class.members {
@@ -98,6 +107,7 @@ pub fn typecheck_struct_decl(
         kind: class.kind,
         name,
         span: class.span.clone(),
+        implements,
         members,
     })
 }

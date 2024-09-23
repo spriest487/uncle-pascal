@@ -74,11 +74,11 @@ pub enum TypeMember {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct InterfaceImpl {
+struct MethodCollection {
     methods: HashMap<Ident, Option<FunctionDef>>,
 }
 
-impl InterfaceImpl {
+impl MethodCollection {
     fn new() -> Self {
         Self {
             methods: HashMap::new(),
@@ -157,7 +157,7 @@ pub struct Context {
     scopes: ScopeStack,
 
     /// iface ident -> self ty_def -> impl details
-    method_defs: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
+    method_defs: HashMap<IdentPath, HashMap<Type, MethodCollection>>,
 
     // builtin methods declarations for primitive types that can't be declared normally in code
     primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, FunctionDecl>>,
@@ -590,7 +590,7 @@ impl Context {
             syn::StructKind::Record | syn::StructKind::PackedRecord => Type::Record(Box::new(class.name.clone())),
         };
 
-        self.declare_type(name.clone(), class_ty, visibility)?;
+        self.declare_type(name.clone(), class_ty.clone(), visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
         self.define(
@@ -659,7 +659,11 @@ impl Context {
         ty: Type,
         visibility: Visibility,
     ) -> TypecheckResult<()> {
-        self.declare(name, Decl::Type { ty, visibility })?;
+        self.declare(name, Decl::Type { ty: ty.clone(), visibility })?;
+
+        // all types implement themselves! 
+        self.declare_implements(ty.clone(), &ty);
+
         Ok(())
     }
 
@@ -743,7 +747,7 @@ impl Context {
                         member: method.clone(),
                     });
                 }
-                
+
                 self.insert_method_def(def, owning_ty_name, self_ty)
             }
 
@@ -775,6 +779,23 @@ impl Context {
             }
         }
     }
+    
+    pub fn declare_implements(&mut self, ty: Type, implements: &Type) {
+        // TODO: change this to store types!!
+        let ty_name = match implements.full_path() {
+            Some(path) => path,
+            None => return,
+        };
+        
+        let implemented_method_defs = self
+            .method_defs
+            .entry(ty_name)
+            .or_insert_with(HashMap::new);
+        
+        implemented_method_defs
+            .entry(ty)
+            .or_insert_with(MethodCollection::new);
+    }
 
     fn insert_method_def(&mut self,
         def: FunctionDef,
@@ -784,10 +805,13 @@ impl Context {
         let impls = self.method_defs
             .entry(owning_ty_name.clone())
             .or_insert_with(HashMap::new);
-        
+
         let ty_impls = impls
-            .entry(self_ty.clone())
-            .or_insert_with(InterfaceImpl::new);
+            .get_mut(&self_ty)
+            .ok_or_else(|| NameError::NoImplementationFound {
+                owning_ty: owning_ty_name.clone(),
+                impl_ty: self_ty.clone(),
+            })?;
 
         match ty_impls.methods.entry(def.decl.name.ident.clone()) {
             Entry::Vacant(vacant) => {
@@ -1161,9 +1185,11 @@ impl Context {
                 None => false,
             },
 
-            _ => match self.method_defs.get(iface_name) {
-                None => false,
-                Some(impls) => impls.contains_key(self_ty),
+            _ => {
+                self.method_defs
+                    .get(iface_name)
+                    .map(|method_defs| method_defs.contains_key(&self_ty))
+                    .unwrap_or(false)
             },
         }
     }
@@ -1180,7 +1206,7 @@ impl Context {
                 }
                 None => Vec::new(),
             },
-
+            
             _ => {
                 let mut result = Vec::new();
                 for (iface_id, iface_impl) in &self.method_defs {
@@ -1190,7 +1216,7 @@ impl Context {
                 }
 
                 result
-            }
+            },
         }
     }
 

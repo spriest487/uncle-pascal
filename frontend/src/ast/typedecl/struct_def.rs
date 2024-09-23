@@ -1,13 +1,13 @@
 mod member;
 
-use crate::ast::{Annotation, FunctionName};
+use crate::ast::{Annotation, FunctionName, TypeName};
 use crate::ast::FunctionDecl;
 use crate::ast::Ident;
 use crate::ast::TypeDeclName;
-use crate::parse::Matcher;
+use crate::parse::{Matcher, Parse};
 use crate::parse::ParseResult;
 use crate::parse::TokenStream;
-use crate::Keyword;
+use crate::{Keyword, Separator};
 use common::span::Span;
 use common::span::Spanned;
 use derivative::*;
@@ -37,6 +37,8 @@ pub struct StructDef<A: Annotation = Span> {
     pub kind: StructKind,
     pub name: A::Name,
     pub members: Vec<StructMember<A>>,
+    
+    pub implements: Vec<A::Type>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -96,6 +98,18 @@ impl StructDef<Span> {
             },
             _ => unreachable!(),
         };
+        
+        let mut implements = Vec::new();
+        if tokens.match_one_maybe(Keyword::Of).is_some() {
+            loop {
+                let implement_iface = TypeName::parse(tokens)?;
+                implements.push(implement_iface);
+
+                if tokens.match_one_maybe(Separator::Comma).is_none() {
+                    break;
+                }
+            }
+        }
 
         let members = parse_struct_members(tokens)?;
 
@@ -105,6 +119,7 @@ impl StructDef<Span> {
             kind,
             name,
             members,
+            implements,
             span: kw_token.span().to(end_token.span()),
         })
     }

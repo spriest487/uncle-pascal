@@ -11,7 +11,7 @@ type
     Word = UInt16;
     Cardinal = UInt32;
 
-    String = class
+    String = class of Displayable, Comparable
         chars: ^Byte;
         len: Int32;
         

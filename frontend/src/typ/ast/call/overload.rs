@@ -3,7 +3,7 @@ use crate::typ::ast::check_implicit_conversion;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
-use crate::typ::Context;
+use crate::typ::{Context, NameError};
 use crate::typ::FunctionSig;
 use crate::typ::InstanceMethod;
 use crate::typ::Type;
@@ -138,12 +138,12 @@ pub fn resolve_overload(
                 let iface_name = iface_ty.as_iface().expect(
                     "can't be a self-less method if the iface type isn't a declared interface!",
                 );
+
                 if !ctx.is_iface_callable(self_ty, iface_name) {
-                    return Err(TypecheckError::InterfaceNotImplemented {
-                        iface_ty: iface_ty.clone(),
-                        self_ty: self_ty.clone(),
-                        span: span.clone(),
-                    });
+                    return Err(TypecheckError::from_name_err(NameError::NoImplementationFound {
+                        owning_ty: iface_name.clone(),
+                        impl_ty: self_ty.clone(),
+                    }, span.clone()))
                 }
             }
         }

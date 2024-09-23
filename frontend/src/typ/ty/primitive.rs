@@ -107,7 +107,7 @@ impl Primitive {
         }
     }
 
-    pub const fn name(&self) -> &str {
+    pub const fn name(&self) -> &str {        
         match self {
             Primitive::Boolean => "Boolean",
             Primitive::UInt8 => "UInt8",

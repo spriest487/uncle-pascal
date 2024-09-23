@@ -194,11 +194,6 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
-    InterfaceNotImplemented {
-        self_ty: Type,
-        iface_ty: Type,
-        span: Span,
-    },
 
     Private {
         name: IdentPath,
@@ -328,8 +323,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidMethodExplicitInterface { span, .. } => span,
             TypecheckError::InvalidMethodInstanceType { span, .. } => span,
             TypecheckError::NoMethodContext { span, .. } => span,
-            
-            TypecheckError::InterfaceNotImplemented { span, .. } => span,
+
             TypecheckError::Private { span, .. } => span,
             TypecheckError::PrivateConstructor { span, .. } => span,
             TypecheckError::UnsafeConversionNotAllowed { span, .. } => span,
@@ -358,6 +352,7 @@ impl DiagnosticOutput for TypecheckError {
                 NameError::AlreadyDeclared { .. } => "Name already declared".to_string(),
                 NameError::AlreadyDefined { .. } => "Name already defined".to_string(),
                 NameError::Ambiguous { .. } => "Name is ambiguous".to_string(),
+                NameError::NoImplementationFound { .. } => "No implementation found".to_string(),
                 NameError::AlreadyImplemented { .. } => "Method already implemented".to_string(),
                 NameError::DefDeclMismatch { .. } => {
                     "Definition does not match previous declaration".to_string()
@@ -434,10 +429,6 @@ impl DiagnosticOutput for TypecheckError {
                 "Invalid instance type for method".to_string()
             },
 
-            TypecheckError::InterfaceNotImplemented { .. } => {
-                "Interface not implemented".to_string()
-            }
-            
             TypecheckError::NoMethodContext { .. } => "Method requires enclosing type".to_string(),
 
             TypecheckError::Private { .. } => "Name not exported".to_string(),
@@ -821,10 +812,6 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidMethodInstanceType { ty, .. } => {
                 write!(f, "`{}` is not a type which supports methods", ty)
-            }
-
-            TypecheckError::InterfaceNotImplemented { self_ty, iface_ty, .. } => {
-                write!(f, "`{}` does not implement interface `{}`", self_ty, iface_ty)
             }
 
             TypecheckError::Private { name, .. } => {

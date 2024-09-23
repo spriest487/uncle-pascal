@@ -16,7 +16,7 @@ use crate::typ::ast::Literal;
 use crate::typ::ast::Field;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
-use crate::typ::{builtin_span, context, SYSTEM_UNIT_NAME};
+use crate::typ::{builtin_span, builtin_unit_path, context, SYSTEM_UNIT_NAME};
 use crate::typ::result::*;
 use crate::typ::Context;
 use crate::typ::GenericError;
@@ -95,20 +95,11 @@ impl Type {
     
     // todo: this can return Cow
     pub fn full_path(&self) -> Option<IdentPath> {
-        fn builtin_path(name: &str) -> IdentPath {
-            let builtin_span = builtin_span();
-
-            IdentPath::new(
-                Ident::new(name, builtin_span.clone()), 
-                vec![Ident::new(SYSTEM_UNIT_NAME, builtin_span)]
-            )
-        }
-
         match self {
-            Type::Nothing => Some(builtin_path("Nothing")),
-            Type::Any => Some(builtin_path("Any")),
+            Type::Nothing => Some(builtin_unit_path("Nothing")),
+            Type::Any => Some(builtin_unit_path("Any")),
             Type::MethodSelf => Some(IdentPath::from(Ident::new("Self", builtin_span()))),
-            Type::Primitive(p) => Some(builtin_path(p.name())),
+            Type::Primitive(p) => Some(builtin_unit_path(p.name())),
             Type::Interface(iface) => Some((**iface).clone()),
             Type::Record(class) | Type::Class(class) => Some(class.qualified.clone()),
             Type::Variant(variant) => Some(variant.qualified.clone()),
@@ -744,7 +735,7 @@ impl fmt::Display for Type {
             Type::DynArray { element } => write!(f, "array of {}", element),
             Type::GenericParam(ident) => write!(f, "{}", ident),
             Type::Nothing => write!(f, "Nothing"),
-            Type::Primitive(p) => write!(f, "{}", p.name()),
+            Type::Primitive(p) => write!(f, "{}.{}", SYSTEM_UNIT_NAME, p.name()),
             Type::Variant(variant) => write!(f, "{}", variant),
             Type::MethodSelf => write!(f, "Self"),
             Type::Any => write!(f, "Any"),
@@ -925,6 +916,14 @@ pub fn specialize_generic_name<'a>(
 
 pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList, ctx: &Context) -> GenericResult<StructDef> {
     let parameterized_name = specialize_generic_name(&class.name, ty_args)?;
+    
+    let implements: Vec<Type> = class.implements
+        .iter()
+        .map(|implements_ty| {
+            let specialized = implements_ty.specialize_generic(ty_args, ctx)?;
+            Ok(specialized.into_owned())
+        })
+        .collect::<GenericResult<_>>()?;
 
     let members: Vec<_> = class
         .members
@@ -951,6 +950,7 @@ pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList, ctx: &Contex
 
     Ok(StructDef {
         name: parameterized_name.into_owned(),
+        implements,
         members,
         span: class.span.clone(),
         kind: class.kind,

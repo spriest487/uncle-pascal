@@ -40,25 +40,25 @@ pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<Inst
     let mut methods = Vec::new();
 
     match ty {
-        Type::Interface(iface) => {
-            let iface_def = ctx.find_iface_def(iface)?;
-
-            methods.extend(iface_def
-                .methods
-                .iter()
-                .map(|method_decl| InstanceMethod::Method {
-                    owning_ty: ty.clone(),
-                    decl: method_decl.decl.clone(),
-                }));
-        }
-
+    //     Type::Interface(iface) => {
+    //         let iface_def = ctx.find_iface_def(iface)?;
+    // 
+    //         methods.extend(iface_def
+    //             .methods
+    //             .iter()
+    //             .map(|method_decl| InstanceMethod::Method {
+    //                 owning_ty: ty.clone(),
+    //                 decl: method_decl.decl.clone(),
+    //             }));
+    //     }
+    // 
         Type::GenericParam(generic_param_ty) => {
             if let Some(is_iface) = &generic_param_ty.is_iface {
                 let mut iface_methods = &mut find_instance_methods_of(is_iface, ctx)?;
                 methods.append(&mut iface_methods);
             }
         },
-
+    
         _ => {}
     }
 

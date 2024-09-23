@@ -412,11 +412,10 @@ fn typecheck_method_call(
         ));
 
     if !ctx.is_iface_callable(&self_type, &iface_ident) {
-        return Err(TypecheckError::InterfaceNotImplemented {
-            iface_ty: iface_method.iface_ty.clone(),
-            span: func_call.span().clone(),
-            self_ty: self_type.into_owned(),
-        });
+        return Err(TypecheckError::from_name_err(NameError::NoImplementationFound {
+            owning_ty: iface_ident.clone(),
+            impl_ty: self_type.into_owned(),
+        }, func_call.span().clone()));
     }
 
     let sig = iface_method.method_sig.with_self(&self_type);
