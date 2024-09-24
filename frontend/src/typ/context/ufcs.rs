@@ -1,3 +1,5 @@
+use std::fmt;
+use std::fmt::Formatter;
 use std::rc::Rc;
 
 use crate::ast::Ident;
@@ -31,6 +33,16 @@ impl InstanceMethod {
     }
 }
 
+impl fmt::Display for InstanceMethod {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            InstanceMethod::FreeFunction { func_name, .. } => write!(f, "function {}", func_name),
+            InstanceMethod::Method { owning_ty, decl, .. } => write!(f, "method {}.{}", owning_ty, decl.name.ident ),
+        }
+        
+    }
+}
+
 /// an instance method is an interface impl method for `ty_def` that takes Self as the first argument
 /// OR a virtual method of the interface type referenced by `ty_def`
 /// OR any free function taking `ty_def` as its first parameter (UFCS syntax)
@@ -38,8 +50,10 @@ impl InstanceMethod {
 ///    be substituted, as its first parameter (generic UFCS)
 pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>> {
     let mut methods = Vec::new();
+    
+    // eprintln!("gathering methods for {}", ty);
 
-    match ty {
+    // match ty {
     //     Type::Interface(iface) => {
     //         let iface_def = ctx.find_iface_def(iface)?;
     // 
@@ -52,19 +66,35 @@ pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<Inst
     //             }));
     //     }
     // 
-        Type::GenericParam(generic_param_ty) => {
-            if let Some(is_iface) = &generic_param_ty.is_iface {
-                let mut iface_methods = &mut find_instance_methods_of(is_iface, ctx)?;
-                methods.append(&mut iface_methods);
-            }
-        },
+    //     Type::GenericParam(generic_param_ty) => {
+    //         if let Some(is_iface) = &generic_param_ty.is_iface {
+    //             let mut iface_methods = find_instance_methods_of(is_iface, ctx)?;
+    //             eprintln!("added {} iface methods", iface_methods.len());
+    //             for method in &iface_methods {
+    //                 eprintln!(" - {}", method);
+    //             }
+    //             methods.append(&mut iface_methods);
+    //         }
+    //     },
+    // 
+    //     _ => {}
+    // }
+
+    let mut free_functions = find_ufcs_free_functions(ty, ctx);
+    // eprintln!("added {} free functions", free_functions.len());
+    // for method in &free_functions {
+    //     eprintln!(" - {}", method);
+    // }
+    methods.append(&mut free_functions);
     
-        _ => {}
-    }
-
-    methods.extend(find_ufcs_free_functions(ty, ctx));
-    methods.extend(find_ufcs_methods(ty, ctx)?);
-
+    let mut ufcs_methods = find_ufcs_methods(ty, ctx)?;
+    // eprintln!("added {} methods", ufcs_methods.len());
+    // for method in &ufcs_methods {
+    //     eprintln!(" - {}", method);
+    // }
+    methods.append(&mut ufcs_methods);
+    
+    // eprintln!("ok: {} total", methods.len());
     Ok(methods)
 }
 
@@ -106,46 +136,52 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
 fn find_ufcs_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>> {
     let mut methods = Vec::new();
 
-    // for all possible interface types...
-    for (owning_ty_name, iface_impls) in &ctx.method_defs {
-        // skip any not implemented by this type
-        if !iface_impls.contains_key(ty) {
-            continue;
-        }
-
-        let (_, iface_ty) = ctx.find_type(owning_ty_name)?;
-        let iface_methods = iface_ty.methods(ctx)?;
-
-        // methods valid for UFCS are any which have either the generic self type or this
-        // specific type as the first parmeter
-        let callable_methods = iface_methods
-            .iter()
-            .filter(|method_decl| {
-                method_decl
-                    .params
-                    .get(0)
-                    .map(|self_param| {
-                        if self_param.modifier.is_some() {
-                            return false;
-                        }
-
-                        self_param.ty == Type::MethodSelf || self_param.ty == *ty
-                    })
-                    .unwrap_or(false)
-            });
-
-        // add all the methods, we don't need to check if they're actually defined
-        // or implemented - we should check that elsewhere
-        for method in callable_methods {
+    // the type's own methods
+    for method in ty.methods(ctx)? {
+        // if is_callable_method(method, ty) {
             methods.push(InstanceMethod::Method {
-                owning_ty: iface_ty.clone(),
-                decl: (**method).clone(),
+                owning_ty: ty.clone(),
+                decl: method.clone(),
             });
-        }
+        // }
     }
+    
+    // methods from all interface types the type impleemnts
+    // for iface_ty in ctx.implemented_ifaces(ty)? {
+    //     let iface_methods = iface_ty.methods(ctx)?;
+    // 
+    //     // methods valid for UFCS are any which have either the generic self type or this
+    //     // specific type as the first parmeter
+    //     let callable_methods = iface_methods
+    //         .iter()
+    //         .filter(|method_decl| is_callable_method(method_decl, ty));
+    // 
+    //     // add all the methods, we don't need to check if they're actually defined
+    //     // or implemented - we should check that elsewhere
+    //     for method in callable_methods {
+    //         methods.push(InstanceMethod::Method {
+    //             owning_ty: iface_ty.clone(),
+    //             decl: (**method).clone(),
+    //         });
+    //     }
+    // }
 
     Ok(methods)
 }
+
+// fn is_callable_method(method_decl: &FunctionDecl, self_ty: &Type) -> bool {
+//     method_decl
+//         .params
+//         .get(0)
+//         .map(|self_param| {
+//             if self_param.modifier.is_some() {
+//                 return false;
+//             }
+// 
+//             self_param.ty == Type::MethodSelf || self_param.ty == *self_ty
+//         })
+//         .unwrap_or(false)
+// }
 
 #[cfg(test)]
 mod test {

@@ -283,7 +283,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
 
     let displayable_path = IdentPath::from_parts(vec![system_unit_ident, displayable_iface_ident]);
 
-    if !ctx.is_iface_impl(src_ty.as_ref(), &displayable_path) {
+    if !ctx.is_iface_impl(src_ty.as_ref(), &Type::interface(displayable_path.clone())) {
         return None;
     }
 

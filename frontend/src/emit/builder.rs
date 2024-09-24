@@ -133,12 +133,11 @@ impl<'m> Builder<'m> {
 
     pub fn translate_method_impl(
         &mut self,
-        iface: IdentPath,
+        owning_ty: typ::Type,
         method: Ident,
-        self_ty: typ::Type,
         type_args: Option<typ::TypeList>
     ) -> FunctionInstance {
-        self.module.translate_method_impl(iface, method, self_ty, type_args)
+        self.module.translate_method_impl(owning_ty, method, type_args)
     }
 
     pub fn translate_func(

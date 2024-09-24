@@ -405,15 +405,9 @@ fn typecheck_method_call(
         }
     };
 
-    let iface_ident = iface_method.iface_ty.full_path()
-        .unwrap_or_else(|| panic!(
-            "expect all method-defining types to be named types, found: {}", 
-            iface_method.iface_ty
-        ));
-
-    if !ctx.is_iface_callable(&self_type, &iface_ident) {
+    if !ctx.is_iface_callable(&self_type, &iface_method.iface_ty) {
         return Err(TypecheckError::from_name_err(NameError::NoImplementationFound {
-            owning_ty: iface_ident.clone(),
+            owning_ty: iface_method.iface_ty.clone(),
             impl_ty: self_type.into_owned(),
         }, func_call.span().clone()));
     }

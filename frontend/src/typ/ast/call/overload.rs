@@ -76,9 +76,7 @@ impl fmt::Display for OverloadCandidate {
             OverloadCandidate::Function { decl_name, .. } => {
                 write!(f, "function {}", decl_name)
             },
-            OverloadCandidate::Method {
-                iface_ty, ident, ..
-            } => {
+            OverloadCandidate::Method { iface_ty, ident, .. } => {
                 write!(f, "method {}.{}", iface_ty, ident)
             },
         }
@@ -135,13 +133,9 @@ pub fn resolve_overload(
                     }
                 })?;
 
-                let iface_name = iface_ty.as_iface().expect(
-                    "can't be a self-less method if the iface type isn't a declared interface!",
-                );
-
-                if !ctx.is_iface_callable(self_ty, iface_name) {
+                if !ctx.is_iface_callable(self_ty, iface_ty) {
                     return Err(TypecheckError::from_name_err(NameError::NoImplementationFound {
-                        owning_ty: iface_name.clone(),
+                        owning_ty: iface_ty.clone(),
                         impl_ty: self_ty.clone(),
                     }, span.clone()))
                 }

@@ -93,6 +93,15 @@ impl Type {
         Type::Interface(Box::new(name.into()))
     }
     
+    pub fn struct_type(sym: impl Into<Symbol>, kind: StructKind) -> Self {
+        let sym = Box::new(sym.into());
+        
+        match kind {
+            StructKind::Class => Type::Class(sym),
+            StructKind::Record | StructKind::PackedRecord => Type::Record(sym),
+        }
+    }
+    
     // todo: this can return Cow
     pub fn full_path(&self) -> Option<IdentPath> {
         match self {
@@ -605,8 +614,8 @@ impl Type {
 
     pub fn match_constraint(&self, constraint_ty: &Type, ctx: &Context) -> bool {
         match constraint_ty {
-            Type::Interface(constraint_iface_sym) => {
-                ctx.is_iface_impl(self, constraint_iface_sym)
+            Type::Interface(..) => {
+                ctx.is_iface_impl(self, constraint_ty)
             }
 
             // "Any" used as a constraint means all types, nothing to validate

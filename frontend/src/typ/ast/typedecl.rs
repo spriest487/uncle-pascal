@@ -55,10 +55,6 @@ pub fn typecheck_struct_decl(
         Visibility::Implementation,
     )?;
 
-    for implements_ty in &implements {
-        ctx.declare_implements(self_ty.clone(), implements_ty);
-    }
-
     let mut members = Vec::new();
     for member in &class.members {
         match member {

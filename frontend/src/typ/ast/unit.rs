@@ -1,7 +1,7 @@
 use crate::ast;
-use crate::ast::{FunctionName, IdentPath, StructKind};
-use crate::ast::Visibility;
 use crate::ast::BindingDeclKind;
+use crate::ast::Visibility;
+use crate::ast::{FunctionName, IdentPath, StructKind};
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::expr::expect_stmt_initialized;
 use crate::typ::ast::typecheck_alias;
@@ -14,7 +14,6 @@ use crate::typ::ast::typecheck_stmt;
 use crate::typ::ast::typecheck_struct_decl;
 use crate::typ::ast::typecheck_variant;
 use crate::typ::ast::Expr;
-use crate::typ::{typecheck_type, FunctionSig, NameContainer};
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
 use crate::typ::ConstTyped;
@@ -31,6 +30,7 @@ use crate::typ::TypecheckError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::ValueKind;
+use crate::typ::typecheck_type;
 use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
@@ -117,58 +117,9 @@ fn typecheck_unit_func_def(
     let func_decl = &func_def.decl;
     let func_name = &func_decl.name;
 
-    match &func_decl.name.owning_ty {        
-        Some(Type::Interface(iface_name)) => {
-            // calculate the implementor type from a) the interface's definition of the method and
-            // b) the arguments provided in equivalent positions
-            let iface_def = ctx
-                .find_iface_def(&iface_name)
-                .map_err(|err| {
-                    TypecheckError::from_name_err(err, func_name.span.clone())
-                })?;
-            
-            let method = iface_def
-                .get_method(&func_name.ident)
-                .ok_or_else(|| {
-                    let err = NameError::MemberNotFound {
-                        base: NameContainer::Type(Type::Interface(iface_name.clone())),
-                        member: func_name.ident.clone(),
-                    };
-                    TypecheckError::from_name_err(err, func_decl.span.clone())
-                })?;
-
-            let impl_params = func_decl.params
-                .iter()
-                .map(|param| param.ty.clone())
-                .collect::<Vec<_>>();
-
-            let method_sig = FunctionSig::of_decl(&method.decl);
-
-            let impl_ty = method_sig
-                .self_ty_from_args(&impl_params)
-                .cloned()
-                .ok_or_else(|| TypecheckError::AmbiguousSelfType {
-                    span: func_decl.span.clone(),
-                    iface: Type::Interface(iface_name.clone()).clone(),
-                    method: method.ident().clone(),
-                })?;
-            
-            ctx.define_method_impl(iface_name, impl_ty, func_def.clone())?;
-        }
-        
+    match &func_decl.name.owning_ty {
         Some(ty) => {
-            match ty.full_path() {
-                Some(ty_name) => {
-                    ctx.define_method_impl(&ty_name, ty.clone(), func_def.clone())?;
-                }
-                
-                None => {
-                    return Err(TypecheckError::InvalidMethodInstanceType {
-                        ty: ty.clone(),
-                        span: func_def.decl.span.clone(),
-                    });
-                }
-            }
+            ctx.define_method(ty.clone(), func_def.clone())?;
         }
 
         None => {

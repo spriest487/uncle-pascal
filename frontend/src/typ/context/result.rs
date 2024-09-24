@@ -221,7 +221,7 @@ pub enum NameError {
         existing: Span,
     },
     NoImplementationFound {
-        owning_ty: IdentPath,
+        owning_ty: Type,
         impl_ty: Type,
     },
     AlreadyImplemented {

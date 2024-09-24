@@ -234,11 +234,7 @@ fn build_method_call(
     args: &[typ::ast::Expr],
     ty_args: Option<&typ::TypeList>,
     builder: &mut Builder,
-) -> Option<Ref> {    
-    let owning_ty_name = owning_ty
-        .full_path()
-        .unwrap_or_else(|| panic!("can't have unnamed owning types in method calls (trying to call method {} on {})",method_ident, owning_ty));
-
+) -> Option<Ref> {
     let actual_self_ty = match builder.type_args() {
         Some(builder_type_args) => self_ty.clone().substitute_type_args(builder_type_args),
         None => self_ty.clone(),
@@ -259,12 +255,11 @@ fn build_method_call(
         },
 
         _ => {
-            //            println!("translating method {}::{} of {}", iface, method_call.ident, method_call.self_type);
+            // println!("translating method {}::{} of {}", owning_ty, method_ident, self_ty);
 
             let method_decl = builder.translate_method_impl(
-                owning_ty_name,
+                owning_ty.clone(),
                 method_ident.clone(),
-                self_ty.clone(),
                 ty_args.cloned(),
             );
 

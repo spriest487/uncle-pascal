@@ -156,11 +156,14 @@ pub struct Context {
     next_scope_id: ScopeID,
     scopes: ScopeStack,
 
-    /// iface ident -> self ty_def -> impl details
-    method_defs: HashMap<IdentPath, HashMap<Type, MethodCollection>>,
+    method_defs: HashMap<Type, MethodCollection>,
 
     // builtin methods declarations for primitive types that can't be declared normally in code
     primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, FunctionDecl>>,
+    
+    // all primitives currently implement the same set of non-generic interfaces, so we can
+    // just use this same list for all of them
+    primitive_implements: Vec<Type>,
 
     /// decl ident -> definition location
     defs: HashMap<IdentPath, Def>,
@@ -183,6 +186,7 @@ impl Context {
             loop_stack: Default::default(),
 
             primitive_methods: HashMap::new(),
+            primitive_implements: Vec::new(),
         };
 
         let system_path = IdentPath::new(builtin_ident(SYSTEM_UNIT_NAME), []);
@@ -209,11 +213,14 @@ impl Context {
                 let methods = declare_builtin_ty(ctx, primitive.name(), primitive_ty, true, true)
                     .expect("primitive type decl must not fail");
                 
-                ctx.primitive_methods.insert(*primitive, methods); 
+                ctx.primitive_methods.insert(*primitive, methods);
             }
             
             Ok(())
         }).expect("builtin unit definition must not fail");
+
+        root_ctx.primitive_implements.push(Type::interface(builtin_displayable_name().qualified));
+        root_ctx.primitive_implements.push(Type::interface(builtin_comparable_name().qualified));
 
         root_ctx
     }
@@ -661,9 +668,6 @@ impl Context {
     ) -> TypecheckResult<()> {
         self.declare(name, Decl::Type { ty: ty.clone(), visibility })?;
 
-        // all types implement themselves! 
-        self.declare_implements(ty.clone(), &ty);
-
         Ok(())
     }
 
@@ -728,92 +732,69 @@ impl Context {
         }
     }
 
-    fn insert_method_impl_def(
+    fn insert_method_def(
         &mut self,
-        owning_ty_name: IdentPath,
-        self_ty: Type,
+        ty: Type,
         def: FunctionDef
     ) -> NameResult<()> {
         let method = &def.decl.name.ident;
         
-        match self.find_type(&owning_ty_name)? {
-            (_, owning_ty @ Type::Interface(..)) => {
+        match ty {
+            Type::Interface(iface_name) => {
                 // check the method exists
-                let iface = self.find_iface_def(&owning_ty_name)?;
+                let iface = self.find_iface_def(&iface_name)?;
+                let iface_ty = Type::Interface(iface_name);
 
                 if iface.get_method(&def.decl.name.ident).is_none() {
                     return Err(NameError::MemberNotFound {
-                        base: NameContainer::Type(owning_ty.clone()),
+                        base: NameContainer::Type(iface_ty),
                         member: method.clone(),
                     });
                 }
 
-                self.insert_method_def(def, owning_ty_name, self_ty)
+                self.insert_method_def_entry(iface_ty, def)
             }
 
-            (_, owning_ty @ Type::Record(..) | owning_ty @ Type::Class(..)) => {
-                let struct_def = self.find_struct_def(&owning_ty_name)?;
+            Type::Record(sym) | Type::Class(sym) => {
+                let struct_def = self.instantiate_struct_def(&sym)?;
+                let struct_ty = Type::struct_type(*sym, struct_def.kind);
 
-                struct_def.find_method(&method)
+                struct_def
+                    .find_method(&method)
                     .ok_or_else(|| NameError::MemberNotFound {
-                        base: NameContainer::Type(owning_ty.clone()),
+                        base: NameContainer::Type(struct_ty.clone()),
                         member: method.clone(),
                     })?;
 
-                self.insert_method_def(def, owning_ty_name.clone(), self_ty)
+                self.insert_method_def_entry(struct_ty, def)
             }
 
-            (_, Type::Primitive(primitive)) => {
-                let ty_methods = self.get_primitive_methods(*primitive);
+            Type::Primitive(primitive) => {
+                let ty_methods = self.get_primitive_methods(primitive);
+                let primitive_ty = Type::Primitive(primitive);
+
                 ty_methods.get(method)
                     .ok_or_else(|| NameError::MemberNotFound {
-                        base: NameContainer::Type(Type::Primitive(*primitive)),
+                        base: NameContainer::Type(Type::Primitive(primitive)),
                         member: method.clone(),
                     })?;
-                
-                self.insert_method_def(def, owning_ty_name.clone(), self_ty)
+
+                self.insert_method_def_entry(primitive_ty, def)
             }
 
             _ => {
-                unreachable!("should only call this with struct and interface types")
+                unreachable!("should only call this with types supporting methods")
             }
         }
     }
-    
-    pub fn declare_implements(&mut self, ty: Type, implements: &Type) {
-        // TODO: change this to store types!!
-        let ty_name = match implements.full_path() {
-            Some(path) => path,
-            None => return,
-        };
-        
-        let implemented_method_defs = self
+
+    fn insert_method_def_entry(&mut self, ty: Type, def: FunctionDef) -> NameResult<()> {
+        let methods = self
             .method_defs
-            .entry(ty_name)
-            .or_insert_with(HashMap::new);
-        
-        implemented_method_defs
-            .entry(ty)
+            .entry(ty.clone())
             .or_insert_with(MethodCollection::new);
-    }
 
-    fn insert_method_def(&mut self,
-        def: FunctionDef,
-        owning_ty_name: IdentPath,
-        self_ty: Type,
-    ) -> NameResult<()> {
-        let impls = self.method_defs
-            .entry(owning_ty_name.clone())
-            .or_insert_with(HashMap::new);
-
-        let ty_impls = impls
-            .get_mut(&self_ty)
-            .ok_or_else(|| NameError::NoImplementationFound {
-                owning_ty: owning_ty_name.clone(),
-                impl_ty: self_ty.clone(),
-            })?;
-
-        match ty_impls.methods.entry(def.decl.name.ident.clone()) {
+        match methods.methods.entry(def.decl.name.ident.clone()) {
             Entry::Vacant(vacant) => {
                 vacant.insert(Some(def));
                 Ok(())
@@ -821,10 +802,8 @@ impl Context {
 
             Entry::Occupied(mut occupied) => {
                 match occupied.get_mut() {
-                    Some(existing) => Err(NameError::AlreadyImplemented {
-                        method: def.decl.name.ident.clone(),
-                        for_ty: self_ty,
-                        owning_ty: owning_ty_name,
+                    Some(existing) => Err(NameError::AlreadyDefined {
+                        ident: IdentPath::from(def.decl.name.ident.clone()),
                         existing: existing.decl.span().clone(),
                     }),
                     
@@ -837,19 +816,14 @@ impl Context {
         }
     }
 
-    pub fn define_method_impl(
+    pub fn define_method(
         &mut self,
-        owning_ty_name: &IdentPath,
-        self_ty: Type,
+        ty: Type,
         method_def: FunctionDef,
     ) -> TypecheckResult<()> {
         let span = method_def.decl.span().clone();
         self
-            .insert_method_impl_def(
-                owning_ty_name.clone(),
-                self_ty.clone(),
-                method_def
-            )
+            .insert_method_def(ty, method_def)
             .map_err(|err| {
                 TypecheckError::from_name_err(err, span) 
             })?;
@@ -857,16 +831,13 @@ impl Context {
         Ok(())
     }
 
-    pub fn find_method_impl_def(
+    pub fn find_method(
         &self,
-        iface: &IdentPath,
-        for_ty: &Type,
+        ty: &Type,
         method: &Ident,
     ) -> Option<&FunctionDef> {
-        let impls = self.method_defs.get(iface)?;
-        let impls_for_ty = impls.get(for_ty)?;
-
-        let method = impls_for_ty.methods.get(method)?.as_ref()?;
+        let method_defs = self.method_defs.get(ty)?;
+        let method = method_defs.methods.get(method)?.as_ref()?;
 
         Some(&method)
     }
@@ -1170,52 +1141,45 @@ impl Context {
             None => Err(NameError::not_found(name.clone())),
         }
     }
-    
-    pub fn is_iface_callable(&self, self_ty: &Type, iface_name: &IdentPath) -> bool {
+
+    pub fn is_iface_callable(&self, self_ty: &Type, iface_ty: &Type) -> bool {
         match self_ty {
-            Type::Interface(ident_path) => ident_path.as_ref() == iface_name,
-            _ => self.is_iface_impl(self_ty, iface_name), 
+            Type::Interface(..) => self_ty == iface_ty,
+            _ => self.is_iface_impl(self_ty, iface_ty),
         }
     }
 
-    pub fn is_iface_impl(&self, self_ty: &Type, iface_name: &IdentPath) -> bool {
+    pub fn is_iface_impl(&self, self_ty: &Type, iface_ty: &Type) -> bool {
         match self_ty {
             Type::GenericParam(param_ty) => match &param_ty.is_iface {
-                Some(as_iface) => as_iface.as_iface() == Some(iface_name),
+                Some(as_iface) => **as_iface == *iface_ty,
                 None => false,
             },
 
             _ => {
-                self.method_defs
-                    .get(iface_name)
-                    .map(|method_defs| method_defs.contains_key(&self_ty))
-                    .unwrap_or(false)
+                self.method_defs.contains_key(iface_ty)
             },
         }
     }
 
-    pub fn implemented_ifaces(&self, self_ty: &Type) -> Vec<IdentPath> {
+    pub fn implemented_ifaces(&self, self_ty: &Type) -> NameResult<Vec<Type>> {
         match self_ty {
             Type::GenericParam(param_ty) => match &param_ty.is_iface {
-                Some(as_iface) => {
-                    let iface_path = as_iface
-                        .as_iface()
-                        .expect("is-constraint can only refer to interface")
-                        .clone();
-                    vec![iface_path]
-                }
-                None => Vec::new(),
+                Some(as_iface) => Ok(vec![(**as_iface).clone()]),
+                None => Ok(Vec::new()),
             },
             
+            Type::Primitive(..) => {
+                Ok(self.primitive_implements.clone())
+            }
+            
+            Type::Record(name) | Type::Class(name) => {
+                let def = self.instantiate_struct_def(name)?;
+                Ok(def.implements.clone())
+            }
+            
             _ => {
-                let mut result = Vec::new();
-                for (iface_id, iface_impl) in &self.method_defs {
-                    if iface_impl.contains_key(self_ty) {
-                        result.push(iface_id.clone());
-                    }
-                }
-
-                result
+                Ok(Vec::new())
             },
         }
     }
@@ -1357,12 +1321,14 @@ impl Context {
         match ty {
             Type::Interface(iface) => {
                 let iface_def = self.find_iface_def(iface)?;
-                let method_decl = iface_def.get_method(member_ident).ok_or_else(|| {
-                    NameError::MemberNotFound {
-                        member: member_ident.clone(),
-                        base: NameContainer::Type(ty.clone()),
-                    }
-                })?;
+                let method_decl = iface_def
+                    .get_method(member_ident)
+                    .ok_or_else(|| {
+                        NameError::MemberNotFound {
+                            member: member_ident.clone(),
+                            base: NameContainer::Type(ty.clone()),
+                        }
+                    })?;
 
                 Ok(TypeMember::Method {
                     decl: method_decl.decl.clone(),
@@ -1427,7 +1393,7 @@ impl Context {
             None => return Vec::new(),
         };
         
-        let ty_method_defs = self.method_defs.get(&ty_name);
+        let ty_method_defs = self.method_defs.get(&ty);
         
         let ty_methods = ty.methods(self)
             .expect("illegal state: undefined_ty_members failed to get methods from type");
@@ -1438,9 +1404,9 @@ impl Context {
             // don't need to check the sigs again, they wouldn't be added
             // if they didn't match
             let has_def = ty_method_defs
-                .and_then(|impls| impls.get(ty))
-                .and_then(|own_impl| {
-                    own_impl.methods
+                .and_then(|method_defs| {
+                    method_defs
+                        .methods
                         .get(&method.name.ident)
                         .map(|def| def.is_some())
                 })
