@@ -65,6 +65,7 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
 fn resolves_overload_single() {
     let src = r"
         implementation
+        uses System;
         
         function X(i: Int32);
         begin
@@ -95,18 +96,18 @@ fn resolves_method_by_args() {
         uses System;
         
         type I1 = interface
-            function M(self: Self; i: Int32);
+            function M(i: Int32);
         end;
 
         type I2 = interface
-            function M(self: Self; b: Boolean);
+            function M(b: Boolean);
         end;
 
-        function I1.M(self: String; i: Int32);
+        function I1.M(i: Int32);
         begin
         end;
 
-        function I2.M(self: String; b: Boolean);
+        function I2.M(b: Boolean);
         begin
         end;
         
@@ -155,6 +156,8 @@ fn resolves_method_by_args() {
 fn resolves_overload_by_arg_ty() {
     let src = r"
         implementation
+        uses System;
+            
         function X(i: Int32);
         begin
         end;

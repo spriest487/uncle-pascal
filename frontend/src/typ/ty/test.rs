@@ -30,6 +30,8 @@ fn specialize_class_has_correct_member_types() {
         "specialize_class_has_correct_member_types",
         r"  
             implementation
+            uses System;
+            
             type A[T] = class
                 t: T;
                 x: UInt8;
@@ -93,6 +95,8 @@ fn specialize_class_with_deep_params() {
         UNIT_NAME,
         r"  
             implementation
+            uses System;
+            
             type A[T1, T2] = record
                 t1: T1;
                 t2: T2;
@@ -115,7 +119,8 @@ fn specialize_class_with_deep_params() {
     let result = specialize_struct_def(&tys[1], &type_args, &module.context).unwrap();
 
     let a_name = result.fields().nth(0).unwrap().ty.as_record().unwrap();
-    assert_eq!(format!("{UNIT_NAME}.A[Int32, Int32]"), a_name.to_string());
+
+    assert_eq!(format!("{UNIT_NAME}.A[System.Int32, System.Int32]"), a_name.to_string());
     assert_eq!(INT32, result.fields().nth(1).unwrap().ty);
 }
 
@@ -221,6 +226,7 @@ fn can_infer_ty_arg_from_real_record_arg() {
         UNIT_NAME,
         r"
             implementation
+            uses System;
         
             type R = record
                 member: Int32;

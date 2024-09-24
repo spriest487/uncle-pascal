@@ -50,6 +50,8 @@ fn get_id(metadata: &Metadata, name: &str) -> TypeDefID {
 fn finds_record_deps() {
     let (defs, metadata) = defs_from_src(r"
         implementation
+        uses System;
+
         type A = record
             val: Int32;
         end;
@@ -92,6 +94,8 @@ fn finds_record_deps() {
 fn finds_variant_deps() {
     let (defs, metadata) = defs_from_src(r"
         implementation
+        uses System;
+
         type A = record
             val: Int32;
         end;
@@ -122,6 +126,8 @@ fn finds_variant_deps() {
 fn sorts_record_deps() {
     let (mut defs, metadata) = defs_from_src(r"
         implementation
+        uses System;
+
         type A = record
             val: Int32;
         end;
