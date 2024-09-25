@@ -1,13 +1,17 @@
 implementation
 uses System;
 
-type NumberSource = interface
+type INumberSource = interface
     function GetNumber: Integer
 end;
 
-type NumberHolder = class of NumberSource
+type NumberHolder = class of INumberSource
     number: Integer;
     
+    function GetNumber(): Integer;
+end;
+
+type NumberFactory = class of INumberSource
     function GetNumber(): Integer;
 end;
 
@@ -16,9 +20,16 @@ begin
     self.number
 end;
 
+function NumberFactory.GetNumber(): Integer;
+begin
+    456
+end;
+
 initialization
-    var source: NumberSource := NumberHolder(number: 123);
+    var source: INumberSource := NumberHolder(number: 123);
+
+    WriteLn(source.GetNumber().ToString());
     
-    var number := source.GetNumber();
-    WriteLn(IntToStr(number));
+    source := NumberFactory();
+    WriteLn(source.GetNumber().ToString());
 end

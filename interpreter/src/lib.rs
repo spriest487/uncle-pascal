@@ -399,7 +399,7 @@ impl Interpreter {
         let instance_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(self_class_id));
 
         self.metadata
-            .find_impl(&instance_ty, iface_id, method)
+            .find_virtual_impl(&instance_ty, iface_id, method)
             .ok_or_else(|| {
                 let mut err = "virtual call ".to_string();
 
@@ -500,9 +500,9 @@ impl Interpreter {
     }
 
     fn invoke_disposer(&mut self, val: &DynValue, ty: &ir::Type) -> ExecResult<()> {
-        let dispose_impl_id =
-            self.metadata
-                .find_impl(ty, ir::DISPOSABLE_ID, ir::DISPOSABLE_DISPOSE_INDEX);
+        let dispose_impl_id = self
+            .metadata
+            .find_virtual_impl(ty, ir::DISPOSABLE_ID, ir::DISPOSABLE_DISPOSE_INDEX);
 
         if let Some(dispose_func_id) = dispose_impl_id {
             let dispose_desc = self

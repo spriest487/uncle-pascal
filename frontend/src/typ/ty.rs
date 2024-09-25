@@ -482,6 +482,10 @@ impl Type {
             _ => Ok(Vec::new()),
         }
     }
+    
+    pub fn methods_at<'c>(&self, ctx: &'c Context, at: &Span) -> TypecheckResult<Vec<&'c FunctionDecl>> {
+        self.methods(ctx).map_err(|err| TypecheckError::from_name_err(err, at.clone()))
+    }
 
     pub fn get_method<'c>(&self, method: &Ident, ctx: &'c Context) -> NameResult<Option<&'c FunctionDecl>> {
         match self {
@@ -519,11 +523,31 @@ impl Type {
         }
     }
 
-    pub fn as_something(&self) -> Option<&Self> {
+    pub fn implemented_ifaces(&self, ctx: &Context) -> NameResult<Vec<Type>> {
         match self {
-            Type::Nothing => None,
-            ty => Some(ty),
+            Type::GenericParam(param_ty) => match &param_ty.is_iface {
+                Some(as_iface) => Ok(vec![(**as_iface).clone()]),
+                None => Ok(Vec::new()),
+            },
+
+            Type::Primitive(primitive) => {
+                Ok(ctx.get_primitive_impls(*primitive).to_vec())
+            }
+
+            Type::Record(name) | Type::Class(name) => {
+                let def = ctx.instantiate_struct_def(name)?;
+                Ok(def.implements.clone())
+            }
+
+            _ => {
+                Ok(Vec::new())
+            },
         }
+    }
+    
+    pub fn implemented_ifaces_at(&self, ctx: &Context, at: &Span) -> TypecheckResult<Vec<Type>> {
+        self.implemented_ifaces(ctx)
+            .map_err(|err| TypecheckError::from_name_err(err, at.clone()))
     }
 
     pub fn expect_something(self, msg: &str) -> Self {

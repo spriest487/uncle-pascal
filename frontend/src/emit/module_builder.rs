@@ -104,10 +104,6 @@ impl ModuleBuilder {
         let unit_init = init_builder.finish();
 
         self.module.init.extend(unit_init);
-        
-        if self.module.span.is_none() {
-            
-        }
     }
 
     pub(crate) fn instantiate_func(&mut self, key: FunctionDefKey) -> FunctionInstance {
@@ -133,6 +129,10 @@ impl ModuleBuilder {
             FunctionDeclKey::Method(method_key) => {
                 self.instantiate_method(method_key.clone())
             },
+
+            FunctionDeclKey::VirtualMethod(virtual_key) => {
+                self.instantiate_virtual_method(virtual_key.clone())
+            }
         }
     }
 
@@ -235,7 +235,6 @@ impl ModuleBuilder {
         &mut self,
         mut method_key: MethodDeclKey,
     ) -> FunctionInstance {
-        let method_name = method_key.method.to_string();
         let type_args = method_key.type_args.clone();
         
         if let Some(ty_args) = &type_args {
@@ -282,29 +281,6 @@ impl ModuleBuilder {
 
         let id = self.declare_func(&specialized_decl, ns, method_key.type_args.as_ref());
 
-        let self_ty = self.find_type(&method_key.owning_ty);
-        
-        if let typ::Type::Interface(iface_ty_name) = &method_key.owning_ty {
-            let iface_id = self
-                .find_iface_decl(iface_ty_name)
-                .unwrap_or_else(|| {
-                    let src_iface_def = self
-                        .src_metadata
-                        .find_iface_def(iface_ty_name)
-                        .cloned()
-                        .unwrap_or_else(|_err| panic!(
-                            "failed to get interface def {} referenced in metadata",
-                            iface_ty_name,
-                        ));
-                    
-                    let mut builder = Builder::new(self);
-                    let iface_meta = builder.translate_iface(&src_iface_def);
-                    self.module.metadata.define_iface(iface_meta)
-                });
-            
-            self.module.metadata.impl_method(iface_id, self_ty, method_name, id);
-        }
-
         // cache the function before translating the instantiation, because
         // it may recurse and instantiate itself in its own body
         let cached_func = FunctionInstance {
@@ -335,6 +311,46 @@ impl ModuleBuilder {
         cached_func
     }
 
+    fn instantiate_virtual_method(&mut self, virtual_key: VirtualMethodKey) -> FunctionInstance {
+        let instance = self.instantiate_method(virtual_key.impl_method.clone());
+
+        let iface_ty_name = virtual_key
+            .iface_ty
+            .full_path()
+            .expect("interface type must not be unnamed");
+
+        let iface_id = self
+            .find_iface_decl(&iface_ty_name)
+            .unwrap_or_else(|| {
+                let src_iface_def = self
+                    .src_metadata
+                    .find_iface_def(&iface_ty_name)
+                    .cloned()
+                    .unwrap_or_else(|_err| panic!(
+                        "failed to get interface def {} referenced in metadata",
+                        iface_ty_name,
+                    ));
+
+                let mut builder = Builder::new(self);
+                let iface_meta = builder.translate_iface(&src_iface_def);
+                self.module.metadata.define_iface(iface_meta)
+            });
+
+        let self_ty = self.translate_type(&virtual_key.impl_method.owning_ty.clone(), None);
+        let method_name = (*virtual_key.impl_method.method.name).clone();
+
+        self.module.metadata.impl_method(iface_id, self_ty, method_name, instance.id);
+
+        let key = FunctionDefKey {
+            decl_key: FunctionDeclKey::VirtualMethod(virtual_key),
+            type_args: None,
+        };
+
+        self.translated_funcs.insert(key, instance.clone());
+
+        instance
+    }
+
     // statically reference a method and get a function ID. interface methods are all translated
     // at the end of compilation for a module anyway, but for methods that are referenced statically
     // this call reserves us a function ID
@@ -354,7 +370,7 @@ impl ModuleBuilder {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 owning_ty,
                 method,
-                type_args
+                type_args,
             }),
 
             // interface method calls can't pass type args
@@ -446,9 +462,8 @@ impl ModuleBuilder {
         // function, so just keep doing this until the type cache is a stable size
         loop {
             for real_ty in self.type_cache.keys().cloned().collect::<Vec<_>>() {
-                let ifaces = self
-                    .src_metadata
-                    .implemented_ifaces(&real_ty)
+                let ifaces = real_ty
+                    .implemented_ifaces(&self.src_metadata)
                     .unwrap_or_else(|err| {
                         panic!("failed to retrieve implementation list for type {}: {}", real_ty, err)
                     });
@@ -472,16 +487,19 @@ impl ModuleBuilder {
                             continue;
                         }
                         
-                        let cache_key = FunctionDefKey {
-                            decl_key: FunctionDeclKey::Method(MethodDeclKey {
+                        let virtual_key = FunctionDeclKey::VirtualMethod(VirtualMethodKey {
+                            iface_ty: iface_ty.clone(),
+                            impl_method: MethodDeclKey {
                                 method: method.name.ident.clone(),
                                 owning_ty: real_ty.clone(),
                                 type_args: None
-                            }),
-                            type_args: None,
-                        };
+                            },
+                        });
 
-                        self.instantiate_func(cache_key);
+                        self.instantiate_func(FunctionDefKey {
+                            decl_key: virtual_key,
+                            type_args: None,
+                        });
                     }
                 }
             }
@@ -1020,24 +1038,25 @@ impl ModuleBuilder {
 pub enum FunctionDeclKey {
     Function { name: IdentPath },
     Method(MethodDeclKey),
+    VirtualMethod(VirtualMethodKey),
 }
 
 impl FunctionDeclKey {
     pub fn namespace(&self) -> IdentPath {
         match self {
-            FunctionDeclKey::Function { name } => {
-                name.parent()
-                    .expect("all functions must be declared within a namespace!")
-            },
+            FunctionDeclKey::Function { name } => name
+                .parent()
+                .expect("all functions must be declared within a namespace!"),
+            
+            FunctionDeclKey::VirtualMethod(key) => key
+                .iface_ty
+                .full_path()
+                .expect("types used as interfaces should never be unnamed"),
 
-            FunctionDeclKey::Method(key) => {
-                let iface_name = key
-                    .owning_ty
-                    .full_path()
-                    .expect("types used as interfaces should never be unnamed");
-
-                iface_name.child(key.method.clone())
-            },
+            FunctionDeclKey::Method(key) => key
+                .owning_ty
+                .full_path()
+                .expect("types with method implementations should never be unnamed"),
         }
     }
 }
@@ -1048,6 +1067,13 @@ pub struct MethodDeclKey {
     pub method: Ident,
     
     pub type_args: Option<typ::TypeList>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct VirtualMethodKey {
+    pub iface_ty: typ::Type,
+
+    pub impl_method: MethodDeclKey,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

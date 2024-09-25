@@ -1173,28 +1173,6 @@ impl Context {
         }
     }
 
-    pub fn implemented_ifaces(&self, self_ty: &Type) -> NameResult<Vec<Type>> {
-        match self_ty {
-            Type::GenericParam(param_ty) => match &param_ty.is_iface {
-                Some(as_iface) => Ok(vec![(**as_iface).clone()]),
-                None => Ok(Vec::new()),
-            },
-            
-            Type::Primitive(..) => {
-                Ok(self.primitive_implements.clone())
-            }
-            
-            Type::Record(name) | Type::Class(name) => {
-                let def = self.instantiate_struct_def(name)?;
-                Ok(def.implements.clone())
-            }
-            
-            _ => {
-                Ok(Vec::new())
-            },
-        }
-    }
-
     pub fn find_function(&self, name: &IdentPath) -> NameResult<(IdentPath, Rc<FunctionSig>)> {
         match self.find_path(name) {
             Some(ScopeMemberRef::Decl {
@@ -1226,12 +1204,18 @@ impl Context {
             None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
-    
+
+    /// Get the methods implemented by this primitive type
     pub fn get_primitive_methods(
         &self, 
         primitive: Primitive
     ) -> &LinkedHashMap<Ident, FunctionDecl> {
         &self.primitive_methods[&primitive]
+    }
+
+    /// Get the interface types implemented by this primitive type
+    pub fn get_primitive_impls(&self, _primitive: Primitive) -> &[Type] {
+        &self.primitive_implements
     }
 
     pub fn find_instance_member<'ty, 'ctx: 'ty>(

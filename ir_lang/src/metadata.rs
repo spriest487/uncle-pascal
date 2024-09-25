@@ -567,7 +567,8 @@ impl Metadata {
         }
     }
 
-    pub fn find_impl(
+    /// Find the method instance that implements the given interface method for `ty`
+    pub fn find_virtual_impl(
         &self,
         ty: &Type,
         iface_id: InterfaceID,

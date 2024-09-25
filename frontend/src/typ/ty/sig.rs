@@ -5,7 +5,7 @@ use crate::typ::ast::FunctionCallNoArgs;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
-use crate::typ::Context;
+use crate::typ::{Context, TypeParam};
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
@@ -66,6 +66,18 @@ impl From<FunctionParam> for FunctionParamSig {
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionSigTypeParam {
     pub is_ty: Type,
+}
+
+impl FunctionSigTypeParam {
+    pub fn from_type_param(param: TypeParam) -> Self {
+        FunctionSigTypeParam {
+            is_ty: param.constraint
+                .as_ref()
+                .map(|constraint| &constraint.is_ty)
+                .cloned()
+                .unwrap_or(Type::Nothing)
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]

@@ -103,11 +103,14 @@ pub fn builtin_string_class() -> ast::StructDef {
 }
 
 // builtin name of the dispose method of the builtin disposable interface
-pub fn builtin_disposable_dispose_name() -> ast::TypedFunctionName {
+pub fn builtin_disposable_dispose_name(owning_ty: Option<Type>) -> ast::TypedFunctionName {
+    let iface_ty = Type::interface(builtin_disposable_name().qualified);
+    let owning_ty = owning_ty.unwrap_or(iface_ty.clone());
+    
     ast::TypedFunctionName::new_method(
-        builtin_ident(DISPOSABLE_DISPOSE_METHOD), 
-        Type::interface(builtin_disposable_name().qualified), 
-        builtin_span()
+        builtin_ident(DISPOSABLE_DISPOSE_METHOD),
+        owning_ty,
+        builtin_span(),
     )
 }
 
@@ -125,7 +128,7 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
         name: builtin_disposable_name(),
         methods: vec![ast::InterfaceMethodDecl {
             decl: ast::FunctionDecl {
-                name: builtin_disposable_dispose_name(),
+                name: builtin_disposable_dispose_name(None),
                 // TODO: this shouldn't be optional, use unspecified type for parsed functions
                 return_ty: Some(Type::Nothing),
                 mods: Vec::new(),

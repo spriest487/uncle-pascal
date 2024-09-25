@@ -8,7 +8,7 @@ use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::InterfaceDecl;
-use crate::typ::typecheck_type;
+use crate::typ::string_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
 use crate::typ::ClosureBodyEnvironment;
@@ -16,7 +16,6 @@ use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::FunctionBodyEnvironment;
 use crate::typ::FunctionParamSig;
-use crate::typ::FunctionSig;
 use crate::typ::GenericResult;
 use crate::typ::NameContainer;
 use crate::typ::NameError;
@@ -28,14 +27,14 @@ use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::typ::string_type;
+use crate::typ::{typecheck_type, FunctionSig};
 use common::span::Span;
 use common::span::Spanned;
+use derivative::Derivative;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
 use std::fmt::Formatter;
 use std::rc::Rc;
-use derivative::Derivative;
 
 pub const SELF_PARAM_NAME: &str = "self";
 pub const SELF_TY_NAME: &str = "Self";
@@ -216,6 +215,8 @@ pub fn typecheck_func_decl(
 
             // method decl
             (None, Some(enclosing_ty)) => {
+                let enclosing_ty = enclosing_ty.clone();
+
                 // if the owning type is an interface, this is an interface method definition,
                 // and the type of `self` is the generic `Self` (to stand in for implementing
                 // types in static interfaces). if it's NOT an interface, it must be a concrete
@@ -250,6 +251,37 @@ pub fn typecheck_func_decl(
             mods: decl_mods,
         })
     })
+}
+
+impl FunctionDecl {
+    pub fn is_implementation_of(&self, iface_ty: &Type, ctx: &Context) -> TypecheckResult<bool> {
+        let owning_ty = match &self.name.owning_ty {
+            // not a method/can't be an implementation
+            None | Some(Type::Interface(..)) => return Ok(false),
+            
+            Some(ty) => ty,
+        };
+
+        let implements = owning_ty.implemented_ifaces_at(ctx, &self.span)?;
+        if !implements.contains(iface_ty) {
+            return Ok(false);
+        }
+        
+        let sig = FunctionSig::of_decl(self);
+
+        let methods = iface_ty.methods_at(ctx, &self.span)?;
+        for impl_method in methods {
+            if impl_method.name.ident == self.name.ident {
+                let iface_sig = FunctionSig::of_decl(&impl_method).with_self(owning_ty);
+
+                if iface_sig == sig {
+                    return Ok(true);
+                }
+            }
+        }
+        
+        Ok(false)
+    }
 }
 
 fn typecheck_params(
