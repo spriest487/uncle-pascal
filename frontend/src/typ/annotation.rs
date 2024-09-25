@@ -289,7 +289,7 @@ impl Typed {
         if actual_ty == *expect_ty {
             Ok(())
         } else {
-            Err(TypecheckError::TypeMismatch {
+            Err(TypeError::TypeMismatch {
                 span: span.clone(),
                 expected: expect_ty.clone(),
                 actual: actual_ty,

@@ -12,7 +12,7 @@ use crate::typ::NameContainer;
 use crate::typ::NameError;
 use crate::typ::Specializable;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -36,7 +36,7 @@ pub fn typecheck_object_ctor(
     let ctor_ty = find_ctor_ty(ctor.ident.as_ref(), expect_ty, &span, ctx)?;
 
     let ty_name = ctor_ty.full_path()
-        .ok_or_else(|| TypecheckError::InvalidCtorType {
+        .ok_or_else(|| TypeError::InvalidCtorType {
             ty: ctor_ty.clone(),
             span: span.clone(),
         })?;
@@ -47,26 +47,26 @@ pub fn typecheck_object_ctor(
             hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
         };
 
-        return Err(TypecheckError::NameError {
+        return Err(TypeError::NameError {
             span: span.clone(),
             err: NameError::GenericError(err),
         });
     }
 
     if !ctx.is_accessible(&ty_name) {
-        return Err(TypecheckError::Private {
+        return Err(TypeError::Private {
             name: ty_name,
             span,
         });
     }
 
     if !ctx.is_constructor_accessible(&ctor_ty) {
-        return Err(TypecheckError::PrivateConstructor { ty: ctor_ty, span });
+        return Err(TypeError::PrivateConstructor { ty: ctor_ty, span });
     }
 
     let mut expect_members: LinkedHashMap<_, _> = ctor_ty
         .fields(ctx)
-        .map_err(|err| TypecheckError::NameError {
+        .map_err(|err| TypeError::NameError {
             err,
             span: span.clone(),
         })?
@@ -79,7 +79,7 @@ pub fn typecheck_object_ctor(
     for arg in &ctor.args.members {
         if let Some(prev) = members.iter().find(|a| a.ident == arg.ident) {
             // ctor has duplicate named arguments
-            return Err(TypecheckError::DuplicateNamedArg {
+            return Err(TypeError::DuplicateNamedArg {
                 name: arg.ident.clone(),
                 span: arg.span().clone(),
                 previous: prev.span().clone(),
@@ -94,7 +94,7 @@ pub fn typecheck_object_ctor(
                     base: NameContainer::Type(ctor_ty),
                     member: arg.ident.clone(),
                 };
-                return Err(TypecheckError::NameError {
+                return Err(TypeError::NameError {
                     span: arg.span().clone(),
                     err,
                 });
@@ -137,7 +137,7 @@ pub fn typecheck_object_ctor(
     }
 
     if !missing_members.is_empty() {
-        return Err(TypecheckError::CtorMissingMembers {
+        return Err(TypeError::CtorMissingMembers {
             ctor_ty,
             span: ctor.annotation.clone(),
             members: missing_members,
@@ -169,14 +169,14 @@ fn find_ctor_ty(explicit_ty_name: Option<&IdentPath>, expect_ty: &Type, span: &S
         Some(ctor_ident) => {
             let (_, raw_ty) = ctx
                 .find_type(&ctor_ident)
-                .map_err(|err| TypecheckError::NameError {
+                .map_err(|err| TypeError::NameError {
                     err,
                     span: ctor_ident.span().clone(),
                 })?;
 
             let raw_ty_name = raw_ty
                 .full_path()
-                .ok_or_else(|| TypecheckError::InvalidCtorType {
+                .ok_or_else(|| TypeError::InvalidCtorType {
                     ty: raw_ty.clone(),
                     span: span.clone(),
                 })?;
@@ -191,7 +191,7 @@ fn find_ctor_ty(explicit_ty_name: Option<&IdentPath>, expect_ty: &Type, span: &S
                         hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
                     };
 
-                    TypecheckError::NameError {
+                    TypeError::NameError {
                         span: span.clone(),
                         err: NameError::GenericError(err),
                     }
@@ -261,7 +261,7 @@ fn elements_for_inferred_ty(
 ) -> TypecheckResult<Vec<CollectionCtorElement>> {
     // must have at at least one element to infer types
     if ctor.elements.is_empty() {
-        return Err(TypecheckError::UnableToInferType {
+        return Err(TypeError::UnableToInferType {
             expr: Box::new(ast::Expr::from(ctor.clone())),
         });
     }

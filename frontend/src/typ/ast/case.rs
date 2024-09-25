@@ -2,7 +2,7 @@ use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_stmt;
 use crate::typ::TypedValue;
 use crate::typ::TypecheckResult;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::Typed;
 use crate::typ::Type;
 use crate::typ::Context;
@@ -64,7 +64,7 @@ pub fn typecheck_case_expr(
     let span = case.span().clone();
 
     if case.branches.is_empty() || case.else_branch.is_none() {
-        return Err(TypecheckError::InvalidCaseExprBlock { span });
+        return Err(TypeError::InvalidCaseExprBlock { span });
     }
 
     let cond_expr = typecheck_expr(&case.cond_expr, &Type::Nothing, ctx)?;
@@ -72,7 +72,7 @@ pub fn typecheck_case_expr(
     let mut branches = Vec::new();
 
     if case.branches.len() == 0 || case.else_branch.is_none() {
-        return Err(TypecheckError::InvalidCaseExprBlock { span });
+        return Err(TypeError::InvalidCaseExprBlock { span });
     }
 
     let mut branch_expr_ty = None;
@@ -98,7 +98,7 @@ pub fn typecheck_case_expr(
 
     let result_ty = match branch_expr_ty {
         Some(Type::Nothing) | None => {
-            return Err(TypecheckError::InvalidCaseExprBlock { span });
+            return Err(TypeError::InvalidCaseExprBlock { span });
         },
 
         Some(branch_expr_ty) => branch_expr_ty,
@@ -108,7 +108,7 @@ pub fn typecheck_case_expr(
         Some(else_branch) => typecheck_expr(else_branch, &result_ty, ctx)?,
 
         _ => {
-            return Err(TypecheckError::InvalidCaseExprBlock { span });
+            return Err(TypeError::InvalidCaseExprBlock { span });
         },
     };
 

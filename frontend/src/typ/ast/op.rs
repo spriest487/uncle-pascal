@@ -24,7 +24,7 @@ use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeMember;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -39,8 +39,8 @@ use std::rc::Rc;
 
 pub type BinOp = ast::BinOp<Typed>;
 
-fn invalid_bin_op(bin_op: &ast::BinOp<Span>, lhs: &Expr, rhs: &Expr) -> TypecheckError {
-    TypecheckError::InvalidBinOp {
+fn invalid_bin_op(bin_op: &ast::BinOp<Span>, lhs: &Expr, rhs: &Expr) -> TypeError {
+    TypeError::InvalidBinOp {
         lhs: lhs.annotation().ty().into_owned(),
         rhs: rhs.annotation().ty().into_owned(),
         op: bin_op.op,
@@ -353,7 +353,7 @@ fn desugar_string_concat(
             let concat_path = system_path.child(Ident::new("StringConcat", span.clone()));
             let (concat_path, concat_sig) = ctx
                 .find_function(&concat_path)
-                .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+                .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
             let concat_annotation = FunctionTyped {
                 ident: concat_path.clone(),
@@ -424,7 +424,7 @@ fn typecheck_member_of(
                                 base: NameContainer::for_annotated(lhs.annotation()),
                             };
 
-                            return Err(TypecheckError::from_name_err(err, span));
+                            return Err(TypeError::from_name_err(err, span));
                         },
                     }
                 },
@@ -435,7 +435,7 @@ fn typecheck_member_of(
                         base: NameContainer::for_annotated(lhs.annotation()),
                     };
 
-                    return Err(TypecheckError::from_name_err(err, span));
+                    return Err(TypeError::from_name_err(err, span));
                 },
             };
 
@@ -547,7 +547,7 @@ fn typecheck_member_of(
                     Ok(Expr::from(ctor))
                 },
 
-                _ => Err(TypecheckError::InvalidCtorType {
+                _ => Err(TypeError::InvalidCtorType {
                     ty: lhs.annotation().ty().into_owned(),
                     span,
                 }),
@@ -557,7 +557,7 @@ fn typecheck_member_of(
         _ => {
             let rhs = typecheck_expr(rhs, &Type::Nothing, ctx)?;
 
-            Err(TypecheckError::InvalidBinOp {
+            Err(TypeError::InvalidBinOp {
                 lhs: lhs.annotation().ty().into_owned(),
                 rhs: rhs.annotation().ty().into_owned(),
                 span,
@@ -603,7 +603,7 @@ fn typecheck_type_member(
 ) -> TypecheckResult<Typed> {
     let type_member = ctx
         .find_type_member(ty, member_ident)
-        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+        .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let annotation = match type_member {
         TypeMember::Method { decl } => {
@@ -624,7 +624,7 @@ pub fn typecheck_member_value(
 ) -> TypecheckResult<Typed> {
     let member = ctx
         .find_instance_member(&lhs.annotation().ty(), &member_ident)
-        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+        .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let annotation = match member {
         InstanceMember::Method { iface_ty, method } => {
@@ -697,7 +697,7 @@ pub fn typecheck_variant_ctor(
     // no information about its type args.
     let variant_def = ctx
         .find_variant_def(&variant_name.qualified)
-        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+        .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let case_exists = variant_def
         .cases
@@ -705,7 +705,7 @@ pub fn typecheck_variant_ctor(
         .any(|case| case.ident == *member_ident);
 
     if !case_exists {
-        return Err(TypecheckError::from_name_err(
+        return Err(TypeError::from_name_err(
             NameError::MemberNotFound {
                 base: NameContainer::Type(Type::Variant(Box::new(variant_name.clone()))),
                 member: member_ident.clone(),
@@ -763,7 +763,7 @@ pub fn typecheck_unary_op(
 
             match (kind_addressable, ty.as_ref()) {
                 (false, _) | (true, Type::Nothing | Type::Nil | Type::Function(..)) => {
-                    Err(TypecheckError::NotAddressable {
+                    Err(TypeError::NotAddressable {
                         ty: ty.into_owned(),
                         value_kind,
                         span,
@@ -779,7 +779,7 @@ pub fn typecheck_unary_op(
                     | Type::MethodSelf { .. }
                     | Type::Variant(..)
                     | Type::GenericParam(..),
-                ) if !ctx.allow_unsafe() => Err(TypecheckError::UnsafeAddressoOfNotAllowed {
+                ) if !ctx.allow_unsafe() => Err(TypeError::UnsafeAddressoOfNotAllowed {
                     ty: ty.into_owned(),
                     span,
                 }),
@@ -822,7 +822,7 @@ pub fn typecheck_unary_op(
                 .ty()
                 .deref_ty()
                 .cloned()
-                .ok_or_else(|| TypecheckError::NotDerefable {
+                .ok_or_else(|| TypeError::NotDerefable {
                     ty: operand.annotation().ty().into_owned(),
                     span: span.clone(),
                 })?;
@@ -859,7 +859,7 @@ pub fn typecheck_unary_op(
             };
 
             if !valid_ty {
-                return Err(TypecheckError::InvalidUnaryOp {
+                return Err(TypeError::InvalidUnaryOp {
                     operand: operand.annotation().ty().into_owned(),
                     op: unary_op.op,
                     span,
@@ -876,7 +876,7 @@ pub fn typecheck_unary_op(
         },
 
         _ => {
-            return Err(TypecheckError::InvalidUnaryOp {
+            return Err(TypeError::InvalidUnaryOp {
                 op: unary_op.op,
                 operand: operand.annotation().ty().into_owned(),
                 span: unary_op.annotation.clone(),
@@ -924,7 +924,7 @@ pub fn typecheck_indexer(
 
         // not indexable
         _ => {
-            return Err(TypecheckError::InvalidIndexer {
+            return Err(TypeError::InvalidIndexer {
                 index_ty: index_ty.clone(),
                 base: Box::new(base.clone()),
                 span: span.clone(),
@@ -958,7 +958,7 @@ fn check_array_bound_static(base: &Expr, index: &Expr, ctx: &mut Context) -> Typ
         const_eval_integer(index, ctx),
     ) {
         (Type::Array(array_ty), Ok(index_const)) if out_of_range(array_ty.dim, index_const) => {
-            Err(TypecheckError::IndexOutOfBounds {
+            Err(TypeError::IndexOutOfBounds {
                 index: index_const,
                 base_ty: Box::new(base.annotation().ty().into_owned()),
                 span: index.span().clone(),

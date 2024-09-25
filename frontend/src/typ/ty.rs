@@ -484,7 +484,7 @@ impl Type {
     }
     
     pub fn methods_at<'c>(&self, ctx: &'c Context, at: &Span) -> TypecheckResult<Vec<&'c FunctionDecl>> {
-        self.methods(ctx).map_err(|err| TypecheckError::from_name_err(err, at.clone()))
+        self.methods(ctx).map_err(|err| TypeError::from_name_err(err, at.clone()))
     }
 
     pub fn get_method<'c>(&self, method: &Ident, ctx: &'c Context) -> NameResult<Option<&'c FunctionDecl>> {
@@ -547,7 +547,7 @@ impl Type {
     
     pub fn implemented_ifaces_at(&self, ctx: &Context, at: &Span) -> TypecheckResult<Vec<Type>> {
         self.implemented_ifaces(ctx)
-            .map_err(|err| TypecheckError::from_name_err(err, at.clone()))
+            .map_err(|err| TypeError::from_name_err(err, at.clone()))
     }
 
     pub fn expect_something(self, msg: &str) -> Self {
@@ -818,7 +818,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
         }) => {
             let (_, raw_ty) = ctx
                 .find_type(ident)
-                .map_err(|err| TypecheckError::NameError {
+                .map_err(|err| TypeError::NameError {
                     err,
                     span: ty.span().clone(),
                 })?;
@@ -837,7 +837,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
                     let checked_type_args = TypeList::new(checked_type_arg_items, type_args_span);
 
                     Type::specialize_generic(&raw_ty, &checked_type_args, ctx)
-                        .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?
+                        .map_err(|err| TypeError::from_generic_err(err, span.clone()))?
                         .into_owned()
                 },
 
@@ -858,7 +858,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
 
                     let dim = dim_val
                         .as_usize()
-                        .ok_or_else(|| TypecheckError::TypeMismatch {
+                        .ok_or_else(|| TypeError::TypeMismatch {
                             span: dim_expr.span().clone(),
                             actual: dim_expr.annotation().ty().into_owned(),
                             expected: Type::Primitive(Primitive::Int32),

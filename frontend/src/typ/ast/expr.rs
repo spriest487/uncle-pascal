@@ -24,7 +24,7 @@ use crate::typ::FunctionTyped;
 use crate::typ::NameError;
 use crate::typ::ScopeMemberRef;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -42,7 +42,7 @@ pub fn const_eval_string(expr: &Expr, ctx: &Context) -> TypecheckResult<String> 
     match expr.const_eval(ctx) {
         Some(Literal::String(src_str)) => Ok((*src_str).clone()),
 
-        _ => Err(TypecheckError::InvalidConstExpr {
+        _ => Err(TypeError::InvalidConstExpr {
             expr: Box::new(expr.clone()),
         }),
     }
@@ -52,7 +52,7 @@ pub fn const_eval_integer(expr: &Expr, ctx: &Context) -> TypecheckResult<IntCons
     match expr.const_eval(ctx) {
         Some(Literal::Integer(int_const)) => Ok(int_const),
 
-        _ => Err(TypecheckError::InvalidConstExpr {
+        _ => Err(TypeError::InvalidConstExpr {
             expr: Box::new(expr.clone()),
         }),
     }
@@ -146,7 +146,7 @@ fn typecheck_ident(
         Some(decl) => decl,
         None => {
             let not_found_ident = ident.clone().into();
-            return Err(TypecheckError::NameError {
+            return Err(TypeError::NameError {
                 err: NameError::NotFound {
                     ident: not_found_ident,
                 },

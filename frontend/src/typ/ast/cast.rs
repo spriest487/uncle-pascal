@@ -5,7 +5,7 @@ use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::Primitive;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -88,13 +88,13 @@ pub fn check_implicit_conversion(
         Conversion::Blittable => Ok(()),
         Conversion::UnsafeBlittable if ctx.allow_unsafe() => Ok(()),
 
-        Conversion::UnsafeBlittable => Err(TypecheckError::UnsafeConversionNotAllowed {
+        Conversion::UnsafeBlittable => Err(TypeError::UnsafeConversionNotAllowed {
             from: from.clone(),
             to: to.clone(),
             span: span.clone(),
         }),
 
-        Conversion::Illegal => Err(TypecheckError::TypeMismatch {
+        Conversion::Illegal => Err(TypeError::TypeMismatch {
             expected: to.clone(),
             actual: from.clone(),
             span: span.clone(),
@@ -130,7 +130,7 @@ pub fn check_explicit_cast(
         // upcast class ref to interface it implements
         | (Type::Class(..), Type::Interface(..)) if ctx.is_implementation_at(from, to, span)? => Ok(()),
 
-        | _ => Err(TypecheckError::InvalidCast {
+        | _ => Err(TypeError::InvalidCast {
                 from: from.clone(),
                 to: to.clone(),
                 span: span.clone(),

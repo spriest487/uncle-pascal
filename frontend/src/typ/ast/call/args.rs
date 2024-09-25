@@ -16,7 +16,7 @@ use crate::typ::Type;
 use crate::typ::TypeArgsResolver;
 use crate::typ::TypeArgsResult;
 use crate::typ::TypeParamType;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::ValueKind;
 use common::span::Span;
@@ -170,7 +170,7 @@ pub fn specialize_call_args(
 ) -> TypecheckResult<SpecializedCallArgs> {
     if decl_sig.type_params.is_none() {
         if let Some(explicit_ty_args) = explicit_ty_args {
-            return Err(TypecheckError::from_generic_err(
+            return Err(TypeError::from_generic_err(
                 GenericError::ArgsLenMismatch {
                     expected: 0,
                     actual: explicit_ty_args.len(),
@@ -195,7 +195,7 @@ pub fn specialize_call_args(
         let sig = decl_sig
             .clone()
             .specialize_generic(&explicit_ty_args, ctx)
-            .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?;
+            .map_err(|err| TypeError::from_generic_err(err, span.clone()))?;
 
         let actual_args = call::build_args_for_params(&sig.params, args, self_arg, span, ctx)?;
 
@@ -210,7 +210,7 @@ pub fn specialize_call_args(
         if args.len() + self_arg_len != decl_sig.params.len() {
             // this is an inferral error because we don't have enough information to report
             // it as an arg type mismatch
-            return Err(TypecheckError::from_generic_err(
+            return Err(TypeError::from_generic_err(
                 GenericError::CannotInferArgs {
                     target: GenericTarget::FunctionSig(decl_sig.clone()),
                     hint: GenericTypeHint::Unknown,
@@ -255,7 +255,7 @@ pub fn specialize_call_args(
         let actual_sig = decl_sig
             .clone()
             .specialize_generic(&inferred_ty_args, ctx)
-            .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?;
+            .map_err(|err| TypeError::from_generic_err(err, span.clone()))?;
 
         // eprintln!("INFERRED ARGS:\n\tdecl: {}\n\tinferred:{}\n\tfinal sig: {}", decl_sig, inferred_ty_args, actual_sig);
 
@@ -289,7 +289,7 @@ fn unwrap_inferred_args(
                     .map(|a| a.annotation().ty().into_owned())
                     .collect();
 
-                return Err(TypecheckError::from_generic_err(
+                return Err(TypeError::from_generic_err(
                     GenericError::CannotInferArgs {
                         target: GenericTarget::FunctionSig(decl_sig.clone()),
                         hint: GenericTypeHint::ArgTypes(arg_tys),
@@ -327,7 +327,7 @@ pub fn validate_args(
 
         args[i] =
             implicit_conversion(args[i].clone(), &params[i].ty, ctx).map_err(|err| match err {
-                TypecheckError::TypeMismatch { .. } => {
+                TypeError::TypeMismatch { .. } => {
                     call::invalid_args(args.to_vec(), params, span.clone())
                 },
                 err => err,
@@ -348,7 +348,7 @@ pub fn validate_args(
                 // in a separate pass
                 Some(ValueKind::Mutable) | Some(ValueKind::Uninitialized) => {},
                 _ => {
-                    return Err(TypecheckError::NotMutable {
+                    return Err(TypeError::NotMutable {
                         expr: Box::new(arg.clone()),
                         decl: None,
                     });

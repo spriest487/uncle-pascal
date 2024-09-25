@@ -9,7 +9,7 @@ use crate::typ::Context;
 use crate::typ::Primitive;
 use crate::typ::Type;
 use crate::typ::TypePattern;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -72,7 +72,7 @@ fn create_then_branch_ctx(
     if let Some(pattern) = &is_pattern {
         let bindings = pattern
             .bindings(ctx)
-            .map_err(|err| TypecheckError::from_name_err(err, pattern.span().clone()))?;
+            .map_err(|err| TypeError::from_name_err(err, pattern.span().clone()))?;
 
         for binding in bindings {
             then_ctx.declare_binding(

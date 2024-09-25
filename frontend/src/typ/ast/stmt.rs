@@ -26,7 +26,7 @@ use crate::typ::Context;
 use crate::typ::GenericError;
 use crate::typ::Specializable;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -45,7 +45,7 @@ pub fn typecheck_local_binding(
     let (val, binding_ty) = match &binding.ty {
         ast::TypeName::Unknown(_) => match &binding.val {
             None => {
-                return Err(TypecheckError::UninitBindingWithNoType {
+                return Err(TypeError::UninitBindingWithNoType {
                     binding: Box::new(binding.clone()),
                 });
             },
@@ -60,7 +60,7 @@ pub fn typecheck_local_binding(
         val_ty => {
             let explicit_ty = typecheck_type(val_ty, ctx)?;
             if explicit_ty.is_unspecialized_generic() {
-                return Err(TypecheckError::from_generic_err(
+                return Err(TypeError::from_generic_err(
                     GenericError::IllegalUnspecialized { ty: explicit_ty },
                     binding.span().clone(),
                 ));
@@ -72,12 +72,12 @@ pub fn typecheck_local_binding(
 
                     let val =
                         implicit_conversion(val, &explicit_ty, ctx).map_err(|err| match err {
-                            TypecheckError::TypeMismatch {
+                            TypeError::TypeMismatch {
                                 expected,
                                 actual,
                                 span,
                                 ..
-                            } => TypecheckError::InvalidBinOp {
+                            } => TypeError::InvalidBinOp {
                                 lhs: expected,
                                 rhs: actual,
                                 op: Operator::Assignment,
@@ -97,14 +97,14 @@ pub fn typecheck_local_binding(
     };
 
     if binding_ty == Type::Nothing {
-        return Err(TypecheckError::BindingWithNoType {
+        return Err(TypeError::BindingWithNoType {
             binding_name: binding.name.clone(),
             span: binding.span().clone(),
         });
     }
 
     if binding_ty.is_unspecialized_generic() {
-        return Err(TypecheckError::from_generic_err(
+        return Err(TypeError::from_generic_err(
             GenericError::IllegalUnspecialized { ty: binding_ty },
             binding.span().clone(),
         ));
@@ -156,7 +156,7 @@ pub fn typecheck_stmt(
             Invocation::Ctor(ctor) => {
                 let ctor_expr = Expr::from(*ctor);
                 let invalid_stmt = InvalidStatement::from(ctor_expr);
-                Err(TypecheckError::InvalidStatement(invalid_stmt))
+                Err(TypeError::InvalidStatement(invalid_stmt))
             },
         },
 
@@ -238,7 +238,7 @@ fn typecheck_ident_stmt(ident: &Ident, span: &Span, ctx: &mut Context) -> Typech
         invalid => {
             // this would only be valid as an expression
             let invalid_stmt = InvalidStatement(Box::new(invalid));
-            return Err(TypecheckError::InvalidStatement(invalid_stmt));
+            return Err(TypeError::InvalidStatement(invalid_stmt));
         }
     }
 }
@@ -247,7 +247,7 @@ fn expect_in_loop(stmt: &ast::Stmt<Span>, ctx: &Context) -> TypecheckResult<()> 
     match ctx.in_loop() {
         Some(..) => Ok(()),
 
-        None => Err(TypecheckError::NoLoopContext {
+        None => Err(TypeError::NoLoopContext {
             stmt: Box::new(stmt.clone()),
         }),
     }
@@ -260,7 +260,7 @@ pub fn typecheck_exit(
 ) -> TypecheckResult<Exit> {
     let ret_ty = ctx
         .current_func_return_ty()
-        .ok_or_else(|| TypecheckError::NoFunctionContext {
+        .ok_or_else(|| TypeError::NoFunctionContext {
             stmt: Box::new(ast::Stmt::Exit(Box::new(exit.clone()))),
         })?
         .clone();
@@ -284,7 +284,7 @@ pub fn typecheck_exit(
 
         ast::Exit::WithValue(value, span) => {
             if ret_ty == Type::Nothing {
-                return Err(TypecheckError::InvalidExitWithValue {
+                return Err(TypeError::InvalidExitWithValue {
                     span: exit.span().clone(),
                 });
             }

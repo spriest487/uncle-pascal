@@ -7,7 +7,7 @@ use crate::typ::{Context, NameError};
 use crate::typ::FunctionSig;
 use crate::typ::InstanceMethod;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use common::span::Span;
 use common::span::Spanned;
@@ -126,7 +126,7 @@ pub fn resolve_overload(
             } = &candidates[0]
             {
                 let self_ty = sig.self_ty_from_args(&actual_arg_tys).ok_or_else(|| {
-                    TypecheckError::AmbiguousSelfType {
+                    TypeError::AmbiguousSelfType {
                         iface: iface_ty.clone(),
                         span: span.clone(),
                         method: method_ident.clone(),
@@ -135,10 +135,10 @@ pub fn resolve_overload(
                 
                 let is_impl = ctx
                     .is_implementation(self_ty, iface_ty)
-                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+                    .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
                 if !is_impl {
-                    return Err(TypecheckError::from_name_err(NameError::NoImplementationFound {
+                    return Err(TypeError::from_name_err(NameError::NoImplementationFound {
                         owning_ty: iface_ty.clone(),
                         impl_ty: self_ty.clone(),
                     }, span.clone()))
@@ -205,7 +205,7 @@ pub fn resolve_overload(
             // println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
             // dbg!(&candidates);
 
-            break Err(TypecheckError::AmbiguousFunction {
+            break Err(TypeError::AmbiguousFunction {
                 candidates: candidates.to_vec(),
                 span: span.clone(),
             });

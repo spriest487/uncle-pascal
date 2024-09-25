@@ -15,7 +15,7 @@ use crate::typ::NameError;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::IntConstant;
@@ -63,10 +63,10 @@ pub fn typecheck_struct_decl(
 
                 let is_unsized = ctx
                     .is_unsized_ty(&ty)
-                    .map_err(|err| TypecheckError::from_name_err(err, class.span().clone()))?;
+                    .map_err(|err| TypeError::from_name_err(err, class.span().clone()))?;
 
                 if is_unsized {
-                    return Err(TypecheckError::UnsizedMember {
+                    return Err(TypeError::UnsizedMember {
                         decl: name.qualified,
                         member: field.ident.clone(),
                         member_ty: ty,
@@ -84,7 +84,7 @@ pub fn typecheck_struct_decl(
                 let decl = typecheck_func_decl(decl, false, ctx)?;
 
                 if !decl.mods.is_empty() {
-                    return Err(TypecheckError::InvalidMethodModifiers {
+                    return Err(TypeError::InvalidMethodModifiers {
                         mods: decl.mods.clone(),
                         span: {
                             let start = decl.mods[0].span();
@@ -128,7 +128,7 @@ pub fn typecheck_iface(
                 .clone()
                 .child(method.decl.name.ident().clone());
 
-            return Err(TypecheckError::NameError {
+            return Err(TypeError::NameError {
                 err: NameError::AlreadyDefined {
                     ident: method_path,
                     existing: existing.span().clone(),
@@ -155,7 +155,7 @@ pub fn typecheck_variant(
     ctx: &mut Context,
 ) -> TypecheckResult<VariantDef> {
     if variant.cases.is_empty() {
-        return Err(TypecheckError::EmptyVariant(Box::new(variant.clone())));
+        return Err(TypeError::EmptyVariant(Box::new(variant.clone())));
     }
 
     let mut cases = Vec::with_capacity(variant.cases.len());
@@ -199,7 +199,7 @@ pub fn typecheck_enum_decl(
     ctx: &mut Context,
 ) -> TypecheckResult<EnumDecl> {
     if name.decl_name.type_params.is_some() {
-        return Err(TypecheckError::EnumDeclWithTypeParams {
+        return Err(TypeError::EnumDeclWithTypeParams {
             span: name.span().clone(),
         });
     }
@@ -217,7 +217,7 @@ pub fn typecheck_enum_decl(
 
                 if let Some((prev_ident, prev_ord_val)) = &prev_item {
                     if item_ord_val <= *prev_ord_val {
-                        return Err(TypecheckError::EnumValuesMustBeAscending {
+                        return Err(TypeError::EnumValuesMustBeAscending {
                             span: item.span().clone(),
                             prev_ident: prev_ident.clone(),
                             prev_val: *prev_ord_val,

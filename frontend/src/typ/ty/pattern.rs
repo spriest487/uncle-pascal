@@ -82,7 +82,7 @@ impl TypePattern {
                     let err_span = path.first().span.to(&case_ident.span);
                     let variant_ty = Type::Variant(Box::new(variant_def.name.clone()));
 
-                    return Err(TypecheckError::from_name_err(NameError::MemberNotFound {
+                    return Err(TypeError::from_name_err(NameError::MemberNotFound {
                         base: NameContainer::Type(variant_ty),
                         member: case_ident.clone(),
                     }, err_span));
@@ -110,7 +110,7 @@ impl TypePattern {
         let raw_ty = match name {
             ast::TypeName::Ident(IdentTypeName { ident, .. }) => {
                 let (_ident_path, ty) = ctx.find_type(ident)
-                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+                    .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
                 ty.clone()
             },
@@ -123,7 +123,7 @@ impl TypePattern {
             None
         };
 
-        matchable_ty.ok_or_else(|| TypecheckError::NotMatchable {
+        matchable_ty.ok_or_else(|| TypeError::NotMatchable {
             ty: raw_ty.clone(),
             span: span.clone(),
         })
@@ -139,7 +139,7 @@ impl TypePattern {
         match expect_ty {
             expect_var @ Type::Variant(..) => {
                 let variant_def = ctx.find_variant_def(variant)
-                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+                    .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
                 let var_ty = Type::Variant(Box::new(variant_def.name.clone()));
 
@@ -150,7 +150,7 @@ impl TypePattern {
                         },
                         _ => unreachable!("should never infer a non-variant specialized type for a generic variant"),
                     })
-                    .ok_or_else(|| TypecheckError::UnableToInferSpecialization {
+                    .ok_or_else(|| TypeError::UnableToInferSpecialization {
                         generic_ty: var_ty.clone(),
                         hint_ty: expect_ty.clone(),
                         span: span.clone(),
@@ -159,7 +159,7 @@ impl TypePattern {
 
             _ => {
                 let variant_def = ctx.find_variant_def(variant)
-                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+                    .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
                 // expect_ty is probably Nothing and we have to assume the type we find from
                 // just the typename is right (if not, we'll get a type mismatch later)

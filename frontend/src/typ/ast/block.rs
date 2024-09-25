@@ -7,7 +7,7 @@ use crate::typ::ast::typecheck_stmt;
 use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -51,7 +51,7 @@ pub fn typecheck_block(
                         // typ the actual stmt which isn't a valid expr so we can use it
                         // for a better error message
                         let bad_stmt = typecheck_stmt(&stmt, expect_ty, ctx)?;
-                        return Err(TypecheckError::BlockOutputIsNotExpression {
+                        return Err(TypeError::BlockOutputIsNotExpression {
                             stmt: Box::new(bad_stmt),
                             expected_expr_ty: expect_ty.clone(),
                         });

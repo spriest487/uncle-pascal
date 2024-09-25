@@ -6,7 +6,7 @@ use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::Primitive;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use common::span::Span;
@@ -58,7 +58,7 @@ pub fn typecheck_for_loop(
         .map(|p| p.is_integer())
         .unwrap_or(false)
     {
-        return Err(TypecheckError::InvalidLoopCounterType {
+        return Err(TypeError::InvalidLoopCounterType {
             counter_ty,
             span: annotation.span().clone(),
         });

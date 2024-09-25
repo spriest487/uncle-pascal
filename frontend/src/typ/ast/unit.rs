@@ -26,7 +26,7 @@ use crate::typ::Named;
 use crate::typ::ScopeMemberRef;
 use crate::typ::Symbol;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::ValueKind;
@@ -93,12 +93,12 @@ fn typecheck_unit_uses_decl(use_item: &ast::UseDeclItem, ctx: &mut Context) -> T
                 actual: unexpected,
                 expected: ExpectedKind::Namespace,
             };
-            return Err(TypecheckError::from_name_err(err, use_item.ident.path_span()));
+            return Err(TypeError::from_name_err(err, use_item.ident.path_span()));
         },
 
         // path does not exist
         None => {
-            return Err(TypecheckError::from_name_err(
+            return Err(TypeError::from_name_err(
                 NameError::not_found(use_item.ident.clone()),
                 use_item.ident.path_span(),
             ));
@@ -362,7 +362,7 @@ fn typecheck_global_binding_item(
         BindingDeclKind::Const => {
             let (ty, const_val_expr) = match (&item.ty, &item.val) {
                 (_, None) => {
-                    return Err(TypecheckError::ConstDeclWithNoValue { span });
+                    return Err(TypeError::ConstDeclWithNoValue { span });
                 }
 
                 (Some(explicit_ty), Some(val)) => {
@@ -382,7 +382,7 @@ fn typecheck_global_binding_item(
 
             let const_val_literal = match const_val_expr.const_eval(ctx) {
                 Some(const_val) => Ok(const_val),
-                None => Err(TypecheckError::InvalidConstExpr {
+                None => Err(TypeError::InvalidConstExpr {
                     expr: Box::new(const_val_expr),
                 }),
             }?;
@@ -428,7 +428,7 @@ fn typecheck_global_binding_item(
                 }
 
                 (None, None) => {
-                    return Err(TypecheckError::BindingWithNoType {
+                    return Err(TypeError::BindingWithNoType {
                         binding_name: item.ident.clone(),
                         span: item.span.clone(),
                     })
@@ -437,7 +437,7 @@ fn typecheck_global_binding_item(
             
             // global bindings must always be initialized or be of a default-able type
             if ty.default_val().is_none() && val.is_none() {
-                return Err(TypecheckError::UninitGlobalBinding {
+                return Err(TypeError::UninitGlobalBinding {
                     ident: item.ident.clone(),
                     ty,
                 });
@@ -454,7 +454,7 @@ fn typecheck_global_binding_item(
     };
 
     if ty == Type::Nothing {
-        return Err(TypecheckError::BindingWithNoType {
+        return Err(TypeError::BindingWithNoType {
             binding_name: item.ident.clone(),
             span,
         });
@@ -499,7 +499,7 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
 
         let undefined = ctx.undefined_syms();
         if !undefined.is_empty() {
-            return Err(TypecheckError::UndefinedSymbols {
+            return Err(TypeError::UndefinedSymbols {
                 unit: unit.ident.clone(),
                 syms: undefined,
             });

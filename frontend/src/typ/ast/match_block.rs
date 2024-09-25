@@ -9,7 +9,7 @@ use crate::typ::Environment;
 use crate::typ::Type;
 use crate::typ::Typed;
 use crate::typ::TypePattern;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::ValueKind;
 use crate::typ::TypedValue;
@@ -30,7 +30,7 @@ fn typecheck_match_cond<B>(
 
     let cond_ty = cond_expr.annotation().ty();
     if !cond_ty.is_matchable() {
-        return Err(TypecheckError::NotMatchable {
+        return Err(TypeError::NotMatchable {
             ty: cond_ty.into_owned(),
             span: cond_expr.span().clone(),
         });
@@ -51,7 +51,7 @@ where
     BSrc: Spanned,
 {
     if match_block.branches.is_empty() {
-        return Err(TypecheckError::EmptyMatchBlock {
+        return Err(TypeError::EmptyMatchBlock {
             span: match_block.span().clone(),
         })
     }
@@ -69,7 +69,7 @@ where
         let branch = ctx.scope(branch_env, |branch_ctx| {
             let pattern = TypePattern::typecheck(&branch.pattern, cond_ty, branch_ctx)?;
             let bindings = pattern.bindings(branch_ctx)
-                .map_err(|err| TypecheckError::from_name_err(err, pattern.span().clone()))?;
+                .map_err(|err| TypeError::from_name_err(err, pattern.span().clone()))?;
 
             for binding in bindings {
                 branch_ctx.declare_binding(
@@ -187,7 +187,7 @@ pub fn typecheck_match_expr(
 
                 Type::Variant(var_sym) => {
                     let variant_def = block_ctx.find_variant_def(&var_sym.qualified)
-                        .map_err(|err| TypecheckError::from_name_err(err, match_expr.span().clone()))?;
+                        .map_err(|err| TypeError::from_name_err(err, match_expr.span().clone()))?;
 
                     // add all variants and remove the ones mentioned by any variant pattern, or
                     // NOT mentioned by any negated variant pattern
@@ -212,7 +212,7 @@ pub fn typecheck_match_expr(
             };
 
             if !is_exhaustive {
-                return Err(TypecheckError::MatchExprNotExhaustive {
+                return Err(TypeError::MatchExprNotExhaustive {
                     span: match_expr.span().clone(),
                     missing_cases,
                 })

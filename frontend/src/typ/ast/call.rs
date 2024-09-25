@@ -22,7 +22,7 @@ use crate::typ::NameError;
 use crate::typ::OverloadTyped;
 use crate::typ::Specializable;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -57,8 +57,8 @@ fn invalid_args(
     actual_args: Vec<Expr>,
     expected: &[FunctionParamSig],
     span: Span,
-) -> TypecheckError {
-    TypecheckError::InvalidArgs {
+) -> TypeError {
+    TypeError::InvalidArgs {
         expected: expected.iter().map(|p| p.ty.clone()).collect(),
         actual: actual_args
             .into_iter()
@@ -190,7 +190,7 @@ pub fn typecheck_call(
                     Invocation::Call(inner_call)
                 }
                 
-                _ => return Err(TypecheckError::NotCallable(Box::new(target))),
+                _ => return Err(TypeError::NotCallable(Box::new(target))),
             },
         },
 
@@ -255,7 +255,7 @@ pub fn typecheck_call(
         .map(Invocation::Call)?,
 
         _ => {
-            return Err(TypecheckError::NotCallable(Box::new(target)))
+            return Err(TypeError::NotCallable(Box::new(target)))
         },
     };
 
@@ -298,7 +298,7 @@ fn typecheck_func_overload(
                     match sig.self_ty_from_args(&arg_tys) {
                         Some(self_ty) => self_ty.clone(),
                         None => {
-                            return Err(TypecheckError::AmbiguousSelfType {
+                            return Err(TypeError::AmbiguousSelfType {
                                 span: overloaded.span.clone(),
                                 method: ident.clone(),
                                 iface: iface_ty.clone(),
@@ -372,7 +372,7 @@ fn typecheck_method_call(
 ) -> TypecheckResult<Call> {
     // not yet supported
     if let Some(call_type_args) = &func_call.type_args {
-        return Err(TypecheckError::from_generic_err(
+        return Err(TypeError::from_generic_err(
             GenericError::ArgsLenMismatch {
                 expected: 0,
                 actual: call_type_args.len(),
@@ -410,10 +410,10 @@ fn typecheck_method_call(
 
     let is_impl = ctx
         .is_implementation(self_type.as_ref(), &iface_method.iface_ty)
-        .map_err(|err| TypecheckError::from_name_err(err, func_call.span().clone()))?;
+        .map_err(|err| TypeError::from_name_err(err, func_call.span().clone()))?;
 
     if !is_impl {
-        return Err(TypecheckError::from_name_err(NameError::NoImplementationFound {
+        return Err(TypeError::from_name_err(NameError::NoImplementationFound {
             owning_ty: iface_method.iface_ty.clone(),
             impl_ty: self_type.into_owned(),
         }, func_call.span().clone()));
@@ -550,7 +550,7 @@ fn typecheck_variant_ctor_call(
 ) -> TypecheckResult<Call> {
     let unspecialized_def = ctx
         .find_variant_def(variant)
-        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+        .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     // infer the specialized generic type if the written one is generic and the hint is a specialized
     // version of that same generic variant
@@ -565,7 +565,7 @@ fn typecheck_variant_ctor_call(
     };
 
     if variant_sym.is_unspecialized_generic() {
-        return Err(TypecheckError::from_generic_err(
+        return Err(TypeError::from_generic_err(
             GenericError::CannotInferArgs {
                 target: GenericTarget::Name(variant_sym.qualified.clone()),
                 hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
@@ -576,13 +576,13 @@ fn typecheck_variant_ctor_call(
 
     let variant_def = ctx
         .instantiate_variant_def(&variant_sym)
-        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+        .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let case_index = match variant_def.case_position(case) {
         Some(index) => index,
 
         None => {
-            return Err(TypecheckError::from_name_err(
+            return Err(TypeError::from_name_err(
                 NameError::MemberNotFound {
                     member: case.clone(),
                     base: NameContainer::Type(Type::Variant(Box::new(variant_sym.clone()))),
@@ -603,7 +603,7 @@ fn typecheck_variant_ctor_call(
                     })
                     .collect::<TypecheckResult<_>>()?;
 
-                return Err(TypecheckError::InvalidArgs {
+                return Err(TypeError::InvalidArgs {
                     expected: Vec::new(),
                     actual: bad_args,
                     span,
@@ -625,7 +625,7 @@ fn typecheck_variant_ctor_call(
                     .map(|arg| arg.annotation().ty().into_owned())
                     .collect();
 
-                return Err(TypecheckError::InvalidArgs {
+                return Err(TypeError::InvalidArgs {
                     expected: Vec::new(),
                     actual: bad_args,
                     span,

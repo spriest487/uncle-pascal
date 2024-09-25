@@ -3,7 +3,7 @@ use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
 use crate::typ::Context;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use common::span::Span;
@@ -40,7 +40,7 @@ pub fn typecheck_compound_assignment(
     let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, ctx)?;
 
     if !lhs.annotation().ty().valid_math_op(assignment.op.binary_operator(), &rhs.annotation().ty()) {
-        return Err(TypecheckError::InvalidBinOp {
+        return Err(TypeError::InvalidBinOp {
             lhs: lhs.annotation().ty().into_owned(),
             rhs: rhs.annotation().ty().into_owned(),
             op: assignment.op.binary_operator(),
@@ -67,14 +67,14 @@ fn typecheck_operands(
     match lhs.annotation() {
         Typed::TypedValue(val) => {
             if !val.value_kind.mutable() {
-                return Err(TypecheckError::NotMutable {
+                return Err(TypeError::NotMutable {
                     decl: val.decl.clone(),
                     expr: Box::new(lhs),
                 });
             }
         }
         _ => {
-            return Err(TypecheckError::NotMutable {
+            return Err(TypeError::NotMutable {
                 expr: Box::new(lhs),
                 decl: None,
             });
@@ -86,11 +86,11 @@ fn typecheck_operands(
     let rhs = typecheck_expr(&src_rhs, &lhs_ty, ctx)?;
     let rhs = implicit_conversion(rhs, &lhs_ty, ctx)
         .map_err(|err| match err {
-            TypecheckError::TypeMismatch {
+            TypeError::TypeMismatch {
                 expected,
                 actual,
                 span,
-            } => TypecheckError::InvalidBinOp {
+            } => TypeError::InvalidBinOp {
                 lhs: expected,
                 rhs: actual,
                 op: Operator::Assignment,

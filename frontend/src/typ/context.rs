@@ -34,7 +34,7 @@ use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::specialize_generic_variant;
 use common::span::*;
@@ -311,7 +311,7 @@ impl Context {
                         self.pop_scope(unit_scope);
                     }
 
-                    return Err(TypecheckError::from_name_err(err, part_span));
+                    return Err(TypeError::from_name_err(err, part_span));
                 }
             }
         }
@@ -489,7 +489,7 @@ impl Context {
                         let old_ns = IdentPath::from_parts(parent_path.keys().cloned());
                         let old_ident = old_ns.child(key.clone());
 
-                        Err(TypecheckError::NameError {
+                        Err(TypeError::NameError {
                             span: name.span.clone(),
                             err: NameError::AlreadyDeclared {
                                 new: name,
@@ -520,7 +520,7 @@ impl Context {
                     },
                 };
                 
-                Err(TypecheckError::NameError {
+                Err(TypeError::NameError {
                     span: name.span().clone(),
                     err: NameError::AlreadyDeclared {
                         new: name,
@@ -534,7 +534,7 @@ impl Context {
                 self.scopes
                     .insert_decl(name.clone(), decl)
                     .map_err(|err| {
-                        TypecheckError::NameError {
+                        TypeError::NameError {
                             err,
                             span: name.span().clone(),
                         }
@@ -825,7 +825,7 @@ impl Context {
         self
             .insert_method_def(ty, method_def)
             .map_err(|err| {
-                TypecheckError::from_name_err(err, span) 
+                TypeError::from_name_err(err, span) 
             })?;
 
         Ok(())
@@ -868,7 +868,7 @@ impl Context {
 
         match self.scopes.current_path().find(&name) {
             None => {
-                return Err(TypecheckError::NameError {
+                return Err(TypeError::NameError {
                     err: NameError::not_found(name.clone()),
                     span: def.ident().span().clone(),
                 });
@@ -893,7 +893,7 @@ impl Context {
                                     existing: existing.ident().span().clone(),
                                 };
 
-                                return Err(TypecheckError::NameError {
+                                return Err(TypeError::NameError {
                                     err,
                                     span: def.ident().span().clone(),
                                 });    
@@ -902,7 +902,7 @@ impl Context {
                     }
 
                     DefDeclMatch::Mismatch => {
-                        return Err(TypecheckError::NameError {
+                        return Err(TypeError::NameError {
                             err: NameError::DefDeclMismatch {
                                 decl: key.span().clone(),
                                 def: def.ident().span().clone(),
@@ -915,7 +915,7 @@ impl Context {
                     DefDeclMatch::WrongKind => {
                         let unexpected = Named::Decl(value.clone());
                         let err = map_unexpected(full_name, unexpected);
-                        return Err(TypecheckError::NameError { err, span: def.span().clone() });
+                        return Err(TypeError::NameError { err, span: def.span().clone() });
                     }
                 }
             }
@@ -924,7 +924,7 @@ impl Context {
                 let path = IdentPath::from_parts(path.keys().cloned());
                 let err = map_unexpected(full_name, Named::Namespace(path));
 
-                return Err(TypecheckError::NameError { err, span: def.span().clone() });
+                return Err(TypeError::NameError { err, span: def.span().clone() });
             }
         }
 
@@ -1169,7 +1169,7 @@ impl Context {
     pub fn is_implementation_at(&self, self_ty: &Type, iface_ty: &Type, at: &Span) -> TypecheckResult<bool> {
         match self.is_implementation(self_ty, iface_ty) {
             Ok(is_impl) => Ok(is_impl),
-            Err(err) => Err(TypecheckError::from_name_err(err, at.clone())),
+            Err(err) => Err(TypeError::from_name_err(err, at.clone())),
         }
     }
 

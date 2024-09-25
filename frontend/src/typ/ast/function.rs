@@ -22,7 +22,7 @@ use crate::typ::NameError;
 use crate::typ::NameResult;
 use crate::typ::Type;
 use crate::typ::TypeList;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -106,7 +106,7 @@ pub fn typecheck_func_decl(
 
         if is_def {
             if !decl.mods.is_empty() {
-                return Err(TypecheckError::InvalidMethodModifiers {
+                return Err(TypeError::InvalidMethodModifiers {
                     mods: decl_mods,
                     span: decl.span.clone(),
                 })
@@ -120,7 +120,7 @@ pub fn typecheck_func_decl(
                         .unwrap()
                         .name
                         .span());
-                    return Err(TypecheckError::ExternalGenericFunction {
+                    return Err(TypeError::ExternalGenericFunction {
                         func: decl.name.ident.clone(),
                         extern_modifier: extern_mod.span().clone(),
                         ty_args: ty_args_span,
@@ -197,12 +197,12 @@ pub fn typecheck_func_decl(
                                 ctx,
                                 decl.span(),
                             ).map_err(|err| {
-                                TypecheckError::from_name_err(err, decl.span.clone())
+                                TypeError::from_name_err(err, decl.span.clone())
                             })?;
                         }
                         
                         None => {
-                            return Err(TypecheckError::InvalidMethodInstanceType {
+                            return Err(TypeError::InvalidMethodInstanceType {
                                 ty: explicit_owning_ty.clone(),
                                 span: explicit_ty_span.clone(),
                             });
@@ -231,7 +231,7 @@ pub fn typecheck_func_decl(
             }
 
             (Some(owning_ty_qual), Some(..)) => {
-                return Err(TypecheckError::InvalidMethodExplicitInterface {
+                return Err(TypeError::InvalidMethodExplicitInterface {
                     method_ident: decl.name.ident.clone(),
                     span: owning_ty_qual.span().clone()
                 });
@@ -308,7 +308,7 @@ fn typecheck_params(
             .find(|p| p.ident == param.ident);
 
         if let Some(prev) = find_name_dup {
-            return Err(TypecheckError::DuplicateNamedArg {
+            return Err(TypeError::DuplicateNamedArg {
                 name: param.ident.clone(),
                 span: param.span.clone(),
                 previous: prev.span().clone(),
@@ -338,12 +338,12 @@ fn validate_iface_method(
 ) -> TypecheckResult<()> {
     let iface_def = ctx.find_iface_def(&iface)
         .map_err(|err| {
-            TypecheckError::from_name_err(err, span.clone())
+            TypeError::from_name_err(err, span.clone())
         })?;
 
     find_iface_impl(iface_def, method_name, &method_sig)
         .map_err(|err| {
-            TypecheckError::from_name_err(err, span.clone())
+            TypeError::from_name_err(err, span.clone())
         })?;
 
     Ok(())
@@ -471,7 +471,7 @@ pub fn typecheck_func_def(
             let initial_val = match &local.initial_val {
                 Some(expr) => {
                     let expr = typecheck_expr(expr, &ty, ctx)?;
-                    let value = expr.const_eval(ctx).ok_or_else(|| TypecheckError::InvalidConstExpr {
+                    let value = expr.const_eval(ctx).ok_or_else(|| TypeError::InvalidConstExpr {
                         expr: Box::new(expr.clone()),
                     })?;
     
@@ -485,7 +485,7 @@ pub fn typecheck_func_def(
                     let val = match &initial_val {
                         Some(val) => val,
                         None => {
-                            return Err(TypecheckError::ConstDeclWithNoValue { span: local.span.clone() });
+                            return Err(TypeError::ConstDeclWithNoValue { span: local.span.clone() });
                         },
                     };
     
@@ -614,7 +614,7 @@ pub fn typecheck_func_expr(
             match expect_sig.and_then(|sig| sig.params.get(i)) {
                 Some(expect_param) if expect_param.modifier.is_none() => expect_param.ty.clone(),
                 _ => {
-                    return Err(TypecheckError::UnableToInferFunctionExprType {
+                    return Err(TypeError::UnableToInferFunctionExprType {
                         func: Box::new(src_def.clone()),
                     });
                 }
@@ -633,7 +633,7 @@ pub fn typecheck_func_expr(
         Some(ast::TypeName::Unknown(..)) => match expect_sig.map(|sig| &sig.return_ty){
             Some(expect_return_ty) => expect_return_ty.clone(),
             None => {
-                return Err(TypecheckError::UnableToInferFunctionExprType {
+                return Err(TypeError::UnableToInferFunctionExprType {
                     func: Box::new(src_def.clone()),
                 })
             }

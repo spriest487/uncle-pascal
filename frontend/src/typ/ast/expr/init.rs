@@ -15,7 +15,7 @@ use crate::typ::ast::VarBinding;
 use crate::typ::Context;
 use crate::typ::FunctionParamSig;
 use crate::typ::Type;
-use crate::typ::TypecheckError;
+use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
 use crate::typ::ValueKind;
@@ -84,7 +84,7 @@ fn expect_ident_initialized(
     match annotation.value_kind() {
         Some(ValueKind::Uninitialized) => {
             let decl_ident = ctx.find_decl(ident).unwrap_or(ident);
-            Err(TypecheckError::NotInitialized {
+            Err(TypeError::NotInitialized {
                 ident: decl_ident.clone(),
                 usage: ident.span().clone(),
             })

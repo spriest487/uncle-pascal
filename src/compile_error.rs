@@ -1,7 +1,7 @@
 use frontend::ast::IdentPath;
 use frontend::parse::ParseError;
 use frontend::pp::error::PreprocessorError;
-use frontend::typ::TypecheckError;
+use frontend::typ::TypeError;
 use frontend::TokenizeError;
 use common::span::Span;
 use common::Backtrace;
@@ -17,7 +17,7 @@ use std::{fmt, io};
 pub enum CompileError {
     TokenizeError(TracedError<TokenizeError>),
     ParseError(TracedError<ParseError>),
-    TypecheckError(TypecheckError),
+    TypecheckError(TypeError),
     PreprocessorError(PreprocessorError),
     ExecError(ExecError),
 
@@ -54,8 +54,8 @@ impl From<TracedError<ParseError>> for CompileError {
     }
 }
 
-impl From<TypecheckError> for CompileError {
-    fn from(err: TypecheckError) -> Self {
+impl From<TypeError> for CompileError {
+    fn from(err: TypeError) -> Self {
         CompileError::TypecheckError(err)
     }
 }
