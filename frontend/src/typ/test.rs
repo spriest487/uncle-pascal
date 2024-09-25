@@ -13,13 +13,13 @@ use std::path::PathBuf;
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
 
-pub fn module_from_src(unit_name: &'static str, src: &'static str) -> Module {
+pub fn module_from_src(unit_name: &str, src: &str) -> Module {
     module_from_srcs(vec![(unit_name, src)])
 }
 
-pub fn module_from_srcs<UnitSources>(unit_srcs: UnitSources) -> Module
+pub fn module_from_srcs<'a, UnitSources>(unit_srcs: UnitSources) -> Module
 where
-    UnitSources: IntoIterator<Item = (&'static str, &'static str)>,
+    UnitSources: IntoIterator<Item = (&'a str, &'a str)>,
 {
     let mut units = Vec::new();
 

@@ -131,7 +131,7 @@ impl ModuleBuilder {
             },
 
             FunctionDeclKey::Method(method_key) => {
-                self.instantiate_method(method_key.clone(), None)
+                self.instantiate_method(method_key.clone())
             },
         }
     }
@@ -233,18 +233,23 @@ impl ModuleBuilder {
 
     fn instantiate_method(
         &mut self,
-        method_key: MethodDeclKey,
-        type_args: Option<typ::TypeList>,
+        mut method_key: MethodDeclKey,
     ) -> FunctionInstance {
-        if method_key.owning_ty.is_generic_param() {
-            panic!(
-                "instantiate_method: owning type of method {}.{} cannot be generic", 
-                method_key.method, 
-                method_key.owning_ty,
-            );
-        }
-
         let method_name = method_key.method.to_string();
+        let type_args = method_key.type_args.clone();
+        
+        if let Some(ty_args) = &type_args {
+            method_key.owning_ty = method_key
+                .owning_ty
+                .specialize_generic(ty_args, &self.src_metadata)
+                .expect("instantiate_method: illegal type specialization")
+                .into_owned();
+        } else if method_key.owning_ty.contains_generic_params(&self.src_metadata) {
+            panic!(
+                "instantiate_method: trying to instantiate method of unspecialized type {} without type args", 
+                method_key.owning_ty
+            )
+        }
 
         let method_def = self
             .src_metadata
@@ -262,13 +267,20 @@ impl ModuleBuilder {
         // the definition we found should already be correctly specialized - you can't pass
         // type args when calling an interface method, so the only thing that would change the method
         // being generated here is the self-type, which we already specialized
-        let specialized_decl = method_def.decl.clone();
+        let specialized_decl = match &type_args {
+            Some(ty_args) => {
+                specialize_func_decl(&method_def.decl, ty_args, &self.src_metadata)
+                    .expect("instantiate_method: illegal function specialization")
+            },
+            None => method_def.decl.clone(),
+        };
 
-        let ns = method_key.owning_ty
+        let ns = method_key
+            .owning_ty
             .full_path()
             .expect("instantiate_method: methods should only be generated for named types");
 
-        let id = self.declare_func(&specialized_decl, ns, type_args.as_ref());
+        let id = self.declare_func(&specialized_decl, ns, method_key.type_args.as_ref());
 
         let self_ty = self.find_type(&method_key.owning_ty);
         
@@ -276,7 +288,8 @@ impl ModuleBuilder {
             let iface_id = self
                 .find_iface_decl(iface_ty_name)
                 .unwrap_or_else(|| {
-                    let src_iface_def = self.src_metadata
+                    let src_iface_def = self
+                        .src_metadata
                         .find_iface_def(iface_ty_name)
                         .cloned()
                         .unwrap_or_else(|_err| panic!(
@@ -301,7 +314,7 @@ impl ModuleBuilder {
 
         let key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(method_key),
-            type_args: None,
+            type_args: type_args.clone(),
         };
         self.translated_funcs.insert(key, cached_func.clone());
 
@@ -310,7 +323,7 @@ impl ModuleBuilder {
             self,
             &method_def.decl.params,
             method_def.decl.type_params.as_ref(),
-            None, // the definition is already specialized for this specialized call to the interface
+            type_args,
             method_def.decl.return_ty.as_ref(),
             &method_def.locals,
             &method_def.body,
@@ -341,6 +354,7 @@ impl ModuleBuilder {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 owning_ty,
                 method,
+                type_args
             }),
 
             // interface method calls can't pass type args
@@ -439,7 +453,12 @@ impl ModuleBuilder {
                         panic!("failed to retrieve implementation list for type {}: {}", real_ty, err)
                     });
 
-                for iface_ty in &ifaces {                    
+                for iface_ty in &ifaces {
+                    if iface_ty.type_params().is_some() {
+                        // generic types can't be instantiated here
+                        continue;
+                    }
+
                     let iface_methods: Vec<_> = iface_ty
                         .methods(&self.src_metadata)
                         .unwrap()
@@ -448,10 +467,16 @@ impl ModuleBuilder {
                         .collect();
 
                     for method in iface_methods {
+                        if method.type_params.is_some() {
+                            // generic methods can't be instantiated here
+                            continue;
+                        }
+                        
                         let cache_key = FunctionDefKey {
                             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                                 method: method.name.ident.clone(),
                                 owning_ty: real_ty.clone(),
+                                type_args: None
                             }),
                             type_args: None,
                         };
@@ -1021,6 +1046,8 @@ impl FunctionDeclKey {
 pub struct MethodDeclKey {
     pub owning_ty: typ::Type,
     pub method: Ident,
+    
+    pub type_args: Option<typ::TypeList>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

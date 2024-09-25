@@ -838,7 +838,7 @@ impl Context {
     ) -> Option<&FunctionDef> {
         let method_defs = self.method_defs.get(ty)?;
         let method = method_defs.methods.get(method)?.as_ref()?;
-
+        
         Some(&method)
     }
 
@@ -1142,23 +1142,34 @@ impl Context {
         }
     }
 
-    pub fn is_iface_callable(&self, self_ty: &Type, iface_ty: &Type) -> bool {
-        match self_ty {
-            Type::Interface(..) => self_ty == iface_ty,
-            _ => self.is_iface_impl(self_ty, iface_ty),
+    pub fn is_implementation(&self, self_ty: &Type, iface_ty: &Type) -> NameResult<bool> {
+        if self_ty == iface_ty {
+            return Ok(true);
         }
-    }
 
-    pub fn is_iface_impl(&self, self_ty: &Type, iface_ty: &Type) -> bool {
         match self_ty {
             Type::GenericParam(param_ty) => match &param_ty.is_iface {
-                Some(as_iface) => **as_iface == *iface_ty,
-                None => false,
+                Some(as_iface) => Ok(**as_iface == *iface_ty),
+                None => Ok(false),
             },
 
-            _ => {
-                self.method_defs.contains_key(iface_ty)
-            },
+            Type::Primitive(..) => {
+                Ok(self.primitive_implements.contains(iface_ty))
+            }
+
+            Type::Record(name) | Type::Class(name) => {
+                let def = self.instantiate_struct_def(name)?;
+                Ok(def.implements.contains(iface_ty))
+            }
+
+            _ => Ok(false),
+        }
+    }
+    
+    pub fn is_implementation_at(&self, self_ty: &Type, iface_ty: &Type, at: &Span) -> TypecheckResult<bool> {
+        match self.is_implementation(self_ty, iface_ty) {
+            Ok(is_impl) => Ok(is_impl),
+            Err(err) => Err(TypecheckError::from_name_err(err, at.clone())),
         }
     }
 
@@ -1395,7 +1406,8 @@ impl Context {
         
         let ty_method_defs = self.method_defs.get(&ty);
         
-        let ty_methods = ty.methods(self)
+        let ty_methods = ty
+            .methods(self)
             .expect("illegal state: undefined_ty_members failed to get methods from type");
         
         let mut missing = Vec::new();

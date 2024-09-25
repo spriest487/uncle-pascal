@@ -132,8 +132,12 @@ pub fn resolve_overload(
                         method: method_ident.clone(),
                     }
                 })?;
+                
+                let is_impl = ctx
+                    .is_implementation(self_ty, iface_ty)
+                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
-                if !ctx.is_iface_callable(self_ty, iface_ty) {
+                if !is_impl {
                     return Err(TypecheckError::from_name_err(NameError::NoImplementationFound {
                         owning_ty: iface_ty.clone(),
                         impl_ty: self_ty.clone(),

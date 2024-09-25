@@ -2,14 +2,16 @@ implementation
 uses System;
 
 type NumberSource = interface
-    function GetNumber(self: Self): Integer
+    function GetNumber: Integer
 end;
 
-type NumberHolder = class
+type NumberHolder = class of NumberSource
     number: Integer;
+    
+    function GetNumber(): Integer;
 end;
 
-function NumberSource.GetNumber(self: NumberHolder): Integer;
+function NumberHolder.GetNumber(): Integer;
 begin
     self.number
 end;

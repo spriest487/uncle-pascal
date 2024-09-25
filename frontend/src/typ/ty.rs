@@ -615,7 +615,8 @@ impl Type {
     pub fn match_constraint(&self, constraint_ty: &Type, ctx: &Context) -> bool {
         match constraint_ty {
             Type::Interface(..) => {
-                ctx.is_iface_impl(self, constraint_ty)
+                // todo should we try to return an error here?
+                ctx.is_implementation(self, constraint_ty).ok().unwrap_or(false)
             }
 
             // "Any" used as a constraint means all types, nothing to validate

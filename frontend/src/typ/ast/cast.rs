@@ -68,10 +68,12 @@ pub fn check_implicit_conversion(
 
         Type::Pointer(_) if *to == *from || *from == Type::Nil => Conversion::Blittable,
 
-        Type::Interface(..) => match from {
-            Type::Class(..) if ctx.is_iface_impl(from, to) => Conversion::Blittable,
-            Type::Interface(..) if *to == *from => Conversion::Blittable,
-            _ => Conversion::Illegal,
+        Type::Interface(..) if from.is_rc_reference() => {
+            if ctx.is_implementation_at(from, to, span)? {
+                Conversion::Blittable
+            } else {
+                Conversion::Illegal
+            }
         },
 
         Type::Any => match from {
@@ -126,7 +128,7 @@ pub fn check_explicit_cast(
         | (Type::Class(..) | Type::Interface(..), Type::Any) => Ok(()),
 
         // upcast class ref to interface it implements
-        | (Type::Class(..), Type::Interface(..)) if ctx.is_iface_impl(from, to) => Ok(()),
+        | (Type::Class(..), Type::Interface(..)) if ctx.is_implementation_at(from, to, span)? => Ok(()),
 
         | _ => Err(TypecheckError::InvalidCast {
                 from: from.clone(),

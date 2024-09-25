@@ -398,14 +398,21 @@ fn typecheck_method_call(
             // note that this isn't the "self arg" used for typecheck_args, because we're not passing
             // it implicitly as a separate arg (like the self-arg `x` of `x.Y()` in a UFCS call).
             // it's just the first arg from which we can infer the self-type
-            let first_self_arg =
-                typecheck_expr(&func_call.args[first_self_pos], &Type::Nothing, &mut ctx)?;
+            let first_self_arg = typecheck_expr(
+                &func_call.args[first_self_pos], 
+                &Type::Nothing, 
+                &mut ctx
+            )?;
 
             Cow::Owned(first_self_arg.annotation().ty().into_owned())
         }
     };
 
-    if !ctx.is_iface_callable(&self_type, &iface_method.iface_ty) {
+    let is_impl = ctx
+        .is_implementation(self_type.as_ref(), &iface_method.iface_ty)
+        .map_err(|err| TypecheckError::from_name_err(err, func_call.span().clone()))?;
+
+    if !is_impl {
         return Err(TypecheckError::from_name_err(NameError::NoImplementationFound {
             owning_ty: iface_method.iface_ty.clone(),
             impl_ty: self_type.into_owned(),

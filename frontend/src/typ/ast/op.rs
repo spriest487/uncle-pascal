@@ -1,3 +1,7 @@
+use crate::ast;
+use crate::ast::Ident;
+use crate::ast::IdentPath;
+use crate::ast::Operator;
 use crate::typ::annotation::VariantCtorTyped;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::implicit_conversion;
@@ -8,7 +12,6 @@ use crate::typ::ast::Call;
 use crate::typ::ast::Expr;
 use crate::typ::ast::MethodCall;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::string_type;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
 use crate::typ::FunctionTyped;
@@ -27,16 +30,11 @@ use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::UfcsTyped;
 use crate::typ::ValueKind;
-use crate::typ::DISPLAYABLE_IFACE_NAME;
 use crate::typ::DISPLAYABLE_TOSTRING_METHOD;
-use crate::typ::SYSTEM_UNIT_NAME;
+use crate::typ::{builtin_displayable_name, string_type};
+use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
-use crate::ast;
-use crate::ast::Ident;
-use crate::ast::IdentPath;
-use crate::IntConstant;
-use crate::ast::Operator;
 use std::rc::Rc;
 
 pub type BinOp = ast::BinOp<Typed>;
@@ -273,17 +271,21 @@ fn typecheck_bitwise_op(
 }
 
 // turn value `x` that implements System.Displayable into a call to `System.Displayable.ToString(x)`
+// when `x` is evaluated in a context where a string is expected e.g. string concat
 fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Option<Expr> {
     let src_ty = expr.annotation().ty();
 
-    let system_unit_ident = Ident::new(SYSTEM_UNIT_NAME, span.clone());
-    let displayable_iface_ident = Ident::new(DISPLAYABLE_IFACE_NAME, span.clone());
-
     let to_string_ident = Ident::new(DISPLAYABLE_TOSTRING_METHOD, span.clone());
 
-    let displayable_path = IdentPath::from_parts(vec![system_unit_ident, displayable_iface_ident]);
+    let displayable_path = builtin_displayable_name().qualified;
 
-    if !ctx.is_iface_impl(src_ty.as_ref(), &Type::interface(displayable_path.clone())) {
+    let displayable_ty = Type::interface(builtin_displayable_name().qualified);
+    let is_impl = ctx
+        .is_implementation(src_ty.as_ref(), &displayable_ty)
+        .ok()
+        .unwrap_or(false);
+    
+    if !is_impl {
         return None;
     }
 
@@ -291,8 +293,6 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         Ok(iface_def) => iface_def,
         Err(..) => return None,
     };
-
-    let displayable_ty = Type::Interface(Box::new(displayable_path));
 
     let to_string_method = match displayable_iface.get_method(&to_string_ident) {
         Some(method_decl) => method_decl,

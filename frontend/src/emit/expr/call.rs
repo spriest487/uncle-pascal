@@ -111,7 +111,6 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
                 let args = vec![self_arg];
 
                 build_method_call(
-                    &method.iface_ty,
                     &method.method_ident,
                     &method.method_sig,
                     &self_ty,
@@ -134,7 +133,6 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
             let method_sig = method_call.func_type.as_func().unwrap();
 
             build_method_call(
-                &method_call.iface_type,
                 &method_call.ident,
                 &method_sig,
                 &method_call.self_type,
@@ -227,7 +225,6 @@ fn build_func_call(
 }
 
 fn build_method_call(
-    owning_ty: &typ::Type,
     method_ident: &Ident,
     method_sig: &typ::FunctionSig,
     self_ty: &typ::Type,
@@ -235,12 +232,12 @@ fn build_method_call(
     ty_args: Option<&typ::TypeList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let actual_self_ty = match builder.type_args() {
-        Some(builder_type_args) => self_ty.clone().substitute_type_args(builder_type_args),
-        None => self_ty.clone(),
-    };
+    let mut self_ty = self_ty.clone();
+    if let Some(builder_ty_args) = builder.type_args() {
+        self_ty = self_ty.clone().substitute_type_args(builder_ty_args);
+    }
 
-    let self_ir_ty = builder.translate_type(&actual_self_ty);
+    let self_ir_ty = builder.translate_type(&self_ty);
 
     let call_target = match &self_ir_ty {
         Type::RcPointer(VirtualTypeID::Interface(iface_id)) => {
@@ -255,10 +252,8 @@ fn build_method_call(
         },
 
         _ => {
-            // println!("translating method {}::{} of {}", owning_ty, method_ident, self_ty);
-
             let method_decl = builder.translate_method_impl(
-                owning_ty.clone(),
+                self_ty.clone(),
                 method_ident.clone(),
                 ty_args.cloned(),
             );

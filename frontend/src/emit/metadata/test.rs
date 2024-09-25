@@ -1,13 +1,8 @@
-use crate::ast::Ident;
-use crate::ast::IdentPath;
-use crate::emit::{translate, IROptions};
-use crate::parse::*;
-use crate::pp::Preprocessor;
-use crate::TokenTree;
-use crate::{ast as syn, typ};
-use common::span::*;
-use common::BuildOptions;
-use ir_lang::dep_sort::{find_deps, sort_defs};
+use crate::emit::translate;
+use crate::emit::IROptions;
+use crate::typ;
+use ir_lang::dep_sort::find_deps;
+use ir_lang::dep_sort::sort_defs;
 use ir_lang::Metadata;
 use ir_lang::NamePath;
 use ir_lang::TypeDef;
@@ -15,16 +10,7 @@ use ir_lang::TypeDefID;
 use std::collections::HashMap;
 
 fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
-    let test_unit = Preprocessor::new("test", BuildOptions::default())
-        .preprocess(src)
-        .unwrap();
-    let tokens = TokenTree::tokenize(test_unit).unwrap();
-    let mut stream = TokenStream::new(tokens, Span::zero("test"));
-
-    let unit = syn::Unit::parse(&mut stream, IdentPath::from_parts(vec![Ident::new("test", Span::zero("test"))])).unwrap();
-    stream.finish().unwrap();
-
-    let module = typ::Module::typecheck(&[unit]).unwrap();
+    let module = typ::test::module_from_src("test", src);
     let ir = translate(&module, IROptions::default());
 
     let defs = ir.metadata().type_defs()
