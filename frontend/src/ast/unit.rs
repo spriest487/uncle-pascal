@@ -27,7 +27,7 @@ use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
 use crate::TokenTree;
-use common::span::Span;
+use common::span::{Span, Spanned};
 use common::TracedError;
 use std::fmt;
 
@@ -91,12 +91,17 @@ impl<A: Annotation> Unit<A> {
 
 impl Unit<Span> {
     pub fn parse(tokens: &mut TokenStream, file_ident: IdentPath) -> ParseResult<Self> {
-        let unit_kind_kw_match = Keyword::Unit.or(Keyword::Program).or(Keyword::Library);
+        let unit_kind_kw_match = Keyword::Unit | Keyword::Program | Keyword::Library;
 
         let (unit_kind, ident) = match tokens.match_one_maybe(unit_kind_kw_match.clone()) {
             Some(TokenTree::Keyword { kw, .. }) => {
                 let ident = IdentPath::parse(tokens)?;
                 tokens.match_one(Separator::Semicolon)?;
+                
+                if file_ident != ident {
+                    let err = ParseError::InvalidUnitFilename(ident.path_span());
+                    return Err(TracedError::trace(err));
+                }
 
                 let kind = match kw {
                     Keyword::Program => UnitKind::Program,
