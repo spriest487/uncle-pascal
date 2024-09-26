@@ -1,6 +1,6 @@
 implementation
 
-uses System, Collections;
+uses System, System.Collections;
 
 initialization
     var x := NewLinkedList[Integer]();

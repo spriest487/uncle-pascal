@@ -1,3 +1,4 @@
+unit System.Collections;
 interface
 
 uses System;
@@ -9,47 +10,17 @@ end;
 
 type LinkedList[T] = class
     head: Option[Node[T]];
+    
+    function Length: Integer;
+    function Nth: Option[T];
+    function Append(item: T);
 end;
 
 function NewLinkedList[T](): LinkedList[T];
-function LinkedListLength[T](list: LinkedList[T]): Integer;
-function LinkedListNth[T](list: LinkedList[T]; n: Integer): Option[T];
-function LinkedListAppend[T](list: LinkedList[T]; item: T);
 
 implementation
 
-function NewLinkedList[T](): LinkedList[T];
-begin
-    LinkedList(
-        head: Option.None();
-    )
-end;
-
-function LinkedListLength[T](list: LinkedList[T]): Integer;
-begin
-    if list.head is Option.Some head then begin
-        var current := head.next;
-        var count := 0;
-
-        while true do begin
-            count := count + 1;
-
-            if current is Option.Some node then begin
-                current := node.next;
-            end
-            else begin
-                break;
-            end;
-        end;
-
-        count;
-    end
-    else begin
-        0;
-    end;
-end;
-
-function NthNode[T](list: LinkedList[T]; n: Integer): Option[Node[T]];
+function GetNthNode[T](list: LinkedList[T]; n: Integer): Option[Node[T]];
 begin
     if list.head is Option.Some head then begin
         if n = 0 then
@@ -79,9 +50,42 @@ begin
     end
 end;
 
-function LinkedListNth[T](list: LinkedList[T]; n: Integer): Option[T];
+function NewLinkedList[T](): LinkedList[T];
 begin
-    var nth := NthNode[T](list, n);
+    LinkedList(
+        head: Option.None();
+    )
+end;
+
+function LinkedList[T].Length: Integer;
+begin
+    if self.head is Option.Some head then 
+    begin
+        var current := head.next;
+        var count := 0;
+
+        while true do begin
+            count := count + 1;
+
+            if current is Option.Some node then 
+            begin
+                current := node.next;
+            end
+            else begin
+                break;
+            end;
+        end;
+
+        count;
+    end
+    else begin
+        0;
+    end;
+end;
+
+function LinkedList[T].Nth: Option[T];
+begin
+    var nth := GetNthNode[T](self, n);
 
     var result: Option[T] := if nth is Option.Some node then
         Option.Some(node.val)
@@ -91,9 +95,9 @@ begin
     result
 end;
 
-function LinkedListAppend[T](list: LinkedList[T]; item: T);
+function LinkedList[T].Append(item: T);
 begin
-    if list.head is Option.Some head then begin
+    if self.head is Option.Some head then begin
         var current := head;
 
         while true do begin
@@ -109,7 +113,7 @@ begin
         end
     end
     else begin
-        list.head := Option.Some(Node(
+        self.head := Option.Some(Node(
             next: Option.None();
             val: item;
         ));
