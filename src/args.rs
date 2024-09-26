@@ -60,6 +60,9 @@ pub struct Args {
 
     #[structopt(long = "gcodeview")]
     pub debug_codeview: bool,
+    
+    #[structopt(long = "diag-port", default_value = "0")]
+    pub diag_port: u16,
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]

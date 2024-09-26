@@ -1,8 +1,9 @@
-use std::{fmt, slice};
+use common::span::{Location, Span};
+use serde::Serialize;
 use std::fmt::Formatter;
-use common::span::Span;
+use std::{fmt, slice};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct StackTrace {
     frames: Vec<StackTraceFrame>,     
 }
@@ -13,7 +14,9 @@ impl StackTrace {
         
         if stack_trace.frames.is_empty() {
             stack_trace.frames.push(StackTraceFrame {
-                location: Span::zero(""),
+                file: String::new(),
+                start_loc: Location::zero(),
+                end_loc: Location::zero(),
                 name: String::new(),
             });
         }
@@ -62,14 +65,31 @@ impl fmt::Display for StackTrace {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct StackTraceFrame {
     pub name: String,
-    pub location: Span,
+    pub file: String,
+    pub start_loc: Location,
+    pub end_loc: Location,
+}
+
+impl StackTraceFrame {
+    pub fn new(name: String, span: &Span) -> Self {
+        Self {
+            name,
+            file: span.file.display().to_string(),
+            start_loc: span.start,
+            end_loc: span.end,
+        }
+    }
+    
+    pub fn to_span(&self) -> Span {
+        Span::new(&self.name, self.start_loc, self.end_loc)
+    }
 }
 
 impl fmt::Display for StackTraceFrame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({})", self.name, self.location)
+        write!(f, "{} ({}:{})", self.name, self.file, self.start_loc)
     }
 }

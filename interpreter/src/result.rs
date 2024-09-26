@@ -60,9 +60,11 @@ impl ExecError {
         }
     }
 
-    fn label_span(&self) -> Option<&Span> {
+    fn label_span(&self) -> Option<Span> {
         match self {
-            ExecError::WithStackTrace { stack_trace, .. } => Some(&stack_trace.top().location),
+            ExecError::WithStackTrace { stack_trace, .. } => {
+                Some(stack_trace.top().to_span())
+            },
             _ => None,
         }
     }
@@ -123,7 +125,7 @@ impl DiagnosticOutput for ExecError {
 
                 Some(DiagnosticLabel {
                     text: label_text,
-                    span: stack_trace.top().location.clone()
+                    span: stack_trace.top().to_span()
                 })
             },
 

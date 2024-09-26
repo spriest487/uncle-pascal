@@ -328,6 +328,8 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
                     trace_rc: args.trace_rc,
                     trace_heap: args.trace_heap,
                     trace_ir: args.trace_ir,
+                    
+                    diag_port: args.diag_port,
                 };
 
                 let mut interpreter = Interpreter::new(interpret_opts);

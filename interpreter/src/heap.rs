@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::rc::Rc;
+use serde::Serialize;
 use crate::ir;
 use crate::{DynValue, marshal::{Marshaller, MarshalError}, Pointer};
 
@@ -43,9 +44,7 @@ pub struct NativeHeap {
     trace_allocs: bool,
     
     // usage stats for trace output
-    alloc_count: usize,
-    free_count: usize,
-    peak_alloc: usize,
+    stats: HeapStats,
 }
 
 impl NativeHeap {
@@ -55,9 +54,11 @@ impl NativeHeap {
             trace_allocs,
             allocs: BTreeMap::new(),
             
-            alloc_count: 0,
-            free_count: 0,
-            peak_alloc: 0,
+            stats: HeapStats {
+                alloc_count: 0,
+                free_count: 0,
+                peak_alloc: 0,
+            },
         }
     }
 
@@ -80,9 +81,9 @@ impl NativeHeap {
 
         if self.trace_allocs {
             eprintln!("NativeHeap: alloc {} bytes @ {}", total_len, addr);
-            self.alloc_count += 1;
+            self.stats.alloc_count += 1;
             
-            self.peak_alloc = usize::max(self.peak_alloc, self.allocs.iter()
+            self.stats.peak_alloc = usize::max(self.stats.peak_alloc, self.allocs.iter()
                 .map(|(_, mem)| mem.len())
                 .sum())
         }
@@ -94,7 +95,7 @@ impl NativeHeap {
     pub fn free(&mut self, ptr: &Pointer) -> NativeHeapResult<()> {
         if self.trace_allocs {
             eprintln!("NativeHeap: free @ {}", ptr);
-            self.free_count += 1;
+            self.stats.free_count += 1;
         }
 
         if self.allocs.remove(&ptr.addr).is_none() {
@@ -125,8 +126,19 @@ impl NativeHeap {
     }
     
     pub fn print_trace_stats(&self) {
-        eprintln!("NativeHeap: alloc count = {}", self.alloc_count);
-        eprintln!("NativeHeap: free count = {}", self.free_count);
-        eprintln!("NativeHeap: peak alloc size = {}", self.peak_alloc);
+        eprintln!("NativeHeap: alloc count = {}", self.stats.alloc_count);
+        eprintln!("NativeHeap: free count = {}", self.stats.free_count);
+        eprintln!("NativeHeap: peak alloc size = {}", self.stats.peak_alloc);
     }
+    
+    pub fn stats(&self) -> HeapStats {
+        self.stats
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
+pub struct HeapStats {
+    pub alloc_count: usize,
+    pub free_count: usize,
+    pub peak_alloc: usize,
 }

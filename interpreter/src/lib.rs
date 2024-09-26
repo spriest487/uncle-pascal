@@ -6,6 +6,7 @@ mod marshal;
 mod ptr;
 pub mod result;
 mod stack;
+mod diag;
 
 pub use self::dyn_value::*;
 pub use self::ptr::Pointer;
@@ -28,6 +29,7 @@ use std::ops::BitAnd;
 use std::ops::BitOr;
 use std::ops::BitXor;
 use std::rc::Rc;
+use crate::diag::{DiagnosticOutput, DiagnosticWorker};
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -42,6 +44,8 @@ pub struct Interpreter {
     opts: InterpreterOpts,
 
     functions: BTreeMap<ir::FunctionID, Rc<Function>>,
+    
+    diag_worker: Option<DiagnosticWorker>,
 }
 
 impl Interpreter {
@@ -51,6 +55,11 @@ impl Interpreter {
         let marshaller = Rc::new(Marshaller::new());
 
         let native_heap = NativeHeap::new(marshaller.clone(), opts.trace_heap);
+        
+        let diag_worker = match opts.diag_port {
+            0 => None,
+            port => DiagnosticWorker::new(port),
+        };
 
         Self {
             metadata: ir::Metadata::default(),
@@ -62,8 +71,10 @@ impl Interpreter {
             marshaller,
 
             opts,
-
+            
             functions: BTreeMap::new(),
+            
+            diag_worker,
         }
     }
 
@@ -78,10 +89,13 @@ impl Interpreter {
     }
 
     fn stack_trace(&self) -> StackTrace {
-        let frames = self.stack.iter().rev().map(|s| StackTraceFrame {
-            name: s.name().to_string(),
-            location: s.debug_location().into_owned(),
-        });
+        let frames = self
+            .stack
+            .iter()
+            .rev()
+            .map(|s|
+                StackTraceFrame::new(s.name().to_string(), &s.debug_location())
+            );
 
         StackTrace::new(frames)
     }
@@ -754,6 +768,8 @@ impl Interpreter {
 
             self.exec_instruction(&instructions[pc], &mut pc, &labels)
                 .map_err(|err| self.add_stack_trace(err))?;
+            
+            self.update_diagnostics();
 
             pc += 1;
         }
@@ -1891,6 +1907,15 @@ impl Interpreter {
 
         Ok(chars.into_iter().collect())
     }
+    
+    fn update_diagnostics(&self) {
+        if let Some(diag_worker) = &self.diag_worker {
+            diag_worker.update(|| DiagnosticOutput {
+                stack_trace: self.stack_trace(),
+                heap_stats: self.native_heap.stats(),
+            });
+        }
+    }
 
     pub fn shutdown(mut self) -> ExecResult<()> {
         let globals: Vec<_> = self.globals.values().cloned().collect();
@@ -1904,6 +1929,10 @@ impl Interpreter {
         if self.opts.trace_heap {
             self.native_heap.print_trace_stats();
         }
+        
+        if let Some(worker) = self.diag_worker.take() {
+            worker.shutdown();
+        }
 
         Ok(())
     }
@@ -1914,6 +1943,8 @@ pub struct InterpreterOpts {
     pub trace_heap: bool,
     pub trace_rc: bool,
     pub trace_ir: bool,
+    
+    pub diag_port: u16,
 }
 
 #[derive(Debug, Clone)]
