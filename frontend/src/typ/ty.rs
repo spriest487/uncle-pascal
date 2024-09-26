@@ -9,14 +9,13 @@ use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
-use crate::typ::ast::{const_eval_integer, specialize_func_decl};
 use crate::typ::ast::typecheck_expr;
+use crate::typ::ast::Field;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
-use crate::typ::ast::Field;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
-use crate::typ::{builtin_span, builtin_unit_path, context, SYSTEM_UNIT_NAME};
+use crate::typ::ast::const_eval_integer;
 use crate::typ::result::*;
 use crate::typ::Context;
 use crate::typ::GenericError;
@@ -26,6 +25,7 @@ use crate::typ::NameResult;
 use crate::typ::Symbol;
 use crate::typ::TypeArgsResult::NotGeneric;
 use crate::typ::Typed;
+use crate::typ::{builtin_span, builtin_unit_path, context, SYSTEM_UNIT_NAME};
 use crate::Operator;
 use common::span::*;
 use std::borrow::Cow;
@@ -974,9 +974,7 @@ pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList, ctx: &Contex
                 }
                 
                 ast::StructMember::MethodDecl(method) => {
-                    let method= specialize_func_decl(method, ty_args, ctx)?;
-                    
-                    Ok(ast::StructMember::MethodDecl(method))
+                    Ok(ast::StructMember::MethodDecl(method.clone()))
                 }
             }
         })
