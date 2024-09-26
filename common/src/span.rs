@@ -77,6 +77,14 @@ impl Span {
             end: other.span().end,
         }
     }
+    
+    pub fn range(spans: &[impl Spanned]) -> Option<Self> {
+        match spans {
+            [] => None,
+            [single] => Some(single.span().clone()),
+            [first, .., last] => Some(first.span().to(last.span())),
+        }
+    }
 
     pub fn of_slice<T: Spanned>(slice: &[T]) -> Span {
         match slice.len() {

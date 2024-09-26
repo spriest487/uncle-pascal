@@ -1,23 +1,26 @@
 implementation
 uses System;
 
-type Greetable = interface
-    function Name(self: Self): String;
-end;
+type 
+    Greetable = interface
+        function Name(): String;
+    end;
 
-type Person = record
-    name: String;
-end;
+    Person = record of Greetable
+        name: String;
+        function Name(): String;
+    end;
 
-function Greetable.Name(self: Person): String;
+    Cat = class of Greetable
+        function Name(): String;
+    end;
+
+function Person.Name(): String;
 begin
     self.name
 end;
 
-type Cat = class
-end;
-
-function Greetable.Name(self: Cat): String;
+function Cat.Name(): String;
 begin
     'kitty'
 end;

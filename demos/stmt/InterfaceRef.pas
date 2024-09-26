@@ -2,23 +2,27 @@ implementation
 uses System;
 
 type Animal = interface
-    function Say(self: Self);
+    function Say();
 end;
 
-type Cat = class
+type Cat = class of Animal
     name: String;
+    
+    function Say();
 end;
 
-function Animal.Say(self: Cat);
+function Cat.Say();
 begin
     WriteLn(self.name + ' says meow!');
 end;
 
-type Dog = class
+type Dog = class of Animal
     name: String;
+    
+    function Say();
 end;
 
-function Animal.Say(self: Dog);
+function Dog.Say();
 begin
     WriteLn(self.name + ' says woof!');
 end;

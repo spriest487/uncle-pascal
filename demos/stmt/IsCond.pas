@@ -2,24 +2,29 @@ implementation
 uses System;
 
 type Animal = interface
-    function Speak(self: Self);
+    function Speak();
 end;
 
-type Cat = class end;
+type Cat = class of Animal
+    function Speak();
+end;
 
-function Animal.Speak(self: Cat);
+function Cat.Speak();
 begin
     WriteLn('nya');
 end;
 
-type Dog = class end;
+type Dog = class of Animal
+    function Speak();
+    function Fetch();
+end;
 
-function Animal.Speak(self: Dog);
+function Dog.Speak();
 begin
     WriteLn('wan');
 end;
 
-function Fetch(self: Dog);
+function Dog.Fetch();
 begin
     WriteLn('fetching a ball');
 end;
@@ -31,8 +36,11 @@ initialization
     var dog: Animal := Dog();
     if dog is not Cat then dog.Speak();
     
-    if dog is Dog d then Fetch(d);
+    if dog is Dog d then d.Fetch();
     
-    if dog is Animal then WriteLn('yes, a dog is an animal');
-    if dog is not Disposable then WriteLn('a dog is not just for christmas');
+    if dog is Animal then 
+        WriteLn('yes, a dog is an animal');
+    
+    if dog is not Disposable then 
+        WriteLn('a dog is not just for christmas');
 end

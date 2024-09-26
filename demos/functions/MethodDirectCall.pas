@@ -2,25 +2,19 @@ implementation
 uses System;
 
 type Greeting = interface
-    function Greet(self: Self);
+    function Greet();
 end;
 
-type HelloWorld = class
+type HelloWorld = class of Greeting
+    function Greet();
 end;
 
-function Greeting.Greet(self: HelloWorld);
+function HelloWorld.Greet();
 begin
     WriteLn('Hello, world');
 end;
 
-function Greeting.Greet(self: String);
-begin
-    WriteLn('Hello, ' + self);
-end;
-
 initialization
     var hw := HelloWorld();
-    
     Greeting.Greet(hw);
-    Greeting.Greet('Alice');
 end

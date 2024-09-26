@@ -2,14 +2,16 @@ implementation
 uses System;
 
 type Greetable = interface
-    function Name(self: Self): String;
+    function Name: String;
 end;
 
-type Person = record
+type Person = record of Greetable
     name: String;
+    
+    function Name: String;
 end;
 
-function Greetable.Name(self: Person): String;
+function Person.Name(): String;
 begin
     self.name
 end;

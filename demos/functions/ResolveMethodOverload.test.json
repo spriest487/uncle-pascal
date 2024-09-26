@@ -1,5 +1,8 @@
 {
   "steps": [
+    { "error_regex": "not implemented: function overload" }
+  ],
+  "steps_to_fix": [
     { "output": "hello from A" },
     { "output": "hello from B" }
   ]

@@ -2,14 +2,13 @@
 mod test;
 
 use crate::ast;
-use crate::ast::Ident;
 use crate::ast::Visibility;
 use crate::ast::{FunctionName, StructKind};
-use crate::typ::ast::typecheck_expr;
+use crate::ast::Ident;
+use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_func_decl;
 use crate::typ::ast::InterfaceMethodDecl;
-use crate::typ::ast::const_eval_integer;
-use crate::typ::typecheck_type;
+use crate::typ::ast::{typecheck_expr, FunctionDecl};
 use crate::typ::Context;
 use crate::typ::NameError;
 use crate::typ::Primitive;
@@ -18,6 +17,7 @@ use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypecheckResult;
 use crate::typ::Typed;
+use crate::typ::{typecheck_type, FunctionSig, MissingImplementation};
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
@@ -43,7 +43,7 @@ pub fn typecheck_struct_decl(
         StructKind::Class => Type::Class(Box::new(name.clone())),
     };
 
-    let implements = class.implements
+    let implements: Vec<Type> = class.implements
         .iter()
         .map(|implements_ty| typecheck_type(implements_ty, ctx))
         .collect::<TypecheckResult<_>>()?;
@@ -59,42 +59,59 @@ pub fn typecheck_struct_decl(
     for member in &class.members {
         match member {
             ast::StructMember::Field(field) => {
-                let ty = typecheck_type(&field.ty, ctx)?.clone();
-
-                let is_unsized = ctx
-                    .is_unsized_ty(&ty)
-                    .map_err(|err| TypeError::from_name_err(err, class.span().clone()))?;
-
-                if is_unsized {
-                    return Err(TypeError::UnsizedMember {
-                        decl: name.qualified,
-                        member: field.ident.clone(),
-                        member_ty: ty,
-                    });
-                }
-
-                members.push(Field {
-                    ty,
-                    span: field.span.clone(),
-                    ident: field.ident.clone(),
-                }.into());
+                let field = typecheck_field(class, &name, &field, ctx)?; 
+                members.push(field.into());
             }
             
             ast::StructMember::MethodDecl(decl) => {
-                let decl = typecheck_func_decl(decl, false, ctx)?;
-
-                if !decl.mods.is_empty() {
-                    return Err(TypeError::InvalidMethodModifiers {
-                        mods: decl.mods.clone(),
-                        span: {
-                            let start = decl.mods[0].span();
-                            let end = decl.mods[decl.mods.len() - 1].span();
-                            start.to(end)
-                        },
-                    });
-                }
+                let decl = typecheck_method(decl, ctx)?;
                 
                 members.push(decl.into());
+            }
+        }
+    }
+    
+    for iface_ty in implements.iter() {
+        if let Type::Interface(iface_name) = &iface_ty {
+            let iface = ctx.find_iface_def(iface_name.as_ref())
+                .map_err(|e| TypeError::from_name_err(e, class.name.span.clone()))?;
+            
+            let mut missing_methods = Vec::new();
+            
+            for method in &iface.methods {
+                let expect_sig = FunctionSig::of_decl(&method.decl)
+                    .with_self(&self_ty);
+                
+                let matching_method = members
+                    .iter()
+                    .filter_map(|m| match m {
+                        ast::StructMember::MethodDecl(method) => Some(method),
+                        _ => None,
+                    })
+                    .any(|decl| {
+                        if decl.name.ident() != method.ident() {
+                            return false;
+                        }
+                        
+                        let actual_sig = FunctionSig::of_decl(decl);
+                        actual_sig == expect_sig
+                    });
+                
+                if !matching_method {
+                    missing_methods.push(MissingImplementation {
+                        iface_ty: iface_ty.clone(),
+                        method: method.ident().clone(),
+                        sig: expect_sig, 
+                    });
+                }
+            }
+            
+            if !missing_methods.is_empty() {
+                return Err(TypeError::IncompleteImplementation {
+                    ty: self_ty,
+                    span: Span::range(&class.implements).unwrap_or(class.name.span.clone()),
+                    missing: missing_methods
+                });
             }
         }
     }
@@ -106,6 +123,52 @@ pub fn typecheck_struct_decl(
         implements,
         members,
     })
+}
+
+fn typecheck_method(decl: &ast::FunctionDecl, ctx: &mut Context) -> TypecheckResult<FunctionDecl> {
+    let decl = typecheck_func_decl(decl, false, ctx)?;
+
+    if !decl.mods.is_empty() {
+        return Err(TypeError::InvalidMethodModifiers {
+            mods: decl.mods.clone(),
+            span: {
+                let start = decl.mods[0].span();
+                let end = decl.mods[decl.mods.len() - 1].span();
+                start.to(end)
+            },
+        });
+    }
+    
+    Ok(decl)
+}
+
+fn typecheck_field(
+    struct_def: &ast::StructDef,
+    struct_name: &Symbol,
+    field: &ast::Field,
+    ctx: &mut Context
+) -> TypecheckResult<Field> {
+    let ty = typecheck_type(&field.ty, ctx)?.clone();
+
+    let is_unsized = ctx
+        .is_unsized_ty(&ty)
+        .map_err(|err| TypeError::from_name_err(err, struct_def.span().clone()))?;
+
+    if is_unsized {
+        return Err(TypeError::UnsizedMember {
+            decl: struct_name.qualified.clone(),
+            member: field.ident.clone(),
+            member_ty: ty,
+        });
+    }
+
+    let field = Field {
+        ty,
+        span: field.span.clone(),
+        ident: field.ident.clone(),
+    };
+    
+    Ok(field)
 }
 
 pub fn typecheck_iface(

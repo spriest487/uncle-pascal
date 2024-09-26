@@ -1,4 +1,5 @@
 implementation
+uses System;
 
 type S = record
     values: array[3] of Int32;

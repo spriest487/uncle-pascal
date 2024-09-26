@@ -2,22 +2,24 @@ implementation
 uses System;
 
 type A = interface
-    function Greet(self: Self; a: Integer);
+    function Greet(a: Integer);
 end;
 
 type B = interface
-    function Greet(self: Self; b: Boolean);
+    function Greet(b: Boolean);
 end;
 
-type Impl = class
+type Impl = class of A, B
+    function Greet(a: Integer); overload;
+    function Greet(b: Boolean); overload;
 end;
 
-function A.Greet(self: Impl; a: Integer);
+function Impl.Greet(a: Integer);
 begin
     WriteLn('hello from A');
 end;
 
-function B.Greet(self: Impl; b: Boolean);
+function Impl.Greet(b: Boolean);
 begin
     WriteLn('hello from B');
 end;

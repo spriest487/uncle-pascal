@@ -1,7 +1,6 @@
 {
   "steps": [
     { "output": "first" },
-    { "output": "second" },
     { "output": "both" },
     { "output": "first" },
     { "output": "both" }

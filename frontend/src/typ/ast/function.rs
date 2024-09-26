@@ -105,7 +105,7 @@ pub fn typecheck_func_decl(
         let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
         if is_def {
-            if !decl.mods.is_empty() {
+            if decl.name.owning_ty_qual.is_some() && !decl.mods.is_empty() {
                 return Err(TypeError::InvalidMethodModifiers {
                     mods: decl_mods,
                     span: decl.span.clone(),

@@ -11,7 +11,7 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::Stmt;
 use crate::typ::ast::VariantDef;
 use crate::typ::context::NameError;
-use crate::typ::GenericError;
+use crate::typ::{FunctionSig, GenericError};
 use crate::typ::Type;
 use crate::typ::ValueKind;
 use crate::IntConstant;
@@ -194,6 +194,18 @@ pub enum TypeError {
         ty: Type,
         span: Span,
     },
+    
+    IncompleteImplementation {
+        ty: Type,
+        missing: Vec<MissingImplementation>,
+        span: Span,
+    },
+
+    AbstractMethodDefinition {
+        owning_ty: Type,
+        method: Ident,
+        span: Span,
+    },
 
     Private {
         name: IdentPath,
@@ -323,6 +335,8 @@ impl Spanned for TypeError {
             TypeError::InvalidMethodExplicitInterface { span, .. } => span,
             TypeError::InvalidMethodInstanceType { span, .. } => span,
             TypeError::NoMethodContext { span, .. } => span,
+            TypeError::IncompleteImplementation { span, .. } => span,
+            TypeError::AbstractMethodDefinition { span, .. } => span,
 
             TypeError::Private { span, .. } => span,
             TypeError::PrivateConstructor { span, .. } => span,
@@ -428,6 +442,12 @@ impl DiagnosticOutput for TypeError {
             TypeError::InvalidMethodInstanceType { .. } => {
                 "Invalid instance type for method".to_string()
             },
+            
+            TypeError::IncompleteImplementation { .. } => {
+                "Incomplete interface implementation".to_string()
+            }
+            
+            TypeError::AbstractMethodDefinition { .. } => "Cannot define abstract method".to_string(),
 
             TypeError::NoMethodContext { .. } => "Method requires enclosing type".to_string(),
 
@@ -590,7 +610,8 @@ impl DiagnosticOutput for TypeError {
                 }],
 
             TypeError::AmbiguousFunction { candidates, .. } => {
-                candidates.iter()
+                candidates
+                    .iter()
                     .map(|c| {
                         DiagnosticMessage {
                             label: Some(DiagnosticLabel {
@@ -602,6 +623,27 @@ impl DiagnosticOutput for TypeError {
                         }
                     })
                     .collect()
+            }
+            
+            TypeError::IncompleteImplementation { missing, .. } => {
+                missing
+                    .iter()
+                    .map(|missing_impl| {
+                        DiagnosticMessage {
+                            title: format!(
+                                "{}.{} declared here", 
+                                missing_impl.iface_ty, 
+                                missing_impl.method
+                            ),
+                            label: Some(DiagnosticLabel {
+                                text: None,
+                                span: missing_impl.method.span.clone(),
+                            }),
+                            notes: Vec::new(),
+                        }
+                    })
+                    .collect()
+                
             }
 
             _ => Vec::new(),
@@ -813,6 +855,22 @@ impl fmt::Display for TypeError {
             TypeError::InvalidMethodInstanceType { ty, .. } => {
                 write!(f, "`{}` is not a type which supports methods", ty)
             }
+            
+            TypeError::IncompleteImplementation { ty, missing, .. } => {
+                writeln!(f, "type `{}` is missing the following methods for interfaces it implements:", ty)?;
+                for i in 0..missing.len() {
+                    let item = &missing[i];
+                    if i > 0 {
+                        writeln!(f)?;
+                    }
+                    write!(f, " - {}.{}: {}", item.iface_ty, item.method, item.sig)?;
+                }
+                Ok(())
+            }
+            
+            TypeError::AbstractMethodDefinition { owning_ty, method, .. } => {
+                writeln!(f, "method {}.{} is abstract and cannot be defined", owning_ty, method)
+            }
 
             TypeError::Private { name, .. } => {
                 write!(f, "`{}` is not exported and can only be referenced in the unit where it is declared", name)
@@ -890,4 +948,11 @@ impl fmt::Display for TypeError {
             }
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MissingImplementation {
+    pub iface_ty: Type,
+    pub method: Ident,
+    pub sig: FunctionSig,
 }

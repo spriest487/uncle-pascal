@@ -17,12 +17,18 @@ begin
 end;
 
 type C = interface
-    function M(self: Self): Int32;
+    function M(): Int32;
 end;
 
-function C.M(self: Int32): Int32;
+type A = record of C
+    value: Int32;
+
+    function M(): Int32;
+end;
+
+function A.M(): Int32;
 begin
-    self + 1
+    self.value + 1
 end;
 
 initialization
@@ -34,8 +40,8 @@ initialization
     var b := (1 as Int32).Two;
     WriteLn('b: ' + b);
 
-    // todo: doesn't work yet because this resolves as an overload
     // method call
-    var c := (2 as Int32).M;
+    var cObj := A(value: 2);
+    var c := cObj.M;
     WriteLn('c: ' + c);
 end.
