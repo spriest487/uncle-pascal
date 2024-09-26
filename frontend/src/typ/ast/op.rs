@@ -715,7 +715,7 @@ pub fn typecheck_variant_ctor(
     }
 
     let ctor_annotation = VariantCtorTyped {
-        variant_name: variant_name.qualified.clone(),
+        variant_name: Rc::new(variant_name.clone()),
         case: member_ident.clone(),
         span: member_ident.span().clone(),
     };

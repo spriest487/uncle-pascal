@@ -3,7 +3,6 @@ mod symbol;
 pub use symbol::*;
 
 use crate::ast::Annotation;
-use crate::ast::TypeDeclName;
 use crate::ast::TypeList;
 use crate::ast::IdentPath;
 use crate::typ::ast::{Expr, TypedFunctionName};
@@ -26,7 +25,7 @@ pub struct VariantCtorTyped {
     pub span: Span,
 
     // variant ctors don't know the type args of their variant, it must be inferred from context
-    pub variant_name: IdentPath,
+    pub variant_name: Rc<Symbol>,
 
     pub case: Ident,
 }
@@ -276,11 +275,7 @@ impl Typed {
             | Typed::Type(_, span) => (Type::Nothing, span),
 
             Typed::VariantCtor(ctor) => {
-                let variant_ty = Type::Variant(Box::new(Symbol {
-                    qualified: ctor.variant_name.clone(),
-                    decl_name: TypeDeclName::from(ctor.variant_name.last().clone()),
-                    type_args: None,
-                }));
+                let variant_ty = Type::Variant(Box::new((*ctor.variant_name).clone()));
 
                 (variant_ty, &ctor.span)
             },
@@ -338,7 +333,7 @@ impl Typed {
 
             Typed::Const(const_val) => const_val.decl.as_ref(),
 
-            Typed::VariantCtor(ctor) => Some(ctor.variant_name.last()),
+            Typed::VariantCtor(ctor) => Some(ctor.variant_name.qualified.last()),
         }
     }
 

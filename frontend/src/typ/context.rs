@@ -19,6 +19,7 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::Visibility;
+use crate::typ::ast::EnumDecl;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
@@ -26,17 +27,16 @@ use crate::typ::ast::Literal;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
-use crate::typ::ast::{EnumDecl, SELF_TY_NAME};
+use crate::typ::ast::SELF_TY_NAME;
+use crate::typ::{specialize_generic_variant, TypeParamList};
 use crate::typ::specialize_struct_def;
 use crate::typ::FunctionSig;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
-use crate::typ::TypeParamList;
-use crate::typ::TypeParamType;
 use crate::typ::TypeError;
+use crate::typ::TypeParamType;
 use crate::typ::TypeResult;
-use crate::typ::specialize_generic_variant;
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
 use std::collections::hash_map::Entry;
@@ -97,7 +97,7 @@ pub enum Environment {
     Global,
     Namespace { namespace: IdentPath },
     TypeDecl { ty: Type },
-    FunctionDecl,
+    FunctionDecl { owning_ty_params: Option<TypeParamList> },
     FunctionBody(FunctionBodyEnvironment),
     ClosureBody(ClosureBodyEnvironment),
     Block { allow_unsafe: bool },
@@ -116,7 +116,7 @@ impl Environment {
             Environment::Global => "Global",
             Environment::Namespace { .. } => "Namespace",
             Environment::TypeDecl { .. } => "TypeDecl",
-            Environment::FunctionDecl => "FunctionDecl",
+            Environment::FunctionDecl { .. } => "FunctionDecl",
             Environment::FunctionBody { .. } => "FunctionBody",
             Environment::ClosureBody { .. } => "ClosureBody",
             Environment::Block { .. } => "Block",
@@ -553,7 +553,7 @@ impl Context {
         iface: Rc<InterfaceDecl>,
         visibility: Visibility,
     ) -> TypeResult<()> {
-        let name = iface.name.decl_name.ident.clone();
+        let name = iface.name.qualified.last().clone();
         let iface_ty = Type::Interface(Box::new(iface.name.qualified.clone()));
         self.declare_type(name.clone(), iface_ty, visibility)?;
 
@@ -573,7 +573,7 @@ impl Context {
         variant: Rc<VariantDef>,
         visibility: Visibility,
     ) -> TypeResult<()> {
-        let name = variant.name.decl_name.ident.clone();
+        let name = variant.name.ident().clone();
 
         let variant_ty = Type::Variant(Box::new(variant.name.clone()));
         self.declare_type(name.clone(), variant_ty, visibility)?;
@@ -590,7 +590,7 @@ impl Context {
     }
 
     pub fn declare_class(&mut self, class: Rc<StructDef>, visibility: Visibility) -> TypeResult<()> {
-        let name = class.name.decl_name.ident.clone();
+        let name = class.name.ident().clone();
 
         let class_ty = match class.kind {
             syn::StructKind::Class => Type::Class(Box::new(class.name.clone())),
@@ -611,7 +611,7 @@ impl Context {
     }
 
     pub fn declare_enum(&mut self, enum_decl: Rc<EnumDecl>, visibility: Visibility) -> TypeResult<()> {
-        let name = enum_decl.name.decl_name.ident.clone();
+        let name = enum_decl.name.ident().clone();
 
         let enum_ty = Type::Enum(Box::new(enum_decl.name.clone()));
 

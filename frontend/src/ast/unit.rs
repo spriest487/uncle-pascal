@@ -27,7 +27,7 @@ use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
 use crate::TokenTree;
-use common::span::{Span, Spanned};
+use common::span::Span;
 use common::TracedError;
 use std::fmt;
 

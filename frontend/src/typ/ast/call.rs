@@ -8,7 +8,7 @@ use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::Expr;
 use crate::typ::ast::ObjectCtor;
-use crate::typ::typecheck_type;
+use crate::typ::{typecheck_type, Symbol};
 use crate::typ::Context;
 use crate::typ::FunctionParamSig;
 use crate::typ::FunctionSig;
@@ -35,7 +35,6 @@ use common::span::Spanned as _;
 use crate::ast;
 use crate::ast::TypeList;
 use crate::ast::Ident;
-use crate::ast::IdentPath;
 use std::borrow::Cow;
 use std::rc::Rc;
 
@@ -541,7 +540,7 @@ fn typecheck_func_call(
 }
 
 fn typecheck_variant_ctor_call(
-    variant: &IdentPath,
+    variant: &Symbol,
     case: &Ident,
     args: &[ast::Expr<Span>],
     span: Span,
@@ -549,7 +548,7 @@ fn typecheck_variant_ctor_call(
     ctx: &mut Context,
 ) -> TypeResult<Call> {
     let unspecialized_def = ctx
-        .find_variant_def(variant)
+        .find_variant_def(&variant.qualified)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     // infer the specialized generic type if the written one is generic and the hint is a specialized
@@ -558,7 +557,7 @@ fn typecheck_variant_ctor_call(
         Type::Variant(expect_variant)
             if expect_variant.is_specialization_of(&unspecialized_def.name) =>
         {
-            &**expect_variant
+            (*expect_variant).as_ref()
         },
 
         _ => &unspecialized_def.name,

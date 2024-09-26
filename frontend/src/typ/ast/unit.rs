@@ -14,7 +14,7 @@ use crate::typ::ast::typecheck_stmt;
 use crate::typ::ast::typecheck_struct_decl;
 use crate::typ::ast::typecheck_variant;
 use crate::typ::ast::Expr;
-use crate::typ::typecheck_type_params;
+use crate::typ::typecheck_type;
 use crate::typ::Binding;
 use crate::typ::ConstTyped;
 use crate::typ::Context;
@@ -30,7 +30,6 @@ use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::ValueKind;
-use crate::typ::typecheck_type;
 use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
@@ -187,12 +186,7 @@ fn typecheck_type_decl_item(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<TypeDeclItem> {
-    let decl_name = type_decl.name().clone();
-    let full_name = Symbol {
-        qualified: ctx.qualify_name(decl_name.ident.clone()),
-        decl_name,
-        type_args: None,
-    };
+    let full_name = Symbol::from_local_decl_name(&type_decl.name(), ctx)?;
 
     match type_decl {
         // except aliases, we can skip the rest of the type decl code for them
@@ -200,7 +194,7 @@ fn typecheck_type_decl_item(
             let alias = typecheck_alias(full_name, alias_decl, ctx)?;
 
             ctx.declare_type(
-                alias.name.decl_name.ident.clone(),
+                alias.name.qualified.last().clone(),
                 (*alias.ty).clone(),
                 visibility,
             )?;
@@ -247,27 +241,8 @@ fn typecheck_type_decl_item_with_def(
         ty,
     });
 
-    if let Some(decl_name_type_params) = &full_name.decl_name.type_params {
-        let type_params = {
-            let items: Vec<_> = decl_name_type_params
-                .items
-                .iter()
-                .map(|p| {
-                    ast::TypeParam {
-                        name: p.clone(),
-
-                        // todo: support type constraints for type decls
-                        constraint: None,
-                    }
-                })
-                .collect();
-
-            ast::TypeList::new(items, decl_name_type_params.span().clone())
-        };
-
-        let checked_params = typecheck_type_params(&type_params, ctx)?;
-
-        ctx.declare_type_params(&checked_params)?;
+    if let Some(ty_params) = &full_name.type_params {
+        ctx.declare_type_params(&ty_params)?;
     }
 
     let type_decl = typecheck_type_decl_body(full_name, type_decl, ctx)?;

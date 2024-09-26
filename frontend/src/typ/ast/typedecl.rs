@@ -261,7 +261,7 @@ pub fn typecheck_enum_decl(
     enum_decl: &ast::EnumDecl<Span>,
     ctx: &mut Context,
 ) -> TypeResult<EnumDecl> {
-    if name.decl_name.type_params.is_some() {
+    if name.type_params.is_some() {
         return Err(TypeError::EnumDeclWithTypeParams {
             span: name.span().clone(),
         });

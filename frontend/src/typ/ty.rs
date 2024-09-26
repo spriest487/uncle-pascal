@@ -48,6 +48,7 @@ pub enum Type {
     Primitive(Primitive),
     Pointer(Box<Type>),
     Function(Rc<FunctionSig>),
+    // can these be Rc?
     Record(Box<Symbol>),
     Class(Box<Symbol>),
     Interface(Box<IdentPath>),
@@ -285,7 +286,7 @@ impl Type {
     pub fn type_args(&self) -> TypeArgsResult {
         match self {
             Type::Variant(name) | Type::Class(name) | Type::Record(name) => {
-                match (&name.decl_name.type_params, &name.type_args) {
+                match (&name.type_params, &name.type_args) {
                     (Some(type_params), None) => TypeArgsResult::Unspecialized(type_params),
                     (Some(..), Some(type_args)) => TypeArgsResult::Specialized(type_args),
                     (None, None) => TypeArgsResult::NotGeneric,
@@ -297,10 +298,10 @@ impl Type {
         }
     }
 
-    pub fn type_params(&self) -> Option<&ast::TypeList<Ident>> {
+    pub fn type_params(&self) -> Option<&TypeParamList> {
         match self {
             Type::Variant(name) | Type::Class(name) | Type::Record(name) => {
-                name.decl_name.type_params.as_ref()
+                name.type_params.as_ref()
             },
 
             _ => None,
@@ -660,15 +661,15 @@ impl Type {
         match self {
             Type::GenericParam(param) => args.resolve(&param).into_owned(),
 
-            Type::Class(name) if name.decl_name.type_params.is_some() => {
+            Type::Class(name) if name.type_params.is_some() => {
                 Type::Class(Box::new(Self::new_class_name(&name, args)))
             },
 
-            Type::Record(name) if name.decl_name.type_params.is_some() => {
+            Type::Record(name) if name.type_params.is_some() => {
                 Type::Record(Box::new(Self::new_class_name(&name, args)))
             },
 
-            Type::Variant(name) if name.decl_name.type_params.is_some() => {
+            Type::Variant(name) if name.type_params.is_some() => {
                 Type::Variant(Box::new(Self::new_class_name(&name, args)))
             },
 
@@ -906,7 +907,7 @@ pub fn specialize_generic_name<'a>(
     name: &'a Symbol,
     args: &impl TypeArgsResolver,
 ) -> GenericResult<Cow<'a, Symbol>> {
-    let type_params = match name.decl_name.type_params.as_ref() {
+    let type_params = match name.type_params.as_ref() {
         None => return Ok(Cow::Borrowed(name)),
         Some(type_params) => type_params,
     };
@@ -929,12 +930,18 @@ pub fn specialize_generic_name<'a>(
         TypeList::new(specialized_args, existing_args.span().clone())
     } else {
         let mut resolved_args = Vec::with_capacity(type_params.len());
+
         for (i, param) in type_params.items.iter().enumerate() {
+            let is_iface = param.constraint
+                .clone()
+                .map(|constraint| Box::new(constraint.is_ty));
+
             let arg = args.resolve(&TypeParamType {
-                name: param.clone(),
-                is_iface: None, //TODO? can't have constraints on name decls
+                name: param.name.clone(),
+                is_iface,
                 pos: i,
             });
+
             resolved_args.push(arg.into_owned());
         }
         TypeList::new(resolved_args, name.span().clone())

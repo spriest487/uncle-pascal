@@ -1,5 +1,5 @@
 use crate::ast::type_name::TypeName;
-use crate::ast::Ident;
+use crate::ast::{Ident, TypeParam};
 use crate::parse::Match;
 use crate::parse::Parse;
 use crate::parse::ParseError;
@@ -106,17 +106,31 @@ impl TypeList<TypeName> {
     }
 }
 
-impl TypeList<Ident> {
-    // type params lists are normal type lists that can't be empty
+impl TypeList<TypeParam<TypeName>> {
+    // parses a list of TypeParams with no constraints. constraints are specified later in a where
+    // clause, so if the list should have constraints, those will need to be parsed separately
+    // and applied to the results
     pub(crate) fn parse_type_params(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let type_args = Self::parse(tokens)?;
+        let raw_params = TypeList::<Ident>::parse(tokens)?;
 
-        if type_args.items.len() == 0 {
-            let err = ParseError::EmptyTypeParamList(type_args);
+        if raw_params.items.len() == 0 {
+            let err = ParseError::EmptyTypeParamList(raw_params);
             return Err(TracedError::trace(err));
         }
 
-        Ok(type_args)
+        Ok(TypeList {
+            items: raw_params
+                .items
+                .into_iter()
+                .map(|param_ident| {
+                    TypeParam {
+                        name: param_ident,
+                        constraint: None,
+                    }
+                })
+                .collect(),
+            span: raw_params.span,
+        })
     }
 }
 

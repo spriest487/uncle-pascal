@@ -1,9 +1,9 @@
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::StructKind;
-use crate::ast::TypeDeclName;
 use crate::ast::Visibility;
 use crate::typ::ast;
+use crate::typ::ast::{FunctionDecl, SELF_PARAM_NAME};
 use crate::typ::Context;
 use crate::typ::Decl;
 use crate::typ::Environment;
@@ -11,11 +11,10 @@ use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeResult;
-use common::span::*;
-use std::rc::Rc;
-use linked_hash_map::LinkedHashMap;
 use crate::Ident;
-use crate::typ::ast::{FunctionDecl, SELF_PARAM_NAME};
+use common::span::*;
+use linked_hash_map::LinkedHashMap;
+use std::rc::Rc;
 
 pub const SYSTEM_UNIT_NAME: &str = "System";
 pub const NOTHING_TYPE_NAME: &str = "Nothing";
@@ -66,13 +65,9 @@ pub fn builtin_string_name() -> Symbol {
     let string_ident = Ident::new(STRING_TYPE_NAME, builtin_span.clone());
 
     Symbol {
-        decl_name: TypeDeclName {
-            ident: string_ident.clone(),
-            span: builtin_span,
-            type_params: None,
-        },
         qualified: Path::from(system_ident).child(string_ident),
         type_args: None,
+        type_params: None,
     }
 }
 

@@ -56,18 +56,13 @@ pub trait TypeAnnotation : fmt::Debug + fmt::Display + Clone + PartialEq + Eq + 
     fn is_known(&self) -> bool;
 }
 
-pub trait ParameterizedName : fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
-    fn as_local(&self) -> &TypeDeclName;
-    fn decl_ty_params(&self) -> &[Ident];
-}
-
 pub trait FunctionName : fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
     fn ident(&self) -> &Ident;
 }
 
 pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
     type Type: TypeAnnotation + fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
-    type Name: ParameterizedName + fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
+    type Name: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
     type Pattern: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
     type FunctionName: FunctionName + fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
 

@@ -7,7 +7,13 @@ pub use self::enum_decl::*;
 pub use self::iface_decl::*;
 pub use self::struct_def::*;
 pub use self::variant_def::*;
-use crate::DelimiterPair;
+use crate::ast::unit::AliasDecl;
+use crate::ast::{Annotation, TypeName};
+use crate::ast::Ident;
+use crate::ast::Keyword;
+use crate::ast::Operator;
+use crate::ast::TypeList;
+use crate::ast::TypeParam;
 use crate::parse::LookAheadTokenStream;
 use crate::parse::Matcher;
 use crate::parse::Parse;
@@ -15,21 +21,15 @@ use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
-use crate::ast::unit::AliasDecl;
-use crate::ast::Annotation;
-use crate::ast::ParameterizedName;
-use crate::ast::TypeList;
-use crate::ast::Ident;
-use crate::ast::Keyword;
-use crate::ast::Operator;
+use crate::DelimiterPair;
 use crate::Separator;
-use derivative::*;
 use common::span::Span;
 use common::span::Spanned;
 use common::TracedError;
-use std::hash::Hash;
-use std::fmt::Debug;
+use derivative::*;
 use std::fmt;
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::rc::Rc;
 
 #[derive(Clone, Eq, Derivative)]
@@ -120,7 +120,7 @@ impl ParseSeq for TypeDeclItem<Span> {
     }
 }
 
-/// the common part of a typedecl before the `=`, eg in `type X<Y> = class...`, `X<Y>` is the decl
+/// the common part of a typedecl before the `=`, eg in `type X[Y] = class...`, `X<Y>` is the decl
 /// name. we parse it first and pass it into the parse functions for specific decl kinds.
 /// this isn't quite the same thing as a TypeName, which can be a full qualified path - a decl
 /// name is a single unqualified ident + maybe a type parameter list
@@ -128,25 +128,12 @@ impl ParseSeq for TypeDeclItem<Span> {
 #[derivative(PartialEq, Debug, Hash)]
 pub struct TypeDeclName {
     pub ident: Ident,
-    pub type_params: Option<TypeList<Ident>>,
+    pub type_params: Option<TypeList<TypeParam<TypeName>>>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(Hash = "ignore")]
     #[derivative(PartialEq = "ignore")]
     pub span: Span,
-}
-
-impl ParameterizedName for TypeDeclName {
-    fn as_local(&self) -> &Self {
-        self
-    }
-
-    fn decl_ty_params(&self) -> &[Ident] {
-        match &self.type_params {
-            Some(type_params) => &type_params.items,
-            None => &[],
-        }
-    }
 }
 
 impl fmt::Display for TypeDeclName {
@@ -181,7 +168,11 @@ impl TypeDeclName {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
 
-        let type_params = match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
+        let ty_param_group = tokens
+            .look_ahead()
+            .match_one(DelimiterPair::SquareBracket);
+
+        let type_params = match ty_param_group {
             Some(..) => Some(TypeList::parse_type_params(tokens)?),
             None => None,
         };

@@ -7,7 +7,6 @@ use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::ast::InterfaceDecl;
 use crate::typ::string_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
@@ -21,8 +20,8 @@ use crate::typ::NameContainer;
 use crate::typ::NameError;
 use crate::typ::NameResult;
 use crate::typ::Type;
-use crate::typ::TypeList;
 use crate::typ::TypeError;
+use crate::typ::TypeList;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -101,7 +100,39 @@ pub fn typecheck_func_decl(
     is_def: bool,
     ctx: &mut Context,
 ) -> TypeResult<FunctionDecl> {
-    ctx.scope(Environment::FunctionDecl, |ctx| {
+    let enclosing_ty = ctx.current_enclosing_ty().cloned();
+
+    let owning_ty = match (&decl.name.owning_ty_qual, &enclosing_ty) {
+        (Some(owning_ty_name), None) => Some(typecheck_type(owning_ty_name, ctx)?),
+        (None, Some(enclosing_ty)) => Some(enclosing_ty.clone()),
+
+        (Some(type_qual), Some(..)) => {
+            return Err(TypeError::InvalidMethodExplicitInterface {
+                method_ident: decl.name.ident.clone(),
+                span: type_qual.span().clone()
+            });
+        }
+
+        _ => None,
+    };
+
+    let env = Environment::FunctionDecl {
+        owning_ty_params: owning_ty
+            .as_ref()
+            .and_then(|ty| ty.type_params().cloned()),
+    };
+    
+    ctx.scope(env, |ctx| {
+        // declare type params from the declaring type, if any
+        // e.g. for method `MyClass[T].A()`, `T` is declared here for the function scope
+        // if this decl is inside an enclosing type, they should already be declared in the body
+        // scope of the type, and can't be redeclared
+        if enclosing_ty.is_none() {
+            if let Some(params) = owning_ty.as_ref().and_then(Type::type_params) {
+                ctx.declare_type_params(params)?;
+            }
+        }
+        
         let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
         if is_def {
@@ -111,21 +142,19 @@ pub fn typecheck_func_decl(
                     span: decl.span.clone(),
                 })
             }
-        } else {
-            if let Some(extern_mod) = decl.get_mod(DeclMod::EXTERNAL_WORD) {
-                if let Some(decl_type_params) = &decl.type_params {
-                    let ty_args_span = decl_type_params.items[0].name.span().to(decl_type_params
-                        .items
-                        .last()
-                        .unwrap()
-                        .name
-                        .span());
-                    return Err(TypeError::ExternalGenericFunction {
-                        func: decl.name.ident.clone(),
-                        extern_modifier: extern_mod.span().clone(),
-                        ty_args: ty_args_span,
-                    });
-                }
+        } else if let Some(extern_mod) = decl.get_mod(DeclMod::EXTERNAL_WORD) {
+            if let Some(decl_type_params) = &decl.type_params {
+                let ty_args_span = decl_type_params.items[0].name.span().to(decl_type_params
+                    .items
+                    .last()
+                    .unwrap()
+                    .name
+                    .span());
+                return Err(TypeError::ExternalGenericFunction {
+                    func: decl.name.ident.clone(),
+                    extern_modifier: extern_mod.span().clone(),
+                    ty_args: ty_args_span,
+                });
             }
         }
 
@@ -143,20 +172,22 @@ pub fn typecheck_func_decl(
             None => Type::Nothing,
         };
 
-        let params;
-        let owning_ty;
+        let params: Vec<FunctionParam>;
         
-        match (&decl.name.owning_ty_qual, ctx.current_enclosing_ty()) {
+        match (&owning_ty, &enclosing_ty) {
             // free function with no owning type
             (None, None) => {
                 params = typecheck_params(decl, None, ctx)?;
-                owning_ty = None;
             },
             
             // method definition or free interface implementation decl
-            (Some(owning_ty_qual), None) => {
-                let explicit_ty_span = owning_ty_qual.span();
-                let explicit_owning_ty = typecheck_type(owning_ty_qual, ctx)?;
+            (Some(explicit_owning_ty), None) => {
+                let explicit_ty_span = decl
+                    .name
+                    .owning_ty_qual
+                    .as_ref()
+                    .unwrap()
+                    .span();
 
                 // if this is an interface, it's the *implementation* of one, so it has the 
                 // real types substituted into for any `Self` occurrences. if it's a method
@@ -177,14 +208,12 @@ pub fn typecheck_func_decl(
 
                 match &explicit_owning_ty {
                     // free interface implementation decl
-                    Type::Interface(iface) => {
-                        validate_iface_method(
-                            iface.as_ref(),
-                            &decl.name.ident,
-                            &method_sig,
-                            ctx,
-                            explicit_ty_span
-                        )?;
+                    Type::Interface(..) => {
+                        return Err(TypeError::AbstractMethodDefinition {
+                            span: decl.span.clone(),
+                            owning_ty: explicit_owning_ty.clone(),
+                            method: decl.name.ident.clone(),
+                        });
                     }
 
                     // method definition
@@ -209,14 +238,18 @@ pub fn typecheck_func_decl(
                         }
                     }
                 }
-
-                owning_ty = Some(explicit_owning_ty);
             }
 
             // method decl
-            (None, Some(enclosing_ty)) => {
-                let enclosing_ty = enclosing_ty.clone();
-
+            (_, Some(enclosing_ty)) => {
+                // it may be possible later to specify an explicit implemented interface within the
+                // body of another type, in which case this assertion would no longer be valid
+                assert_eq!(
+                    owning_ty.as_ref(), 
+                    Some(enclosing_ty), 
+                    "if an enclosing type is found, the owning type should always be the enclosing type"
+                );
+                
                 // if the owning type is an interface, this is an interface method definition,
                 // and the type of `self` is the generic `Self` (to stand in for implementing
                 // types in static interfaces). if it's NOT an interface, it must be a concrete
@@ -225,16 +258,8 @@ pub fn typecheck_func_decl(
                     Type::Interface(..) => Type::MethodSelf,
                     _ => enclosing_ty.clone(),
                 };
-                
-                owning_ty = Some(enclosing_ty.clone());
-                params = typecheck_params(decl, Some(self_param_ty), ctx)?;
-            }
 
-            (Some(owning_ty_qual), Some(..)) => {
-                return Err(TypeError::InvalidMethodExplicitInterface {
-                    method_ident: decl.name.ident.clone(),
-                    span: owning_ty_qual.span().clone()
-                });
+                params = typecheck_params(decl, Some(self_param_ty), ctx)?;
             }
         };
 
@@ -329,26 +354,6 @@ fn typecheck_params(
     Ok(params)
 }
 
-fn validate_iface_method(
-    iface: &IdentPath,
-    method_name: &Ident,
-    method_sig: &FunctionSig,
-    ctx: &Context,
-    span: &Span
-) -> TypeResult<()> {
-    let iface_def = ctx.find_iface_def(&iface)
-        .map_err(|err| {
-            TypeError::from_name_err(err, span.clone())
-        })?;
-
-    find_iface_impl(iface_def, method_name, &method_sig)
-        .map_err(|err| {
-            TypeError::from_name_err(err, span.clone())
-        })?;
-
-    Ok(())
-}
-
 fn validate_method(
     owning_ty_name: &IdentPath,
     method_ident: &Ident,
@@ -412,44 +417,6 @@ fn typecheck_decl_mods(
     }
 
     Ok(results)
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-struct InterfaceImpl {
-    pub iface: Type,
-    pub for_ty: Type,
-}
-
-fn find_iface_impl(
-    iface_def: &InterfaceDecl,
-    method_ident: &Ident,
-    sig: &FunctionSig,
-) -> NameResult<InterfaceImpl> {
-    let impl_for_types: Vec<_> = iface_def
-        .methods
-        .iter()
-        .filter(|method| *method.ident() == *method_ident)
-        .filter_map(|method| FunctionSig::of_decl(&method.decl).impl_ty(&sig))
-        .collect();
-
-    match impl_for_types.len() {
-        0 => {
-            let iface_name = iface_def.name.qualified.clone();
-            let iface_ty = Type::Interface(Box::new(iface_name));
-
-            Err(NameError::MemberNotFound {
-                base: NameContainer::Type(iface_ty),
-                member: method_ident.clone(),
-            })
-        },
-
-        1 => Ok(InterfaceImpl {
-            iface: Type::Interface(Box::new(iface_def.name.qualified.clone())),
-            for_ty: impl_for_types[0].clone(),
-        }),
-
-        _ => unreachable!("interfaces can't have multiple methods with the same name"),
-    }
 }
 
 pub fn typecheck_func_def(

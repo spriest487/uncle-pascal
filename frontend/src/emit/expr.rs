@@ -8,6 +8,8 @@ use crate::emit::syn;
 use crate::emit::translate_stmt;
 use crate::emit::typ;
 use crate::emit::Builder;
+use crate::typ::STRING_TYPE_NAME;
+use crate::typ::SYSTEM_UNIT_NAME;
 pub use call::*;
 use common::span::*;
 use syn::Ident;
@@ -222,8 +224,9 @@ pub fn translate_if_cond_stmt(
 }
 
 fn is_string_class(class: &typ::Symbol) -> bool {
-    class.qualified.first().name.as_str() == "System"
-        && class.qualified.last().name.as_str() == "String"
+    class.qualified.len() == 2
+        && class.qualified.first().name.as_str() == SYSTEM_UNIT_NAME
+        && class.qualified.last().name.as_str() == STRING_TYPE_NAME
 }
 
 pub fn literal_to_val(
