@@ -27,7 +27,7 @@ use crate::typ::ScopeMemberRef;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::ValueKind;
 use crate::typ::typecheck_type;
@@ -46,7 +46,7 @@ fn typecheck_unit_decl(
     decl: &ast::UnitDecl<Span>,
     ctx: &mut Context,
     visibility: Visibility,
-) -> TypecheckResult<UnitDecl> {
+) -> TypeResult<UnitDecl> {
     match decl {
         ast::UnitDecl::Uses { decl: uses } => {
             for use_item in &uses.units {
@@ -76,7 +76,7 @@ fn typecheck_unit_decl(
     }
 }
 
-fn typecheck_unit_uses_decl(use_item: &ast::UseDeclItem, ctx: &mut Context) -> TypecheckResult<()> {
+fn typecheck_unit_uses_decl(use_item: &ast::UseDeclItem, ctx: &mut Context) -> TypeResult<()> {
     match ctx.find_path(&use_item.ident) {
         // path refers to a known unit path (by alias or directly by its canon name)
         Some(ScopeMemberRef::Scope { path }) => {
@@ -112,7 +112,7 @@ fn typecheck_unit_func_def(
     func_def: &ast::FunctionDef<Span>,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<UnitDecl> {
+) -> TypeResult<UnitDecl> {
     let func_def = typecheck_func_def(func_def, ctx)?;
     let func_decl = &func_def.decl;
     let func_name = &func_decl.name;
@@ -140,7 +140,7 @@ fn typecheck_unit_func_decl(
     func_decl: &ast::FunctionDecl<Span>,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<UnitDecl> {
+) -> TypeResult<UnitDecl> {
     let name = func_decl.name.clone();
     let func_decl = typecheck_func_decl(func_decl, false, ctx)?;
 
@@ -158,7 +158,7 @@ pub fn typecheck_unit_type_decl(
     type_decl: &ast::TypeDecl<Span>,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<UnitDecl> {
+) -> TypeResult<UnitDecl> {
     let decl = typecheck_type_decl(type_decl, visibility, ctx)?;
 
     Ok(UnitDecl::Type { decl })
@@ -168,7 +168,7 @@ fn typecheck_type_decl(
     type_decl: &ast::TypeDecl,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<TypeDecl> {
+) -> TypeResult<TypeDecl> {
     let mut items = Vec::with_capacity(type_decl.items.len());
 
     for type_decl_item in &type_decl.items {
@@ -186,7 +186,7 @@ fn typecheck_type_decl_item(
     type_decl: &ast::TypeDeclItem,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<TypeDeclItem> {
+) -> TypeResult<TypeDeclItem> {
     let decl_name = type_decl.name().clone();
     let full_name = Symbol {
         qualified: ctx.qualify_name(decl_name.ident.clone()),
@@ -241,7 +241,7 @@ fn typecheck_type_decl_item_with_def(
     type_decl: &ast::TypeDeclItem,
     visibility: Visibility,
     ctx: &mut Context
-) -> TypecheckResult<TypeDeclItem> {
+) -> TypeResult<TypeDeclItem> {
     // type decls have an inner scope
     let ty_scope = ctx.push_scope(Environment::TypeDecl {
         ty,
@@ -301,7 +301,7 @@ fn typecheck_type_decl_body(
     name: Symbol,
     type_decl: &ast::TypeDeclItem<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<TypeDeclItem> {
+) -> TypeResult<TypeDeclItem> {
     let type_decl = match type_decl {
         ast::TypeDeclItem::Struct(class) => {
             let class = typecheck_struct_decl(name, class, ctx)?;
@@ -335,7 +335,7 @@ fn typecheck_global_binding(
     binding: &ast::GlobalBinding<Span>,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<GlobalBinding> {
+) -> TypeResult<GlobalBinding> {
     let mut items = Vec::with_capacity(binding.items.len());
 
     for const_decl_item in &binding.items {
@@ -355,7 +355,7 @@ fn typecheck_global_binding_item(
     item: &ast::GlobalBindingItem<Span>,
     visibility: Visibility,
     ctx: &mut Context,
-) -> TypecheckResult<GlobalBindingItem> {
+) -> TypeResult<GlobalBindingItem> {
     let span = item.span().clone();
 
     let (ty, val) = match kind {
@@ -468,7 +468,7 @@ fn typecheck_global_binding_item(
     })
 }
 
-pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckResult<ModuleUnit> {
+pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypeResult<ModuleUnit> {
     ctx.unit_scope(unit.ident.clone(), |ctx| {
         let mut iface_decls = Vec::new();
         for decl in &unit.iface_decls {

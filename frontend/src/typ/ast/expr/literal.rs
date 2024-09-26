@@ -4,7 +4,7 @@ use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::Primitive;
 use crate::typ::Type;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use common::span::Span;
@@ -18,7 +18,7 @@ pub fn typecheck_literal(
     expect_ty: &Type,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     match lit {
         ast::Literal::String(s) => {
             let binding = ValueKind::Immutable;
@@ -101,7 +101,7 @@ pub fn typecheck_literal(
     }
 }
 
-fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypecheckResult<Expr> {
+fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypeResult<Expr> {
     let ty = match expect_ty {
         Type::Primitive(Primitive::UInt8) => {
             try_map_primitive_int(i, Primitive::UInt8, IntConstant::as_u8)

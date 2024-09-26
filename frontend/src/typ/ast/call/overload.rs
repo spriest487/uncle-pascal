@@ -8,7 +8,7 @@ use crate::typ::FunctionSig;
 use crate::typ::InstanceMethod;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use common::span::Span;
 use common::span::Spanned;
 use crate::ast;
@@ -89,7 +89,7 @@ pub fn resolve_overload(
     self_arg: Option<&Expr>,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Overload> {
+) -> TypeResult<Overload> {
     if candidates.is_empty() {
         panic!("overload resolution requires at least 1 candidate");
     }

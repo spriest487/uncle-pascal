@@ -35,7 +35,7 @@ use crate::typ::Type;
 use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::specialize_generic_variant;
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
@@ -249,8 +249,8 @@ impl Context {
         }
     }
 
-    pub fn scope<F, T>(&mut self, env: impl Into<Environment>, f: F) -> TypecheckResult<T>
-        where F: FnOnce(&mut Context) -> TypecheckResult<T>
+    pub fn scope<F, T>(&mut self, env: impl Into<Environment>, f: F) -> TypeResult<T>
+        where F: FnOnce(&mut Context) -> TypeResult<T>
     {
         let scope_id = self.push_scope(env);
 
@@ -261,8 +261,8 @@ impl Context {
         result
     }
 
-    pub fn unit_scope<T, F>(&mut self, unit_path: IdentPath, f: F) -> TypecheckResult<T>
-        where F: FnOnce(&mut Context) -> TypecheckResult<T>,
+    pub fn unit_scope<T, F>(&mut self, unit_path: IdentPath, f: F) -> TypeResult<T>
+        where F: FnOnce(&mut Context) -> TypeResult<T>,
     {
         let path_len = unit_path.as_slice().len();
         let mut path_parts = unit_path.into_parts();
@@ -468,7 +468,7 @@ impl Context {
         false
     }
 
-    fn declare(&mut self, name: Ident, decl: Decl) -> TypecheckResult<()> {
+    fn declare(&mut self, name: Ident, decl: Decl) -> TypeResult<()> {
         let local_name_path = IdentPath::from_parts([name.clone()]);
 
         match self.find_path(&local_name_path) {
@@ -543,7 +543,7 @@ impl Context {
         }
     }
 
-    pub fn declare_binding(&mut self, name: Ident, binding: Binding) -> TypecheckResult<()> {
+    pub fn declare_binding(&mut self, name: Ident, binding: Binding) -> TypeResult<()> {
         self.declare(name, Decl::BoundValue(binding))?;
         Ok(())
     }
@@ -552,7 +552,7 @@ impl Context {
         &mut self,
         iface: Rc<InterfaceDecl>,
         visibility: Visibility,
-    ) -> TypecheckResult<()> {
+    ) -> TypeResult<()> {
         let name = iface.name.decl_name.ident.clone();
         let iface_ty = Type::Interface(Box::new(iface.name.qualified.clone()));
         self.declare_type(name.clone(), iface_ty, visibility)?;
@@ -572,7 +572,7 @@ impl Context {
         &mut self,
         variant: Rc<VariantDef>,
         visibility: Visibility,
-    ) -> TypecheckResult<()> {
+    ) -> TypeResult<()> {
         let name = variant.name.decl_name.ident.clone();
 
         let variant_ty = Type::Variant(Box::new(variant.name.clone()));
@@ -589,7 +589,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_class(&mut self, class: Rc<StructDef>, visibility: Visibility) -> TypecheckResult<()> {
+    pub fn declare_class(&mut self, class: Rc<StructDef>, visibility: Visibility) -> TypeResult<()> {
         let name = class.name.decl_name.ident.clone();
 
         let class_ty = match class.kind {
@@ -610,7 +610,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_enum(&mut self, enum_decl: Rc<EnumDecl>, visibility: Visibility) -> TypecheckResult<()> {
+    pub fn declare_enum(&mut self, enum_decl: Rc<EnumDecl>, visibility: Visibility) -> TypeResult<()> {
         let name = enum_decl.name.decl_name.ident.clone();
 
         let enum_ty = Type::Enum(Box::new(enum_decl.name.clone()));
@@ -633,7 +633,7 @@ impl Context {
     }
 
     /// declare the type params of a function in the local scope
-    pub fn declare_type_params(&mut self, names: &TypeParamList) -> TypecheckResult<()> {
+    pub fn declare_type_params(&mut self, names: &TypeParamList) -> TypeResult<()> {
         for (pos, param) in names.items.iter().enumerate() {
             let is_iface = param
                 .constraint
@@ -655,7 +655,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_self_ty(&mut self, ty: Type, span: Span) -> TypecheckResult<()> {
+    pub fn declare_self_ty(&mut self, ty: Type, span: Span) -> TypeResult<()> {
         let self_ident = Ident::new(SELF_TY_NAME, span);
         self.declare_type(self_ident, ty, Visibility::Implementation)
     }
@@ -665,7 +665,7 @@ impl Context {
         name: Ident,
         ty: Type,
         visibility: Visibility,
-    ) -> TypecheckResult<()> {
+    ) -> TypeResult<()> {
         self.declare(name, Decl::Type { ty: ty.clone(), visibility })?;
 
         Ok(())
@@ -676,7 +676,7 @@ impl Context {
         name: Ident,
         func_decl: &FunctionDecl,
         visibility: Visibility,
-    ) -> TypecheckResult<()> {
+    ) -> TypeResult<()> {
         let decl = Decl::Function {
             sig: FunctionSig::of_decl(func_decl).into(),
             visibility,
@@ -692,7 +692,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> TypecheckResult<()> {
+    pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> TypeResult<()> {
         self.declare(name, Decl::Alias(aliased))
     }
 
@@ -703,7 +703,7 @@ impl Context {
         ty: Type,
         visibility: Visibility,
         span: Span,
-    ) -> TypecheckResult<()> {
+    ) -> TypeResult<()> {
         self.declare(
             name,
             Decl::Const {
@@ -820,7 +820,7 @@ impl Context {
         &mut self,
         ty: Type,
         method_def: FunctionDef,
-    ) -> TypecheckResult<()> {
+    ) -> TypeResult<()> {
         let span = method_def.decl.span().clone();
         self
             .insert_method_def(ty, method_def)
@@ -856,7 +856,7 @@ impl Context {
         def: Def,
         decl_predicate: DeclPred,
         map_unexpected: MapUnexpected,
-    ) -> TypecheckResult<()>
+    ) -> TypeResult<()>
     where
         DeclPred: Fn(&Decl) -> DefDeclMatch,
         MapUnexpected: Fn(IdentPath, Named) -> NameError,
@@ -937,7 +937,7 @@ impl Context {
         &mut self,
         name: Ident,
         def: FunctionDef,
-    ) -> TypecheckResult<()> {
+    ) -> TypeResult<()> {
         let sig = FunctionSig::of_decl(&def.decl);
 
         // defining a function - only the sig needs to match, the visibility of the definition doesn't matter
@@ -1166,7 +1166,7 @@ impl Context {
         }
     }
     
-    pub fn is_implementation_at(&self, self_ty: &Type, iface_ty: &Type, at: &Span) -> TypecheckResult<bool> {
+    pub fn is_implementation_at(&self, self_ty: &Type, iface_ty: &Type, at: &Span) -> TypeResult<bool> {
         match self.is_implementation(self_ty, iface_ty) {
             Ok(is_impl) => Ok(is_impl),
             Err(err) => Err(TypeError::from_name_err(err, at.clone())),

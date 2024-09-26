@@ -8,7 +8,7 @@ use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
@@ -20,7 +20,7 @@ pub fn typecheck_block(
     block: &ast::Block<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Block> {
+) -> TypeResult<Block> {
     let block_env = Environment::Block {
         allow_unsafe: block.unsafe_kw.is_some(),
     };

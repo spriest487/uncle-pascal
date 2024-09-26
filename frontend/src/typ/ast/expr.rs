@@ -25,7 +25,7 @@ use crate::typ::NameError;
 use crate::typ::ScopeMemberRef;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
@@ -38,7 +38,7 @@ use common::span::*;
 
 pub type Expr = ast::Expr<Typed>;
 
-pub fn const_eval_string(expr: &Expr, ctx: &Context) -> TypecheckResult<String> {
+pub fn const_eval_string(expr: &Expr, ctx: &Context) -> TypeResult<String> {
     match expr.const_eval(ctx) {
         Some(Literal::String(src_str)) => Ok((*src_str).clone()),
 
@@ -48,7 +48,7 @@ pub fn const_eval_string(expr: &Expr, ctx: &Context) -> TypecheckResult<String> 
     }
 }
 
-pub fn const_eval_integer(expr: &Expr, ctx: &Context) -> TypecheckResult<IntConstant> {
+pub fn const_eval_integer(expr: &Expr, ctx: &Context) -> TypeResult<IntConstant> {
     match expr.const_eval(ctx) {
         Some(Literal::Integer(int_const)) => Ok(int_const),
 
@@ -62,7 +62,7 @@ pub fn typecheck_expr(
     expr_node: &ast::Expr<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     match expr_node {
         ast::Expr::Literal(lit, span) => literal::typecheck_literal(lit, expect_ty, span, ctx),
 
@@ -141,7 +141,7 @@ fn typecheck_ident(
     expect_ty: &Type,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     let decl = match ctx.find_name(ident) {
         Some(decl) => decl,
         None => {

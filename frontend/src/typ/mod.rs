@@ -30,7 +30,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn typecheck(units: &[syn::Unit<Span>]) -> TypecheckResult<Self> {
+    pub fn typecheck(units: &[syn::Unit<Span>]) -> TypeResult<Self> {
         // eprintln!("function sig size: {}", std::mem::size_of::<sig::FunctionSig>());
         // eprintln!("type size: {}", std::mem::size_of::<Type>());
         // eprintln!("type annotation size: {}", std::mem::size_of::<TypeAnnotation>());

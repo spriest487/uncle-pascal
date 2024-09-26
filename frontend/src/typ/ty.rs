@@ -483,7 +483,7 @@ impl Type {
         }
     }
     
-    pub fn methods_at<'c>(&self, ctx: &'c Context, at: &Span) -> TypecheckResult<Vec<&'c FunctionDecl>> {
+    pub fn methods_at<'c>(&self, ctx: &'c Context, at: &Span) -> TypeResult<Vec<&'c FunctionDecl>> {
         self.methods(ctx).map_err(|err| TypeError::from_name_err(err, at.clone()))
     }
 
@@ -545,7 +545,7 @@ impl Type {
         }
     }
     
-    pub fn implemented_ifaces_at(&self, ctx: &Context, at: &Span) -> TypecheckResult<Vec<Type>> {
+    pub fn implemented_ifaces_at(&self, ctx: &Context, at: &Span) -> TypeResult<Vec<Type>> {
         self.implemented_ifaces(ctx)
             .map_err(|err| TypeError::from_name_err(err, at.clone()))
     }
@@ -808,7 +808,7 @@ pub struct TypeMemberRef<'ty> {
     pub ty: &'ty Type,
 }
 
-pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<Type> {
+pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type> {
     match ty {
         ast::TypeName::Ident(IdentTypeName {
             ident,
@@ -1079,7 +1079,7 @@ impl Specializable for Type {
     }
 }
 
-pub fn string_type(ctx: &mut Context) -> TypecheckResult<Type> {
+pub fn string_type(ctx: &mut Context) -> TypeResult<Type> {
     let span = context::builtin_span();
     let ns = IdentPath::from(Ident::new("System", span.clone()));
     let str_class_name = ast::TypeName::Ident(IdentTypeName {

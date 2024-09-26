@@ -1,7 +1,7 @@
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_stmt;
 use crate::typ::TypedValue;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::TypeError;
 use crate::typ::Typed;
 use crate::typ::Type;
@@ -19,7 +19,7 @@ pub fn typecheck_case_stmt(
     case: &ast::CaseStmt<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<CaseStmt> {
+) -> TypeResult<CaseStmt> {
     let cond_expr = typecheck_expr(&case.cond_expr, &Type::Nothing, ctx)?;
     let cond_ty = cond_expr.annotation().ty();
 
@@ -60,7 +60,7 @@ pub fn typecheck_case_expr(
     case: &ast::CaseExpr<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<CaseExpr> {
+) -> TypeResult<CaseExpr> {
     let span = case.span().clone();
 
     if case.branches.is_empty() || case.else_branch.is_none() {

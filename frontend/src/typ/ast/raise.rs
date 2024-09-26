@@ -3,7 +3,7 @@ use crate::typ::string_type;
 use crate::typ::Context;
 use crate::typ::Type;
 use crate::typ::Typed;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use common::span::Span;
@@ -16,7 +16,7 @@ pub fn typecheck_raise(
     raise: &ast::Raise<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Raise> {
+) -> TypeResult<Raise> {
     let string_ty = string_type(ctx)?;
     let value = typecheck_expr(&raise.value, &string_ty, ctx)?;
     value.annotation().expect_value(&string_ty)?;

@@ -15,7 +15,7 @@ use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::{typecheck_type, FunctionSig, MissingImplementation};
 use crate::IntConstant;
@@ -37,7 +37,7 @@ pub fn typecheck_struct_decl(
     name: Symbol,
     class: &ast::StructDef<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<StructDef> {
+) -> TypeResult<StructDef> {
     let self_ty = match class.kind {
         StructKind::Record | StructKind::PackedRecord => Type::Record(Box::new(name.clone())),
         StructKind::Class => Type::Class(Box::new(name.clone())),
@@ -46,7 +46,7 @@ pub fn typecheck_struct_decl(
     let implements: Vec<Type> = class.implements
         .iter()
         .map(|implements_ty| typecheck_type(implements_ty, ctx))
-        .collect::<TypecheckResult<_>>()?;
+        .collect::<TypeResult<_>>()?;
 
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(
@@ -125,7 +125,7 @@ pub fn typecheck_struct_decl(
     })
 }
 
-fn typecheck_method(decl: &ast::FunctionDecl, ctx: &mut Context) -> TypecheckResult<FunctionDecl> {
+fn typecheck_method(decl: &ast::FunctionDecl, ctx: &mut Context) -> TypeResult<FunctionDecl> {
     let decl = typecheck_func_decl(decl, false, ctx)?;
 
     if !decl.mods.is_empty() {
@@ -147,7 +147,7 @@ fn typecheck_field(
     struct_name: &Symbol,
     field: &ast::Field,
     ctx: &mut Context
-) -> TypecheckResult<Field> {
+) -> TypeResult<Field> {
     let ty = typecheck_type(&field.ty, ctx)?.clone();
 
     let is_unsized = ctx
@@ -175,7 +175,7 @@ pub fn typecheck_iface(
     name: Symbol,
     iface: &ast::InterfaceDecl<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<InterfaceDecl> {
+) -> TypeResult<InterfaceDecl> {
     // declare Self type - type decls are always in their own scope so we don't need to push
     // another one
     ctx.declare_self_ty(Type::MethodSelf, iface.name.span().clone())?;
@@ -216,7 +216,7 @@ pub fn typecheck_variant(
     name: Symbol,
     variant: &ast::VariantDef<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<VariantDef> {
+) -> TypeResult<VariantDef> {
     if variant.cases.is_empty() {
         return Err(TypeError::EmptyVariant(Box::new(variant.clone())));
     }
@@ -246,7 +246,7 @@ pub fn typecheck_alias(
     name: Symbol,
     alias: &ast::AliasDecl<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<AliasDecl> {
+) -> TypeResult<AliasDecl> {
     let ty = typecheck_type(&alias.ty, ctx)?;
 
     Ok(AliasDecl {
@@ -260,7 +260,7 @@ pub fn typecheck_enum_decl(
     name: Symbol,
     enum_decl: &ast::EnumDecl<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<EnumDecl> {
+) -> TypeResult<EnumDecl> {
     if name.decl_name.type_params.is_some() {
         return Err(TypeError::EnumDeclWithTypeParams {
             span: name.span().clone(),

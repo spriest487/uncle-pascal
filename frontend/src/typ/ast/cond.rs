@@ -10,7 +10,7 @@ use crate::typ::Primitive;
 use crate::typ::Type;
 use crate::typ::TypePattern;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
@@ -25,7 +25,7 @@ pub type IfCondStatement = ast::IfCond<Typed, Stmt>;
 fn typecheck_cond_expr<B>(
     if_cond: &ast::IfCond<Span, B>,
     ctx: &mut Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     // condition expr has a boolean hint if we're not doing an is-match
     let cond_expect_ty = if if_cond.is_pattern.is_some() {
         Type::Nothing
@@ -48,7 +48,7 @@ fn typecheck_pattern_match<B>(
     if_cond: &ast::IfCond<Span, B>,
     cond: &Expr,
     ctx: &mut Context,
-) -> TypecheckResult<Option<TypePattern>> {
+) -> TypeResult<Option<TypePattern>> {
     let is_pattern = match &if_cond.is_pattern {
         Some(pattern) => {
             let pattern = TypePattern::typecheck(pattern, &cond.annotation().ty(), ctx)?;
@@ -65,7 +65,7 @@ fn typecheck_pattern_match<B>(
 fn create_then_branch_ctx(
     is_pattern: Option<&TypePattern>,
     ctx: &mut Context,
-) -> TypecheckResult<Context> {
+) -> TypeResult<Context> {
     let mut then_ctx = ctx.clone();
 
     // is-pattern binding only exists in the "then" branch, if present
@@ -93,7 +93,7 @@ pub fn typecheck_if_cond_stmt(
     if_cond: &ast::IfCond<Span, ast::Stmt<Span>>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<IfCond<Stmt>> {
+) -> TypeResult<IfCond<Stmt>> {
     let cond = typecheck_cond_expr(&if_cond, ctx)?;
 
     let is_pattern = typecheck_pattern_match(&if_cond, &cond, ctx)?;
@@ -131,7 +131,7 @@ pub fn typecheck_if_cond_expr(
     if_cond: &ast::IfCond<Span, ast::Expr<Span>>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<IfCond<Expr>> {
+) -> TypeResult<IfCond<Expr>> {
     let cond = typecheck_cond_expr(&if_cond, ctx)?;
 
     let is_pattern = typecheck_pattern_match(&if_cond, &cond, ctx)?;

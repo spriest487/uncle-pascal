@@ -20,7 +20,7 @@ use crate::emit::{ir, IROptions};
 use crate::parse::{ParseError, ParseResult};
 use crate::pp::error::PreprocessorError;
 use crate::pp::PreprocessedUnit;
-use crate::typ::{Module, TypecheckResult};
+use crate::typ::{Module, TypeResult};
 pub use self::consts::EnumConstant;
 pub use self::consts::IntConstant;
 pub use self::consts::RealConstant;
@@ -78,7 +78,7 @@ pub fn parse(
     Ok(parsed_unit)
 }
 
-pub fn typecheck(units: &[Unit<Span>]) -> TypecheckResult<Module> {
+pub fn typecheck(units: &[Unit<Span>]) -> TypeResult<Module> {
     Module::typecheck(units)
 }
 

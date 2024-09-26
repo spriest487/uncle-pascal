@@ -17,7 +17,7 @@ use crate::typ::TypeArgsResolver;
 use crate::typ::TypeArgsResult;
 use crate::typ::TypeParamType;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::ValueKind;
 use common::span::Span;
 use std::borrow::Cow;
@@ -55,10 +55,10 @@ fn specialize_arg<ArgProducer>(
     produce_expr: ArgProducer,
     _span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Expr>
+) -> TypeResult<Expr>
 // (expected type, ctx) -> expr val
 where
-    ArgProducer: FnOnce(&Type, &mut Context) -> TypecheckResult<Expr>,
+    ArgProducer: FnOnce(&Type, &mut Context) -> TypeResult<Expr>,
 {
     let partial_args_resolver = PartiallySpecializedTypeArgsList {
         items: inferred_ty_args,
@@ -167,7 +167,7 @@ pub fn specialize_call_args(
     explicit_ty_args: Option<TypeList<Type>>,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<SpecializedCallArgs> {
+) -> TypeResult<SpecializedCallArgs> {
     if decl_sig.type_params.is_none() {
         if let Some(explicit_ty_args) = explicit_ty_args {
             return Err(TypeError::from_generic_err(
@@ -274,7 +274,7 @@ fn unwrap_inferred_args(
     inferred_args: Vec<Option<Type>>,
     actual_args: &[Expr],
     span: &Span,
-) -> TypecheckResult<TypeList<Type>> {
+) -> TypeResult<TypeList<Type>> {
     let mut items = Vec::new();
 
     for arg in inferred_args {
@@ -314,7 +314,7 @@ pub fn validate_args(
     params: &[FunctionParamSig],
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<()> {
+) -> TypeResult<()> {
     if args.len() != params.len() {
         return Err(call::invalid_args(args.to_vec(), params, span.clone()));
     }

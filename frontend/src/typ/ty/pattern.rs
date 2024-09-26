@@ -64,7 +64,7 @@ impl TypePattern {
     fn find_variant_case(
         path: &IdentPath,
         ctx: &Context,
-    ) -> TypecheckResult<Option<(IdentPath, Ident)>> {
+    ) -> TypeResult<Option<(IdentPath, Ident)>> {
         let variant_parts = path.iter().cloned().take(path.as_slice().len() - 1);
         let stem_name = IdentPath::from_parts(variant_parts);
         let case_ident = path.last();
@@ -106,7 +106,7 @@ impl TypePattern {
         span: &Span,
         expect_ty: &Type,
         ctx: &mut Context,
-    ) -> TypecheckResult<Type> {
+    ) -> TypeResult<Type> {
         let raw_ty = match name {
             ast::TypeName::Ident(IdentTypeName { ident, .. }) => {
                 let (_ident_path, ty) = ctx.find_type(ident)
@@ -135,7 +135,7 @@ impl TypePattern {
         span: &Span,
         expect_ty: &Type,
         ctx: &mut Context,
-    ) -> TypecheckResult<Symbol> {
+    ) -> TypeResult<Symbol> {
         match expect_ty {
             expect_var @ Type::Variant(..) => {
                 let variant_def = ctx.find_variant_def(variant)
@@ -173,7 +173,7 @@ impl TypePattern {
         pattern: &ast::TypeNamePattern,
         expect_ty: &Type,
         ctx: &mut Context,
-    ) -> TypecheckResult<TypePattern> {
+    ) -> TypeResult<TypePattern> {
         match pattern {
             // this pattern typename will never contain generic args (we can't parse those here),
             // so either this is a non-generic type or we'll infer a specialization from the

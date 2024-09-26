@@ -285,7 +285,7 @@ impl TypeError {
     }
 }
 
-pub type TypecheckResult<T> = Result<T, TypeError>;
+pub type TypeResult<T> = Result<T, TypeError>;
 
 impl Spanned for TypeError {
     fn span(&self) -> &Span {

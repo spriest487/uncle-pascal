@@ -3,7 +3,7 @@ use crate::ast::Ident;
 use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::Type;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use common::span::Spanned;
 use std::borrow::Cow;
 use std::fmt;
@@ -16,7 +16,7 @@ pub type TypeParamList = ast::TypeList<TypeParam>;
 pub fn typecheck_type_params(
     type_params: &ast::TypeList<ast::TypeParam<ast::TypeName>>,
     ctx: &mut Context,
-) -> TypecheckResult<TypeParamList> {
+) -> TypeResult<TypeParamList> {
     let mut items = Vec::new();
 
     for ty_param in &type_params.items {

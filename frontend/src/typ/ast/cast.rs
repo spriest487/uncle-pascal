@@ -6,7 +6,7 @@ use crate::typ::Context;
 use crate::typ::Primitive;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
@@ -25,7 +25,7 @@ pub fn implicit_conversion(
     expr: Expr,
     to: &Type,
     ctx: &Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     assert_ne!(Type::Nothing, *to, "bad usage of implicit_conversion: can't convert to nothing");
 
     let expr_ty = expr.annotation().ty();
@@ -45,7 +45,7 @@ pub fn check_implicit_conversion(
     to: &Type,
     span: &Span,
     ctx: &Context,
-) -> TypecheckResult<()> {
+) -> TypeResult<()> {
     if *to == *from {
         return Ok(());
     }
@@ -107,7 +107,7 @@ pub fn check_explicit_cast(
     to: &Type,
     span: &Span,
     ctx: &Context,
-) -> TypecheckResult<()> {
+) -> TypeResult<()> {
     if check_implicit_conversion(from, to, span, ctx).is_ok() {
         return Ok(());
     }
@@ -138,7 +138,7 @@ pub fn check_explicit_cast(
     }
 }
 
-pub fn typecheck_cast_expr(cast: &ast::Cast<Span>, ctx: &mut Context) -> TypecheckResult<Cast> {
+pub fn typecheck_cast_expr(cast: &ast::Cast<Span>, ctx: &mut Context) -> TypeResult<Cast> {
     let cast_ty = typecheck_type(&cast.ty, ctx)?;
     let expr = typecheck_expr(&cast.expr, &cast_ty, ctx)?;
 

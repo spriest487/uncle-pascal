@@ -259,7 +259,7 @@ pub enum Typed {
 }
 
 impl Typed {
-    pub fn expect_value(&self, expect_ty: &Type) -> TypecheckResult<()> {
+    pub fn expect_value(&self, expect_ty: &Type) -> TypeResult<()> {
         assert_ne!(Type::Nothing, *expect_ty);
 
         let (actual_ty, span) = match self {

@@ -27,7 +27,7 @@ use crate::typ::GenericError;
 use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
@@ -41,7 +41,7 @@ pub type Exit = ast::Exit<Typed>;
 pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<VarBinding> {
+) -> TypeResult<VarBinding> {
     let (val, binding_ty) = match &binding.ty {
         ast::TypeName::Unknown(_) => match &binding.val {
             None => {
@@ -140,7 +140,7 @@ pub fn typecheck_stmt(
     stmt: &ast::Stmt<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Stmt> {
+) -> TypeResult<Stmt> {
     match stmt {
         ast::Stmt::Ident(ident, span) => {
             // a statement consisting of a single ident MUST be a call to a function without args
@@ -221,7 +221,7 @@ pub fn typecheck_stmt(
     }
 }
 
-fn typecheck_ident_stmt(ident: &Ident, span: &Span, ctx: &mut Context) -> TypecheckResult<Stmt> {
+fn typecheck_ident_stmt(ident: &Ident, span: &Span, ctx: &mut Context) -> TypeResult<Stmt> {
     let target = ast::Expr::Ident(ident.clone(), span.clone());
 
     // an expression which appears on its own as a statement MUST be a function we call call with
@@ -243,7 +243,7 @@ fn typecheck_ident_stmt(ident: &Ident, span: &Span, ctx: &mut Context) -> Typech
     }
 }
 
-fn expect_in_loop(stmt: &ast::Stmt<Span>, ctx: &Context) -> TypecheckResult<()> {
+fn expect_in_loop(stmt: &ast::Stmt<Span>, ctx: &Context) -> TypeResult<()> {
     match ctx.in_loop() {
         Some(..) => Ok(()),
 
@@ -257,7 +257,7 @@ pub fn typecheck_exit(
     exit: &ast::Exit<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Exit> {
+) -> TypeResult<Exit> {
     let ret_ty = ctx
         .current_func_return_ty()
         .ok_or_else(|| TypeError::NoFunctionContext {

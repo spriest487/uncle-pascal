@@ -23,7 +23,7 @@ use crate::typ::NameResult;
 use crate::typ::Type;
 use crate::typ::TypeList;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
@@ -100,7 +100,7 @@ pub fn typecheck_func_decl(
     decl: &ast::FunctionDecl<Span>,
     is_def: bool,
     ctx: &mut Context,
-) -> TypecheckResult<FunctionDecl> {
+) -> TypeResult<FunctionDecl> {
     ctx.scope(Environment::FunctionDecl, |ctx| {
         let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
@@ -254,7 +254,7 @@ pub fn typecheck_func_decl(
 }
 
 impl FunctionDecl {
-    pub fn is_implementation_of(&self, iface_ty: &Type, ctx: &Context) -> TypecheckResult<bool> {
+    pub fn is_implementation_of(&self, iface_ty: &Type, ctx: &Context) -> TypeResult<bool> {
         let owning_ty = match &self.name.owning_ty {
             // not a method/can't be an implementation
             None | Some(Type::Interface(..)) => return Ok(false),
@@ -288,7 +288,7 @@ fn typecheck_params(
     decl: &ast::FunctionDecl,
     implicit_self: Option<Type>,
     ctx: &mut Context
-) -> TypecheckResult<Vec<FunctionParam>> {
+) -> TypeResult<Vec<FunctionParam>> {
     let mut params = Vec::new();
 
     if let Some(self_ty) = implicit_self {
@@ -335,7 +335,7 @@ fn validate_iface_method(
     method_sig: &FunctionSig,
     ctx: &Context,
     span: &Span
-) -> TypecheckResult<()> {
+) -> TypeResult<()> {
     let iface_def = ctx.find_iface_def(&iface)
         .map_err(|err| {
             TypeError::from_name_err(err, span.clone())
@@ -382,7 +382,7 @@ fn validate_method(
 fn typecheck_decl_mods(
     decl_mods: &[ast::DeclMod<Span>],
     ctx: &mut Context,
-) -> TypecheckResult<Vec<DeclMod>> {
+) -> TypeResult<Vec<DeclMod>> {
     let mut results = Vec::new();
 
     for decl_mod in decl_mods {
@@ -455,7 +455,7 @@ fn find_iface_impl(
 pub fn typecheck_func_def(
     def: &ast::FunctionDef<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<FunctionDef> {
+) -> TypeResult<FunctionDef> {
     let decl = typecheck_func_decl(&def.decl, true, ctx)?;
 
     let body_env = FunctionBodyEnvironment {
@@ -545,7 +545,7 @@ pub fn typecheck_func_def(
     })
 }
 
-fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> TypecheckResult<()> {
+fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> TypeResult<()> {
     for param in params {
         let (kind, init) = match param.modifier {
             Some(ast::FunctionParamMod::Var) => (ValueKind::Mutable, true),
@@ -603,7 +603,7 @@ pub fn typecheck_func_expr(
     src_def: &ast::AnonymousFunctionDef<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<AnonymousFunctionDef> {
+) -> TypeResult<AnonymousFunctionDef> {
     let expect_sig = expect_ty.as_func().ok();
 
     let mut params = Vec::new();

@@ -10,7 +10,7 @@ use crate::typ::Environment;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use common::span::*;
 use std::rc::Rc;
 use linked_hash_map::LinkedHashMap;
@@ -255,7 +255,7 @@ pub fn declare_builtin_ty(
     ty: Type,
     comparable: bool,
     displayable: bool
-) -> TypecheckResult<LinkedHashMap<Ident, FunctionDecl>> {
+) -> TypeResult<LinkedHashMap<Ident, FunctionDecl>> {
     let builtin_span = builtin_span();
     
     let ident = Ident::new(name, builtin_span.clone());

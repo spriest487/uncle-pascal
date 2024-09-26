@@ -23,7 +23,7 @@ use crate::typ::OverloadTyped;
 use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::UfcsTyped;
@@ -74,7 +74,7 @@ fn build_args_for_params(
     self_arg: Option<&Expr>,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Vec<Expr>> {
+) -> TypeResult<Vec<Expr>> {
     let mut checked_args = Vec::new();
 
     let rest_args = if let Some(self_arg) = self_arg {
@@ -132,12 +132,12 @@ fn build_args_for_params(
 fn typecheck_type_args(
     type_args: &TypeList<ast::TypeName>,
     ctx: &mut Context,
-) -> TypecheckResult<TypeList<Type>> {
+) -> TypeResult<TypeList<Type>> {
     let items: Vec<_> = type_args
         .items
         .iter()
         .map(|arg_ty| typecheck_type(arg_ty, ctx))
-        .collect::<TypecheckResult<_>>()?;
+        .collect::<TypeResult<_>>()?;
 
     Ok(TypeList::new(items, type_args.span().clone()))
 }
@@ -146,7 +146,7 @@ pub fn typecheck_call(
     call: &ast::Call<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Invocation> {
+) -> TypeResult<Invocation> {
     let func_call = match call {
         ast::Call::Function(func_call) => func_call,
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
@@ -267,7 +267,7 @@ fn typecheck_func_overload(
     func_call: &ast::FunctionCall<Span>,
     target: &Expr,
     overloaded: &OverloadTyped,
-) -> TypecheckResult<Call> {
+) -> TypeResult<Call> {
     let overload = resolve_overload(
         &overloaded.candidates,
         &func_call.args,
@@ -369,7 +369,7 @@ fn typecheck_method_call(
     func_call: &ast::FunctionCall<Span>,
     with_self_arg: Option<Expr>,
     ctx: &mut Context,
-) -> TypecheckResult<Call> {
+) -> TypeResult<Call> {
     // not yet supported
     if let Some(call_type_args) = &func_call.type_args {
         return Err(TypeError::from_generic_err(
@@ -452,7 +452,7 @@ fn typecheck_ufcs_call(
     span: &Span,
     args_span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Call> {
+) -> TypeResult<Call> {
     let mut specialized_call_args = args::specialize_call_args(
         &ufcs_call.sig,
         &rest_args,
@@ -501,7 +501,7 @@ fn typecheck_func_call(
     func_call: &ast::FunctionCall<Span>,
     sig: &FunctionSig,
     ctx: &mut Context,
-) -> TypecheckResult<Call> {
+) -> TypeResult<Call> {
     let span = func_call.span().clone();
 
     let type_args = match func_call.type_args.as_ref() {
@@ -547,7 +547,7 @@ fn typecheck_variant_ctor_call(
     span: Span,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Call> {
+) -> TypeResult<Call> {
     let unspecialized_def = ctx
         .find_variant_def(variant)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
@@ -601,7 +601,7 @@ fn typecheck_variant_ctor_call(
                         typecheck_expr(arg, &Type::Nothing, ctx)
                             .map(|arg| arg.annotation().ty().into_owned())
                     })
-                    .collect::<TypecheckResult<_>>()?;
+                    .collect::<TypeResult<_>>()?;
 
                 return Err(TypeError::InvalidArgs {
                     expected: Vec::new(),
@@ -617,7 +617,7 @@ fn typecheck_variant_ctor_call(
             let args: Vec<Expr> = args
                 .iter()
                 .map(|arg| typecheck_expr(arg, data_ty, ctx))
-                .collect::<TypecheckResult<_>>()?;
+                .collect::<TypeResult<_>>()?;
 
             if args.len() != 1 {
                 let bad_args: Vec<_> = args

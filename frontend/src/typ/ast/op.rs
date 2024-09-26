@@ -25,7 +25,7 @@ use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeMember;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::UfcsTyped;
@@ -52,7 +52,7 @@ pub fn typecheck_bin_op(
     bin_op: &ast::BinOp<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     let span = bin_op.annotation.clone();
 
     match &bin_op.op {
@@ -145,7 +145,7 @@ fn typecheck_logical_op(
     bin_op: &ast::BinOp<Span>,
     span: Span,
     ctx: &mut Context,
-) -> TypecheckResult<BinOp> {
+) -> TypeResult<BinOp> {
     let bool_ty = Type::Primitive(Primitive::Boolean);
 
     let lhs = typecheck_expr(&bin_op.lhs, &bool_ty, ctx)?;
@@ -174,7 +174,7 @@ fn typecheck_equality(
     bin_op: &ast::BinOp<Span>,
     span: Span,
     ctx: &mut Context,
-) -> TypecheckResult<BinOp> {
+) -> TypeResult<BinOp> {
     let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
     let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
 
@@ -202,7 +202,7 @@ fn typecheck_comparison(
     bin_op: &ast::BinOp<Span>,
     span: Span,
     ctx: &mut Context,
-) -> TypecheckResult<BinOp> {
+) -> TypeResult<BinOp> {
     let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
     let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
 
@@ -232,7 +232,7 @@ fn typecheck_bitwise_op(
     bin_op: &ast::BinOp<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<BinOp> {
+) -> TypeResult<BinOp> {
     // if there's no expected type for a bitwise op, expect UInt32
     let expect_ty = match expect_ty {
         Type::Nothing => &Type::Primitive(Primitive::UInt32),
@@ -328,7 +328,7 @@ fn desugar_string_concat(
     rhs: Expr,
     string_ty: &Type,
     ctx: &Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     let span = lhs.annotation().span().to(rhs.annotation().span());
     let annotation = TypedValue {
         ty: string_ty.clone(),
@@ -384,7 +384,7 @@ fn typecheck_member_of(
     span: Span,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     let lhs = typecheck_expr(lhs, &Type::Nothing, ctx)?;
 
     match rhs {
@@ -600,7 +600,7 @@ fn typecheck_type_member(
     member_ident: &Ident,
     span: Span,
     ctx: &mut Context,
-) -> TypecheckResult<Typed> {
+) -> TypeResult<Typed> {
     let type_member = ctx
         .find_type_member(ty, member_ident)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
@@ -621,7 +621,7 @@ pub fn typecheck_member_value(
     member_ident: &Ident,
     span: Span,
     ctx: &mut Context,
-) -> TypecheckResult<Typed> {
+) -> TypeResult<Typed> {
     let member = ctx
         .find_instance_member(&lhs.annotation().ty(), &member_ident)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
@@ -686,7 +686,7 @@ pub fn typecheck_variant_ctor(
     member_ident: &Ident,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Typed> {
+) -> TypeResult<Typed> {
     assert!(
         variant_name.type_args.is_none(),
         "shouldn't be possible to have explicit type args for a variant constructor expr"
@@ -729,7 +729,7 @@ pub fn typecheck_unary_op(
     unary_op: &ast::UnaryOp<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<UnaryOp> {
+) -> TypeResult<UnaryOp> {
     let operand_expect_ty = match unary_op.op {
         Operator::Add | Operator::Sub | Operator::Not => expect_ty.clone(),
         Operator::AddressOf => match expect_ty {
@@ -896,7 +896,7 @@ pub fn typecheck_indexer(
     index: &ast::Expr<Span>,
     span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     // todo: other index types
     let index_ty = Type::Primitive(Primitive::Int32);
     let index = typecheck_expr(&index, &index_ty, ctx)?;
@@ -948,7 +948,7 @@ pub fn typecheck_indexer(
     }))
 }
 
-fn check_array_bound_static(base: &Expr, index: &Expr, ctx: &mut Context) -> TypecheckResult<()> {
+fn check_array_bound_static(base: &Expr, index: &Expr, ctx: &mut Context) -> TypeResult<()> {
     fn out_of_range(dim: usize, index: IntConstant) -> bool {
         index.as_i128() < 0 || index.as_i128() >= dim as i128
     }

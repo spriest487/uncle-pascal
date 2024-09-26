@@ -16,11 +16,11 @@ use crate::typ::Context;
 use crate::typ::FunctionParamSig;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::ValueKind;
 
-pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypecheckResult<()> {
+pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypeResult<()> {
     match stmt {
         ast::Stmt::Ident(ident, annotation) => expect_ident_initialized(ident, annotation, ctx),
 
@@ -80,7 +80,7 @@ fn expect_ident_initialized(
     ident: &Ident,
     annotation: &Typed,
     ctx: &Context,
-) -> TypecheckResult<()> {
+) -> TypeResult<()> {
     match annotation.value_kind() {
         Some(ValueKind::Uninitialized) => {
             let decl_ident = ctx.find_decl(ident).unwrap_or(ident);
@@ -94,7 +94,7 @@ fn expect_ident_initialized(
     }
 }
 
-pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypecheckResult<()> {
+pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypeResult<()> {
     match expr {
         ast::Expr::Ident(ident, annotation) => expect_ident_initialized(ident, annotation, ctx),
 
@@ -147,7 +147,7 @@ pub fn expect_expr_initialized(expr: &Expr, ctx: &Context) -> TypecheckResult<()
     Ok(())
 }
 
-fn expect_binding_initialized(binding: &VarBinding, ctx: &Context) -> TypecheckResult<()> {
+fn expect_binding_initialized(binding: &VarBinding, ctx: &Context) -> TypeResult<()> {
     if let Some(init_val) = &binding.val {
         expect_expr_initialized(init_val, ctx)?;
     }
@@ -158,7 +158,7 @@ fn expect_args_initialized(
     params: &[FunctionParamSig],
     args: &[Expr],
     ctx: &Context,
-) -> TypecheckResult<()> {
+) -> TypeResult<()> {
     assert_eq!(
         params.len(),
         args.len(),
@@ -176,7 +176,7 @@ fn expect_args_initialized(
     Ok(())
 }
 
-fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
+fn expect_call_initialized(call: &Call, ctx: &Context) -> TypeResult<()> {
     match call {
         ast::Call::FunctionNoArgs(call) => {
             expect_expr_initialized(&call.target, ctx)?;
@@ -224,7 +224,7 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
     Ok(())
 }
 
-fn expect_if_expr_initialized(if_stmt: &IfCond<Expr>, ctx: &Context) -> TypecheckResult<()> {
+fn expect_if_expr_initialized(if_stmt: &IfCond<Expr>, ctx: &Context) -> TypeResult<()> {
     expect_expr_initialized(&if_stmt.cond, ctx)?;
     expect_expr_initialized(&if_stmt.then_branch, ctx)?;
     if let Some(else_branch) = &if_stmt.else_branch {
@@ -233,7 +233,7 @@ fn expect_if_expr_initialized(if_stmt: &IfCond<Expr>, ctx: &Context) -> Typechec
     Ok(())
 }
 
-fn expect_if_stmt_initialized(if_stmt: &IfCond<Stmt>, ctx: &Context) -> TypecheckResult<()> {
+fn expect_if_stmt_initialized(if_stmt: &IfCond<Stmt>, ctx: &Context) -> TypeResult<()> {
     expect_expr_initialized(&if_stmt.cond, ctx)?;
     expect_stmt_initialized(&if_stmt.then_branch, ctx)?;
     if let Some(else_branch) = &if_stmt.else_branch {
@@ -242,7 +242,7 @@ fn expect_if_stmt_initialized(if_stmt: &IfCond<Stmt>, ctx: &Context) -> Typechec
     Ok(())
 }
 
-fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()> {
+fn expect_block_initialized(block: &Block, ctx: &Context) -> TypeResult<()> {
     for stmt in &block.stmts {
         expect_stmt_initialized(stmt, ctx)?;
     }
@@ -252,7 +252,7 @@ fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()>
     Ok(())
 }
 
-fn expect_case_stmt_initialized(case: &CaseStmt, ctx: &Context) -> TypecheckResult<()> {
+fn expect_case_stmt_initialized(case: &CaseStmt, ctx: &Context) -> TypeResult<()> {
     expect_expr_initialized(&case.cond_expr, ctx)?;
 
     for branch in &case.branches {
@@ -267,7 +267,7 @@ fn expect_case_stmt_initialized(case: &CaseStmt, ctx: &Context) -> TypecheckResu
     Ok(())
 }
 
-fn expect_case_expr_initialized(case: &CaseExpr, ctx: &Context) -> TypecheckResult<()> {
+fn expect_case_expr_initialized(case: &CaseExpr, ctx: &Context) -> TypeResult<()> {
     expect_expr_initialized(&case.cond_expr, ctx)?;
 
     for branch in &case.branches {
@@ -282,7 +282,7 @@ fn expect_case_expr_initialized(case: &CaseExpr, ctx: &Context) -> TypecheckResu
     Ok(())
 }
 
-fn expect_match_expr_initialized(match_expr: &MatchExpr, ctx: &Context) -> TypecheckResult<()> {
+fn expect_match_expr_initialized(match_expr: &MatchExpr, ctx: &Context) -> TypeResult<()> {
     expect_expr_initialized(&match_expr.cond_expr, ctx)?;
 
     for branch in &match_expr.branches {
@@ -296,7 +296,7 @@ fn expect_match_expr_initialized(match_expr: &MatchExpr, ctx: &Context) -> Typec
     Ok(())
 }
 
-fn expect_match_stmt_initialized(match_stmt: &MatchStmt, ctx: &Context) -> TypecheckResult<()> {
+fn expect_match_stmt_initialized(match_stmt: &MatchStmt, ctx: &Context) -> TypeResult<()> {
     expect_expr_initialized(&match_stmt.cond_expr, ctx)?;
 
     for branch in &match_stmt.branches {

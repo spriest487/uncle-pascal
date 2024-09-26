@@ -13,7 +13,7 @@ use crate::typ::NameError;
 use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
@@ -32,7 +32,7 @@ pub fn typecheck_object_ctor(
     span: Span,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<ObjectCtor> {
+) -> TypeResult<ObjectCtor> {
     let ctor_ty = find_ctor_ty(ctor.ident.as_ref(), expect_ty, &span, ctx)?;
 
     let ty_name = ctor_ty.full_path()
@@ -164,7 +164,7 @@ pub fn typecheck_object_ctor(
     })
 }
 
-fn find_ctor_ty(explicit_ty_name: Option<&IdentPath>, expect_ty: &Type, span: &Span, ctx: &Context) -> TypecheckResult<Type>  {
+fn find_ctor_ty(explicit_ty_name: Option<&IdentPath>, expect_ty: &Type, span: &Span, ctx: &Context) -> TypeResult<Type>  {
     let ctor_ty = match explicit_ty_name {
         Some(ctor_ident) => {
             let (_, raw_ty) = ctx
@@ -211,7 +211,7 @@ pub fn typecheck_collection_ctor(
     ctor: &ast::CollectionCtor<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<CollectionCtor> {
+) -> TypeResult<CollectionCtor> {
     let (mut elements, element_ty) = match expect_ty.element_ty() {
         Some(elem_ty) if !elem_ty.contains_generic_params(ctx) => {
             let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
@@ -258,7 +258,7 @@ pub fn typecheck_collection_ctor(
 fn elements_for_inferred_ty(
     ctor: &ast::CollectionCtor<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<Vec<CollectionCtorElement>> {
+) -> TypeResult<Vec<CollectionCtorElement>> {
     // must have at at least one element to infer types
     if ctor.elements.is_empty() {
         return Err(TypeError::UnableToInferType {
@@ -288,7 +288,7 @@ fn elements_for_expected_ty(
     ctor: &ast::CollectionCtor<Span>,
     expected_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Vec<CollectionCtorElement>> {
+) -> TypeResult<Vec<CollectionCtorElement>> {
     let mut elements = Vec::new();
     for e in &ctor.elements {
         let value = typecheck_expr(&e.value, expected_ty, ctx)?;

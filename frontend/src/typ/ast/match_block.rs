@@ -10,7 +10,7 @@ use crate::typ::Type;
 use crate::typ::Typed;
 use crate::typ::TypePattern;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::ValueKind;
 use crate::typ::TypedValue;
 use common::span::Span;
@@ -25,7 +25,7 @@ pub type MatchBlockBranch<B> = ast::MatchBlockBranch<Typed, B>;
 fn typecheck_match_cond<B>(
     match_block: &ast::MatchBlock<Span, B>,
     ctx: &mut Context,
-) -> TypecheckResult<Expr> {
+) -> TypeResult<Expr> {
     let cond_expr = typecheck_expr(&match_block.cond_expr, &Type::Nothing, ctx)?;
 
     let cond_ty = cond_expr.annotation().ty();
@@ -45,9 +45,9 @@ fn typecheck_match_branches<BSrc, B, ItemCheck>(
     expect_ty: &Type,
     ctx: &mut Context,
     check_item: ItemCheck,
-) -> TypecheckResult<Vec<MatchBlockBranch<B>>>
+) -> TypeResult<Vec<MatchBlockBranch<B>>>
 where
-    ItemCheck: Fn(&BSrc, &Type, &[MatchBlockBranch<B>], &mut Context) -> TypecheckResult<B>,
+    ItemCheck: Fn(&BSrc, &Type, &[MatchBlockBranch<B>], &mut Context) -> TypeResult<B>,
     BSrc: Spanned,
 {
     if match_block.branches.is_empty() {
@@ -104,7 +104,7 @@ pub fn typecheck_match_stmt(
     match_stmt: &ast::MatchStmt<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<MatchStmt> {
+) -> TypeResult<MatchStmt> {
     let block_env = Environment::Block {
         allow_unsafe: false,
     };
@@ -143,7 +143,7 @@ pub fn typecheck_match_expr(
     match_expr: &ast::MatchExpr<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<MatchExpr> {
+) -> TypeResult<MatchExpr> {
     let block_env = Environment::Block {
         allow_unsafe: false,
     };

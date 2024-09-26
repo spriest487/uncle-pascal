@@ -4,7 +4,7 @@ use crate::typ::ast::Expr;
 use crate::typ::Context;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypecheckResult;
+use crate::typ::TypeResult;
 use crate::typ::Typed;
 use common::span::Span;
 use common::span::Spanned;
@@ -17,7 +17,7 @@ pub type CompoundAssignment = ast::CompoundAssignment<Typed>;
 pub fn typecheck_assignment(
     assignment: &ast::Assignment<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<Assignment> {
+) -> TypeResult<Assignment> {
     let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, ctx)?;
 
     if let ast::Expr::Ident(ident, ..) = &lhs {
@@ -36,7 +36,7 @@ pub fn typecheck_assignment(
 pub fn typecheck_compound_assignment(
     assignment: &ast::CompoundAssignment<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<CompoundAssignment> {
+) -> TypeResult<CompoundAssignment> {
     let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, ctx)?;
 
     if !lhs.annotation().ty().valid_math_op(assignment.op.binary_operator(), &rhs.annotation().ty()) {
@@ -60,7 +60,7 @@ fn typecheck_operands(
     src_lhs: &ast::Expr<Span>,
     src_rhs: &ast::Expr<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<(Expr, Expr)> {
+) -> TypeResult<(Expr, Expr)> {
     let lhs = typecheck_expr(&src_lhs, &Type::Nothing, ctx)?;
 
     // lhs must evaluate to a mutable typed value
