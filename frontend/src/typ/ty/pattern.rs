@@ -75,7 +75,7 @@ impl TypePattern {
                      ..
                  }) if ty.as_variant().is_ok() => {
                 let variant = ty.as_variant().unwrap();
-                let variant_def = ctx.find_variant_def(&variant.qualified).unwrap();
+                let variant_def = ctx.find_variant_def(&variant.full_path).unwrap();
 
                 // check case with this ident exists
                 if variant_def.case_position(case_ident).is_none() {
@@ -89,7 +89,7 @@ impl TypePattern {
                 }
 
                 Ok(Some((
-                    variant_def.name.qualified.clone(),
+                    variant_def.name.full_path.clone(),
                     case_ident.clone(),
                 )))
             }
@@ -301,7 +301,7 @@ impl fmt::Display for TypePattern {
                 data_binding,
                 ..
             } => {
-                write!(f, "{}.{}", variant.qualified, case)?;
+                write!(f, "{}.{}", variant.full_path, case)?;
                 if let Some(binding) = data_binding {
                     write!(f, " {}", binding)?;
                 }
@@ -309,7 +309,7 @@ impl fmt::Display for TypePattern {
             }
 
             TypePattern::NegatedVariantCase { variant, case, .. } => {
-                write!(f, "not {}.{}", variant.qualified, case)
+                write!(f, "not {}.{}", variant.full_path, case)
             }
         }
     }

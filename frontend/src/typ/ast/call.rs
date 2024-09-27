@@ -548,7 +548,7 @@ fn typecheck_variant_ctor_call(
     ctx: &mut Context,
 ) -> TypeResult<Call> {
     let unspecialized_def = ctx
-        .find_variant_def(&variant.qualified)
+        .find_variant_def(&variant.full_path)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     // infer the specialized generic type if the written one is generic and the hint is a specialized
@@ -566,7 +566,7 @@ fn typecheck_variant_ctor_call(
     if variant_sym.is_unspecialized_generic() {
         return Err(TypeError::from_generic_err(
             GenericError::CannotInferArgs {
-                target: GenericTarget::Name(variant_sym.qualified.clone()),
+                target: GenericTarget::Name(variant_sym.full_path.clone()),
                 hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
             },
             span,

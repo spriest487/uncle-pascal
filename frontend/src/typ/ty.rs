@@ -113,8 +113,8 @@ impl Type {
             Type::MethodSelf => Some(IdentPath::from(Ident::new("Self", builtin_span()))),
             Type::Primitive(p) => Some(builtin_unit_path(p.name())),
             Type::Interface(iface) => Some((**iface).clone()),
-            Type::Record(class) | Type::Class(class) => Some(class.qualified.clone()),
-            Type::Variant(variant) => Some(variant.qualified.clone()),
+            Type::Record(class) | Type::Class(class) => Some(class.full_path.clone()),
+            Type::Variant(variant) => Some(variant.full_path.clone()),
             _ => None,
         }
     }
@@ -172,7 +172,7 @@ impl Type {
             ast::TypeDeclItem::Variant(variant) => Type::Variant(Box::new(variant.name.clone())),
 
             ast::TypeDeclItem::Interface(iface) => {
-                Type::Interface(Box::new(iface.name.qualified.clone()))
+                Type::Interface(Box::new(iface.name.full_path.clone()))
             },
 
             ast::TypeDeclItem::Enum(enum_decl) => Type::Enum(Box::new(enum_decl.name.clone())),
@@ -209,7 +209,7 @@ impl Type {
     pub fn field_count(&self, ctx: &Context) -> NameResult<usize> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                let class = ctx.find_struct_def(&class.qualified)?;
+                let class = ctx.find_struct_def(&class.full_path)?;
                 Ok(class.fields().count())
             },
 
@@ -463,7 +463,7 @@ impl Type {
             },
 
             Type::Record(name) | Type::Class(name) => {
-                let struct_def = ctx.find_struct_def(&name.qualified)?;
+                let struct_def = ctx.find_struct_def(&name.full_path)?;
                 let methods = struct_def.methods().collect();
 
                 Ok(methods)
@@ -505,7 +505,7 @@ impl Type {
             },
 
             Type::Record(name) | Type::Class(name) => {
-                let struct_def = ctx.find_struct_def(&name.qualified)?;
+                let struct_def = ctx.find_struct_def(&name.full_path)?;
                 let method = struct_def.find_method(method);
                 
                 Ok(method)
@@ -935,7 +935,7 @@ pub fn specialize_generic_name<'a>(
 
     if args.len() != type_params.items.len() {
         return Err(GenericError::ArgsLenMismatch {
-            target: GenericTarget::Name(name.qualified.clone()),
+            target: GenericTarget::Name(name.full_path.clone()),
             expected: type_params.items.len(),
             actual: type_params.len(),
         });

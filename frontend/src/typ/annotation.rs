@@ -333,7 +333,7 @@ impl Typed {
 
             Typed::Const(const_val) => const_val.decl.as_ref(),
 
-            Typed::VariantCtor(ctor) => Some(ctor.variant_name.qualified.last()),
+            Typed::VariantCtor(ctor) => Some(ctor.variant_name.full_path.last()),
         }
     }
 

@@ -219,8 +219,8 @@ impl Context {
             Ok(())
         }).expect("builtin unit definition must not fail");
 
-        root_ctx.primitive_implements.push(Type::interface(builtin_displayable_name().qualified));
-        root_ctx.primitive_implements.push(Type::interface(builtin_comparable_name().qualified));
+        root_ctx.primitive_implements.push(Type::interface(builtin_displayable_name().full_path));
+        root_ctx.primitive_implements.push(Type::interface(builtin_comparable_name().full_path));
 
         root_ctx
     }
@@ -553,8 +553,8 @@ impl Context {
         iface: Rc<InterfaceDecl>,
         visibility: Visibility,
     ) -> TypeResult<()> {
-        let name = iface.name.qualified.last().clone();
-        let iface_ty = Type::Interface(Box::new(iface.name.qualified.clone()));
+        let name = iface.name.full_path.last().clone();
+        let iface_ty = Type::Interface(Box::new(iface.name.full_path.clone()));
         self.declare_type(name.clone(), iface_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
@@ -756,7 +756,7 @@ impl Context {
             }
 
             Type::Record(sym) | Type::Class(sym) => {
-                let struct_def = self.find_struct_def(&sym.qualified)?;
+                let struct_def = self.find_struct_def(&sym.full_path)?;
                 let struct_ty = Type::struct_type(*sym, struct_def.kind);
 
                 struct_def
@@ -1027,7 +1027,7 @@ impl Context {
     pub fn instantiate_struct_def(&self, name: &Symbol) -> NameResult<Rc<StructDef>> {
         name.expect_not_unspecialized()?;
 
-        let base_def = self.find_struct_def(&name.qualified)?;
+        let base_def = self.find_struct_def(&name.full_path)?;
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
@@ -1067,7 +1067,7 @@ impl Context {
     pub fn instantiate_variant_def(&self, name: &Symbol) -> NameResult<Rc<VariantDef>> {
         name.expect_not_unspecialized()?;
 
-        let base_def = self.find_variant_def(&name.qualified)?;
+        let base_def = self.find_variant_def(&name.full_path)?;
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
@@ -1285,14 +1285,14 @@ impl Context {
             Type::Nothing | Type::MethodSelf => Ok(true),
 
             Type::Record(class) => {
-                match self.find_struct_def(&class.qualified) {
+                match self.find_struct_def(&class.full_path) {
                     Ok(..) => Ok(false),
                     Err(NameError::NotFound { .. }) => Ok(true),
                     Err(err) => Err(err),
                 }
             }
 
-            Type::Variant(variant) => match self.find_variant_def(&variant.qualified) {
+            Type::Variant(variant) => match self.find_variant_def(&variant.full_path) {
                 Ok(..) => Ok(false),
                 Err(NameError::NotFound { .. }) => Ok(true),
                 Err(err) => Err(err.into()),
@@ -1532,7 +1532,7 @@ impl Context {
 
     pub fn is_constructor_accessible(&self, ty: &Type) -> bool {
         match ty {
-            Type::Class(class) => self.namespace().is_parent_of(&class.qualified),
+            Type::Class(class) => self.namespace().is_parent_of(&class.full_path),
             _ => true,
         }
     }

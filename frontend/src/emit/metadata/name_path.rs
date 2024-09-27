@@ -13,7 +13,7 @@ pub trait NamePathExt {
 impl NamePathExt for NamePath {
     fn from_decl(name: typ::Symbol, builder: &ModuleBuilder) -> Self {
         let path_parts = name
-            .qualified
+            .full_path
             .into_parts()
             .into_iter()
             .map(|ident| ident.to_string());
@@ -73,7 +73,7 @@ pub fn translate_name(
     }
 
     let path = name
-        .qualified
+        .full_path
         .clone()
         .into_parts()
         .into_iter()

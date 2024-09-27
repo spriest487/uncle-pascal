@@ -15,7 +15,7 @@ use crate::Ident;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Symbol {
-    pub qualified: IdentPath,
+    pub full_path: IdentPath,
 
     pub type_params: Option<TypeParamList>,
     pub type_args: Option<TypeList>,
@@ -35,7 +35,7 @@ impl Symbol {
         };
 
         let sym = Symbol {
-            qualified: ctx.qualify_name(decl_name.ident.clone()),
+            full_path: ctx.qualify_name(decl_name.ident.clone()),
             type_args: None,
             type_params,
         };
@@ -74,14 +74,14 @@ impl Symbol {
     }
     
     pub fn ident(&self) -> &Ident {
-        self.qualified.last()
+        self.full_path.last()
     }
 }
 
 impl From<IdentPath> for Symbol {
     fn from(value: IdentPath) -> Self {
         Symbol {
-            qualified: value,
+            full_path: value,
             
             type_args: None,
             type_params: None,
@@ -101,19 +101,19 @@ impl Specializable for Symbol {
     }
 
     fn name(&self) -> IdentPath {
-        self.qualified.clone()
+        self.full_path.clone()
     }
 }
 
 impl Spanned for Symbol {
     fn span(&self) -> &Span {
-        self.qualified.span()
+        self.full_path.span()
     }
 }
 
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.qualified)?;
+        write!(f, "{}", self.full_path)?;
 
         if let Some(type_args) = &self.type_args {
             write!(f, "{}", type_args)?;

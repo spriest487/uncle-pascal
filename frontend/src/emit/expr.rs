@@ -224,9 +224,9 @@ pub fn translate_if_cond_stmt(
 }
 
 fn is_string_class(class: &typ::Symbol) -> bool {
-    class.qualified.len() == 2
-        && class.qualified.first().name.as_str() == SYSTEM_UNIT_NAME
-        && class.qualified.last().name.as_str() == STRING_TYPE_NAME
+    class.full_path.len() == 2
+        && class.full_path.first().name.as_str() == SYSTEM_UNIT_NAME
+        && class.full_path.last().name.as_str() == STRING_TYPE_NAME
 }
 
 pub fn literal_to_val(

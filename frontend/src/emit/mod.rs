@@ -57,7 +57,7 @@ pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Module {
     // if String is defined it needs to be defined in the metadata even if it isn't used,
     // for the benefit of the stdlib (it's not defined in the type context with --no-stdlib)
     let string_name = typ::builtin_string_name();
-    if let Ok(string_class) = module.root_ctx.find_struct_def(&string_name.qualified) {
+    if let Ok(string_class) = module.root_ctx.find_struct_def(&string_name.full_path) {
         let name = {
             let mut builder = Builder::new(&mut ir_module);
             let name = builder.translate_name(&string_name);

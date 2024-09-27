@@ -156,7 +156,7 @@ fn typecheck_field(
 
     if is_unsized {
         return Err(TypeError::UnsizedMember {
-            decl: struct_name.qualified.clone(),
+            decl: struct_name.full_path.clone(),
             member: field.ident.clone(),
             member_ty: ty,
         });
@@ -187,7 +187,7 @@ pub fn typecheck_iface(
             .find(|other| other.decl.name.ident == method.decl.name.ident)
         {
             let method_path = name
-                .qualified
+                .full_path
                 .clone()
                 .child(method.decl.name.ident().clone());
 

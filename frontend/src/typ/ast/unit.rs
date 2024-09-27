@@ -194,7 +194,7 @@ fn typecheck_type_decl_item(
             let alias = typecheck_alias(full_name, alias_decl, ctx)?;
 
             ctx.declare_type(
-                alias.name.qualified.last().clone(),
+                alias.name.full_path.last().clone(),
                 (*alias.ty).clone(),
                 visibility,
             )?;
@@ -214,7 +214,7 @@ fn typecheck_type_decl_item(
         }
 
         ast::TypeDeclItem::Interface(_) => {
-            let ty = Type::interface(full_name.qualified.clone());
+            let ty = Type::interface(full_name.full_path.clone());
             typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
         },
         ast::TypeDeclItem::Variant(_) => {

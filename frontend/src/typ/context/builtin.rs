@@ -65,7 +65,7 @@ pub fn builtin_string_name() -> Symbol {
     let string_ident = Ident::new(STRING_TYPE_NAME, builtin_span.clone());
 
     Symbol {
-        qualified: Path::from(system_ident).child(string_ident),
+        full_path: Path::from(system_ident).child(string_ident),
         type_args: None,
         type_params: None,
     }
@@ -89,8 +89,8 @@ pub fn builtin_string_class() -> ast::StructDef {
             }.into(),
         ],
         implements: vec![
-            Type::interface(builtin_displayable_name().qualified),
-            Type::interface(builtin_comparable_name().qualified),
+            Type::interface(builtin_displayable_name().full_path),
+            Type::interface(builtin_comparable_name().full_path),
         ],
         kind: StructKind::Class,
         span: builtin_span,
@@ -99,7 +99,7 @@ pub fn builtin_string_class() -> ast::StructDef {
 
 // builtin name of the dispose method of the builtin disposable interface
 pub fn builtin_disposable_dispose_name(owning_ty: Option<Type>) -> ast::TypedFunctionName {
-    let iface_ty = Type::interface(builtin_disposable_name().qualified);
+    let iface_ty = Type::interface(builtin_disposable_name().full_path);
     let owning_ty = owning_ty.unwrap_or(iface_ty.clone());
     
     ast::TypedFunctionName::new_method(
@@ -151,7 +151,7 @@ pub fn builtin_comparable_name() -> Symbol {
 pub fn builtin_comparable_iface() -> ast::InterfaceDecl {
     let builtin_span = builtin_span();
     
-    let iface_ty = Type::interface(builtin_comparable_name().qualified);
+    let iface_ty = Type::interface(builtin_comparable_name().full_path);
 
     ast::InterfaceDecl {
         name: builtin_comparable_name(),
@@ -204,7 +204,7 @@ pub fn builtin_displayable_name() -> Symbol {
 pub fn builtin_displayable_iface() -> ast::InterfaceDecl {
     let builtin_span = builtin_span();
     
-    let iface_ty = Type::interface(builtin_displayable_name().qualified); 
+    let iface_ty = Type::interface(builtin_displayable_name().full_path); 
 
     ast::InterfaceDecl {
         name: builtin_displayable_name(),
@@ -282,9 +282,9 @@ pub fn declare_builtin_ty(
 pub fn is_valid_builtin_redecl(decl: &Decl) -> bool {
     match decl {
         Decl::Type { ty: Type::Interface(iface), .. } => {            
-            **iface == builtin_displayable_name().qualified 
-                || **iface == builtin_comparable_name().qualified 
-                || **iface == builtin_disposable_name().qualified
+            **iface == builtin_displayable_name().full_path 
+                || **iface == builtin_comparable_name().full_path 
+                || **iface == builtin_disposable_name().full_path
         },
         
         Decl::Type { ty: Type::Class(sym), .. } => {

@@ -277,9 +277,9 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
 
     let to_string_ident = Ident::new(DISPLAYABLE_TOSTRING_METHOD, span.clone());
 
-    let displayable_path = builtin_displayable_name().qualified;
+    let displayable_path = builtin_displayable_name().full_path;
 
-    let displayable_ty = Type::interface(builtin_displayable_name().qualified);
+    let displayable_ty = Type::interface(builtin_displayable_name().full_path);
     let is_impl = ctx
         .is_implementation(src_ty.as_ref(), &displayable_ty)
         .ok()
@@ -696,7 +696,7 @@ pub fn typecheck_variant_ctor(
     // we don't want to try instantiating the actual variant type because we have
     // no information about its type args.
     let variant_def = ctx
-        .find_variant_def(&variant_name.qualified)
+        .find_variant_def(&variant_name.full_path)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let case_exists = variant_def

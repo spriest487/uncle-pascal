@@ -186,7 +186,7 @@ pub fn typecheck_match_expr(
                 }
 
                 Type::Variant(var_sym) => {
-                    let variant_def = block_ctx.find_variant_def(&var_sym.qualified)
+                    let variant_def = block_ctx.find_variant_def(&var_sym.full_path)
                         .map_err(|err| TypeError::from_name_err(err, match_expr.span().clone()))?;
 
                     // add all variants and remove the ones mentioned by any variant pattern, or
