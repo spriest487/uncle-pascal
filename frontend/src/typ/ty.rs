@@ -9,13 +9,16 @@ use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
+use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Field;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
-use crate::typ::ast::const_eval_integer;
+use crate::typ::builtin_span;
+use crate::typ::builtin_unit_path;
+use crate::typ::context;
 use crate::typ::result::*;
 use crate::typ::Context;
 use crate::typ::GenericError;
@@ -25,7 +28,7 @@ use crate::typ::NameResult;
 use crate::typ::Symbol;
 use crate::typ::TypeArgsResult::NotGeneric;
 use crate::typ::Typed;
-use crate::typ::{builtin_span, builtin_unit_path, context, SYSTEM_UNIT_NAME};
+use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Operator;
 use common::span::*;
 use std::borrow::Cow;
@@ -808,6 +811,45 @@ pub struct TypeMemberRef<'ty> {
     pub ident: &'ty Ident,
     pub ty: &'ty Type,
 }
+
+pub fn typecheck_type_path(path: &ast::TypePath, ctx: &mut Context) -> TypeResult<Type> {
+    let (_, ty) = ctx
+        .find_type(&path.name)
+        .map_err(|err| TypeError::from_name_err(err, path.span.clone()))?;
+
+    let ty = ty.clone();
+
+    // validate type params, it's an error to write a path with mismatched type params
+    let expect_params = ty.type_params().cloned();
+
+    let params_match = match (&expect_params, &path.type_params) {
+        (Some(expect), Some(actual)) => {
+            if expect.len() != actual.len() {
+                false
+            } else {
+                expect
+                    .iter()
+                    .zip(actual.iter())
+                    .all(|(param, actual_name)| param.name == *actual_name)
+            }
+        }
+        (None, None) => true,
+        _ => false,
+    };
+
+    if !params_match {
+        let err = GenericError::ParametersMismatch {
+            path: path.name.clone(),
+            expected: expect_params,
+            actual: path.type_params.clone(),
+        };
+
+        return Err(TypeError::from_generic_err(err, path.span.clone()));
+    }
+    
+    Ok(ty)
+}
+
 
 pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type> {
     match ty {

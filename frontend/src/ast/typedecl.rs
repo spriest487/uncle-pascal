@@ -8,19 +8,19 @@ pub use self::iface_decl::*;
 pub use self::struct_def::*;
 pub use self::variant_def::*;
 use crate::ast::unit::AliasDecl;
-use crate::ast::{Annotation, TypeName};
 use crate::ast::Ident;
 use crate::ast::Keyword;
 use crate::ast::Operator;
 use crate::ast::TypeList;
 use crate::ast::TypeParam;
-use crate::parse::LookAheadTokenStream;
+use crate::ast::{Annotation, TypeName};
 use crate::parse::Matcher;
 use crate::parse::Parse;
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
+use crate::parse::LookAheadTokenStream;
 use crate::DelimiterPair;
 use crate::Separator;
 use common::span::Span;
@@ -167,15 +167,17 @@ impl From<Ident> for TypeDeclName {
 impl TypeDeclName {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
-
-        let ty_param_group = tokens
-            .look_ahead()
-            .match_one(DelimiterPair::SquareBracket);
-
-        let type_params = match ty_param_group {
-            Some(..) => Some(TypeList::parse_type_params(tokens)?),
-            None => None,
-        };
+        
+        let type_params = TypeList::try_parse_type_params(tokens)?
+            .map(|list| {
+                list.map(|name| TypeParam {
+                    name,
+                    // in the context of a name on its own, type params are parsed without 
+                    // constraints, which we need to parse later and add to this decl if needed
+                    constraint: None,
+                })
+            });
+        
 
         let span = match &type_params {
             Some(type_param_list) => ident.span().to(type_param_list.span()),

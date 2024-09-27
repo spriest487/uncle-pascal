@@ -2,14 +2,16 @@
 mod test;
 
 use crate::ast::type_name::TypeName;
-use crate::ast::{Annotation, FunctionName, IdentPath, IdentTypeName};
+use crate::ast::{Annotation, IdentPath};
 use crate::ast::BindingDeclKind;
 use crate::ast::Block;
 use crate::ast::DeclMod;
 use crate::ast::Expr;
+use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::TypeList;
 use crate::ast::TypeParam;
+use crate::ast::TypePath;
 use crate::ast::WhereClause;
 use crate::parse::MatchOneOf;
 use crate::parse::Matcher;
@@ -18,6 +20,7 @@ use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
+use crate::token_tree::DelimitedGroup;
 use crate::DelimiterPair;
 use crate::Keyword;
 use crate::Operator;
@@ -29,7 +32,6 @@ use common::TracedError;
 use derivative::*;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
-use crate::token_tree::DelimitedGroup;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {
@@ -99,8 +101,8 @@ pub struct FunctionDecl<A: Annotation = Span> {
 impl FunctionDecl<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let func_kw = tokens.match_one(Keyword::Function | Keyword::Procedure)?;
-        
-        let (ident, type_params_list) = Self::parse_ident(tokens)?;
+
+        let (ident, type_params_list) = Self::parse_name(tokens)?;
 
         let mut span = match &type_params_list {
             None => func_kw.span().to(&ident.span()),
@@ -216,13 +218,16 @@ impl FunctionDecl<Span> {
         })
     }
     
-    fn parse_ident(tokens: &mut TokenStream) -> ParseResult<(QualifiedFunctionName, Option<TypeList<Ident>>)> {
+    fn parse_name(tokens: &mut TokenStream) -> ParseResult<(QualifiedFunctionName, Option<TypeList<Ident>>)> {
         let mut instance_ty_path = Vec::new();
         
         // the name always starts with at least one ident
         instance_ty_path.push(Ident::parse(tokens)?);
         
         let mut instance_ty_params = None;
+        
+        // note this returns a list of type *idents*, because constraints (needed for TypeParams)
+        // are parsed later
         let mut type_params_list = None;
         
         loop {
@@ -254,10 +259,7 @@ impl FunctionDecl<Span> {
                     inner: type_list_inner,
                     span: type_list_span,
                     ..
-                })) => {                    
-                    // we parse all type lists as a list of typenames. if the type list turns out
-                    // to the type params list, rather than the type args for a method's base type,
-                    // we can convert try to the typenames to idents                    
+                })) => {                
                     let mut type_list_tokens = TokenStream::new(type_list_inner, type_list_span.clone());
                     
                     let type_list_items: Vec<Ident> = TypeList::parse_items(&mut type_list_tokens)?;
@@ -278,27 +280,18 @@ impl FunctionDecl<Span> {
         let instance_ty = if instance_ty_path.is_empty() {
             None
         } else {
-            let last_ident = &instance_ty_path[instance_ty_path.len() - 1];
-            let span = instance_ty_path[0].span().to(last_ident.span());
-            
-            // todo: can TypeName distinguish between type args and type params so we don't need
-            // to convert these idents to TypeNames here?
-            let instance_ty_params = instance_ty_params
-                .map(|ty_list| {
-                    let span = ty_list.span().clone();
-                    let items = ty_list.items
-                        .into_iter()
-                        .map(|ident| TypeName::from(ident));
-    
-                    TypeList::new(items, span)
-                });
+            let type_name = IdentPath::from_vec(instance_ty_path);
 
-            Some(Box::new(TypeName::Ident(IdentTypeName {
-                span,
-                ident: IdentPath::from_vec(instance_ty_path),
-                type_args: instance_ty_params,
-                indirection: 0,
-            })))
+            Some(Box::new(TypePath {
+                span: match &instance_ty_params {
+                    Some(ty_list) => type_name
+                        .path_span()
+                        .to(ty_list.span()),
+                    None => type_name.path_span(),
+                },
+                name: type_name,
+                type_params: instance_ty_params,
+            }))
         };
         
         let qualified_name = QualifiedFunctionName {
@@ -746,7 +739,7 @@ impl Parse for AnonymousFunctionDef<Span> {
 pub struct QualifiedFunctionName {
     /// if the declaration is qualified with the owning type of this method, the name of that type.
     /// e.g. in `function A.B`, this is `Some(A)`, and in `function B` this is `None` 
-    pub owning_ty_qual: Option<Box<TypeName>>,
+    pub owning_ty_qual: Option<Box<TypePath>>,
 
     pub ident: Ident,
 }

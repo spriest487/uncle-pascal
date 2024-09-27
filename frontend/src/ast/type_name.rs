@@ -1,5 +1,10 @@
-use crate::ast::Expr;
-use crate::ast::FunctionParamMod;
+mod ty_path;
+mod function_name;
+
+pub use self::function_name::FunctionTypeName;
+pub use self::function_name::FunctionTypeNameParam;
+pub use self::ty_path::TypePath;
+use crate::ast::{Expr, TypeArgList};
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::TypeList;
@@ -11,44 +16,34 @@ use crate::parse::Parse;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
-use crate::{DelimiterPair, Ident};
+use crate::DelimiterPair;
+use crate::Ident;
 use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
 use crate::TokenTree;
 use common::span::Span;
 use common::span::Spanned;
+use derivative::Derivative;
 use std::fmt;
 use std::hash::Hash;
-use std::hash::Hasher;
 
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, Hash, PartialEq)]
 pub struct IdentTypeName {
     pub ident: IdentPath,
-    pub type_args: Option<TypeList<TypeName>>,
+    pub type_args: Option<TypeArgList>,
     pub indirection: usize,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub span: Span,
 }
 
 impl IdentTypeName {
     pub fn is_single_ident(&self) -> bool {
         self.ident.len() == 1 && self.indirection == 0 && self.type_args.is_none()
-    }
-}
-
-impl PartialEq for IdentTypeName {
-    fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident
-            && self.type_args == other.type_args
-            && self.indirection == other.indirection
-    }
-}
-
-impl Hash for IdentTypeName {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ident.hash(state);
-        self.type_args.hash(state);
-        self.indirection.hash(state);
     }
 }
 
@@ -80,28 +75,17 @@ impl fmt::Display for IdentTypeName {
     }
 }
 
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, Hash, PartialEq)]
 pub struct ArrayTypeName {
     pub element: Box<TypeName>,
     pub dim: Option<Box<Expr<Span>>>,
     pub indirection: usize,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub span: Span,
-}
-
-impl PartialEq for ArrayTypeName {
-    fn eq(&self, other: &Self) -> bool {
-        self.element == other.element
-            && self.dim == other.dim
-            && self.indirection == other.indirection
-    }
-}
-
-impl Hash for ArrayTypeName {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.element.hash(state);
-        self.dim.hash(state);
-        self.indirection.hash(state);
-    }
 }
 
 impl Spanned for ArrayTypeName {
@@ -116,111 +100,6 @@ impl fmt::Display for ArrayTypeName {
             Some(dim) => write!(f, "array[{}] of {}", dim, self.element),
             None => write!(f, "array of {}", self.element),
         }
-    }
-}
-
-#[derive(Clone, Debug, Eq)]
-pub struct FunctionTypeName {
-    pub params: Vec<FunctionTypeNameParam>,
-    pub return_ty: Option<Box<TypeName>>,
-
-    pub indirection: usize,
-
-    pub span: Span,
-}
-
-impl PartialEq for FunctionTypeName {
-    fn eq(&self, other: &Self) -> bool {
-        self.params == other.params && self.return_ty == other.return_ty
-    }
-}
-
-impl Hash for FunctionTypeName {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.params.hash(state);
-        self.return_ty.hash(state);
-    }
-}
-
-impl Spanned for FunctionTypeName {
-    fn span(&self) -> &Span {
-        &self.span
-    }
-}
-
-impl fmt::Display for FunctionTypeName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function(")?;
-        for (i, param_ty) in self.params.iter().enumerate() {
-            if i > 0 {
-                write!(f, "; ")?;
-            }
-            write!(f, "{}", param_ty)?;
-        }
-        write!(f, ")")?;
-
-        if let Some(return_ty) = &self.return_ty {
-            write!(f, ": {}", return_ty)?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, Eq)]
-pub struct FunctionTypeNameParam {
-    pub ty: TypeName,
-    pub modifier: Option<FunctionParamMod>,
-}
-
-impl PartialEq for FunctionTypeNameParam {
-    fn eq(&self, other: &Self) -> bool {
-        self.ty == other.ty && self.modifier == other.modifier
-    }
-}
-
-impl ParseSeq for FunctionTypeNameParam {
-    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
-        if !prev.is_empty() {
-            tokens.match_one(Separator::Semicolon)?;
-        }
-
-        let modifier = match tokens.match_one_maybe(Keyword::Var.or(Keyword::Out)) {
-            Some(tt) if tt.is_keyword(Keyword::Var) => Some(FunctionParamMod::Var),
-            Some(tt) if tt.is_keyword(Keyword::Out) => Some(FunctionParamMod::Out),
-            Some(..) => unreachable!(),
-            None => None,
-        };
-
-        let ty = TypeName::parse(tokens)?;
-
-        Ok(FunctionTypeNameParam { ty, modifier })
-    }
-
-    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
-            return false;
-        }
-
-        tokens
-            .match_one(Keyword::Var.or(Keyword::Out).or(TypeName::start_matcher()))
-            .is_some()
-    }
-}
-
-impl Hash for FunctionTypeNameParam {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ty.hash(state);
-        self.modifier.hash(state);
-    }
-}
-
-impl fmt::Display for FunctionTypeNameParam {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(modifier) = &self.modifier {
-            write!(f, "{} ", modifier)?;
-        }
-        write!(f, "{}", self.ty)
     }
 }
 

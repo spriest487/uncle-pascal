@@ -1,7 +1,7 @@
-use crate::ast::Ident;
+use crate::ast::{Ident, TypeIdentList};
 use crate::ast::IdentPath;
 use crate::typ::context::Decl;
-use crate::typ::FunctionSig;
+use crate::typ::{FunctionSig, TypeParamList};
 use crate::typ::ScopeMemberKind;
 use crate::typ::Type;
 use crate::typ::Typed;
@@ -69,6 +69,12 @@ pub enum GenericError {
         expected: usize,
         actual: usize,
     },
+    ParametersMismatch {
+        path: IdentPath,
+
+        expected: Option<TypeParamList>,
+        actual: Option<TypeIdentList>,
+    },
     ArgConstraintNotSatisfied {
         is_not_ty: Type,
         actual_ty: Option<Type>, // may be unknown/not yet resolved when processing generics
@@ -97,6 +103,21 @@ impl fmt::Display for GenericError {
                 "{} expects {} type argument(s), found {}",
                 target, expected, actual
             ),
+            
+            GenericError::ParametersMismatch { path, expected, actual, .. } => {
+                write!(f, "{} expects ", path)?;
+                match expected {
+                    Some(params) => write!(f, "parameter list {}", params)?,
+                    None => write!(f, "no parameters")?,
+                }
+                write!(f, ", got ")?;
+                match actual {
+                    Some(params) => write!(f, "parameter list {}", params)?,
+                    None => write!(f, "no parameters")?,
+                }
+
+                Ok(())
+            },
 
             GenericError::ArgConstraintNotSatisfied {
                 is_not_ty,

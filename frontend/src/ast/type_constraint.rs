@@ -1,6 +1,8 @@
 use crate::ast::type_name::{IdentTypeName, TypeName};
-use crate::ast::Ident;
+use crate::ast::IdentPath;
+use crate::ast::Keyword;
 use crate::ast::TypeAnnotation;
+use crate::ast::Ident;
 use crate::parse::LookAheadTokenStream;
 use crate::parse::Matcher;
 use crate::parse::Parse;
@@ -8,8 +10,6 @@ use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
-use crate::ast::IdentPath;
-use crate::ast::Keyword;
 use crate::Separator;
 use common::span::Span;
 use common::span::Spanned;

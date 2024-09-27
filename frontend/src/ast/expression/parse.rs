@@ -26,7 +26,7 @@ use crate::{
 };
 use common::{span::*, TracedError};
 use std::fmt;
-use crate::ast::ObjectCtorMember;
+use crate::ast::{ObjectCtorMember, TypeArgList};
 use crate::ast::operators::*;
 use crate::ast::type_name::TypeName;
 
@@ -394,7 +394,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         }
     }
 
-    fn parse_invocation(&mut self, ty_args: Option<TypeList<TypeName>>) -> ParseResult<()> {
+    fn parse_invocation(&mut self, ty_args: Option<TypeArgList>) -> ParseResult<()> {
         // replace the last operand with a function call targeting that expr
         let last_was_ident = match self.parts.last() {
             Some(CompoundExpressionPart::Operand(expr)) => expr.as_ident().is_some(),
@@ -588,7 +588,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         Ok(())
     }
 
-    fn push_operator_call(&mut self, args: ArgList<Span>, type_args: Option<TypeList<TypeName>>) {
+    fn push_operator_call(&mut self, args: ArgList<Span>, type_args: Option<TypeArgList>) {
         let op_call = OperatorPart::Call { args, type_args };
         self.parts.push(CompoundExpressionPart::Operator(op_call));
     }

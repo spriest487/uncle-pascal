@@ -6,7 +6,6 @@ pub use self::token_stream::*;
 use crate::ast::TypeName;
 use crate::ast::*;
 use crate::token_tree::*;
-use crate::ast::Ident;
 use common::span::*;
 use common::DiagnosticLabel;
 use common::DiagnosticMessage;
@@ -53,8 +52,8 @@ pub enum ParseError {
     CtorWithTypeArgs { span: Span },
     InvalidAssignmentExpr { span: Span },
     
-    EmptyTypeParamList(TypeList<Ident>),
-    EmptyTypeArgList(TypeList<TypeName>),
+    EmptyTypeParamList(TypeIdentList),
+    EmptyTypeArgList(TypeArgList),
     InvalidTypeParamName(Span),
     
     EmptyWhereClause(WhereClause<TypeName>),

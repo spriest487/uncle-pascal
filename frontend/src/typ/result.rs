@@ -358,120 +358,121 @@ impl Spanned for TypeError {
 
 impl DiagnosticOutput for TypeError {
     fn title(&self) -> String {
-        match self {
+        String::from(match self {
             TypeError::NameError { err, ..  } => match err {
-                NameError::NotFound { .. } => "Name not found".to_string(),
-                NameError::MemberNotFound { .. } => "Named member not found".to_string(),
-                NameError::Unexpected { .. } => "Name had unexpected type".to_string(),
-                NameError::AlreadyDeclared { .. } => "Name already declared".to_string(),
-                NameError::AlreadyDefined { .. } => "Name already defined".to_string(),
-                NameError::Ambiguous { .. } => "Name is ambiguous".to_string(),
-                NameError::NoImplementationFound { .. } => "No implementation found".to_string(),
-                NameError::AlreadyImplemented { .. } => "Method already implemented".to_string(),
+                NameError::NotFound { .. } => "Name not found",
+                NameError::MemberNotFound { .. } => "Named member not found",
+                NameError::Unexpected { .. } => "Name had unexpected type",
+                NameError::AlreadyDeclared { .. } => "Name already declared",
+                NameError::AlreadyDefined { .. } => "Name already defined",
+                NameError::Ambiguous { .. } => "Name is ambiguous",
+                NameError::NoImplementationFound { .. } => "No implementation found",
+                NameError::AlreadyImplemented { .. } => "Method already implemented",
                 NameError::DefDeclMismatch { .. } => {
-                    "Definition does not match previous declaration".to_string()
+                    "Definition does not match previous declaration"
                 }
                 NameError::GenericError(err) => match err {
-                    GenericError::ArgsLenMismatch { .. } => "Wrong number of type arguments".to_string(),
-                    GenericError::ArgConstraintNotSatisfied { .. } => "Type paramter constraint not satisfied by argument".to_string(),
-                    GenericError::CannotInferArgs { .. } => "Cannot infer type arguments".to_string(),
-                    GenericError::IllegalUnspecialized { .. } => "Illegal use of unspecialized type".to_string(),
+                    GenericError::ArgsLenMismatch { .. } => "Wrong number of type arguments",
+                    GenericError::ParametersMismatch { .. } => "Parameter list mismatch",
+                    GenericError::ArgConstraintNotSatisfied { .. } => "Type parameter constraint not satisfied by argument",
+                    GenericError::CannotInferArgs { .. } => "Cannot infer type arguments",
+                    GenericError::IllegalUnspecialized { .. } => "Illegal use of unspecialized type",
                 }
             }
-            TypeError::NotCallable(_) => "Not callable".to_string(),
-            TypeError::InvalidArgs { .. } => "Invalid arguments".to_string(),
-            TypeError::InvalidCallInExpression(_) => "Invalid call in expr".to_string(),
-            TypeError::InvalidIndexer { .. } => "Invalid indexer expr".to_string(),
-            TypeError::IndexOutOfBounds { .. } => "Index out of bounds".to_string(),
-            TypeError::TypeMismatch { .. } => "Type mismatch".to_string(),
-            TypeError::NotMutable { .. } => "Value not mutable".to_string(),
-            TypeError::NotAddressable { .. } => "Value not addressable".to_string(),
-            TypeError::NotDerefable { .. } => "Value cannot be dereferenced".to_string(),
-            TypeError::NotMatchable { .. } => "Type is not matchable".to_string(),
-            TypeError::InvalidBinOp { .. } => "Invalid binary operation".to_string(),
-            TypeError::InvalidUnaryOp { .. } => "Invalid unary operation".to_string(),
-            TypeError::BlockOutputIsNotExpression { .. } => "Expected block output expr".to_string(),
-            TypeError::InvalidBlockOutput(_) => "Invalid block output expr".to_string(),
-            TypeError::AmbiguousFunction { .. } => "Function reference is ambiguous".to_string(),
-            TypeError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
-            TypeError::AmbiguousSelfType { .. } => "Self type of method is ambiguous".to_string(),
-            TypeError::ExternalGenericFunction { .. } => "Function imported from external module may not have type parameters".to_string(),
+            TypeError::NotCallable(_) => "Not callable",
+            TypeError::InvalidArgs { .. } => "Invalid arguments",
+            TypeError::InvalidCallInExpression(_) => "Invalid call in expr",
+            TypeError::InvalidIndexer { .. } => "Invalid indexer expr",
+            TypeError::IndexOutOfBounds { .. } => "Index out of bounds",
+            TypeError::TypeMismatch { .. } => "Type mismatch",
+            TypeError::NotMutable { .. } => "Value not mutable",
+            TypeError::NotAddressable { .. } => "Value not addressable",
+            TypeError::NotDerefable { .. } => "Value cannot be dereferenced",
+            TypeError::NotMatchable { .. } => "Type is not matchable",
+            TypeError::InvalidBinOp { .. } => "Invalid binary operation",
+            TypeError::InvalidUnaryOp { .. } => "Invalid unary operation",
+            TypeError::BlockOutputIsNotExpression { .. } => "Expected block output expr",
+            TypeError::InvalidBlockOutput(_) => "Invalid block output expr",
+            TypeError::AmbiguousFunction { .. } => "Function reference is ambiguous",
+            TypeError::AmbiguousMethod { .. } => "Method reference is ambiguous",
+            TypeError::AmbiguousSelfType { .. } => "Self type of method is ambiguous",
+            TypeError::ExternalGenericFunction { .. } => "Function imported from external module may not have type parameters",
             TypeError::InvalidCtorType { .. } => {
-                "Invalid constructor expr type".to_string()
+                "Invalid constructor expr type"
             }
             TypeError::CtorMissingMembers { .. } => {
-                "Constructor is missing one or more named members".to_string()
+                "Constructor is missing one or more named members"
             }
-            TypeError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
+            TypeError::UndefinedSymbols { .. } => "Undefined symbol(s)",
             TypeError::UnableToInferType { .. } => {
-                "Unable to infer type of expr".to_string()
+                "Unable to infer type of expr"
             }
             TypeError::UnableToInferFunctionExprType { .. } => {
-                "Unable to infer function type of function expression".to_string()
+                "Unable to infer function type of function expression"
             }
             TypeError::UnableToInferSpecialization { .. } => {
-                "Unable to infer type specialization".to_string()
+                "Unable to infer type specialization"
             }
             TypeError::UninitGlobalBinding { .. } => {
-                "Uninitialized global variable".to_string()
+                "Uninitialized global variable"
             }
             TypeError::UninitBindingWithNoType { .. } => {
-                "Uninitialized variable must have an explicit type".to_string()
+                "Uninitialized variable must have an explicit type"
             }
             TypeError::BindingWithNoType { .. } => {
-                "Value bound to name must have a type".to_string()
+                "Value bound to name must have a type"
             }
-            TypeError::NotInitialized { .. } => "Use of uninitialized value".to_string(),
+            TypeError::NotInitialized { .. } => "Use of uninitialized value",
             TypeError::InvalidRefExpression { .. } => {
-                "Invalid reference expr".to_string()
+                "Invalid reference expr"
             }
-            TypeError::InvalidStatement(invalid_stmt) => invalid_stmt.title(),
-            TypeError::EmptyVariant(..) => "Empty variant".to_string(),
+            TypeError::InvalidStatement(invalid_stmt) => return invalid_stmt.title(),
+            TypeError::EmptyVariant(..) => "Empty variant",
             TypeError::EmptyVariantCaseBinding { .. } => {
-                "Empty variant case binding".to_string()
+                "Empty variant case binding"
             }
 
-            TypeError::NoLoopContext { .. } => "Statement requires loop context".to_string(),
-            TypeError::NoFunctionContext { .. } => "Statement requires function context".to_string(),
+            TypeError::NoLoopContext { .. } => "Statement requires loop context",
+            TypeError::NoFunctionContext { .. } => "Statement requires function context",
 
-            TypeError::UnsizedMember { .. } => "Unsized member".to_string(),
+            TypeError::UnsizedMember { .. } => "Unsized member",
             
-            TypeError::InvalidMethodExplicitInterface { .. } => "Explicit interface implementation for method is invalid".to_string(),
-            TypeError::InvalidMethodModifiers { .. } => "Invalid method modifier(s)".to_string(),
+            TypeError::InvalidMethodExplicitInterface { .. } => "Explicit interface implementation for method is invalid",
+            TypeError::InvalidMethodModifiers { .. } => "Invalid method modifier(s)",
 
             TypeError::InvalidMethodInstanceType { .. } => {
-                "Invalid instance type for method".to_string()
+                "Invalid instance type for method"
             },
             
             TypeError::IncompleteImplementation { .. } => {
-                "Incomplete interface implementation".to_string()
+                "Incomplete interface implementation"
             }
             
-            TypeError::AbstractMethodDefinition { .. } => "Cannot define abstract method".to_string(),
+            TypeError::AbstractMethodDefinition { .. } => "Cannot define abstract method",
 
-            TypeError::NoMethodContext { .. } => "Method requires enclosing type".to_string(),
+            TypeError::NoMethodContext { .. } => "Method requires enclosing type",
 
-            TypeError::Private { .. } => "Name not exported".to_string(),
+            TypeError::Private { .. } => "Name not exported",
 
-            TypeError::PrivateConstructor { .. } => "Type has private constructor".to_string(),
-            TypeError::DuplicateParamName { .. } => "Duplicate parameter name".to_string(),
-            TypeError::DuplicateNamedArg { .. } => "Duplicate named argument".to_string(),
-            TypeError::UnsafeConversionNotAllowed { .. } => "Conversion not allowed in a safe context".to_string(),
-            TypeError::UnsafeAddressoOfNotAllowed { .. } => "Address operator not allowed on this type in a safe context".to_string(),
+            TypeError::PrivateConstructor { .. } => "Type has private constructor",
+            TypeError::DuplicateParamName { .. } => "Duplicate parameter name",
+            TypeError::DuplicateNamedArg { .. } => "Duplicate named argument",
+            TypeError::UnsafeConversionNotAllowed { .. } => "Conversion not allowed in a safe context",
+            TypeError::UnsafeAddressoOfNotAllowed { .. } => "Address operator not allowed on this type in a safe context",
 
-            TypeError::InvalidConstExpr { .. } => "Invalid constant expr".to_string(),
+            TypeError::InvalidConstExpr { .. } => "Invalid constant expr",
 
-            TypeError::InvalidCaseExprBlock { .. } => "Case block invalid as expr".to_string(),
+            TypeError::InvalidCaseExprBlock { .. } => "Case block invalid as expr",
 
-            TypeError::InvalidCast { .. } => "Invalid cast".to_string(),
-            TypeError::EmptyMatchBlock { .. } => "Empty match block".to_string(),
-            TypeError::MatchExprNotExhaustive { .. } => "Match expr is not exhaustive".to_string(),
-            TypeError::InvalidExitWithValue { .. } => "Invalid exit with value".to_string(),
-            TypeError::ConstDeclWithNoValue { .. } => "Constant declaration without a value".to_string(),
-            TypeError::InvalidLoopCounterType { .. } => "Invalid loop counter type".to_string(),
-            TypeError::EnumDeclWithTypeParams { .. } => "Enumeration type declared with type params".to_string(),
-            TypeError::EnumValuesMustBeAscending { .. } => "Enumeration values must be ascending".to_string(),
-        }
+            TypeError::InvalidCast { .. } => "Invalid cast",
+            TypeError::EmptyMatchBlock { .. } => "Empty match block",
+            TypeError::MatchExprNotExhaustive { .. } => "Match expr is not exhaustive",
+            TypeError::InvalidExitWithValue { .. } => "Invalid exit with value",
+            TypeError::ConstDeclWithNoValue { .. } => "Constant declaration without a value",
+            TypeError::InvalidLoopCounterType { .. } => "Invalid loop counter type",
+            TypeError::EnumDeclWithTypeParams { .. } => "Enumeration type declared with type params",
+            TypeError::EnumValuesMustBeAscending { .. } => "Enumeration values must be ascending",
+        })
     }
 
     fn label(&self) -> Option<DiagnosticLabel> {

@@ -1,20 +1,24 @@
 use crate::ast;
+use crate::ast::FunctionName;
+use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
-use crate::ast::{FunctionName, Ident};
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::string_type;
+use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
+use crate::typ::typecheck_type_path;
 use crate::typ::Binding;
 use crate::typ::ClosureBodyEnvironment;
 use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::FunctionBodyEnvironment;
 use crate::typ::FunctionParamSig;
+use crate::typ::FunctionSig;
 use crate::typ::GenericResult;
 use crate::typ::NameContainer;
 use crate::typ::NameError;
@@ -26,7 +30,6 @@ use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::typ::{typecheck_type, FunctionSig};
 use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
@@ -103,8 +106,9 @@ pub fn typecheck_func_decl(
     let enclosing_ty = ctx.current_enclosing_ty().cloned();
 
     let owning_ty = match (&decl.name.owning_ty_qual, &enclosing_ty) {
-        (Some(owning_ty_name), None) => Some(typecheck_type(owning_ty_name, ctx)?),
-        (None, Some(enclosing_ty)) => Some(enclosing_ty.clone()),
+        (Some(owning_ty_name), None) => {
+            Some(typecheck_type_path(owning_ty_name, ctx)?)
+        },
 
         (Some(type_qual), Some(..)) => {
             return Err(TypeError::InvalidMethodExplicitInterface {
@@ -112,6 +116,8 @@ pub fn typecheck_func_decl(
                 span: type_qual.span().clone()
             });
         }
+
+        (None, Some(enclosing_ty)) => Some(enclosing_ty.clone()),
 
         _ => None,
     };
