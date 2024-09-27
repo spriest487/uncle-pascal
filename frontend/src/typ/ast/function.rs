@@ -1,14 +1,13 @@
 use crate::ast;
+use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
-use crate::ast::FunctionName;
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::{string_type, TypeParamType};
 use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
@@ -30,6 +29,7 @@ use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
+use crate::typ::{string_type, TypeParamType};
 use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
@@ -444,12 +444,8 @@ pub fn typecheck_func_def(
                     .map(|constraint| Box::new(constraint.is_ty))
             })));
         
-        decl = specialize_func_decl(&decl, &implicit_ty_args)
+        decl = specialize_func_decl(&decl, &implicit_ty_args, ctx)
             .map_err(|err| TypeError::from_generic_err(err, decl.span.clone()))?;
-
-        if decl.params.len() > 0 && decl.params[0].ident.name.as_str() == "self" {
-            eprintln!("arg0 of {}: {:?}", decl.name, decl.params[0].ty);
-        }
     }
     
     let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
@@ -588,10 +584,11 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
 pub fn specialize_func_decl(
     decl: &FunctionDecl,
     args: &TypeList,
+    ctx: &Context,
 ) -> GenericResult<FunctionDecl> {
     let mut params = Vec::new();
     for param in decl.params.iter() {
-        let ty = param.ty.clone().substitute_type_args(args);
+        let ty = param.ty.specialize_generic(args, ctx)?.into_owned();
         params.push(FunctionParam {
             ty,
             ..param.clone()
@@ -599,7 +596,10 @@ pub fn specialize_func_decl(
     }
 
     let return_ty = match &decl.return_ty {
-        Some(return_ty) => Some(return_ty.clone().substitute_type_args(args)),
+        Some(return_ty) => {
+            let ty = return_ty.specialize_generic(args, ctx)?.into_owned();
+            Some(ty)
+        },
         None => None,
     };
 

@@ -12,7 +12,7 @@ type LinkedList[T] = class
     head: Option[Node[T]];
     
     function Length: Integer;
-    function Nth: Option[T];
+    function Nth(n: Integer): Option[T];
     function Append(item: T);
 end;
 
@@ -63,10 +63,10 @@ begin
     begin
         var current := head.next;
         var count := 0;
-
+    
         while true do begin
             count := count + 1;
-
+    
             if current is Option.Some node then 
             begin
                 current := node.next;
@@ -75,15 +75,13 @@ begin
                 break;
             end;
         end;
-
+    
         count;
     end
-    else begin
-        0;
-    end;
+    else 0;
 end;
 
-function LinkedList[T].Nth: Option[T];
+function LinkedList[T].Nth(n: Integer): Option[T];
 begin
     var nth := GetNthNode[T](self, n);
 

@@ -756,7 +756,7 @@ impl Context {
             }
 
             Type::Record(sym) | Type::Class(sym) => {
-                let struct_def = self.instantiate_struct_def(&sym)?;
+                let struct_def = self.find_struct_def(&sym.qualified)?;
                 let struct_ty = Type::struct_type(*sym, struct_def.kind);
 
                 struct_def
@@ -773,7 +773,8 @@ impl Context {
                 let ty_methods = self.get_primitive_methods(primitive);
                 let primitive_ty = Type::Primitive(primitive);
 
-                ty_methods.get(method)
+                ty_methods
+                    .get(method)
                     .ok_or_else(|| NameError::MemberNotFound {
                         base: NameContainer::Type(Type::Primitive(primitive)),
                         member: method.clone(),
