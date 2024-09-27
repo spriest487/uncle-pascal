@@ -1061,10 +1061,9 @@ pub trait Specializable {
             && self.name() == generic.name()
     }
 
-    fn infer_specialized_from_hint<'out, 'a: 'out, 'b: 'out>(
-        &'a self,
-        hint: &'b Self,
-    ) -> Option<&'out Self> {
+    fn infer_specialized_from_hint<'a, 'b>(&'a self, hint: &'a Self) -> Option<&'b Self>
+        where 'a: 'b
+    {
         if self.is_unspecialized_generic() {
             if hint.is_specialization_of(self) {
                 Some(hint)
