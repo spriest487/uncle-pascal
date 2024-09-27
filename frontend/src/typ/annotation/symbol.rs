@@ -1,6 +1,6 @@
 use crate::ast::IdentPath;
 use crate::ast::TypeDeclName;
-use crate::typ::{typecheck_type_params, Context};
+use crate::typ::{typecheck_type_params, Context, TypeArgsResolver};
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::Specializable;
@@ -52,6 +52,26 @@ impl Symbol {
             })
         }
     }
+
+    pub fn substitute_ty_args(self, args: &impl TypeArgsResolver) -> Self {
+        let new_args = self
+            .type_args
+            .as_ref()
+            .and_then(|name_type_args| {
+                let items = name_type_args
+                    .items
+                    .iter()
+                    .cloned()
+                    .map(|arg| arg.substitute_type_args(args));
+
+                Some(TypeList::new(items, name_type_args.span().clone()))
+            });
+
+        Symbol {
+            type_args: new_args,
+            ..self
+        }
+    }
     
     pub fn ident(&self) -> &Ident {
         self.qualified.last()
@@ -72,19 +92,12 @@ impl From<IdentPath> for Symbol {
 impl Specializable for Symbol {
     type GenericID = IdentPath;
 
-    /// is this either a type without type args, or does it already have all the type args it needs?
+    /// is this type missing specialization e.g. it has type params and not type arguments
     fn is_unspecialized_generic(&self) -> bool {
         if self.type_params.is_none() {
             return false;
         }
-
-        match &self.type_args {
-            None => true,
-            Some(type_args) => type_args
-                .items
-                .iter()
-                .any(|arg| arg.is_unspecialized_generic()),
-        }
+        self.type_args.is_none()
     }
 
     fn name(&self) -> IdentPath {

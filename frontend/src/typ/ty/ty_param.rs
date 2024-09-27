@@ -54,6 +54,7 @@ impl fmt::Display for TypeParamType {
     }
 }
 
+#[derive(Debug)]
 pub enum TypeArgsResult<'a> {
     Specialized(&'a TypeList),
     Unspecialized(&'a ast::TypeList<TypeParam>),

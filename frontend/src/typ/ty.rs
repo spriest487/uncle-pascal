@@ -26,7 +26,6 @@ use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
 use crate::typ::NameResult;
 use crate::typ::Symbol;
-use crate::typ::TypeArgsResult::NotGeneric;
 use crate::typ::Typed;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Operator;
@@ -243,7 +242,8 @@ impl Type {
     /// params, we ignore those types since they'll be real types when actually used
     pub fn contains_generic_params(&self, ctx: &Context) -> bool {
         if let Type::GenericParam(ty_param_ty) = self {
-            let current_func_ty_params = ctx.current_function_env()
+            let current_func_ty_params = ctx
+                .current_function_env()
                 .and_then(|env| env.ty_params.as_ref());
 
             return if let Some(ctx_ty_params) = current_func_ty_params {
@@ -297,7 +297,7 @@ impl Type {
                 }
             },
 
-            _ => NotGeneric,
+            _ => TypeArgsResult::NotGeneric,
         }
     }
 
@@ -619,27 +619,6 @@ impl Type {
         }
     }
 
-    fn new_class_name(name: &Symbol, args: &impl TypeArgsResolver) -> Symbol {
-        if name.is_unspecialized_generic() {
-            panic!("can't substitute types args into unspecialized name")
-        }
-
-        let new_args = name.type_args.as_ref().and_then(|name_type_args| {
-            let items = name_type_args
-                .items
-                .iter()
-                .cloned()
-                .map(|arg| arg.substitute_type_args(args));
-
-            Some(TypeList::new(items, name_type_args.span().clone()))
-        });
-
-        Symbol {
-            type_args: new_args,
-            ..name.clone()
-        }
-    }
-
     pub fn match_constraint(&self, constraint_ty: &Type, ctx: &Context) -> bool {
         match constraint_ty {
             Type::Interface(..) => {
@@ -665,15 +644,15 @@ impl Type {
             Type::GenericParam(param) => args.resolve(&param).into_owned(),
 
             Type::Class(name) if name.type_params.is_some() => {
-                Type::Class(Box::new(Self::new_class_name(&name, args)))
+                Type::Class(Box::new(name.clone().substitute_ty_args(args)))
             },
 
             Type::Record(name) if name.type_params.is_some() => {
-                Type::Record(Box::new(Self::new_class_name(&name, args)))
+                Type::Record(Box::new(name.clone().substitute_ty_args(args)))
             },
 
             Type::Variant(name) if name.type_params.is_some() => {
-                Type::Variant(Box::new(Self::new_class_name(&name, args)))
+                Type::Variant(Box::new(name.clone().substitute_ty_args(args)))
             },
 
             Type::DynArray { element } => Type::DynArray {

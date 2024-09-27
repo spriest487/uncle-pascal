@@ -146,7 +146,6 @@ impl ModuleBuilder {
                 let specialized = specialize_func_decl(
                     &func_def.decl,
                     key_type_args,
-                    &self.src_metadata,
                 );
 
                 specialized.expect("function specialization must be valid after typechecking")
@@ -268,7 +267,7 @@ impl ModuleBuilder {
         // being generated here is the self-type, which we already specialized
         let specialized_decl = match &type_args {
             Some(ty_args) => {
-                specialize_func_decl(&method_def.decl, ty_args, &self.src_metadata)
+                specialize_func_decl(&method_def.decl, ty_args)
                     .expect("instantiate_method: illegal function specialization")
             },
             None => method_def.decl.clone(),

@@ -1,8 +1,7 @@
 use super::*;
-use crate::ast::type_name::IdentTypeName;
+use crate::ast::IdentPath;
 use crate::pp::Preprocessor;
 use common::BuildOptions;
-use crate::ast::IdentPath;
 
 fn try_parse_func_decl(src: &str) -> ParseResult<FunctionDecl> {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
@@ -27,34 +26,28 @@ fn make_ident_path<const N: usize>(names: [&str; N]) -> IdentPath {
     )
 }
 
-fn func_iface(decl: &FunctionDecl) -> Option<TypeName> {
+fn func_iface(decl: &FunctionDecl) -> Option<TypePath> {
     decl.name.owning_ty_qual.clone().map(|boxed_ty| *boxed_ty)
 }
 
-fn make_iface_ty<const N: usize>(name: IdentPath, ty_args: [&str; N]) -> TypeName {
-    let test_span = Span::zero("test");
-
-    TypeName::Ident(IdentTypeName {
-        ident: name,
-        type_args: match N {
-            0 => None,
-            _ => {
-                let items = ty_args.iter()
-                    .map(|arg_name| {
-                        TypeName::Ident(IdentTypeName {
-                            ident: IdentPath::from(Ident::new(arg_name, test_span.clone())),
-                            type_args: None,
-                            indirection: 0,
-                            span: test_span.clone(),
-                        })
-                    });
-                
-                Some(TypeList::new(items, test_span.clone()))
-            }
-        },
-        span: test_span,
-        indirection: 0,
-    })
+fn make_iface_ty<const N: usize>(name: IdentPath, ty_param_names: [&str; N]) -> TypePath {
+    let span = Span::zero("test");
+    
+    let type_params = if ty_param_names.len() > 0 {
+        Some(TypeList::new(ty_param_names
+            .into_iter()
+            .map(|name| Ident::new(name, span.clone())),
+            span.clone()
+        ))
+    } else {
+        None
+    };
+    
+    TypePath {
+        name,
+        type_params,
+        span,
+    }
 }
 
 #[test]

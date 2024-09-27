@@ -170,8 +170,9 @@ impl TypeDeclName {
         
         let type_params = TypeList::try_parse_type_params(tokens)?
             .map(|list| {
-                list.map(|name| TypeParam {
+                list.map(|name, _pos| TypeParam {
                     name,
+                    
                     // in the context of a name on its own, type params are parsed without 
                     // constraints, which we need to parse later and add to this decl if needed
                     constraint: None,

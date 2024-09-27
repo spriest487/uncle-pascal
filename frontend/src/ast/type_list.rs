@@ -49,12 +49,13 @@ impl<Item> TypeList<Item> {
     }
     
     pub fn map<MapFn, ToItem>(self, f: MapFn) -> TypeList<ToItem>
-        where MapFn: Fn(Item) -> ToItem
+        where MapFn: Fn(Item, usize) -> ToItem
     {
         TypeList {
             items: self.items
                 .into_iter()
-                .map(f)
+                .enumerate()
+                .map(|(pos, item)| f(item, pos))
                 .collect(),
             span: self.span,
         }

@@ -1,14 +1,14 @@
 use crate::ast;
-use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
+use crate::ast::FunctionName;
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::string_type;
+use crate::typ::{string_type, TypeParamType};
 use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
@@ -47,7 +47,7 @@ pub type FunctionDef = ast::FunctionDef<Typed>;
 pub type FunctionParam = ast::FunctionParam<Typed>;
 pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Typed>;
 pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<Typed>;
-pub type FunctionLocalDecl = ast::FunctionLocalBinding<Typed>;
+pub type FunctionLocalBinding = ast::FunctionLocalBinding<Typed>;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
@@ -200,7 +200,7 @@ pub fn typecheck_func_decl(
                 // definition, Self is a known type and should already be translated as the
                 // actual type itself
                 let implicit_self_ty = Some(explicit_owning_ty.clone());
-                
+
                 params = typecheck_params(decl, implicit_self_ty, ctx)?;
 
                 let param_sigs = params.iter()
@@ -429,83 +429,64 @@ pub fn typecheck_func_def(
     def: &ast::FunctionDef<Span>,
     ctx: &mut Context,
 ) -> TypeResult<FunctionDef> {
-    let decl = typecheck_func_decl(&def.decl, true, ctx)?;
+    let mut decl = typecheck_func_decl(&def.decl, true, ctx)?;
+
+    // in the body of a method definition, the type parameters of the enclosing type are
+    // used to specialize the types in the decl
+    if let Some(outer_ty_params) = decl.name.owning_ty.as_ref().and_then(|ty| ty.type_params()) {
+        let implicit_ty_args = outer_ty_params
+            .clone()
+            .map(|item, pos| Type::GenericParam(Box::new(TypeParamType {
+                name: item.name,
+                pos,
+                is_iface: item
+                    .constraint
+                    .map(|constraint| Box::new(constraint.is_ty))
+            })));
+        
+        decl = specialize_func_decl(&decl, &implicit_ty_args)
+            .map_err(|err| TypeError::from_generic_err(err, decl.span.clone()))?;
+
+        if decl.params.len() > 0 && decl.params[0].ident.name.as_str() == "self" {
+            eprintln!("arg0 of {}: {:?}", decl.name, decl.params[0].ty);
+        }
+    }
+    
+    let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
 
     let body_env = FunctionBodyEnvironment {
-        result_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
+        result_ty: return_ty,
         ty_params: decl.type_params.clone(),
     };
     
     ctx.scope(body_env, |ctx| {
-        let mut locals = Vec::new();
-        for local in &def.locals {
-            let ty = typecheck_type(&local.ty, ctx)?;
-    
-            let initial_val = match &local.initial_val {
-                Some(expr) => {
-                    let expr = typecheck_expr(expr, &ty, ctx)?;
-                    let value = expr.const_eval(ctx).ok_or_else(|| TypeError::InvalidConstExpr {
-                        expr: Box::new(expr.clone()),
-                    })?;
-    
-                    Some(value)
-                },
-                None => None,
-            };
-    
-            match local.kind {
-                ast::BindingDeclKind::Const => {
-                    let val = match &initial_val {
-                        Some(val) => val,
-                        None => {
-                            return Err(TypeError::ConstDeclWithNoValue { span: local.span.clone() });
-                        },
-                    };
-    
-                    // the visibility doesn't really matter here because it's not a unit-level decl
-                    let visiblity = Visibility::Interface;
-                    ctx.declare_const(local.ident.clone(), val.clone(), ty.clone(), visiblity, local.span.clone())?;
-                },
-    
-                ast::BindingDeclKind::Var => {
-                    let binding_kind = match &initial_val {
-                        Some(..) => ValueKind::Mutable,
-                        None => ValueKind::Uninitialized,
-                    };
-    
-                    ctx.declare_binding(local.ident.clone(), Binding {
-                        kind: binding_kind,
-                        ty: ty.clone(),
-                        def: Some(local.ident.clone()),
-                    })?;
-                },
-            }
-    
-            locals.push(FunctionLocalDecl {
-                ident: local.ident.clone(),
-                kind: local.kind,
-                initial_val,
-                ty,
-                span: local.span.clone(),
-            });
-        }
-    
-        if decl.name.owning_ty.is_none() {
-            // functions are always declared within their own bodies (allowing recursive calls)
+        match &decl.name.owning_ty {
+            // free functions are always declared within their own bodies (allowing recursive calls)
             // but forward-declared functions may already be present in the scope - in which case we
             // don't need to declare it again
-            let find_existing_decl = ctx.find_function(&IdentPath::from(decl.name.ident().clone()));
-            if find_existing_decl.is_err() {
-                ctx.declare_function(decl.name.ident().clone(), &decl, Visibility::Implementation)?;
+            None => {
+                let find_existing_decl = ctx.find_function(&IdentPath::from(decl.name.ident().clone()));
+                if find_existing_decl.is_err() {
+                    ctx.declare_function(decl.name.ident().clone(), &decl, Visibility::Implementation)?;
+                }
+            }
+
+            // declare type parameters from the owning type, if this is a method
+            Some(owning_ty) => {
+                if let Some(enclosing_ty_params) = owning_ty.type_params() {
+                    ctx.declare_type_params(enclosing_ty_params)?;
+                }
             }
         }
     
-        // declare decl's type params within the body too
+        // declare decl's own type params within the body too
         if let Some(decl_type_params) = decl.type_params.as_ref() {
             ctx.declare_type_params(&decl_type_params)?;
-        };
+        }
     
         declare_func_params_in_body(&decl.params, ctx)?;
+
+        let locals = declare_locals_in_body(&def, ctx)?;
     
         let body = typecheck_block(&def.body, decl.return_ty.as_ref().unwrap(), ctx)?;
 
@@ -516,6 +497,67 @@ pub fn typecheck_func_def(
             span: def.span.clone(),
         })
     })
+}
+
+fn declare_locals_in_body(
+    def: &ast::FunctionDef,
+    ctx: &mut Context
+) -> TypeResult<Vec<FunctionLocalBinding>> {
+    let mut locals = Vec::new();
+
+    for local in &def.locals {
+        let ty = typecheck_type(&local.ty, ctx)?;
+
+        let initial_val = match &local.initial_val {
+            Some(expr) => {
+                let expr = typecheck_expr(expr, &ty, ctx)?;
+                let value = expr.const_eval(ctx).ok_or_else(|| TypeError::InvalidConstExpr {
+                    expr: Box::new(expr.clone()),
+                })?;
+
+                Some(value)
+            },
+            None => None,
+        };
+
+        match local.kind {
+            ast::BindingDeclKind::Const => {
+                let val = match &initial_val {
+                    Some(val) => val,
+                    None => {
+                        return Err(TypeError::ConstDeclWithNoValue { span: local.span.clone() });
+                    },
+                };
+
+                // the visibility doesn't really matter here because it's not a unit-level decl
+                let visiblity = Visibility::Interface;
+                ctx.declare_const(local.ident.clone(), val.clone(), ty.clone(), visiblity, local.span.clone())?;
+            },
+
+            ast::BindingDeclKind::Var => {
+                let binding_kind = match &initial_val {
+                    Some(..) => ValueKind::Mutable,
+                    None => ValueKind::Uninitialized,
+                };
+
+                ctx.declare_binding(local.ident.clone(), Binding {
+                    kind: binding_kind,
+                    ty: ty.clone(),
+                    def: Some(local.ident.clone()),
+                })?;
+            },
+        }
+
+        locals.push(FunctionLocalBinding {
+            ident: local.ident.clone(),
+            kind: local.kind,
+            initial_val,
+            ty,
+            span: local.span.clone(),
+        });
+    }
+    
+    Ok(locals)
 }
 
 fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> TypeResult<()> {
@@ -546,11 +588,7 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
 pub fn specialize_func_decl(
     decl: &FunctionDecl,
     args: &TypeList,
-    ctx: &Context,
 ) -> GenericResult<FunctionDecl> {
-    FunctionSig::of_decl(&decl)
-        .validate_type_args(args, ctx)?;
-
     let mut params = Vec::new();
     for param in decl.params.iter() {
         let ty = param.ty.clone().substitute_type_args(args);

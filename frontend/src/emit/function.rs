@@ -55,7 +55,7 @@ pub fn build_func_def(
     def_type_params: Option<&typ::TypeParamList>,
     def_type_args: Option<typ::TypeList>,
     def_return_ty: Option<&typ::Type>,
-    def_locals: &[typ::ast::FunctionLocalDecl],
+    def_locals: &[typ::ast::FunctionLocalBinding],
     def_body: &typ::ast::Block,
     src_span: Span,
     debug_name: String,
@@ -270,7 +270,7 @@ fn bind_function_params(
     bound_params
 }
 
-fn init_function_locals(locals: &[typ::ast::FunctionLocalDecl], builder: &mut Builder) {
+fn init_function_locals(locals: &[typ::ast::FunctionLocalBinding], builder: &mut Builder) {
     for local in locals {
         if local.kind == syn::BindingDeclKind::Var {
             let ty = builder.translate_type(&local.ty);

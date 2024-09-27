@@ -6,9 +6,9 @@ use crate::parse::Parse;
 use crate::parse::ParseResult;
 use crate::parse::TokenStream;
 use crate::Operator;
-use derivative::*;
 use common::span::Span;
 use common::span::Spanned;
+use derivative::*;
 use std::fmt;
 use std::fmt::Write;
 use std::rc::Rc;
@@ -71,12 +71,12 @@ impl fmt::Display for Ident {
     }
 }
 
-#[derive(Clone, Eq, Hash, Debug)]
-pub struct Path<Part: fmt::Debug> {
+#[derive(Clone, Hash)]
+pub struct Path<Part> {
     parts: Vec<Part>,
 }
 
-impl<Part: fmt::Debug> Path<Part> {
+impl<Part> Path<Part> {
     pub fn new(name: Part, namespace: impl IntoIterator<Item = Part>) -> Self {
         let mut path: Vec<_> = namespace.into_iter().collect();
         path.push(name);
@@ -158,10 +158,7 @@ impl<Part: fmt::Debug> Path<Part> {
 
     pub fn single(&self) -> &Part {
         if self.parts.len() > 1 {
-            panic!(
-                "single() expects ident path to have only 1 part (path: {:?})",
-                self
-            );
+            panic!("single() expects ident path to have only 1 part");
         }
         self.last()
     }
@@ -176,14 +173,27 @@ impl<Part: fmt::Debug> Path<Part> {
     }
 }
 
-impl<Part: fmt::Debug + PartialEq> Path<Part> {
+impl<Part: PartialEq> Path<Part> {
     pub fn is_parent_of(&self, other: &Self) -> bool {
         self.parts.len() < other.parts.len()
             && &other.parts[0..self.parts.len()] == self.parts.as_slice()
     }
 }
 
-impl<Part: fmt::Debug + Clone> Path<Part> {
+impl<OtherPart, Part> PartialEq<Path<OtherPart>> for Path<Part>
+where
+    Part: fmt::Debug + PartialEq<OtherPart>,
+    OtherPart: fmt::Debug,
+{
+    fn eq(&self, other: &Path<OtherPart>) -> bool {
+        self.parts == other.parts
+    }
+}
+
+impl<Part: Eq + fmt::Debug> Eq for Path<Part> {
+}
+
+impl<Part: Clone> Path<Part> {
     pub fn parent(&self) -> Option<Self> {
         if self.parts.len() == 1 {
             None
@@ -196,7 +206,7 @@ impl<Part: fmt::Debug + Clone> Path<Part> {
     }
 }
 
-impl<Part: fmt::Debug + fmt::Display> Path<Part> {
+impl<Part: fmt::Display> Path<Part> {
     pub fn join(&self, sep: impl fmt::Display) -> String {
         let mut joined = String::new();
         for (i, part) in self.iter().enumerate() {
@@ -209,24 +219,9 @@ impl<Part: fmt::Debug + fmt::Display> Path<Part> {
     }
 }
 
-impl<Part: fmt::Debug> From<Part> for Path<Part> {
+impl<Part> From<Part> for Path<Part> {
     fn from(part: Part) -> Self {
         Self { parts: vec![part] }
-    }
-}
-
-impl<OtherPart, Part> PartialEq<Path<OtherPart>> for Path<Part>
-where
-    Part: fmt::Debug + PartialEq<OtherPart>,
-    OtherPart: fmt::Debug,
-{
-    fn eq(&self, other: &Path<OtherPart>) -> bool {
-        self.parts.len() == other.parts.len()
-            && self
-                .parts
-                .iter()
-                .zip(other.parts.iter())
-                .all(|(a, b)| *a == *b)
     }
 }
 
@@ -268,14 +263,31 @@ impl IdentPath {
     }
 }
 
-impl fmt::Display for Path<Ident> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.join("."))
-    }
-}
-
 impl Spanned for Path<Ident> {
     fn span(&self) -> &Span {
         self.last().span()
+    }
+}
+
+pub trait PathConcat {
+    fn separator() -> &'static str;
+}
+
+impl PathConcat for Ident {
+    fn separator() -> &'static str {
+        "."
+    }
+}
+
+impl<Part: fmt::Display + PathConcat> fmt::Display for Path<Part> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let sep = Part::separator();        
+        write!(f, "{}", self.join(sep))
+    }
+}
+
+impl<Part: fmt::Display + PathConcat> fmt::Debug for Path<Part> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "IdentPath({})", self)
     }
 }

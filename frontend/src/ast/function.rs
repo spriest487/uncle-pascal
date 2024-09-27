@@ -407,7 +407,7 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Hash, PartialEq, Debug)]
-pub struct FunctionLocalBinding<A>
+pub struct FunctionLocalBinding<A = Span>
     where A: Annotation
 {
     pub kind: BindingDeclKind,
@@ -446,7 +446,7 @@ const LOCAL_INIT_DECL_OPERATOR: Operator = Operator::Equals;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Hash, PartialEq, Debug)]
-pub struct FunctionDef<A: Annotation> {
+pub struct FunctionDef<A: Annotation = Span> {
     pub decl: FunctionDecl<A>,
 
     pub locals: Vec<FunctionLocalBinding<A>>,
