@@ -19,7 +19,7 @@ impl fmt::Display for GenericTarget {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GenericTarget::Name(name) => write!(f, "name `{}`", name),
-            GenericTarget::FunctionSig(sig) => write!(f, "`{}`", sig),
+            GenericTarget::FunctionSig(sig) => write!(f, "function with signature `{}`", sig),
         }
     }
 }
@@ -69,13 +69,13 @@ pub enum GenericError {
         expected: usize,
         actual: usize,
     },
-    ParametersMismatch {
-        path: IdentPath,
+    ParamMismatch {
+        target: GenericTarget,
 
         expected: Option<TypeParamList>,
         actual: Option<TypeIdentList>,
     },
-    ArgConstraintNotSatisfied {
+    ConstraintNotSatisfied {
         is_not_ty: Type,
         actual_ty: Option<Type>, // may be unknown/not yet resolved when processing generics
     },
@@ -104,8 +104,8 @@ impl fmt::Display for GenericError {
                 target, expected, actual
             ),
             
-            GenericError::ParametersMismatch { path, expected, actual, .. } => {
-                write!(f, "{} expects ", path)?;
+            GenericError::ParamMismatch { target, expected, actual, .. } => {
+                write!(f, "{} expects ", target)?;
                 match expected {
                     Some(params) => write!(f, "parameter list {}", params)?,
                     None => write!(f, "no parameters")?,
@@ -119,7 +119,7 @@ impl fmt::Display for GenericError {
                 Ok(())
             },
 
-            GenericError::ArgConstraintNotSatisfied {
+            GenericError::ConstraintNotSatisfied {
                 is_not_ty,
                 actual_ty: Some(arg_ty),
                 ..
@@ -129,7 +129,7 @@ impl fmt::Display for GenericError {
                 arg_ty, is_not_ty,
             ),
 
-            GenericError::ArgConstraintNotSatisfied {
+            GenericError::ConstraintNotSatisfied {
                 is_not_ty,
                 actual_ty: None,
                 ..

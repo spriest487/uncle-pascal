@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use crate::ast;
 use crate::ast::FunctionName;
 use crate::ast::Ident;
@@ -8,7 +11,6 @@ use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::{typecheck_type, TypeArgList};
 use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
 use crate::typ::Binding;
@@ -29,6 +31,7 @@ use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::typ::{string_type, TypeParamType};
+use crate::typ::{typecheck_type, GenericError, GenericTarget, TypeArgList};
 use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
@@ -373,13 +376,14 @@ fn validate_method(
             base: NameContainer::Type(owning_ty.clone()),
             member: method_ident.clone(),
         }),
+
         Some(method_decl) => {
-            let method_decl_sig = FunctionSig::of_decl(method_decl);
+            let method_decl_sig = FunctionSig::of_decl(&method_decl);
 
             if *method_sig != method_decl_sig {
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
-                    decl: method_decl.span.clone(),
+                    decl: method_decl.span,
                     ident: owning_ty_name.clone().child(method_ident.clone()),
                 })
             } else {
@@ -585,6 +589,37 @@ pub fn specialize_func_decl(
     args: &TypeArgList,
     ctx: &Context,
 ) -> GenericResult<FunctionDecl> {
+    let ty_params = match &decl.type_params {
+        None => {
+            return Err(GenericError::ArgsLenMismatch {
+                target: GenericTarget::FunctionSig(FunctionSig::of_decl(decl)),
+                expected: 0,
+                actual: args.len(),
+            });
+        }
+        Some(list) => list,
+    };
+    
+    if ty_params.len() != args.len() {
+        return Err(GenericError::ArgsLenMismatch {
+            target: GenericTarget::FunctionSig(FunctionSig::of_decl(decl)),
+            expected: ty_params.len(),
+            actual: args.len(),
+        })
+    }
+    
+    for pos in 0..ty_params.len() {
+        if let Some(constraint_ty) = &ty_params[pos].constraint {
+            let ty_arg = &args.items[pos];
+            if !ty_arg.match_constraint(&constraint_ty.is_ty, ctx) {
+                return Err(GenericError::ConstraintNotSatisfied {
+                    is_not_ty: constraint_ty.is_ty.clone(),
+                    actual_ty: Some(ty_arg.clone()),
+                });
+            }
+        }
+    }
+    
     let mut params = Vec::new();
     for param in decl.params.iter() {
         let ty = param.ty.specialize_generic(args, ctx)?.into_owned();
@@ -603,9 +638,12 @@ pub fn specialize_func_decl(
     };
 
     Ok(FunctionDecl {
+        name: decl.name.clone(),
         params,
         return_ty,
-        ..decl.clone()
+        span: decl.span.clone(),
+        type_params: decl.type_params.clone(),
+        mods: decl.mods.clone(),
     })
 }
 

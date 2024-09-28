@@ -1,3 +1,4 @@
+use crate::ast::FunctionParamMod;
 use crate::typ::ast::AnonymousFunctionDef;
 use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionCall;
@@ -5,19 +6,18 @@ use crate::typ::ast::FunctionCallNoArgs;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
-use crate::typ::{Context, TypeParam};
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
 use crate::typ::Type;
-use crate::typ::Typed;
-use crate::typ::TypeArgsResolver;
 use crate::typ::TypeArgList;
+use crate::typ::TypeArgsResolver;
 use crate::typ::TypeParamList;
+use crate::typ::Typed;
+use crate::typ::{Context, TypeParam};
+use crate::ast;
 use common::span::Span;
 use common::span::Spanned;
-use crate::ast;
-use crate::ast::FunctionParamMod;
 use std::fmt;
 use std::rc::Rc;
 
@@ -79,6 +79,8 @@ impl FunctionSigTypeParam {
         }
     }
 }
+
+pub type FunctionSigTypeParamList = ast::TypeList<FunctionSigTypeParam>;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionSig {
@@ -177,23 +179,16 @@ impl FunctionSig {
 
         for arg_pos in 0..type_params.len() {
             let constraint_ty = &type_params[arg_pos].is_ty;
+            
+            let actual_ty = type_args
+                .get_specialized(arg_pos)
+                .expect("already checked the length matches");
 
-            match type_args.get_specialized(arg_pos) {
-                Some(actual_ty) => {
-                    if !actual_ty.match_constraint(constraint_ty, ctx) {
-                        return Err(GenericError::ArgConstraintNotSatisfied {
-                            is_not_ty: constraint_ty.clone(),
-                            actual_ty: Some(actual_ty.clone()),
-                        });
-                    }
-                },
-
-                None => {
-                    return Err(GenericError::ArgConstraintNotSatisfied {
-                        is_not_ty: constraint_ty.clone(),
-                        actual_ty: None,
-                    });
-                },
+            if !actual_ty.match_constraint(constraint_ty, ctx) {
+                return Err(GenericError::ConstraintNotSatisfied {
+                    is_not_ty: constraint_ty.clone(),
+                    actual_ty: Some(actual_ty.clone()),
+                });
             }
         }
 
@@ -411,6 +406,10 @@ impl FunctionSig {
             target,
         }
     }
+    
+    fn type_param_name(pos: usize) -> String {
+        format!("T{pos}")
+    }
 }
 
 impl fmt::Display for FunctionSig {
@@ -423,7 +422,7 @@ impl fmt::Display for FunctionSig {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
-                write!(f, "T{}", i)?;
+                write!(f, "{}", Self::type_param_name(i))?;
             }
             write!(f, "]")?;
         }

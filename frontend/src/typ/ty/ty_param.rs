@@ -1,10 +1,10 @@
 use crate::ast;
 use crate::ast::Ident;
-use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::Type;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
+use crate::typ::typecheck_type;
 use common::span::Spanned;
 use std::borrow::Cow;
 use std::fmt;
@@ -72,7 +72,9 @@ pub trait TypeArgsResolver {
 
 impl TypeArgsResolver for TypeArgList {
     fn resolve(&self, param: &TypeParamType) -> Cow<Type> {
-        let arg = self.items.get(param.pos).expect("resolving type param out of range");
+        let arg = self
+            .get_specialized(param.pos)
+            .expect("resolving type param out of range");
         Cow::Borrowed(arg)
     }
 

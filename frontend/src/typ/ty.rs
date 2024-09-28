@@ -9,7 +9,7 @@ use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
-use crate::typ::ast::const_eval_integer;
+use crate::typ::ast::{const_eval_integer, TypedFunctionName};
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Field;
 use crate::typ::ast::FunctionDecl;
@@ -449,22 +449,30 @@ impl Type {
         }
     }
     
-    pub fn methods<'c>(&self, ctx: &'c Context) -> NameResult<Vec<&'c FunctionDecl>> {
+    pub fn methods(&self, ctx: &Context) -> NameResult<Vec<FunctionDecl>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
                 let methods = iface_def
                     .methods
                     .iter()
-                    .map(|m| &m.decl)
+                    .map(|m| m.decl.clone())
                     .collect();
                 
                 Ok(methods)
             },
 
             Type::Record(name) | Type::Class(name) => {
-                let struct_def = ctx.find_struct_def(&name.full_path)?;
-                let methods = struct_def.methods().collect();
+                let struct_def = if name.is_unspecialized_generic() {
+                    ctx.find_struct_def(&name.full_path)?.clone()
+                } else {
+                    ctx.instantiate_struct_def(&name)?
+                };
+
+                let methods = struct_def 
+                    .methods()
+                    .map(|method| method.clone())
+                    .collect();
 
                 Ok(methods)
             }
@@ -473,6 +481,7 @@ impl Type {
                 let methods = ctx
                     .get_primitive_methods(*primitive)
                     .values()
+                    .cloned()
                     .collect();
 
                 Ok(methods)
@@ -487,11 +496,19 @@ impl Type {
         }
     }
     
-    pub fn methods_at<'c>(&self, ctx: &'c Context, at: &Span) -> TypeResult<Vec<&'c FunctionDecl>> {
-        self.methods(ctx).map_err(|err| TypeError::from_name_err(err, at.clone()))
+    pub fn methods_at(&self,
+        ctx: &Context,
+        at: &Span
+    ) -> TypeResult<Vec<FunctionDecl>> {
+        self.methods(ctx).map_err(|err| {
+            TypeError::from_name_err(err, at.clone())
+        })
     }
 
-    pub fn get_method<'c>(&self, method: &Ident, ctx: &'c Context) -> NameResult<Option<&'c FunctionDecl>> {
+    pub fn get_method(&self,
+        method: &Ident,
+        ctx: &Context
+    ) -> NameResult<Option<FunctionDecl>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
@@ -499,23 +516,28 @@ impl Type {
                     .methods
                     .iter()
                     .find(|m| *m.ident() == *method)
-                    .map(|m| &m.decl);
+                    .map(|m| m.decl.clone());
 
                 Ok(method_decl)
             },
 
             Type::Record(name) | Type::Class(name) => {
-                let struct_def = ctx.find_struct_def(&name.full_path)?;
+                let struct_def = if name.is_unspecialized_generic() {
+                    ctx.find_struct_def(&name.full_path)?.clone()
+                } else {
+                    ctx.instantiate_struct_def(&name)?
+                };
+
                 let method = struct_def.find_method(method);
                 
-                Ok(method)
+                Ok(method.cloned())
             }
             
             Type::Primitive(primitive) => {
                 let methods = ctx.get_primitive_methods(*primitive);
                 let method = methods.get(method);
 
-                Ok(method)
+                Ok(method.cloned())
             }
             
             Type::GenericParam(param) => match &param.is_iface {
@@ -552,6 +574,13 @@ impl Type {
     pub fn implemented_ifaces_at(&self, ctx: &Context, at: &Span) -> TypeResult<Vec<Type>> {
         self.implemented_ifaces(ctx)
             .map_err(|err| TypeError::from_name_err(err, at.clone()))
+    }
+    
+    pub fn into_something(self) -> Option<Self> {
+        match self {
+            Type::Nothing => None,
+            something => Some(something),
+        }
     }
 
     pub fn expect_something(self, msg: &str) -> Self {
@@ -681,7 +710,7 @@ impl Type {
 
     pub fn specialize_generic<'s, 'a, 'res>(
         &'s self,
-        args: &'a impl TypeArgsResolver,
+        args: &'a TypeArgList,
         ctx: &Context,
     ) -> GenericResult<Cow<'res, Self>>
     where
@@ -817,8 +846,8 @@ pub fn typecheck_type_path(path: &ast::TypePath, ctx: &mut Context) -> TypeResul
     };
 
     if !params_match {
-        let err = GenericError::ParametersMismatch {
-            path: path.name.clone(),
+        let err = GenericError::ParamMismatch {
+            target: GenericTarget::Name(path.name.clone()),
             expected: expect_params,
             actual: path.type_params.clone(),
         };
@@ -926,7 +955,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
 
 pub fn specialize_generic_name<'a>(
     name: &'a Symbol,
-    args: &impl TypeArgsResolver,
+    args: &TypeArgList,
 ) -> GenericResult<Cow<'a, Symbol>> {
     let type_params = match name.type_params.as_ref() {
         None => return Ok(Cow::Borrowed(name)),
@@ -976,10 +1005,18 @@ pub fn specialize_generic_name<'a>(
     Ok(Cow::Owned(name))
 }
 
-pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeArgList, ctx: &Context) -> GenericResult<StructDef> {
-    let parameterized_name = specialize_generic_name(&class.name, ty_args)?;
-    
-    let implements: Vec<Type> = class.implements
+pub fn specialize_struct_def<'a>(
+    generic_class: &Rc<StructDef>,
+    ty_args: &TypeArgList,
+    ctx: &Context
+) -> GenericResult<Rc<StructDef>> {    
+    let specialized_name = specialize_generic_name(&generic_class.name, ty_args)?;
+    if *specialized_name == generic_class.name {
+        // not generic, return the original definition
+        return Ok(generic_class.clone());
+    }
+
+    let implements: Vec<Type> = generic_class.implements
         .iter()
         .map(|implements_ty| {
             let specialized = implements_ty.specialize_generic(ty_args, ctx)?;
@@ -987,13 +1024,16 @@ pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeArgList, ctx: &Con
         })
         .collect::<GenericResult<_>>()?;
 
-    let members: Vec<_> = class
+    let members: Vec<_> = generic_class
         .members
         .iter()
         .map(|member| {
             match member {
                 ast::StructMember::Field(field) => {
-                    let ty = field.ty.clone().substitute_type_args(ty_args);
+                    let ty = field.ty
+                        .clone()
+                        .specialize_generic(ty_args, ctx)?
+                        .into_owned();
 
                     Ok(ast::StructMember::Field(ast::Field {
                         ty,
@@ -1002,19 +1042,37 @@ pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeArgList, ctx: &Con
                 }
                 
                 ast::StructMember::MethodDecl(method) => {
-                    Ok(ast::StructMember::MethodDecl(method.clone()))
+                    // specialize the owning type of all methods (currently the owning type will
+                    // always be the struct type itself, but let's specialize it properly just
+                    // for future proofing)
+                    let method = FunctionDecl {
+                        name: TypedFunctionName {
+                            ident: method.name.ident.clone(),
+                            span: method.name.span.clone(),
+                            owning_ty: match &method.name.owning_ty {
+                                Some(ty) => {
+                                    let specialized = ty.specialize_generic(ty_args, ctx)?; 
+                                    Some(specialized.into_owned())
+                                },
+                                None => None,
+                            }
+                        },
+                        ..method.clone()
+                    };
+                    
+                    Ok(ast::StructMember::MethodDecl(method))
                 }
             }
         })
         .collect::<GenericResult<_>>()?;
 
-    Ok(StructDef {
-        name: parameterized_name.into_owned(),
+    Ok(Rc::new(StructDef {
+        name: specialized_name.into_owned(),
         implements,
         members,
-        span: class.span.clone(),
-        kind: class.kind,
-    })
+        span: generic_class.span.clone(),
+        kind: generic_class.kind,
+    }))
 }
 
 pub fn specialize_generic_variant(

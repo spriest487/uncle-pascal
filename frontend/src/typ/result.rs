@@ -373,8 +373,8 @@ impl DiagnosticOutput for TypeError {
                 }
                 NameError::GenericError(err) => match err {
                     GenericError::ArgsLenMismatch { .. } => "Wrong number of type arguments",
-                    GenericError::ParametersMismatch { .. } => "Parameter list mismatch",
-                    GenericError::ArgConstraintNotSatisfied { .. } => "Type parameter constraint not satisfied by argument",
+                    GenericError::ParamMismatch { .. } => "Parameter list mismatch",
+                    GenericError::ConstraintNotSatisfied { .. } => "Type parameter constraint not satisfied by argument",
                     GenericError::CannotInferArgs { .. } => "Cannot infer type arguments",
                     GenericError::IllegalUnspecialized { .. } => "Illegal use of unspecialized type",
                 }

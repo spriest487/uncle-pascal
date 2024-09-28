@@ -22,6 +22,13 @@ pub struct Symbol {
 }
 
 impl Symbol {
+    pub fn with_ty_params(self, params: TypeParamList) -> Self {
+        Self {
+            type_params: Some(params),
+            ..self
+        }
+    }
+    
     /// Creates a symbol of the given decl, using the context's current local namespace 
     /// to create the fully qualified name
     pub fn from_local_decl_name(decl_name: &TypeDeclName, ctx: &mut Context) -> TypeResult<Self> {

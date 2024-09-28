@@ -66,7 +66,8 @@ impl<A: Annotation> StructDef<A> {
     }
     
     pub fn fields(&self) -> impl Iterator<Item=&Field<A>> {
-        self.members.iter()
+        self.members
+            .iter()
             .filter_map(|m| match m {
                 StructMember::Field(field) => Some(field),
                 _ => None,
@@ -74,7 +75,8 @@ impl<A: Annotation> StructDef<A> {
     }
 
     pub fn methods(&self) -> impl Iterator<Item=&FunctionDecl<A>> {
-        self.members.iter()
+        self.members
+            .iter()
             .filter_map(|m| match m {
                 StructMember::MethodDecl(method) => Some(method),
                 _ => None,

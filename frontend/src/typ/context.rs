@@ -1027,17 +1027,18 @@ impl Context {
     pub fn instantiate_struct_def(&self, name: &Symbol) -> NameResult<Rc<StructDef>> {
         name.expect_not_unspecialized()?;
 
-        let base_def = self.find_struct_def(&name.full_path)?;
+        let generic_def = self.find_struct_def(&name.full_path)?;
 
-        let instance_def = match &name.type_args {
+        let specialized_def = match &name.type_args {
             Some(type_args) => {
-                let instance_def = specialize_struct_def(base_def.as_ref(), type_args, self)?;
-                Rc::new(instance_def)
+                specialize_struct_def(generic_def, type_args, self)?
             }
-            None => base_def.clone(),
+            None => {
+                generic_def.clone()
+            },
         };
 
-        Ok(instance_def)
+        Ok(specialized_def)
     }
 
     pub fn find_variant_def(&self, name: &IdentPath) -> NameResult<Rc<VariantDef>> {

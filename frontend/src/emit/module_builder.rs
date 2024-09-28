@@ -478,7 +478,6 @@ impl ModuleBuilder {
                         .methods(&self.src_metadata)
                         .unwrap()
                         .into_iter()
-                        .cloned()
                         .collect();
 
                     for method in iface_methods {
