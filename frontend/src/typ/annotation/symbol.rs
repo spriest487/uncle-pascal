@@ -71,7 +71,13 @@ impl Symbol {
                     .cloned()
                     .map(|arg| arg.substitute_type_args(args));
 
-                Some(TypeArgList::new(items, name_type_args.span().clone()))
+                let span = name_type_args.span().clone();
+
+                for arg in 0..args.len() {
+                    eprintln!("{}", args.get_specialized(arg).unwrap());
+                }
+                
+                Some(TypeArgList::new(items, span))
             });
 
         Symbol {

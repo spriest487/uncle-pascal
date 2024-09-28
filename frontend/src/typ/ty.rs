@@ -9,7 +9,7 @@ use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
-use crate::typ::ast::{const_eval_integer, TypedFunctionName};
+use crate::typ::ast::{apply_func_decl_ty_args, const_eval_integer, TypedFunctionName};
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Field;
 use crate::typ::ast::FunctionDecl;
@@ -529,7 +529,6 @@ impl Type {
                 };
 
                 let method = struct_def.find_method(method);
-                
                 Ok(method.cloned())
             }
             
@@ -966,7 +965,7 @@ pub fn specialize_generic_name<'a>(
         return Err(GenericError::ArgsLenMismatch {
             target: GenericTarget::Name(name.full_path.clone()),
             expected: type_params.items.len(),
-            actual: type_params.len(),
+            actual: args.len(),
         });
     }
 
@@ -1007,8 +1006,7 @@ pub fn specialize_generic_name<'a>(
 
 pub fn specialize_struct_def<'a>(
     generic_class: &Rc<StructDef>,
-    ty_args: &TypeArgList,
-    ctx: &Context
+    ty_args: &TypeArgList
 ) -> GenericResult<Rc<StructDef>> {    
     let specialized_name = specialize_generic_name(&generic_class.name, ty_args)?;
     if *specialized_name == generic_class.name {
@@ -1019,8 +1017,8 @@ pub fn specialize_struct_def<'a>(
     let implements: Vec<Type> = generic_class.implements
         .iter()
         .map(|implements_ty| {
-            let specialized = implements_ty.specialize_generic(ty_args, ctx)?;
-            Ok(specialized.into_owned())
+            let specialized = implements_ty.clone().substitute_type_args(ty_args);
+            Ok(specialized)
         })
         .collect::<GenericResult<_>>()?;
 
@@ -1032,34 +1030,33 @@ pub fn specialize_struct_def<'a>(
                 ast::StructMember::Field(field) => {
                     let ty = field.ty
                         .clone()
-                        .specialize_generic(ty_args, ctx)?
-                        .into_owned();
+                        .substitute_type_args(ty_args);
 
                     Ok(ast::StructMember::Field(ast::Field {
                         ty,
                         ..field.clone()
                     }))
                 }
-                
-                ast::StructMember::MethodDecl(method) => {
+
+                ast::StructMember::MethodDecl(generic_method) => {
+                    let mut method = apply_func_decl_ty_args(generic_method, ty_args);
                     // specialize the owning type of all methods (currently the owning type will
                     // always be the struct type itself, but let's specialize it properly just
                     // for future proofing)
-                    let method = FunctionDecl {
-                        name: TypedFunctionName {
-                            ident: method.name.ident.clone(),
-                            span: method.name.span.clone(),
-                            owning_ty: match &method.name.owning_ty {
-                                Some(ty) => {
-                                    let specialized = ty.specialize_generic(ty_args, ctx)?; 
-                                    Some(specialized.into_owned())
-                                },
-                                None => None,
-                            }
+                    method.name = TypedFunctionName {
+                        ident: method.name.ident.clone(),
+                        span: method.name.span.clone(),
+                        owning_ty: match &method.name.owning_ty {
+                            Some(ty) => {
+                                let specialized = ty.clone().substitute_type_args(ty_args);
+                                Some(specialized)
+                            },
+                            None => None,
                         },
-                        ..method.clone()
                     };
                     
+                    eprintln!("specialized {}: {} -> {}", specialized_name, generic_method.name, method.name);
+
                     Ok(ast::StructMember::MethodDecl(method))
                 }
             }

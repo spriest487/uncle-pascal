@@ -43,16 +43,24 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
             let sig = FunctionSig::of_decl(&func.decl);
     
             match &func.decl.name.owning_ty {
-                Some(explicit_impl) => OverloadCandidate::Method {
-                    ident: func.decl.name.ident.clone(),
-                    iface_ty: explicit_impl.clone(),
-                    sig: Rc::new(sig),
-                    decl: func.decl.clone(),
+                Some(explicit_impl) => {
+                    let ident = func.decl.name.ident.clone();
+
+                    OverloadCandidate::Method {
+                        ident,
+                        iface_ty: explicit_impl.clone(),
+                        sig: Rc::new(sig),
+                        decl: func.decl.clone(),
+                    }
                 },
-    
-                None => OverloadCandidate::Function {
-                    decl_name: IdentPath::from(func.decl.name.ident.clone()),
-                    sig: Rc::new(sig),
+
+                None => {
+                    let decl_name = IdentPath::from(func.decl.name.ident.clone());
+
+                    OverloadCandidate::Function {
+                        decl_name,
+                        sig: Rc::new(sig),
+                    }
                 },
             }
         });

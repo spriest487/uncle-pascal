@@ -363,7 +363,8 @@ impl ModuleBuilder {
         // while we can't pass type args to an interface method call, we can call one in a
         // context where the self-type is a generic that needs resolving before codegen
         if let Some(args) = &type_args {
-            owning_ty = self.specialize_generic_type(&owning_ty, args);
+            owning_ty = owning_ty.substitute_type_args(args);
+            unimplemented!("check if this makes sense");
         }
 
         let key = FunctionDefKey {

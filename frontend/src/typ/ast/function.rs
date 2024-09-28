@@ -11,7 +11,6 @@ use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
 use crate::typ::Binding;
 use crate::typ::ClosureBodyEnvironment;
@@ -32,6 +31,7 @@ use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::typ::{string_type, TypeParamType};
 use crate::typ::{typecheck_type, GenericError, GenericTarget, TypeArgList};
+use crate::typ::typecheck_type_params;
 use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
@@ -436,7 +436,12 @@ pub fn typecheck_func_def(
 
     // in the body of a method definition, the type parameters of the enclosing type are
     // used to specialize the types in the decl
-    if let Some(outer_ty_params) = decl.name.owning_ty.as_ref().and_then(|ty| ty.type_params()) {
+    let owning_ty = decl
+        .name
+        .owning_ty
+        .as_ref();
+
+    if let Some(outer_ty_params) = owning_ty.and_then(|ty| ty.type_params()) {
         let implicit_ty_args = outer_ty_params
             .clone()
             .map(|item, pos| Type::GenericParam(Box::new(TypeParamType {
@@ -447,8 +452,7 @@ pub fn typecheck_func_def(
                     .map(|constraint| Box::new(constraint.is_ty))
             })));
         
-        decl = specialize_func_decl(&decl, &implicit_ty_args, ctx)
-            .map_err(|err| TypeError::from_generic_err(err, decl.span.clone()))?;
+        decl = apply_func_decl_ty_args(&decl, &implicit_ty_args);
     }
     
     let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
@@ -600,14 +604,6 @@ pub fn specialize_func_decl(
         Some(list) => list,
     };
     
-    if ty_params.len() != args.len() {
-        return Err(GenericError::ArgsLenMismatch {
-            target: GenericTarget::FunctionSig(FunctionSig::of_decl(decl)),
-            expected: ty_params.len(),
-            actual: args.len(),
-        })
-    }
-    
     for pos in 0..ty_params.len() {
         if let Some(constraint_ty) = &ty_params[pos].constraint {
             let ty_arg = &args.items[pos];
@@ -620,9 +616,13 @@ pub fn specialize_func_decl(
         }
     }
     
+    Ok(apply_func_decl_ty_args(decl, args))
+}
+
+pub fn apply_func_decl_ty_args(decl: &FunctionDecl, args: &TypeArgList) -> FunctionDecl {
     let mut params = Vec::new();
     for param in decl.params.iter() {
-        let ty = param.ty.specialize_generic(args, ctx)?.into_owned();
+        let ty = param.ty.clone().substitute_type_args(args);
         params.push(FunctionParam {
             ty,
             ..param.clone()
@@ -631,20 +631,20 @@ pub fn specialize_func_decl(
 
     let return_ty = match &decl.return_ty {
         Some(return_ty) => {
-            let ty = return_ty.specialize_generic(args, ctx)?.into_owned();
+            let ty = return_ty.clone().substitute_type_args(args);
             Some(ty)
         },
         None => None,
     };
 
-    Ok(FunctionDecl {
+    FunctionDecl {
         name: decl.name.clone(),
         params,
         return_ty,
         span: decl.span.clone(),
         type_params: decl.type_params.clone(),
         mods: decl.mods.clone(),
-    })
+    }
 }
 
 pub fn typecheck_func_expr(

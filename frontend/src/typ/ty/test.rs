@@ -45,7 +45,7 @@ fn specialize_class_has_correct_member_types() {
     let span = Span::zero("test");
 
     let type_args = TypeArgList::new(vec![INT32.clone()], span.clone());
-    let result = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+    let result = specialize_struct_def(&tys[0], &type_args).unwrap();
 
     assert!(result.name.type_args.is_some());
     let actual_type_args = result.name.type_args.as_ref().unwrap();
@@ -75,7 +75,7 @@ fn specialize_class_has_multi_correct_member_types() {
     let span = Span::zero("test");
 
     let type_args = TypeArgList::new(vec![INT32.clone(), BYTE.clone()], span.clone());
-    let result = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+    let result = specialize_struct_def(&tys[0], &type_args).unwrap();
 
     assert!(result.name.type_args.is_some());
     let actual_type_args = result.name.type_args.as_ref().unwrap();
@@ -116,7 +116,7 @@ fn specialize_class_with_deep_params() {
 
     let type_args = TypeArgList::new(vec![INT32], span.clone());
 
-    let result = specialize_struct_def(&tys[1], &type_args, &module.context).unwrap();
+    let result = specialize_struct_def(&tys[1], &type_args).unwrap();
 
     let a_name = result.fields().nth(0).unwrap().ty.as_record().unwrap();
 
@@ -196,7 +196,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .next()
         .unwrap();
 
-    let a_int = specialize_struct_def(&a_class, &int_params, &module.context)
+    let a_int = specialize_struct_def(&a_class, &int_params)
         .map(|class| Type::Record(Box::new(class.name.clone())))
         .unwrap();
 

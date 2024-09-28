@@ -218,7 +218,7 @@ pub fn typecheck_call(
                 .map(Invocation::Call)?
         },
 
-        Typed::Method(iface_method) => {
+        Typed::Method(iface_method) => {            
             typecheck_method_call(iface_method, func_call, self_arg, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?

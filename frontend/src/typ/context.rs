@@ -1031,7 +1031,7 @@ impl Context {
 
         let specialized_def = match &name.type_args {
             Some(type_args) => {
-                specialize_struct_def(generic_def, type_args, self)?
+                specialize_struct_def(generic_def, type_args)?
             }
             None => {
                 generic_def.clone()

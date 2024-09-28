@@ -325,8 +325,8 @@ pub fn validate_args(
             continue;
         }
 
-        args[i] =
-            implicit_conversion(args[i].clone(), &params[i].ty, ctx).map_err(|err| match err {
+        args[i] = implicit_conversion(args[i].clone(), &params[i].ty, ctx)
+            .map_err(|err| match err {
                 TypeError::TypeMismatch { .. } => {
                     call::invalid_args(args.to_vec(), params, span.clone())
                 },
