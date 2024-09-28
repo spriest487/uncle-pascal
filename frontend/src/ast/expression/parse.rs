@@ -339,6 +339,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                     span: open_bracket.to(&close_bracket),
                     members: Vec::new(),
                 },
+                ty_args: None,
             });
         } else {
             sub_expr = Expr::parse(&mut tokens)?;
@@ -367,6 +368,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                             span: open_bracket.to(&close_bracket),
                             members: items,
                         },
+                        ty_args: None,
                     });
                 }
             }
@@ -419,7 +421,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             },
         };
 
-        let ctor_matcher = Matcher::AnyIdent.and_then(Separator::Colon);
+        let ctor_matcher = Matcher::AnyIdent + Separator::Colon;
 
         // if the next two tokens are in the form `a:` AND the last operand is
         // an ident then it has to be an object constructor list instead of a call
@@ -429,18 +431,13 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             .is_some();
 
         if is_ctor_ahead && last_was_ident {
-            if let Some(ty_args) = ty_args {
-                return Err(TracedError::trace(ParseError::CtorWithTypeArgs {
-                    span: ty_args.span().clone(),
-                }));
-            }
-
             let args = ObjectCtorArgs::parse(&mut self.tokens)?;
             let ident = self.pop_operand().into_ident().unwrap();
 
             let span = ident.span().to(&args.span);
             let ctor = ObjectCtor {
                 ident: Some(ident.into()),
+                ty_args,
                 args,
                 annotation: span.clone(),
             };

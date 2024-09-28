@@ -10,7 +10,7 @@ use typ::layout::StructLayoutMember;
 
 pub fn translate_struct_def(
     struct_def: &typ::ast::StructDef,
-    type_args: Option<&typ::TypeList>,
+    type_args: Option<&typ::TypeArgList>,
     module: &mut ModuleBuilder,
 ) -> Struct {
     let name_path = translate_name(&struct_def.name, type_args, module);

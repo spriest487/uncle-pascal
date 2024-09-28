@@ -1,7 +1,7 @@
-use crate::ast::Annotation;
+use crate::ast::{Annotation, ObjectCtor, TypeArgList};
 use crate::ast::Expr;
 use crate::ast::TypeList;
-use crate::DelimiterPair;
+use crate::{ast, DelimiterPair};
 use crate::ast::Ident;
 use crate::Separator;
 use crate::TokenTree;
@@ -49,11 +49,11 @@ impl<A: Annotation> fmt::Display for MethodCall<A> {
 
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Hash, Debug, PartialEq)]
-pub struct FunctionCall<A: Annotation> {
+pub struct FunctionCall<A: Annotation = Span> {
     pub target: Expr<A>,
     pub args: Vec<Expr<A>>,
 
-    pub type_args: Option<TypeList<A::Type>>,
+    pub type_args: Option<TypeArgList<A>>,
 
     pub annotation: A,
 
@@ -79,6 +79,37 @@ impl<A: Annotation> fmt::Display for FunctionCall<A> {
             write!(f, "{}", arg)?;
         }
         write!(f, ")")
+    }
+}
+
+impl FunctionCall {
+    // at the parsing stage, we can't tell empty object ctors and function calls apart.
+    // if the typechecker finds a call expression that isn't valid as a function call, it can
+    // try reinterpreting it as a constructor.
+    pub fn try_into_empty_object_ctor(self) -> Option<ObjectCtor> {
+        if !self.args.is_empty() {
+            return None;
+        }
+
+        // for now, the type paths used for constructors must be name-only, so we can just try
+        // to convert the target into an ident path. if it becomes possible to construct things
+        // via more complicated paths e.g. with multiple sets of type args, this will need to be
+        // extended to be able to convert expressions to a TypeDeclName path
+        let ty_path = self.target.try_into_ident_path()?;
+
+        let ctor = ObjectCtor {
+            ident: Some(ty_path),
+            
+            args: ast::ObjectCtorArgs {
+                span: self.args_span,
+                members: Vec::new(),
+            },
+            ty_args: self.type_args,
+            
+            annotation: self.annotation,
+        };
+
+        Some(ctor)
     }
 }
 
@@ -239,6 +270,13 @@ impl<A: Annotation> Call<A> {
     }
     
     pub fn as_func_call(&self) -> Option<&FunctionCall<A>> {
+        match self {
+            Call::Function(func_call) => Some(func_call),
+            _ => None,
+        }
+    }
+    
+    pub fn try_into_func_call(self) -> Option<FunctionCall<A>> {
         match self {
             Call::Function(func_call) => Some(func_call),
             _ => None,

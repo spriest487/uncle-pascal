@@ -22,7 +22,7 @@ pub struct FunctionInstance {
 fn create_function_body_builder<'m>(
     module: &'m mut ModuleBuilder,
     type_params: Option<&typ::TypeParamList>,
-    type_args: Option<typ::TypeList>,
+    type_args: Option<typ::TypeArgList>,
 ) -> Builder<'m> {
     match type_args {
         Some(type_args) => {
@@ -53,7 +53,7 @@ pub fn build_func_def(
     module: &mut ModuleBuilder,
     def_params: &[typ::ast::FunctionParam],
     def_type_params: Option<&typ::TypeParamList>,
-    def_type_args: Option<typ::TypeList>,
+    def_type_args: Option<typ::TypeArgList>,
     def_return_ty: Option<&typ::Type>,
     def_locals: &[typ::ast::FunctionLocalBinding],
     def_body: &typ::ast::Block,

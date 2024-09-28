@@ -6,7 +6,7 @@ use common::span::Spanned;
 
 pub fn translate_variant_def(
     variant_def: &typ::ast::VariantDef,
-    type_args: Option<&typ::TypeList>,
+    type_args: Option<&typ::TypeArgList>,
     module: &mut ModuleBuilder,
 ) -> ir::VariantDef {
     let name_path = translate_name(&variant_def.name, type_args, module);

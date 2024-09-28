@@ -5,7 +5,7 @@ use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::Specializable;
 use crate::typ::Type;
-use crate::typ::TypeList;
+use crate::typ::TypeArgList;
 use crate::typ::TypeParamList;
 use crate::typ::TypeResult;
 use common::span::Span;
@@ -18,7 +18,7 @@ pub struct Symbol {
     pub full_path: IdentPath,
 
     pub type_params: Option<TypeParamList>,
-    pub type_args: Option<TypeList>,
+    pub type_args: Option<TypeArgList>,
 }
 
 impl Symbol {
@@ -64,7 +64,7 @@ impl Symbol {
                     .cloned()
                     .map(|arg| arg.substitute_type_args(args));
 
-                Some(TypeList::new(items, name_type_args.span().clone()))
+                Some(TypeArgList::new(items, name_type_args.span().clone()))
             });
 
         Symbol {

@@ -56,7 +56,7 @@ impl NamePathExt for NamePath {
 
 pub fn translate_name(
     name: &typ::Symbol,
-    type_args: Option<&typ::TypeList>,
+    type_args: Option<&typ::TypeArgList>,
     module: &mut ModuleBuilder,
 ) -> NamePath {
     if name.is_unspecialized_generic() {

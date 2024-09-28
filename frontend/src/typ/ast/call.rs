@@ -128,7 +128,7 @@ fn build_args_for_params(
     Ok(checked_args)
 }
 
-fn typecheck_type_args(
+pub fn typecheck_type_args(
     type_args: &TypeList<ast::TypeName>,
     ctx: &mut Context,
 ) -> TypeResult<TypeList<Type>> {
@@ -224,22 +224,14 @@ pub fn typecheck_call(
                 .map(Invocation::Call)?
         },
 
-        Typed::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
-            let args_span = func_call.args_span.clone();
-            let ctor = ast::ObjectCtor {
-                ident: Some(ty.full_path().unwrap()),
-                annotation: call.span().clone(),
-                args: ast::ObjectCtorArgs {
-                    span: args_span,
-                    members: Vec::new(),
-                },
-            };
-
-            let span = ctor.annotation.span().clone();
-
-            typecheck_object_ctor(&ctor, span, expect_ty, ctx)
-                .map(Box::new)
-                .map(Invocation::Ctor)?
+        Typed::Type(..) => {
+            if let Some(ctor) = func_call.clone().try_into_empty_object_ctor() {
+                typecheck_object_ctor(&ctor, ctor.span().clone(), expect_ty, ctx)
+                    .map(Box::new)
+                    .map(Invocation::Ctor)?
+            } else {
+                return Err(TypeError::NotCallable(Box::new(target)))
+            }
         },
 
         Typed::VariantCtor(variant, ..) => typecheck_variant_ctor_call(

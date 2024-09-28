@@ -1,6 +1,6 @@
 use crate::token_tree::*;
 use std::fmt;
-use std::ops::BitOr;
+use std::ops::{Add, BitOr};
 use crate::ast::keyword::*;
 use crate::ast::operators::*;
 use crate::parse::{LookAheadTokenStream, ParseResult, TokenStream};
@@ -87,6 +87,17 @@ impl<Rhs> BitOr<Rhs> for Matcher where Rhs: Into<Matcher> {
 
     fn bitor(self, rhs: Rhs) -> Self::Output {
         self.or(rhs.into())
+    }
+}
+
+impl<Rhs> Add<Rhs> for Matcher 
+where 
+    Rhs: Into<Matcher> 
+{
+    type Output = SequenceMatcher;
+
+    fn add(self, rhs: Rhs) -> Self::Output {
+        self.and_then(rhs.into())
     }
 }
 

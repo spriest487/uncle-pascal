@@ -44,7 +44,7 @@ fn specialize_class_has_correct_member_types() {
 
     let span = Span::zero("test");
 
-    let type_args = TypeList::new(vec![INT32.clone()], span.clone());
+    let type_args = TypeArgList::new(vec![INT32.clone()], span.clone());
     let result = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
 
     assert!(result.name.type_args.is_some());
@@ -74,7 +74,7 @@ fn specialize_class_has_multi_correct_member_types() {
     
     let span = Span::zero("test");
 
-    let type_args = TypeList::new(vec![INT32.clone(), BYTE.clone()], span.clone());
+    let type_args = TypeArgList::new(vec![INT32.clone(), BYTE.clone()], span.clone());
     let result = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
 
     assert!(result.name.type_args.is_some());
@@ -114,7 +114,7 @@ fn specialize_class_with_deep_params() {
 
     let span = Span::zero(UNIT_NAME);
 
-    let type_args = TypeList::new(vec![INT32], span.clone());
+    let type_args = TypeArgList::new(vec![INT32], span.clone());
 
     let result = specialize_struct_def(&tys[1], &type_args, &module.context).unwrap();
 
@@ -145,7 +145,7 @@ fn specialized_fn_has_right_sig() {
     let (_, a_func) = module.unit.func_defs().next().unwrap();
     let a_sig = FunctionSig::of_decl(&a_func.decl);
 
-    let type_args = TypeList::new([INT32], span.clone());
+    let type_args = TypeArgList::new([INT32], span.clone());
 
     let a_int_sig = a_sig
         .specialize_generic(&type_args, &ctx)
@@ -184,7 +184,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         ",
     );
 
-    let int_params = TypeList::new([INT32.clone()], span.clone());
+    let int_params = TypeArgList::new([INT32.clone()], span.clone());
 
     let a_class = module
         .unit
@@ -251,7 +251,8 @@ fn can_infer_ty_arg_from_real_record_arg() {
         ])
         ).unwrap();
 
-    let func_call = module.unit.init.get(0)
+    let func_call = module.unit.init
+        .get(0)
         .and_then(Stmt::as_call)
         .and_then(Call::as_func_call)
         .unwrap_or_else(|| {

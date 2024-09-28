@@ -1,9 +1,7 @@
 use crate::ast;
-use crate::ast::Expr;
-use crate::ast::IdentPath;
 use crate::typ::ast::cast::implicit_conversion;
-use crate::typ::ast::typecheck_expr;
-use crate::typ::ArrayType;
+use crate::typ::ast::{typecheck_expr, typecheck_type_args, Expr};
+use crate::typ::{ArrayType, TypeArgList};
 use crate::typ::Context;
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
@@ -17,8 +15,8 @@ use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use linked_hash_map::LinkedHashMap;
 use common::span::{Span, Spanned};
+use linked_hash_map::LinkedHashMap;
 use std::iter;
 
 pub type ObjectCtor = ast::ObjectCtor<Typed>;
@@ -33,9 +31,15 @@ pub fn typecheck_object_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypeResult<ObjectCtor> {
-    let ctor_ty = find_ctor_ty(ctor.ident.as_ref(), expect_ty, &span, ctx)?;
+    let ty_args = match &ctor.ty_args {
+        Some(list) => Some(typecheck_type_args(list, ctx)?),
+        None => None,
+    };
+    
+    let ctor_ty = find_ctor_ty(ctor, expect_ty, ty_args.as_ref(), &span, ctx)?;
 
-    let ty_name = ctor_ty.full_path()
+    let ty_name = ctor_ty
+        .full_path()
         .ok_or_else(|| TypeError::InvalidCtorType {
             ty: ctor_ty.clone(),
             span: span.clone(),
@@ -77,7 +81,11 @@ pub fn typecheck_object_ctor(
     let mut members: Vec<ObjectCtorMember> = Vec::new();
 
     for arg in &ctor.args.members {
-        if let Some(prev) = members.iter().find(|a| a.ident == arg.ident) {
+        let find_prev = members
+            .iter()
+            .find(|a| a.ident == arg.ident);
+
+        if let Some(prev) = find_prev {
             // ctor has duplicate named arguments
             return Err(TypeError::DuplicateNamedArg {
                 name: arg.ident.clone(),
@@ -160,43 +168,56 @@ pub fn typecheck_object_ctor(
     Ok(ObjectCtor {
         ident: Some(ty_name),
         args,
+        ty_args,
         annotation,
     })
 }
 
-fn find_ctor_ty(explicit_ty_name: Option<&IdentPath>, expect_ty: &Type, span: &Span, ctx: &Context) -> TypeResult<Type>  {
-    let ctor_ty = match explicit_ty_name {
+fn find_ctor_ty(
+    ctor: &ast::ObjectCtor,
+    expect_ty: &Type,
+    ty_args: Option<&TypeArgList>,
+    span: &Span,
+    ctx: &mut Context
+) -> TypeResult<Type>  {
+    let ctor_ty = match &ctor.ident {
         Some(ctor_ident) => {
-            let (_, raw_ty) = ctx
+            let (_, generic_ty) = ctx
                 .find_type(&ctor_ident)
-                .map_err(|err| TypeError::NameError {
-                    err,
-                    span: ctor_ident.span().clone(),
+                .map_err(|err| {
+                    TypeError::from_name_err(err, ctor_ident.span().clone())
                 })?;
 
-            let raw_ty_name = raw_ty
+            let raw_ty_name = generic_ty
                 .full_path()
                 .ok_or_else(|| TypeError::InvalidCtorType {
-                    ty: raw_ty.clone(),
+                    ty: generic_ty.clone(),
                     span: span.clone(),
                 })?;
+            
+            match &ty_args {
+                Some(ty_arg_list) => {
+                    generic_ty
+                        .specialize_generic(*ty_arg_list, ctx)
+                        .map_err(|err| {
+                            TypeError::from_generic_err(err, span.clone())
+                        })?
+                        .into_owned()
+                }
 
-            // generic types can't be constructed, but if the type hint is a parameterized instance of
-            // the generic type the constructor expr refers to, use that instead
-            raw_ty
-                .infer_specialized_from_hint(expect_ty)
-                .ok_or_else(|| {
-                    let err = GenericError::CannotInferArgs {
-                        target: GenericTarget::Name(raw_ty_name.clone()),
-                        hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
-                    };
-
-                    TypeError::NameError {
-                        span: span.clone(),
-                        err: NameError::GenericError(err),
-                    }
-                })?
-                .clone()
+                None => {
+                    // infer the type args from the expected type of the expression
+                    generic_ty
+                        .infer_specialized_from_hint(expect_ty)
+                        .ok_or_else(|| {
+                            TypeError::from_generic_err(GenericError::CannotInferArgs {
+                                target: GenericTarget::Name(raw_ty_name.clone()),
+                                hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
+                            }, span.clone())
+                        })?
+                        .clone()
+                }
+            }
         }
 
         None => {

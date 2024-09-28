@@ -149,7 +149,7 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
 fn build_func_call(
     target: &typ::ast::Expr,
     args: &[typ::ast::Expr],
-    type_args: Option<&typ::TypeList>,
+    type_args: Option<&typ::TypeArgList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
     match target.annotation() {
@@ -229,7 +229,7 @@ fn build_method_call(
     method_sig: &typ::FunctionSig,
     self_ty: &typ::Type,
     args: &[typ::ast::Expr],
-    ty_args: Option<&typ::TypeList>,
+    ty_args: Option<&typ::TypeArgList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
     let mut self_ty = self_ty.clone();

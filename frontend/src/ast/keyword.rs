@@ -1,6 +1,7 @@
-use std::fmt;
+use crate::parse::{Matchable, Matcher, SequenceMatcher};
+use std::ops::Add;
 use std::ops::BitOr;
-use crate::parse::{Matchable, Matcher};
+use std::fmt;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Keyword {
@@ -185,10 +186,24 @@ impl Matchable for Keyword {
     }
 }
 
-impl BitOr for Keyword {
+impl<Rhs> BitOr<Rhs> for Keyword
+where 
+    Rhs: Into<Matcher>
+{
     type Output = Matcher;
 
-    fn bitor(self, rhs: Self) -> Self::Output {
-        self.as_matcher().or(rhs)
+    fn bitor(self, rhs: Rhs) -> Self::Output {
+        self.as_matcher() | rhs.into()
+    }
+}
+
+impl<Rhs> Add<Rhs> for Keyword
+where
+    Rhs: Into<Matcher>
+{
+    type Output = SequenceMatcher;
+
+    fn add(self, rhs: Rhs) -> Self::Output {
+        self.as_matcher() + rhs.into()
     }
 }

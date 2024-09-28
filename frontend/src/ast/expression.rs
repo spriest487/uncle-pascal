@@ -25,6 +25,7 @@ use crate::parse::*;
 use common::span::*;
 use std::fmt;
 use std::rc::Rc;
+use crate::Operator;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Literal<T: TypeAnnotation> {
@@ -50,7 +51,7 @@ impl<T: TypeAnnotation> fmt::Display for Literal<T> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Expr<A: Annotation> {
+pub enum Expr<A: Annotation = Span> {
     BinOp(Box<BinOp<A>>),
     UnaryOp(Box<UnaryOp<A>>),
     Literal(Literal<A::Type>, A),
@@ -259,6 +260,25 @@ impl<A: Annotation> Expr<A> {
     pub fn as_literal(&self) -> Option<&Literal<A::Type>> {
         match self {
             Expr::Literal(lit, _) => Some(lit),
+            _ => None,
+        }
+    }
+    
+    pub fn try_into_ident_path(self) -> Option<IdentPath> {
+        match self {
+            Expr::Ident(ident, ..) => Some(IdentPath::from(ident)),
+            Expr::BinOp(bin_op) => match bin_op.op {
+                Operator::Period => {
+                    let mut left = bin_op.lhs.try_into_ident_path()?.into_vec();
+                    let mut right = bin_op.rhs.try_into_ident_path()?.into_vec();
+
+                    left.append(&mut right);
+                    Some(IdentPath::from_parts(left))
+                }
+
+                _ => None,
+            }
+            
             _ => None,
         }
     }

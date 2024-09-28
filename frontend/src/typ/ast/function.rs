@@ -8,7 +8,7 @@ use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::typecheck_type;
+use crate::typ::{typecheck_type, TypeArgList};
 use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
 use crate::typ::Binding;
@@ -24,7 +24,6 @@ use crate::typ::NameError;
 use crate::typ::NameResult;
 use crate::typ::Type;
 use crate::typ::TypeError;
-use crate::typ::TypeList;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
@@ -583,7 +582,7 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
 
 pub fn specialize_func_decl(
     decl: &FunctionDecl,
-    args: &TypeList,
+    args: &TypeArgList,
     ctx: &Context,
 ) -> GenericResult<FunctionDecl> {
     let mut params = Vec::new();

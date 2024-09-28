@@ -39,7 +39,7 @@ impl fmt::Display for ClosureInstance {
 pub fn translate_closure_struct(
     identity: ir::ClosureIdentity,
     captures: &LinkedHashMap<Ident, typ::Type>,
-    type_args: Option<&typ::TypeList>,
+    type_args: Option<&typ::TypeArgList>,
     module: &mut ModuleBuilder,
 ) -> ir::TypeDefID {
     let id = module.metadata_mut().reserve_new_struct();
@@ -87,7 +87,7 @@ pub fn translate_closure_struct(
 
 pub fn translate_sig(
     sig: &typ::FunctionSig,
-    type_args: Option<&typ::TypeList>,
+    type_args: Option<&typ::TypeArgList>,
     module: &mut ModuleBuilder,
 ) -> FunctionSig {
     assert!(

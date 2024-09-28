@@ -1,4 +1,4 @@
-use crate::ast::type_name::TypeName;
+use crate::ast::Annotation;
 use crate::parse::Parse;
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
@@ -140,7 +140,7 @@ where
     }
 }
 
-pub type TypeArgList = TypeList<TypeName>;
+pub type TypeArgList<A = Span> = TypeList<<A as Annotation>::Type>;
 
 impl TypeArgList {
     pub(crate) fn parse_type_args(tokens: &mut TokenStream) -> ParseResult<Self> {

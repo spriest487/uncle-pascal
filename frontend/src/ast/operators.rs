@@ -1,6 +1,6 @@
-use crate::parse::{Matchable, Matcher};
+use crate::parse::{Matchable, Matcher, SequenceMatcher};
 use std::fmt;
-use std::ops::BitOr;
+use std::ops::{Add, BitOr};
 
 #[derive(Eq, PartialEq, Clone, Debug, Copy, Hash)]
 pub enum Operator {
@@ -100,6 +100,17 @@ impl<Rhs> BitOr<Rhs> for Operator
 
     fn bitor(self, rhs: Rhs) -> Matcher {
         self.as_matcher().or(rhs.into())
+    }
+}
+
+impl<Rhs> Add<Rhs> for Operator
+where
+    Rhs: Into<Matcher>
+{
+    type Output = SequenceMatcher;
+
+    fn add(self, rhs: Rhs) -> Self::Output {
+        self.as_matcher() + rhs.into()
     }
 }
 

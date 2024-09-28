@@ -4,13 +4,14 @@ use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::Type;
 use crate::typ::TypeResult;
+use crate::typ::Typed;
 use common::span::Spanned;
 use std::borrow::Cow;
 use std::fmt;
 
 pub type TypeParam = ast::TypeParam<Type>;
 
-pub type TypeList = ast::TypeList<Type>;
+pub type TypeArgList = ast::TypeArgList<Typed>;
 pub type TypeParamList = ast::TypeList<TypeParam>;
 
 pub fn typecheck_type_params(
@@ -56,7 +57,7 @@ impl fmt::Display for TypeParamType {
 
 #[derive(Debug)]
 pub enum TypeArgsResult<'a> {
-    Specialized(&'a TypeList),
+    Specialized(&'a TypeArgList),
     Unspecialized(&'a ast::TypeList<TypeParam>),
     NotGeneric,
 }
@@ -69,7 +70,7 @@ pub trait TypeArgsResolver {
     fn len(&self) -> usize;
 }
 
-impl TypeArgsResolver for TypeList {
+impl TypeArgsResolver for TypeArgList {
     fn resolve(&self, param: &TypeParamType) -> Cow<Type> {
         let arg = self.items.get(param.pos).expect("resolving type param out of range");
         Cow::Borrowed(arg)

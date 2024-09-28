@@ -856,7 +856,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
                     }
 
                     let type_args_span = type_args.span().clone();
-                    let checked_type_args = TypeList::new(checked_type_arg_items, type_args_span);
+                    let checked_type_args = TypeArgList::new(checked_type_arg_items, type_args_span);
 
                     Type::specialize_generic(&raw_ty, &checked_type_args, ctx)
                         .map_err(|err| TypeError::from_generic_err(err, span.clone()))?
@@ -948,7 +948,7 @@ pub fn specialize_generic_name<'a>(
             .cloned()
             .map(|arg| arg.substitute_type_args(args));
 
-        TypeList::new(specialized_args, existing_args.span().clone())
+        TypeArgList::new(specialized_args, existing_args.span().clone())
     } else {
         let mut resolved_args = Vec::with_capacity(type_params.len());
 
@@ -965,7 +965,7 @@ pub fn specialize_generic_name<'a>(
 
             resolved_args.push(arg.into_owned());
         }
-        TypeList::new(resolved_args, name.span().clone())
+        TypeArgList::new(resolved_args, name.span().clone())
     };
 
     let name = Symbol {
@@ -976,7 +976,7 @@ pub fn specialize_generic_name<'a>(
     Ok(Cow::Owned(name))
 }
 
-pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList, ctx: &Context) -> GenericResult<StructDef> {
+pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeArgList, ctx: &Context) -> GenericResult<StructDef> {
     let parameterized_name = specialize_generic_name(&class.name, ty_args)?;
     
     let implements: Vec<Type> = class.implements
@@ -1019,7 +1019,7 @@ pub fn specialize_struct_def(class: &StructDef, ty_args: &TypeList, ctx: &Contex
 
 pub fn specialize_generic_variant(
     variant: &VariantDef,
-    args: &TypeList,
+    args: &TypeArgList,
 ) -> GenericResult<VariantDef> {
     let parameterized_name = specialize_generic_name(&variant.name, args)?;
 

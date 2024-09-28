@@ -5,7 +5,7 @@ use crate::emit::ir;
 
 pub fn translate_iface(
     iface_def: &typ::ast::InterfaceDecl,
-    type_args: Option<&typ::TypeList>,
+    type_args: Option<&typ::TypeArgList>,
     module: &mut ModuleBuilder,
 ) -> ir::Interface {
     let name = translate_name(&iface_def.name, type_args, module);

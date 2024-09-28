@@ -1,4 +1,7 @@
-use crate::ast::Annotation;
+#[cfg(test)]
+mod test;
+
+use crate::ast::{Annotation, TypeArgList};
 use crate::ast::Expr;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
@@ -160,9 +163,12 @@ impl ParseSeq for CollectionCtorElement<Span> {
 }
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
-pub struct ObjectCtor<A: Annotation> {
+pub struct ObjectCtor<A: Annotation = Span> {
     pub ident: Option<IdentPath>,
+    
     pub args: ObjectCtorArgs<A>,
+    pub ty_args: Option<TypeArgList<A>>,
+
     pub annotation: A,
 }
 
@@ -172,6 +178,12 @@ impl<A: Annotation> fmt::Display for ObjectCtor<A> {
             write!(f, "{}", ident)?;
         }
         write!(f, "{}", self.args)
+    }
+}
+
+impl<A: Annotation> Spanned for ObjectCtor<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
     }
 }
 

@@ -12,7 +12,7 @@ use crate::typ::GenericTarget;
 use crate::typ::Type;
 use crate::typ::Typed;
 use crate::typ::TypeArgsResolver;
-use crate::typ::TypeList;
+use crate::typ::TypeArgList;
 use crate::typ::TypeParamList;
 use common::span::Span;
 use common::span::Spanned;
@@ -369,7 +369,7 @@ impl FunctionSig {
         span: Span,
         args: impl IntoIterator<Item = Expr>,
         args_span: Span,
-        type_args: Option<TypeList>,
+        type_args: Option<TypeArgList>,
     ) -> FunctionCall {
         let func_val_annotation = match &self.return_ty {
             Type::Nothing => Typed::Untyped(span),

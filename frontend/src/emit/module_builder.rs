@@ -358,7 +358,7 @@ impl ModuleBuilder {
         &mut self,
         mut owning_ty: typ::Type,
         method: Ident,
-        type_args: Option<typ::TypeList>,
+        type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         // while we can't pass type args to an interface method call, we can call one in a
         // context where the self-type is a generic that needs resolving before codegen
@@ -385,7 +385,7 @@ impl ModuleBuilder {
         &mut self,
         func_decl: &typ::ast::FunctionDecl,
         namespace: IdentPath,
-        type_args: Option<&typ::TypeList>,
+        type_args: Option<&typ::TypeArgList>,
     ) -> ir::FunctionID {
         let global_name = match &func_decl.name.owning_ty {
             Some(..) => None,
@@ -417,7 +417,7 @@ impl ModuleBuilder {
     pub fn translate_func(
         &mut self,
         func_name: IdentPath,
-        type_args: Option<typ::TypeList>,
+        type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         let key = FunctionDefKey {
             type_args,
@@ -622,7 +622,7 @@ impl ModuleBuilder {
     pub fn specialize_generic_type(
         &self,
         src_ty: &typ::Type,
-        type_args: &typ::TypeList,
+        type_args: &typ::TypeArgList,
     ) -> typ::Type {
         src_ty.specialize_generic(type_args, &self.src_metadata).unwrap().into_owned()
     }
@@ -630,7 +630,7 @@ impl ModuleBuilder {
     pub fn translate_type(
         &mut self,
         src_ty: &typ::Type,
-        type_args: Option<&typ::TypeList>,
+        type_args: Option<&typ::TypeArgList>,
     ) -> ir::Type {
         let src_ty = match type_args {
             Some(current_ty_args) => {
@@ -853,7 +853,7 @@ impl ModuleBuilder {
     pub fn translate_dyn_array_struct(
         &mut self,
         element_ty: &typ::Type,
-        type_args: Option<&typ::TypeList>,
+        type_args: Option<&typ::TypeArgList>,
     ) -> ir::TypeDefID {
         let element_ty = self.translate_type(element_ty, type_args);
 
@@ -885,7 +885,7 @@ impl ModuleBuilder {
     pub fn translate_func_ty(
         &mut self,
         func_sig: &typ::FunctionSig,
-        type_args: Option<&typ::TypeList>,
+        type_args: Option<&typ::TypeArgList>,
     ) -> ir::TypeDefID {
         let func_ty_id = match self.find_func_ty(&func_sig) {
             Some(id) => id,
@@ -901,7 +901,7 @@ impl ModuleBuilder {
     pub fn build_closure_instance(
         &mut self,
         func: &typ::ast::AnonymousFunctionDef,
-        type_args: Option<typ::TypeList>,
+        type_args: Option<typ::TypeArgList>,
     ) -> ClosureInstance {
         let id = self.module.metadata.insert_func(None);
 
@@ -1066,7 +1066,7 @@ pub struct MethodDeclKey {
     pub owning_ty: typ::Type,
     pub method: Ident,
     
-    pub type_args: Option<typ::TypeList>,
+    pub type_args: Option<typ::TypeArgList>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -1079,7 +1079,7 @@ pub struct VirtualMethodKey {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(crate) struct FunctionDefKey {
     pub decl_key: FunctionDeclKey,
-    pub type_args: Option<typ::TypeList>,
+    pub type_args: Option<typ::TypeArgList>,
 }
 
 fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
@@ -1399,7 +1399,7 @@ fn gen_class_rc_boilerplate(module: &mut ModuleBuilder, class_ty: &ir::Type) {
     module.runtime_type(&ir::Type::Struct(resource_struct));
 }
 
-fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::TypeList>) {
+fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::TypeArgList>) {
     if let Some(type_args) = type_args {
         let any_generic_args = type_args.items.iter().any(|arg| arg.is_generic_param());
         assert!(

@@ -26,7 +26,7 @@ pub struct Builder<'m> {
     module: &'m mut ModuleBuilder,
 
     //positional list of type args that can be used to reify types in the current context
-    type_args: Option<typ::TypeList>,
+    type_args: Option<typ::TypeArgList>,
 
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
@@ -64,11 +64,11 @@ impl<'m> Builder<'m> {
         &self.module.opts()
     }
 
-    pub fn type_args(&self) -> Option<&typ::TypeList> {
+    pub fn type_args(&self) -> Option<&typ::TypeArgList> {
         self.type_args.as_ref()
     }
 
-    pub fn with_type_args(self, type_args: typ::TypeList) -> Self {
+    pub fn with_type_args(self, type_args: typ::TypeArgList) -> Self {
         let any_generic = type_args
             .items
             .iter()
@@ -135,7 +135,7 @@ impl<'m> Builder<'m> {
         &mut self,
         owning_ty: typ::Type,
         method: Ident,
-        type_args: Option<typ::TypeList>
+        type_args: Option<typ::TypeArgList>
     ) -> FunctionInstance {
         self.module.translate_method_impl(owning_ty, method, type_args)
     }
@@ -143,7 +143,7 @@ impl<'m> Builder<'m> {
     pub fn translate_func(
         &mut self,
         func_name: IdentPath,
-        type_args: Option<typ::TypeList>,
+        type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         // specialize type args for current context
         let instance_type_args = match (type_args, self.type_args.as_ref()) {
@@ -1151,7 +1151,7 @@ impl<'m> Builder<'m> {
     }
 }
 
-fn type_args_to_string(args: &typ::TypeList) -> String {
+fn type_args_to_string(args: &typ::TypeArgList) -> String {
     args.items
         .iter()
         .map(|a| a.to_string())
