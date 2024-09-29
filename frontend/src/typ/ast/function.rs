@@ -11,7 +11,7 @@ use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::typecheck_type_path;
+use crate::typ::{typecheck_type_path, validate_ty_args, Specializable, TypeParam, TypeParamList};
 use crate::typ::Binding;
 use crate::typ::ClosureBodyEnvironment;
 use crate::typ::Context;
@@ -200,10 +200,14 @@ pub fn typecheck_func_decl(
                 // if this is an interface, it's the *implementation* of one, so it has the 
                 // real types substituted into for any `Self` occurrences. if it's a method
                 // definition, Self is a known type and should already be translated as the
-                // actual type itself
-                let implicit_self_ty = Some(explicit_owning_ty.clone());
+                // actual type itself, parameterized by its own type params.
+                let self_arg_ty = specialize_self_ty(
+                    explicit_owning_ty.clone(),
+                    explicit_ty_span,
+                    ctx
+                )?;
 
-                params = typecheck_params(decl, implicit_self_ty, ctx)?;
+                params = typecheck_params(decl, Some(self_arg_ty), ctx)?;
 
                 let param_sigs = params.iter()
                     .cloned()
@@ -261,10 +265,13 @@ pub fn typecheck_func_decl(
                 // if the owning type is an interface, this is an interface method definition,
                 // and the type of `self` is the generic `Self` (to stand in for implementing
                 // types in static interfaces). if it's NOT an interface, it must be a concrete
-                // type, in which case the type of self is just that type itself
+                // type, in which case the type of self is just that type parameterized by itself
                 let self_param_ty = match &enclosing_ty {
                     Type::Interface(..) => Type::MethodSelf,
-                    _ => enclosing_ty.clone(),
+                    _ => {
+                        let at = decl.name.ident.span();
+                        specialize_self_ty(enclosing_ty.clone(), at, ctx)?
+                    }
                 };
 
                 params = typecheck_params(decl, Some(self_param_ty), ctx)?;
@@ -284,6 +291,24 @@ pub fn typecheck_func_decl(
             mods: decl_mods,
         })
     })
+}
+
+fn specialize_self_ty(self_ty: Type, at: &Span, ctx: &Context) -> TypeResult<Type> {
+    if let Some(self_ty_params) = self_ty.type_params() {
+        let params_as_args = self_ty_params
+            .clone()
+            .map(TypeParam::into_generic_param_ty);
+
+        let ty = self_ty.specialize_generic(&params_as_args, ctx)
+            .map_err(|e| {
+                TypeError::from_generic_err(e, at.clone())
+            })?
+            .into_owned();
+        
+        Ok(ty)
+    } else {
+        Ok(self_ty)
+    }
 }
 
 impl FunctionDecl {
@@ -588,63 +613,71 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
     Ok(())
 }
 
+// Specialize a generic function decl, replacing any references to its type params with
+// types provided in the args list. 
+// This has no effect on functions that don't declare a type parameter list and returns a clone 
+// of the original decl.
 pub fn specialize_func_decl(
     decl: &FunctionDecl,
     args: &TypeArgList,
     ctx: &Context,
 ) -> GenericResult<FunctionDecl> {
     let ty_params = match &decl.type_params {
-        None => {
-            return Err(GenericError::ArgsLenMismatch {
-                target: GenericTarget::FunctionSig(FunctionSig::of_decl(decl)),
-                expected: 0,
-                actual: args.len(),
-            });
-        }
+        None => return Ok(decl.clone()),
         Some(list) => list,
     };
     
-    for pos in 0..ty_params.len() {
-        if let Some(constraint_ty) = &ty_params[pos].constraint {
-            let ty_arg = &args.items[pos];
-            if !ty_arg.match_constraint(&constraint_ty.is_ty, ctx) {
-                return Err(GenericError::ConstraintNotSatisfied {
-                    is_not_ty: constraint_ty.is_ty.clone(),
-                    actual_ty: Some(ty_arg.clone()),
-                });
-            }
-        }
-    }
-    
-    Ok(apply_func_decl_ty_args(decl, args))
-}
-
-pub fn apply_func_decl_ty_args(decl: &FunctionDecl, args: &TypeArgList) -> FunctionDecl {
-    let mut params = Vec::new();
-    for param in decl.params.iter() {
-        let ty = param.ty.clone().substitute_type_args(args);
-        params.push(FunctionParam {
-            ty,
-            ..param.clone()
+    if args.len() != ty_params.len() {
+        return Err(GenericError::ArgsLenMismatch {
+            target: GenericTarget::FunctionSig(FunctionSig::of_decl(decl)),
+            expected: ty_params.len(),
+            actual: args.len(),
         });
     }
 
-    let return_ty = match &decl.return_ty {
-        Some(return_ty) => {
-            let ty = return_ty.clone().substitute_type_args(args);
-            Some(ty)
-        },
-        None => None,
-    };
+    validate_ty_args(args, ty_params, ctx)?;
+    
+    let mut decl = decl.clone();
+    visit_type_refs(&mut decl, |ty| {
+        *ty = ty.specialize_generic(args, ctx)?.into_owned();
+        Ok(())
+    })?;
+    Ok(decl)
+}
 
-    FunctionDecl {
-        name: decl.name.clone(),
-        params,
-        return_ty,
-        span: decl.span.clone(),
-        type_params: decl.type_params.clone(),
-        mods: decl.mods.clone(),
+pub fn apply_func_decl_named_ty_args(mut decl: FunctionDecl, params: &TypeParamList, args: &TypeArgList) -> FunctionDecl {
+    visit_type_refs(&mut decl, |ty| -> Result<(), ()> {
+        *ty = ty.clone().apply_type_args_by_name(params, args);
+        Ok(())
+    }).unwrap();
+
+    decl
+}
+
+pub fn apply_func_decl_ty_args(decl: &FunctionDecl, args: &TypeArgList) -> FunctionDecl {
+    let mut decl = decl.clone();
+    visit_type_refs(&mut decl, |ty| -> Result<(), ()> {
+        *ty = ty.clone().substitute_type_args(args);
+        
+        Ok(())
+    }).unwrap();
+
+    decl
+}
+
+fn visit_type_refs<F, E>(decl: &mut FunctionDecl, mut f: F) -> Result<(), E> 
+where
+    F: FnMut(&mut Type) -> Result<(), E>
+{
+    for param in decl.params.iter_mut() {
+        f(&mut param.ty)?;
     }
+
+    if let Some(return_ty) = &mut decl.return_ty {
+        f(return_ty)?;
+    }
+    
+    Ok(())
 }
 
 pub fn typecheck_func_expr(

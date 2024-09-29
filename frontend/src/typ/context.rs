@@ -1031,7 +1031,7 @@ impl Context {
 
         let specialized_def = match &name.type_args {
             Some(type_args) => {
-                specialize_struct_def(generic_def, type_args)?
+                specialize_struct_def(generic_def, type_args, self)?
             }
             None => {
                 generic_def.clone()
@@ -1072,9 +1072,15 @@ impl Context {
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
-                let instance_def = specialize_generic_variant(base_def.as_ref(), type_args)?;
+                let instance_def = specialize_generic_variant(
+                    base_def.as_ref(), 
+                    type_args, 
+                    self
+                )?;
+
                 Rc::new(instance_def)
             }
+
             None => base_def,
         };
 

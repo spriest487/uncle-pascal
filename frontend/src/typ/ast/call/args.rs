@@ -40,7 +40,7 @@ impl<'a> TypeArgsResolver for PartiallySpecializedTypeArgsList<'a> {
         }
     }
 
-    fn get_specialized(&self, pos: usize) -> Option<&Type> {
+    fn find_by_pos(&self, pos: usize) -> Option<&Type> {
         self.items.get(pos)?.as_ref()
     }
 

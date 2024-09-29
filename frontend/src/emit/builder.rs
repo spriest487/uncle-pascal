@@ -4,16 +4,20 @@ pub mod scope;
 mod test;
 
 use self::scope::*;
+use crate::ast as syn;
 use crate::emit::metadata::*;
-use crate::emit::module_builder::{FunctionDeclKey, FunctionDefKey, ModuleBuilder};
+use crate::emit::module_builder::FunctionDeclKey;
+use crate::emit::module_builder::FunctionDefKey;
+use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
-use common::span::Span;
-use common::span::Spanned;
-use crate::ast as syn;
 use crate::typ as typ;
 use crate::typ::Specializable;
+use crate::typ::Symbol;
+use crate::typ::TypeArgList;
 use crate::typ::SYSTEM_UNIT_NAME;
+use common::span::Span;
+use common::span::Spanned;
 use ir_lang::*;
 use std::borrow::Cow;
 use std::fmt;
@@ -84,6 +88,10 @@ impl<'m> Builder<'m> {
             type_args: Some(type_args),
             ..self
         }
+    }
+    
+    pub fn specialize_name(&self, name: &Symbol, args: &TypeArgList) -> Symbol {
+        self.module.specialize_name(name, args)
     }
 
     pub fn translate_variant_case<'ty>(

@@ -21,6 +21,7 @@ use crate::emit::IROptions;
 use crate::typ::ast::specialize_func_decl;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
+use crate::typ::specialize_generic_name;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
@@ -356,14 +357,14 @@ impl ModuleBuilder {
     // this call reserves us a function ID
     pub fn translate_method_impl(
         &mut self,
-        mut owning_ty: typ::Type,
+        owning_ty: typ::Type,
         method: Ident,
         type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         // while we can't pass type args to an interface method call, we can call one in a
         // context where the self-type is a generic that needs resolving before codegen
-        if let Some(args) = &type_args {
-            owning_ty = owning_ty.substitute_type_args(args);
+        if let Some(_args) = &type_args {
+            // owning_ty = owning_ty.substitute_type_args(args);
             unimplemented!("check if this makes sense");
         }
 
@@ -617,6 +618,12 @@ impl ModuleBuilder {
 
             typ::Type::Any => ir::Type::RcPointer(ir::VirtualTypeID::Any),
         }
+    }
+
+    pub fn specialize_name(&self, name: &typ::Symbol, args: &typ::TypeArgList) -> typ::Symbol {
+        specialize_generic_name(name, args, &self.src_metadata)
+            .expect("specializing name failed")
+            .into_owned()
     }
 
     pub fn specialize_generic_type(

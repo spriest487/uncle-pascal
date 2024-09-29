@@ -1,6 +1,6 @@
-use crate::ast::IdentPath;
+use crate::ast::{IdentPath, TypeConstraint};
 use crate::ast::TypeDeclName;
-use crate::typ::{typecheck_type_params, Context, TypeArgsResolver};
+use crate::typ::{typecheck_type_params, Context, TypeArgsResolver, TypeParam};
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::Specializable;
@@ -73,10 +73,6 @@ impl Symbol {
 
                 let span = name_type_args.span().clone();
 
-                for arg in 0..args.len() {
-                    eprintln!("{}", args.get_specialized(arg).unwrap());
-                }
-                
                 Some(TypeArgList::new(items, span))
             });
 
@@ -115,6 +111,44 @@ impl Specializable for Symbol {
 
     fn name(&self) -> IdentPath {
         self.full_path.clone()
+    }
+
+    fn apply_type_args_by_name(self, params: &TypeParamList, args: &impl TypeArgsResolver) -> Self {
+        let sym_ty_args = match self.type_args {
+            Some(args_list) => {
+                let items = args_list.items
+                    .into_iter()
+                    .map(|arg| arg.apply_type_args_by_name(params, args));
+                
+                Some(TypeArgList::new(items, args_list.span))
+            },
+            None => None,
+        };
+        
+        let sym_ty_params = match self.type_params {
+            Some(params_list) => {
+                let items = params_list.items
+                    .into_iter()
+                    .map(|param| TypeParam {
+                        name: param.name,
+                        constraint: param.constraint
+                            .map(|c| TypeConstraint {
+                                is_ty: c.is_ty.apply_type_args_by_name(params, args),
+                                param_ident: c.param_ident,
+                                span: c.span,
+                            })
+                    });
+
+                Some(TypeParamList::new(items, params_list.span))
+            },
+            None => None,
+        };
+        
+        Symbol {
+            full_path: self.full_path,
+            type_args: sym_ty_args,
+            type_params: sym_ty_params,
+        }
     }
 }
 

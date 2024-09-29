@@ -25,7 +25,7 @@ fn main_unit_structs(module: &typ::ModuleUnit) -> Vec<Rc<StructDef>> {
 }
 
 #[test]
-fn specialize_class_has_correct_member_types() {
+fn specialize_class_has_correct_field_types() {
     let module = module_from_src(
         "specialize_class_has_correct_member_types",
         r"  
@@ -45,7 +45,7 @@ fn specialize_class_has_correct_member_types() {
     let span = Span::zero("test");
 
     let type_args = TypeArgList::new(vec![INT32.clone()], span.clone());
-    let result = specialize_struct_def(&tys[0], &type_args).unwrap();
+    let result = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
 
     assert!(result.name.type_args.is_some());
     let actual_type_args = result.name.type_args.as_ref().unwrap();
@@ -58,7 +58,7 @@ fn specialize_class_has_correct_member_types() {
 }
 
 #[test]
-fn specialize_class_has_multi_correct_member_types() {
+fn specialize_class_has_multi_correct_field_types() {
     let module = module_from_src(
         "specialize_class_has_multi_correct_member_types",
         r"
@@ -75,7 +75,7 @@ fn specialize_class_has_multi_correct_member_types() {
     let span = Span::zero("test");
 
     let type_args = TypeArgList::new(vec![INT32.clone(), BYTE.clone()], span.clone());
-    let result = specialize_struct_def(&tys[0], &type_args).unwrap();
+    let result = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
 
     assert!(result.name.type_args.is_some());
     let actual_type_args = result.name.type_args.as_ref().unwrap();
@@ -86,6 +86,115 @@ fn specialize_class_has_multi_correct_member_types() {
 
     assert_eq!(INT32, result.fields().nth(0).unwrap().ty);
     assert_eq!(BYTE, result.fields().nth(1).unwrap().ty);
+}
+
+#[test]
+fn specialized_class_has_correct_non_generic_method_types() {
+    let module = module_from_src(
+        "test",
+        r"  
+            implementation
+            uses System;
+            
+            type A[T] = class
+                function M1(i: UInt8): UInt8;
+            end;
+            
+            function A[T].M1(i: UInt8): UInt8; begin end;
+            end
+        ",
+    );
+
+    let tys = main_unit_structs(&module);
+
+    let generic_def = module.context.find_struct_def(&tys[0].name.full_path).unwrap();
+
+    let methods: Vec<_> = generic_def.methods().collect();
+    assert_eq!("test.A[T]", methods[0].params[0].ty.to_string());
+    assert_eq!("test.A[T]", methods[0].name.owning_ty.as_ref().unwrap().to_string());
+    assert_eq!(BYTE, methods[0].params[1].ty);
+    assert_eq!(BYTE, *methods[0].return_ty.as_ref().unwrap());
+
+    let type_args = TypeArgList::new(vec![INT32.clone()], builtin_span());
+    let specialized_def = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+
+    assert_eq!(1, specialized_def.name.type_args.as_ref().unwrap().len());
+    assert_eq!(INT32, specialized_def.name.type_args.as_ref().unwrap().items[0]);
+    
+    let methods: Vec<_> = specialized_def.methods().collect();
+    assert_eq!("test.A[System.Int32]", methods[0].name.owning_ty.as_ref().unwrap().to_string());
+    assert_eq!("test.A[System.Int32]", methods[0].params[0].ty.to_string());
+    assert_eq!(BYTE, methods[0].params[1].ty);
+    assert_eq!(BYTE, *methods[0].return_ty.as_ref().unwrap());
+}
+
+#[test]
+fn specialized_class_has_correct_method_types_using_class_ty_params() {
+    let module = module_from_src(
+        "test",
+        r"  
+            implementation
+            uses System;
+            
+            type A[T] = class
+                function M2(x: T): T;
+            end;
+            
+            function A[T].M2(x: T): T; begin end;
+            
+            end
+        ",
+    );
+
+    let tys = main_unit_structs(&module);
+    
+    let generic_def = module.context.find_struct_def(&tys[0].name.full_path).unwrap();
+    
+    let methods: Vec<_> = generic_def.methods().collect();
+    assert_eq!("test.A[T]", methods[0].params[0].ty.to_string());
+    assert_eq!("T", methods[0].params[1].ty.to_string());
+    assert_eq!("T", methods[0].return_ty.as_ref().unwrap().to_string());
+
+    let type_args = TypeArgList::new(vec![INT32.clone()], builtin_span());
+    let specialized_def = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+
+    let methods: Vec<_> = specialized_def.methods().collect();
+    assert_eq!("test.A[System.Int32]", methods[0].params[0].ty.to_string());
+    assert_eq!(INT32, methods[0].params[1].ty);
+    assert_eq!(INT32, *methods[0].return_ty.as_ref().unwrap());
+}
+
+#[test]
+fn specialized_class_has_correct_method_types_with_method_ty_params() {
+    let module = module_from_src(
+        "specialize_class_has_correct_method_types",
+        r"  
+            implementation
+            uses System;
+            
+            type A[T] = class
+                function M3[U](x: T; i: UInt8): U;
+            end;
+            
+            function A[T].M3[U](x: T; i: UInt8): U; begin end;
+            
+            end
+        ",
+    );
+
+    let tys = main_unit_structs(&module);
+
+    let type_args = TypeArgList::new(vec![INT32.clone()], builtin_span());
+    let specialized_def = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+
+    let self_ty = Type::class(specialized_def.name.clone());
+    let generic_u = Type::generic_param(builtin_ident("U"), 0);
+
+    let methods: Vec<_> = specialized_def.methods().collect();
+    assert_eq!(self_ty, methods[0].params[0].ty);
+    assert_eq!(INT32, methods[0].params[1].ty);
+    assert_eq!(BYTE, methods[0].params[2].ty);
+    assert_eq!(generic_u, *methods[0].return_ty.as_ref().unwrap());
 }
 
 #[test]
@@ -116,7 +225,7 @@ fn specialize_class_with_deep_params() {
 
     let type_args = TypeArgList::new(vec![INT32], span.clone());
 
-    let result = specialize_struct_def(&tys[1], &type_args).unwrap();
+    let result = specialize_struct_def(&tys[1], &type_args, &module.context).unwrap();
 
     let a_name = result.fields().nth(0).unwrap().ty.as_record().unwrap();
 
@@ -196,7 +305,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .next()
         .unwrap();
 
-    let a_int = specialize_struct_def(&a_class, &int_params)
+    let a_int = specialize_struct_def(&a_class, &int_params, &module.context)
         .map(|class| Type::Record(Box::new(class.name.clone())))
         .unwrap();
 

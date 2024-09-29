@@ -7,8 +7,8 @@ initialization
 
     WriteLn('len of x: ' + x.Length());
 
-    x.LinkedListAppend(123);
-    x.LinkedListAppend(456);
+    x.Append(123);
+    x.Append(456);
     
     WriteLn('len of x: ' + x.Length());
 

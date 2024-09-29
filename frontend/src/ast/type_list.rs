@@ -31,7 +31,7 @@ pub struct TypeList<Item> {
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
-    span: Span,
+    pub span: Span,
 }
 
 impl<Item> TypeList<Item> {

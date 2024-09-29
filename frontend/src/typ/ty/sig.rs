@@ -6,7 +6,7 @@ use crate::typ::ast::FunctionCallNoArgs;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
-use crate::typ::GenericError;
+use crate::typ::{GenericError, Specializable};
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
 use crate::typ::Type;
@@ -181,7 +181,7 @@ impl FunctionSig {
             let constraint_ty = &type_params[arg_pos].is_ty;
             
             let actual_ty = type_args
-                .get_specialized(arg_pos)
+                .find_by_pos(arg_pos)
                 .expect("already checked the length matches");
 
             if !actual_ty.match_constraint(constraint_ty, ctx) {
@@ -201,10 +201,53 @@ impl FunctionSig {
         ctx: &Context,
     ) -> GenericResult<Self> {
         self.validate_type_args(type_args, ctx)?;
+        
         let specialized_sig = self.substitute_type_args(type_args);
-
         Ok(specialized_sig)
     }
+    
+    pub fn apply_ty_args(&self, ty_params: &TypeParamList, args: &impl TypeArgsResolver) -> Self {
+        let params = self
+            .params
+            .iter()
+            .map(|sig_param| {
+                let ty = sig_param.ty
+                    .clone()
+                    .apply_type_args_by_name(ty_params, args);
+
+                FunctionParamSig {
+                    ty,
+                    ..sig_param.clone()
+                }
+            })
+            .collect();
+
+        let return_ty = self.return_ty
+            .clone()
+            .apply_type_args_by_name(ty_params, args);
+
+        let sig_ty_params = match &self.type_params {
+            Some(type_params) => {
+                let mut items = Vec::with_capacity(type_params.len());
+                for item in &type_params.items {
+                    items.push(FunctionSigTypeParam {
+                        is_ty: item
+                            .is_ty.clone()
+                            .apply_type_args_by_name(ty_params, args),
+                    });
+                }
+                Some(ast::TypeList::new(items, type_params.span().clone()))
+            },
+            None => None,
+        };
+
+        let sig = FunctionSig {
+            return_ty,
+            params,
+            type_params: sig_ty_params,
+        };
+        sig
+    } 
 
     pub fn substitute_type_args(&self, type_args: &impl TypeArgsResolver) -> Self {
         let params = self

@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::ast::Ident;
-use crate::typ::Context;
+use crate::typ::{Context, GenericError, GenericResult};
 use crate::typ::Type;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
@@ -10,6 +10,19 @@ use std::borrow::Cow;
 use std::fmt;
 
 pub type TypeParam = ast::TypeParam<Type>;
+
+impl TypeParam {
+    pub fn into_generic_param_ty(self, pos: usize) -> Type {
+        match self.constraint {
+            Some(constraint) => {
+                Type::generic_constrained_param(self.name, pos, constraint.is_ty)
+            },
+            None => {
+                Type::generic_param(self.name, pos)
+            },
+        }
+    }
+}
 
 pub type TypeArgList = ast::TypeArgList<Typed>;
 pub type TypeParamList = ast::TypeList<TypeParam>;
@@ -42,6 +55,22 @@ pub fn typecheck_type_params(
     Ok(TypeParamList::new(items, type_params.span().clone()))
 }
 
+pub fn validate_ty_args(args: &TypeArgList, params: &TypeParamList, ctx: &Context) -> GenericResult<()> {
+    for pos in 0..params.len() {
+        if let Some(constraint_ty) = &params[pos].constraint {
+            let ty_arg = &args.items[pos];
+            if !ty_arg.match_constraint(&constraint_ty.is_ty, ctx) {
+                return Err(GenericError::ConstraintNotSatisfied {
+                    is_not_ty: constraint_ty.is_ty.clone(),
+                    actual_ty: Some(ty_arg.clone()),
+                });
+            }
+        }
+    }
+    
+    Ok(())
+}
+
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct TypeParamType {
     pub name: Ident,
@@ -65,7 +94,7 @@ pub enum TypeArgsResult<'a> {
 pub trait TypeArgsResolver {
     fn resolve(&self, param: &TypeParamType) -> Cow<Type>;
 
-    fn get_specialized(&self, pos: usize) -> Option<&Type>;
+    fn find_by_pos(&self, pos: usize) -> Option<&Type>;
 
     fn len(&self) -> usize;
 }
@@ -73,12 +102,12 @@ pub trait TypeArgsResolver {
 impl TypeArgsResolver for TypeArgList {
     fn resolve(&self, param: &TypeParamType) -> Cow<Type> {
         let arg = self
-            .get_specialized(param.pos)
+            .find_by_pos(param.pos)
             .expect("resolving type param out of range");
         Cow::Borrowed(arg)
     }
 
-    fn get_specialized(&self, pos: usize) -> Option<&Type> {
+    fn find_by_pos(&self, pos: usize) -> Option<&Type> {
         self.items.get(pos)
     }
 

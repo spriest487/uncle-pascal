@@ -1,8 +1,7 @@
-use std::borrow::Cow;
-use crate::emit::typ::specialize_generic_name;
+use crate::emit::ir;
 use crate::emit::typ::TypePattern;
 use crate::emit::Builder;
-use crate::emit::ir;
+use std::borrow::Cow;
 
 pub struct PatternMatchBinding {
     pub name: String,
@@ -92,9 +91,7 @@ pub fn translate_pattern_match(
          } => {
             let variant = match builder.type_args() {
                 Some(args) => {
-                    let specialized = specialize_generic_name(variant, args)
-                        .expect("specializing name failed")
-                        .into_owned();
+                    let specialized = builder.specialize_name(variant, args);
                     Cow::Owned(specialized)
                 }
                 None => Cow::Borrowed(variant),

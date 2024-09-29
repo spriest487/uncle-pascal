@@ -9,13 +9,13 @@ use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
-use crate::typ::ast::{apply_func_decl_ty_args, const_eval_integer, TypedFunctionName};
-use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Field;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
+use crate::typ::ast::{apply_func_decl_named_ty_args, typecheck_expr};
+use crate::typ::ast::{const_eval_integer, TypedFunctionName};
 use crate::typ::builtin_span;
 use crate::typ::builtin_unit_path;
 use crate::typ::context;
@@ -94,6 +94,41 @@ impl Type {
     
     pub fn interface(name: impl Into<IdentPath>) -> Self {
         Type::Interface(Box::new(name.into()))
+    }
+    
+    pub fn generic_param(name: Ident, pos: usize) -> Type {
+        let ty_param_ty = TypeParamType {
+            name,
+            pos,
+            is_iface: None,
+        };
+        
+        Type::GenericParam(Box::new(ty_param_ty))
+    }
+    
+    pub fn pointer(self) -> Self {
+        Type::Pointer(Box::new(self))
+    }
+
+    pub fn array(self, dim: usize) -> Self {
+        Type::Array(Rc::new(ArrayType {
+            element_ty: self,
+            dim,
+        }))
+    }
+
+    pub fn dyn_array(self) -> Self {
+        Type::DynArray { element: Box::new(self) }
+    }
+
+    pub fn generic_constrained_param(name: Ident, pos: usize, is_iface: impl Into<Box<Type>>) -> Type {
+        let ty_param_ty = TypeParamType {
+            name,
+            pos,
+            is_iface: Some(is_iface.into()),
+        };
+
+        Type::GenericParam(Box::new(ty_param_ty))
     }
     
     pub fn struct_type(sym: impl Into<Symbol>, kind: StructKind) -> Self {
@@ -707,34 +742,33 @@ impl Type {
         }
     }
 
-    pub fn specialize_generic<'s, 'a, 'res>(
-        &'s self,
+    pub fn specialize_generic<'a, 'res>(
+        &'a self,
         args: &'a TypeArgList,
         ctx: &Context,
     ) -> GenericResult<Cow<'res, Self>>
     where
-        's: 'res,
         'a: 'res,
     {
         let specialized = match self {
             Type::GenericParam(type_param) => args.resolve(type_param),
 
             Type::Record(sym) => {
-                let sym = specialize_generic_name(&sym, args)?;
+                let sym = specialize_generic_name(&sym, args, ctx)?;
                 let record_ty = Type::Record(Box::new(sym.into_owned()));
 
                 Cow::Owned(record_ty)
             },
 
             Type::Class(sym) => {
-                let sym = specialize_generic_name(&sym, args)?;
+                let sym = specialize_generic_name(&sym, args, ctx)?;
                 let class_ty = Type::Class(Box::new(sym.into_owned()));
 
                 Cow::Owned(class_ty)
             },
 
             Type::Variant(variant) => {
-                let sym = specialize_generic_name(&variant, args)?;
+                let sym = specialize_generic_name(&variant, args, ctx)?;
                 let variant_ty = Type::Variant(Box::new(sym.into_owned()));
 
                 Cow::Owned(variant_ty)
@@ -955,6 +989,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
 pub fn specialize_generic_name<'a>(
     name: &'a Symbol,
     args: &TypeArgList,
+    ctx: &Context,
 ) -> GenericResult<Cow<'a, Symbol>> {
     let type_params = match name.type_params.as_ref() {
         None => return Ok(Cow::Borrowed(name)),
@@ -968,13 +1003,15 @@ pub fn specialize_generic_name<'a>(
             actual: args.len(),
         });
     }
+    
+    validate_ty_args(args, type_params, ctx)?;
 
     let type_args = if let Some(existing_args) = &name.type_args {
         let specialized_args = existing_args
             .items
             .iter()
             .cloned()
-            .map(|arg| arg.substitute_type_args(args));
+            .map(|arg| arg.apply_type_args_by_name(type_params, args));
 
         TypeArgList::new(specialized_args, existing_args.span().clone())
     } else {
@@ -1006,18 +1043,23 @@ pub fn specialize_generic_name<'a>(
 
 pub fn specialize_struct_def<'a>(
     generic_class: &Rc<StructDef>,
-    ty_args: &TypeArgList
+    ty_args: &TypeArgList,
+    ctx: &Context,
 ) -> GenericResult<Rc<StructDef>> {    
-    let specialized_name = specialize_generic_name(&generic_class.name, ty_args)?;
-    if *specialized_name == generic_class.name {
-        // not generic, return the original definition
-        return Ok(generic_class.clone());
-    }
+    let struct_ty_params = match &generic_class.name.type_params {
+        None => return Ok(generic_class.clone()),
+        Some(param_list) => param_list,
+    };
+    
+    let specialized_name = specialize_generic_name(&generic_class.name, ty_args, ctx)?
+        .into_owned();
 
     let implements: Vec<Type> = generic_class.implements
         .iter()
         .map(|implements_ty| {
-            let specialized = implements_ty.clone().substitute_type_args(ty_args);
+            let specialized = implements_ty
+                .clone()
+                .apply_type_args_by_name(struct_ty_params, ty_args);
             Ok(specialized)
         })
         .collect::<GenericResult<_>>()?;
@@ -1030,7 +1072,7 @@ pub fn specialize_struct_def<'a>(
                 ast::StructMember::Field(field) => {
                     let ty = field.ty
                         .clone()
-                        .substitute_type_args(ty_args);
+                        .apply_type_args_by_name(struct_ty_params, ty_args);
 
                     Ok(ast::StructMember::Field(ast::Field {
                         ty,
@@ -1039,23 +1081,32 @@ pub fn specialize_struct_def<'a>(
                 }
 
                 ast::StructMember::MethodDecl(generic_method) => {
-                    let mut method = apply_func_decl_ty_args(generic_method, ty_args);
-                    // specialize the owning type of all methods (currently the owning type will
-                    // always be the struct type itself, but let's specialize it properly just
-                    // for future proofing)
+                    let mut method = apply_func_decl_named_ty_args(
+                        generic_method.clone(),
+                        struct_ty_params,
+                        ty_args
+                    );
+
+                    // specialize the owning type of all methods
                     method.name = TypedFunctionName {
                         ident: method.name.ident.clone(),
                         span: method.name.span.clone(),
                         owning_ty: match &method.name.owning_ty {
                             Some(ty) => {
-                                let specialized = ty.clone().substitute_type_args(ty_args);
-                                Some(specialized)
+                                assert_eq!(
+                                    ty.full_path().as_ref(), 
+                                    Some(&generic_class.name.full_path), 
+                                    "owning type of a method must always be the type it's declared in"
+                                );
+
+                                Some(Type::struct_type(
+                                    specialized_name.clone(),
+                                    generic_class.kind
+                                ))
                             },
                             None => None,
                         },
                     };
-                    
-                    eprintln!("specialized {}: {} -> {}", specialized_name, generic_method.name, method.name);
 
                     Ok(ast::StructMember::MethodDecl(method))
                 }
@@ -1064,7 +1115,7 @@ pub fn specialize_struct_def<'a>(
         .collect::<GenericResult<_>>()?;
 
     Ok(Rc::new(StructDef {
-        name: specialized_name.into_owned(),
+        name: specialized_name,
         implements,
         members,
         span: generic_class.span.clone(),
@@ -1075,8 +1126,9 @@ pub fn specialize_struct_def<'a>(
 pub fn specialize_generic_variant(
     variant: &VariantDef,
     args: &TypeArgList,
+    ctx: &Context,
 ) -> GenericResult<VariantDef> {
-    let parameterized_name = specialize_generic_name(&variant.name, args)?;
+    let parameterized_name = specialize_generic_name(&variant.name, args, ctx)?;
 
     let cases: Vec<_> = variant
         .cases
@@ -1129,6 +1181,8 @@ pub trait Specializable {
             Some(self)
         }
     }
+
+    fn apply_type_args_by_name(self, params: &TypeParamList, args: &impl TypeArgsResolver) -> Self;
 }
 
 impl Specializable for Type {
@@ -1156,6 +1210,68 @@ impl Specializable for Type {
     fn name(&self) -> IdentPath {
         self.full_path()
             .expect("only types with full paths can be specialized")
+    }
+
+    /// Apply type a given set of type arguments to this type, with a parameter list indicating
+    /// which parameters we're providing matching arguments for.
+    /// e.g. in the method `Class[A].Method[B](a: A, b: B)`, there are two separate parameter
+    /// lists which a provided arg list of length 1 could satisfy
+    fn apply_type_args_by_name(self, params: &TypeParamList, args: &impl TypeArgsResolver) -> Self {
+        // callers should already have checked this
+        assert_eq!(params.len(), args.len(), "apply_type_args: params and args counts did not match");
+
+        match self {
+            Type::GenericParam(param) => {
+                // search by name is OK because in any scope where there's multiple levels of 
+                // generic params, the names of params must be unique between all param lists
+                params.items
+                    .iter()
+                    .position(|p| *p.name.name == *param.name.name)
+                    .and_then(|pos| args.find_by_pos(pos))
+                    .cloned()
+                    .unwrap_or_else(|| Type::GenericParam(param))
+            }
+            
+            Type::Record(name) => {
+                Type::record(name.apply_type_args_by_name(params, args))
+            }
+            
+            Type::Class(name) => {
+                Type::class(name.apply_type_args_by_name(params, args))
+            }
+            
+            Type::Variant(name) => {
+                Type::variant(name.apply_type_args_by_name(params, args))
+            }
+
+            Type::Function(sig) => {
+                let sig= sig.apply_ty_args(params, args);
+                Type::Function(Rc::new(sig))
+            }
+
+            Type::Pointer(deref_ty) => {
+                deref_ty
+                    .apply_type_args_by_name(params, args)
+                    .pointer()
+            }
+            
+            Type::Array(array_ty) => {
+                array_ty
+                    .element_ty
+                    .clone()
+                    .apply_type_args_by_name(params, args)
+                    .array(array_ty.dim)
+            }
+            
+            Type::DynArray { element, .. } => {
+                element
+                    .apply_type_args_by_name(params, args)
+                    .dyn_array()
+            }
+            
+            // non-generic types
+            other => other,
+        }
     }
 }
 

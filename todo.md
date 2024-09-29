@@ -23,5 +23,4 @@
 
 # todos
 
-* functiondecl.ident should be an enum of { FullName, MethodName }
-* QualifiedDeclName should be an enum of { Raw, Specialized }
+* undefined symbol checking can probably be moved to IR codegen rather than during typechecking 
