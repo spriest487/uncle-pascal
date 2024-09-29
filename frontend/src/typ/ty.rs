@@ -105,10 +105,6 @@ impl Type {
         
         Type::GenericParam(Box::new(ty_param_ty))
     }
-    
-    pub fn pointer(self) -> Self {
-        Type::Pointer(Box::new(self))
-    }
 
     pub fn array(self, dim: usize) -> Self {
         Type::Array(Rc::new(ArrayType {
@@ -1252,7 +1248,7 @@ impl Specializable for Type {
             Type::Pointer(deref_ty) => {
                 deref_ty
                     .apply_type_args_by_name(params, args)
-                    .pointer()
+                    .ptr()
             }
             
             Type::Array(array_ty) => {
