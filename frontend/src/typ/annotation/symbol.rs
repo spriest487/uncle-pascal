@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::ast::TypeDeclName;
 use crate::ast::IdentPath;
 use crate::typ::GenericError;
@@ -119,8 +120,8 @@ impl Specializable for Symbol {
         self.type_args.is_none()
     }
 
-    fn name(&self) -> IdentPath {
-        self.full_path.clone()
+    fn name(&self) -> Cow<IdentPath> {
+        Cow::Borrowed(&self.full_path)
     }
 
     fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {

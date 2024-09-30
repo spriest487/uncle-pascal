@@ -1418,7 +1418,7 @@ impl Context {
                 .unwrap_or(false);
                 
             if !has_def {
-                missing.push(ty_name.clone().child(method.name.ident.clone()));
+                missing.push(ty_name.clone().into_owned().child(method.name.ident.clone()));
             }
         }
         
@@ -1550,7 +1550,7 @@ fn ambig_paths<'a>(options: impl IntoIterator<Item = (Type, Ident)>) -> Vec<Iden
     options
         .into_iter()
         .map(|(of_ty, ident)| match of_ty.full_path() {
-            Some(base) => base.child(ident.clone()),
+            Some(base) => base.into_owned().child(ident.clone()),
             None => Path::new(ident.clone(), Vec::new()),
         })
         .collect()

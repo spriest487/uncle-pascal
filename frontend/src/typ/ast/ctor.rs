@@ -43,7 +43,8 @@ pub fn typecheck_object_ctor(
         .ok_or_else(|| TypeError::InvalidCtorType {
             ty: ctor_ty.clone(),
             span: span.clone(),
-        })?;
+        })?
+        .into_owned();
 
     if ctor_ty.is_unspecialized_generic() {
         let err = GenericError::CannotInferArgs {
@@ -211,7 +212,7 @@ fn find_ctor_ty(
                         .infer_specialized_from_hint(expect_ty)
                         .ok_or_else(|| {
                             TypeError::from_generic_err(GenericError::CannotInferArgs {
-                                target: GenericTarget::Name(raw_ty_name.clone()),
+                                target: GenericTarget::Name(raw_ty_name.into_owned()),
                                 hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
                             }, span.clone())
                         })?

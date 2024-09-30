@@ -136,16 +136,18 @@ impl Type {
         }
     }
     
-    // todo: this can return Cow
-    pub fn full_path(&self) -> Option<IdentPath> {
+    pub fn full_path(&self) -> Option<Cow<IdentPath>> {
         match self {
-            Type::Nothing => Some(builtin_unit_path("Nothing")),
-            Type::Any => Some(builtin_unit_path("Any")),
-            Type::MethodSelf => Some(IdentPath::from(Ident::new("Self", builtin_span()))),
-            Type::Primitive(p) => Some(builtin_unit_path(p.name())),
-            Type::Interface(iface) => Some((**iface).clone()),
-            Type::Record(class) | Type::Class(class) => Some(class.full_path.clone()),
-            Type::Variant(variant) => Some(variant.full_path.clone()),
+            Type::Nothing => Some(Cow::Owned(builtin_unit_path("Nothing"))),
+            Type::Any => Some(Cow::Owned(builtin_unit_path("Any"))),
+            Type::MethodSelf => Some(Cow::Owned(IdentPath::from(Ident::new("Self", builtin_span())))),
+            Type::Primitive(p) => Some(Cow::Owned(builtin_unit_path(p.name()))),
+            Type::Interface(iface) => Some(Cow::Borrowed(iface.as_ref())),
+            
+            Type::Record(decl_name) 
+            | Type::Class(decl_name) 
+            | Type::Variant(decl_name) => Some(Cow::Borrowed(&decl_name.full_path)),
+            
             _ => None,
         }
     }
@@ -1092,7 +1094,7 @@ pub fn specialize_struct_def<'a>(
                         owning_ty: match &method.name.owning_ty {
                             Some(ty) => {
                                 assert_eq!(
-                                    ty.full_path().as_ref(), 
+                                    ty.full_path().map(Cow::into_owned).as_ref(), 
                                     Some(&generic_class.name.full_path), 
                                     "owning type of a method must always be the type it's declared in"
                                 );
@@ -1155,10 +1157,10 @@ pub fn specialize_generic_variant(
 }
 
 pub trait Specializable {
-    type GenericID: PartialEq;
+    type GenericID: PartialEq + Clone;
 
     fn is_unspecialized_generic(&self) -> bool;
-    fn name(&self) -> Self::GenericID;
+    fn name(&self) -> Cow<Self::GenericID>;
 
     fn is_specialization_of(&self, generic: &Self) -> bool {
         generic.is_unspecialized_generic()
@@ -1205,7 +1207,7 @@ impl Specializable for Type {
         }
     }
 
-    fn name(&self) -> IdentPath {
+    fn name(&self) -> Cow<IdentPath> {
         self.full_path()
             .expect("only types with full paths can be specialized")
     }

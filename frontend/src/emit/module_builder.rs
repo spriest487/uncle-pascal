@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::ast::StructKind;
 use crate::ast::{FunctionParamMod, IdentPath};
 use crate::emit::build_closure_function_def;
@@ -160,7 +161,7 @@ impl ModuleBuilder {
         let specialized_decl = apply_func_decl_named_ty_args((*func_def.decl).clone(), &generic_ctx, &generic_ctx);
 
         let sig = typ::FunctionSig::of_decl(&specialized_decl);
-        let ns = key.decl_key.namespace();
+        let ns = key.decl_key.namespace().into_owned();
 
         let id = self.declare_func(&specialized_decl, ns, key.type_args.as_ref());
 
@@ -202,9 +203,10 @@ impl ModuleBuilder {
 
         let generic_ctx = GenericContext::empty();
 
-        let id = self.declare_func(&extern_decl, key.decl_key.namespace(), None);
-        let sig = typ::FunctionSig::of_decl(&extern_decl);
+        let decl_namespace = key.decl_key.namespace().into_owned();
+        let id = self.declare_func(&extern_decl, decl_namespace, None);
 
+        let sig = typ::FunctionSig::of_decl(&extern_decl);
         let return_ty = self.translate_type(&sig.return_ty, &generic_ctx);
 
         let param_tys = sig.params
@@ -308,7 +310,8 @@ impl ModuleBuilder {
         let ns = method_key
             .owning_ty
             .full_path()
-            .expect("instantiate_method: methods should only be generated for named types");
+            .expect("instantiate_method: methods should only be generated for named types")
+            .into_owned();
 
         let id = self.declare_func(&specialized_decl, ns, method_key.type_args.as_ref());
 
@@ -1092,10 +1095,11 @@ pub enum FunctionDeclKey {
 }
 
 impl FunctionDeclKey {
-    pub fn namespace(&self) -> IdentPath {
+    pub fn namespace(&self) -> Cow<IdentPath> {
         match self {
             FunctionDeclKey::Function { name } => name
                 .parent()
+                .map(Cow::Owned)
                 .expect("all functions must be declared within a namespace!"),
             
             FunctionDeclKey::VirtualMethod(key) => key

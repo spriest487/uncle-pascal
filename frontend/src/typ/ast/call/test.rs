@@ -7,7 +7,7 @@ use crate::pp::Preprocessor;
 use crate::typ::ast::call::overload::resolve_overload;
 use crate::typ::ast::call::overload::OverloadCandidate;
 use crate::typ::test::module_from_src;
-use crate::typ::Context;
+use crate::typ::{Context, Symbol};
 use crate::typ::FunctionSig;
 use crate::TokenTree;
 use common::span::Span;
@@ -58,7 +58,7 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
                     let decl_name = IdentPath::from(func.decl.name.ident.clone());
 
                     OverloadCandidate::Function {
-                        decl_name,
+                        decl_name: Symbol::from(decl_name),
                         sig: Rc::new(sig),
                     }
                 },
