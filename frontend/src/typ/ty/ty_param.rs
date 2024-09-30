@@ -84,14 +84,14 @@ impl fmt::Display for TypeParamType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TypeArgsResult<'a> {
     Specialized(&'a TypeArgList),
     Unspecialized(&'a ast::TypeList<TypeParam>),
     NotGeneric,
 }
 
-pub trait TypeArgsResolver {
+pub trait TypeArgResolver {
     fn resolve(&self, param: &TypeParamType) -> Cow<Type>;
 
     fn find_by_pos(&self, pos: usize) -> Option<&Type>;
@@ -99,7 +99,7 @@ pub trait TypeArgsResolver {
     fn len(&self) -> usize;
 }
 
-impl TypeArgsResolver for TypeArgList {
+impl TypeArgResolver for TypeArgList {
     fn resolve(&self, param: &TypeParamType) -> Cow<Type> {
         let arg = self
             .find_by_pos(param.pos)
@@ -111,6 +111,23 @@ impl TypeArgsResolver for TypeArgList {
         self.items.get(pos)
     }
 
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+}
+
+pub trait TypeParamContainer {
+    fn find_position(&self, name: &str) -> Option<usize>;
+    fn len(&self) -> usize;
+}
+
+impl TypeParamContainer for TypeParamList {
+    fn find_position(&self, name: &str) -> Option<usize> {
+        self.items
+            .iter()
+            .position(|param| param.name.name.as_str() == name)
+    }
+    
     fn len(&self) -> usize {
         self.items.len()
     }

@@ -11,8 +11,8 @@ use std::rc::Rc;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Def {
-    External(FunctionDecl),
-    Function(FunctionDef),
+    External(Rc<FunctionDecl>),
+    Function(Rc<FunctionDef>),
     Class(Rc<StructDef>),
     Interface(Rc<InterfaceDecl>),
     Variant(Rc<VariantDef>),

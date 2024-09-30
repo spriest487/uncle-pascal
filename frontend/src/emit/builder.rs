@@ -1,8 +1,10 @@
 pub mod scope;
+mod generic_context;
 
 #[cfg(test)]
 mod test;
 
+pub use self::generic_context::GenericContext;
 use self::scope::*;
 use crate::ast as syn;
 use crate::emit::metadata::*;
@@ -12,25 +14,22 @@ use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ as typ;
-use crate::typ::Specializable;
-use crate::typ::Symbol;
-use crate::typ::TypeArgList;
 use crate::typ::SYSTEM_UNIT_NAME;
+use crate::typ::{Specializable, Symbol};
 use common::span::Span;
-use common::span::Spanned;
 use ir_lang::*;
 use std::borrow::Cow;
 use std::fmt;
 use syn::Ident;
-use syn::IdentPath;
-use syn::TypeList;
 
 #[derive(Debug)]
 pub struct Builder<'m> {
     module: &'m mut ModuleBuilder,
 
-    //positional list of type args that can be used to reify types in the current context
-    type_args: Option<typ::TypeArgList>,
+    // positional list of type args that can be used to reify types in the current context
+    // during this stage we only need to be able to substitute args, we don't need to validate
+    // anything, so combining them into a single list and ignoring positions is OK
+    generic_context: GenericContext,
 
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
@@ -51,48 +50,37 @@ impl<'m> Builder<'m> {
 
         Self {
             module,
-            type_args: None,
-
+            
             instructions,
 
             // the EXIT label is always reserved, so start one after that
             next_label: Label(EXIT_LABEL.0 + 1),
-
             scopes: vec![Scope::new()],
 
             loop_stack: Vec::new(),
+
+            generic_context: GenericContext::new(),
         }
     }
 
     pub fn opts(&self) -> &IROptions {
         &self.module.opts()
     }
-
-    pub fn type_args(&self) -> Option<&typ::TypeArgList> {
-        self.type_args.as_ref()
-    }
-
-    pub fn with_type_args(self, type_args: typ::TypeArgList) -> Self {
-        let any_generic = type_args
-            .items
-            .iter()
-            .any(|a| a.is_generic_param() || a.is_unspecialized_generic());
-        if any_generic {
-            panic!(
-                "type args in a builder scope must be real types, got: [{}]",
-                type_args_to_string(&type_args)
-            );
-        }
-
-        Self {
-            type_args: Some(type_args),
-            ..self
-        }
+    
+    pub fn add_generic_context(&mut self, mut generic_context: GenericContext) {
+        self.generic_context.append(&mut generic_context);
     }
     
-    pub fn specialize_name(&self, name: &Symbol, args: &TypeArgList) -> Symbol {
-        self.module.specialize_name(name, args)
+    pub fn generic_context(&self) -> &GenericContext {
+        &self.generic_context
     }
+
+    // pub fn apply_ty_args<Generic>(&self, target: Generic) -> Generic
+    // where
+    //     Generic: Specializable,
+    // {
+    //     self.module.apply_ty_args(target, &self.generic_context, &self.generic_context)
+    // }
 
     pub fn translate_variant_case<'ty>(
         &'ty mut self,
@@ -118,25 +106,25 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_name(&mut self, name: &typ::Symbol) -> NamePath {
-        translate_name(name, self.type_args().cloned().as_ref(), self.module)
+        translate_name(name, &self.generic_context, self.module)
     }
 
     pub fn translate_class(&mut self, class_def: &typ::ast::StructDef) -> Struct {
-        translate_struct_def(class_def, self.type_args().cloned().as_ref(), self.module)
+        translate_struct_def(class_def, &self.generic_context, self.module)
     }
 
     pub fn translate_iface(&mut self, iface_def: &typ::ast::InterfaceDecl) -> Interface {
-        translate_iface(iface_def, self.type_args().cloned().as_ref(), self.module)
+        translate_iface(iface_def, &self.generic_context, self.module)
     }
 
     pub fn translate_type(&mut self, src_ty: &typ::Type) -> Type {
         self.module
-            .translate_type(src_ty, self.type_args().cloned().as_ref())
+            .translate_type(src_ty, &self.generic_context)
     }
 
     pub fn translate_dyn_array_struct(&mut self, element_ty: &typ::Type) -> TypeDefID {
         self.module
-            .translate_dyn_array_struct(element_ty, self.type_args().cloned().as_ref())
+            .translate_dyn_array_struct(element_ty, &self.generic_context)
     }
 
     pub fn translate_method_impl(
@@ -150,42 +138,47 @@ impl<'m> Builder<'m> {
 
     pub fn translate_func(
         &mut self,
-        func_name: IdentPath,
-        type_args: Option<typ::TypeArgList>,
+        func_name: &Symbol,
+        mut call_ty_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
-        // specialize type args for current context
-        let instance_type_args = match (type_args, self.type_args.as_ref()) {
-            (Some(func_ty_args), Some(current_ty_args)) => {
-                let items = func_ty_args
-                    .items
-                    .iter()
-                    .map(|arg| self.module.specialize_generic_type(arg, current_ty_args));
+        let mut call_generic_ctx = self.generic_context.clone();
+        if let Some(args_list) = &mut call_ty_args {
+            // specialize type args for current context
+            *args_list = args_list
+                .clone()
+                .map(|arg, _pos| self.module.apply_ty_args(
+                    arg,
+                    &self.generic_context,
+                    &self.generic_context
+                ));
 
-                Some(TypeList::new(items, func_ty_args.span().clone()))
-            },
+            let func_params = func_name.type_params
+                .as_ref()
+                .unwrap_or_else(|| panic!(
+                    "function reference {} with type arguments {} must be to a function with corresponding type params",
+                    func_name,
+                    args_list,
+                ));
+            call_generic_ctx.add_all(func_params, args_list);
+        }
 
-            (Some(func_ty_args), None) => Some(func_ty_args),
-
-            (None, ..) => None,
+        let mut key = FunctionDefKey {
+            type_args: call_ty_args,
+            decl_key: FunctionDeclKey::Function { name: func_name.full_path.clone() },
         };
 
-        let key = FunctionDefKey {
-            type_args: instance_type_args,
-            decl_key: FunctionDeclKey::Function { name: func_name },
-        };
-
-        self.module.instantiate_func(key)
+        self.module.instantiate_func(&mut key)
     }
 
     pub fn translate_func_ty(&mut self, func_sig: &typ::FunctionSig) -> TypeDefID {
         self.module
-            .translate_func_ty(func_sig, self.type_args.as_ref())
+            .translate_func_ty(func_sig, &self.generic_context)
     }
 
     pub fn build_closure_expr(&mut self, func: &typ::ast::AnonymousFunctionDef) -> Ref {
         let closure = self
             .module
-            .build_closure_instance(func, self.type_args.clone());
+            .build_closure_instance(func, &self.generic_context);
 
         if func.captures.len() == 0 {
             let static_closure = self.module.build_static_closure_instance(closure);
@@ -197,7 +190,9 @@ impl<'m> Builder<'m> {
     }
     
     pub fn build_function_closure(&mut self, func: &FunctionInstance) -> Ref {
-        let static_closure = self.module.build_func_static_closure_instance(func);
+        let static_closure = self
+            .module
+            .build_func_static_closure_instance(func, &self.generic_context);
 
         Ref::Global(GlobalRef::StaticClosure(static_closure.id))
     }
@@ -611,7 +606,7 @@ impl<'m> Builder<'m> {
             Ident::new(SYSTEM_UNIT_NAME, zero_span),
         ]);
 
-        let instance = self.module.instantiate_func(FunctionDefKey {
+        let instance = self.module.instantiate_func(&mut FunctionDefKey {
             decl_key: FunctionDeclKey::Function {
                 name: ident_path,
             },
@@ -1157,14 +1152,6 @@ impl<'m> Builder<'m> {
 
         self.append(Instruction::Jump { dest: EXIT_LABEL })
     }
-}
-
-fn type_args_to_string(args: &typ::TypeArgList) -> String {
-    args.items
-        .iter()
-        .map(|a| a.to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 pub fn jmp_exists(instructions: &[Instruction], to_label: Label) -> bool {

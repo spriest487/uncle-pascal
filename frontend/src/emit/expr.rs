@@ -226,7 +226,7 @@ pub fn translate_if_cond_stmt(
 fn is_string_class(class: &typ::Symbol) -> bool {
     class.full_path.len() == 2
         && class.full_path.first().name.as_str() == SYSTEM_UNIT_NAME
-        && class.full_path.last().name.as_str() == STRING_TYPE_NAME
+        && class.ident().name.as_str() == STRING_TYPE_NAME
 }
 
 pub fn literal_to_val(
@@ -360,7 +360,7 @@ pub fn translate_literal(
 fn translate_ident(ident: &Ident, annotation: &Typed, builder: &mut Builder) -> ir::Ref {
     match annotation {
         Typed::Function(func) => {
-            let func = builder.translate_func(func.ident.clone(), func.type_args.clone());
+            let func = builder.translate_func(&func.name, None);
             
             // references to functions by value are turned into references to the static
             // closure for that function

@@ -13,10 +13,11 @@ use derivative::*;
 use common::span::Span;
 use common::span::Spanned;
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct InterfaceMethodDecl<A: Annotation> {
-    pub decl: FunctionDecl<A>,
+    pub decl: Rc<FunctionDecl<A>>,
 }
 
 impl<A: Annotation> InterfaceMethodDecl<A> {
@@ -44,7 +45,7 @@ impl ParseSeq for InterfaceMethodDecl<Span> {
         }
 
         let decl = FunctionDecl::parse(tokens)?;
-        Ok(InterfaceMethodDecl { decl })
+        Ok(InterfaceMethodDecl { decl: Rc::new(decl) })
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {

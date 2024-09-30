@@ -1,3 +1,4 @@
+use crate::emit::builder::GenericContext;
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::translate_name;
 use crate::emit::typ;
@@ -5,10 +6,10 @@ use crate::emit::ir;
 
 pub fn translate_iface(
     iface_def: &typ::ast::InterfaceDecl,
-    type_args: Option<&typ::TypeArgList>,
+    generic_ctx: &GenericContext,
     module: &mut ModuleBuilder,
 ) -> ir::Interface {
-    let name = translate_name(&iface_def.name, type_args, module);
+    let name = translate_name(&iface_def.name, generic_ctx, module);
 
     // it needs to be declared to reference its own ID in the Self type
     let id = module.metadata_mut().declare_iface(&name);
@@ -23,7 +24,7 @@ pub fn translate_iface(
                 name: method.ident().to_string(),
                 return_ty: match &method.decl.return_ty {
                     Some(typ::Type::MethodSelf) => self_ty.clone(),
-                    Some(return_ty) => module.translate_type(return_ty, type_args),
+                    Some(return_ty) => module.translate_type(return_ty, generic_ctx),
                     None => ir::Type::Nothing,
                 },
                 params: method
@@ -32,7 +33,7 @@ pub fn translate_iface(
                     .iter()
                     .map(|param| match &param.ty {
                         typ::Type::MethodSelf => self_ty.clone(),
-                        param_ty => module.translate_type(param_ty, type_args),
+                        param_ty => module.translate_type(param_ty, generic_ctx),
                     })
                     .collect(),
             }

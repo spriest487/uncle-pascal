@@ -3,19 +3,18 @@ mod symbol;
 pub use symbol::*;
 
 use crate::ast::Annotation;
-use crate::ast::TypeList;
+use crate::ast::Ident;
 use crate::ast::IdentPath;
-use crate::typ::ast::{Expr, TypedFunctionName};
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
 use crate::typ::ast::OverloadCandidate;
+use crate::typ::ast::{Expr, TypedFunctionName};
 use crate::typ::result::*;
 use crate::typ::ty::*;
 use crate::typ::ValueKind;
-use crate::ast::Ident;
 use crate::IntConstant;
-use derivative::*;
 use common::span::*;
+use derivative::*;
 use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
@@ -53,7 +52,7 @@ pub struct OverloadTyped {
 }
 
 impl OverloadTyped {
-    pub fn method(iface_ty: Type, self_arg: Expr, decl: FunctionDecl, span: Span) -> Self {
+    pub fn method(iface_ty: Type, self_arg: Expr, decl: Rc<FunctionDecl>, span: Span) -> Self {
         let sig = Rc::new(FunctionSig::of_decl(&decl));
 
         Self {
@@ -144,9 +143,8 @@ impl From<MethodTyped> for Typed {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionTyped {
-    pub ident: IdentPath,
+    pub name: Symbol,
     pub sig: Rc<FunctionSig>,
-    pub type_args: Option<TypeList<Type>>,
     pub span: Span,
 }
 
@@ -209,7 +207,7 @@ impl From<ConstTyped> for Typed {
 #[derivative(Hash, Debug, PartialEq)]
 pub struct UfcsTyped {
     pub self_arg: Box<Expr>,
-    pub function_name: IdentPath,
+    pub function_name: Symbol,
     pub sig: Rc<FunctionSig>,
 
     #[derivative(Debug = "ignore")]
@@ -333,7 +331,7 @@ impl Typed {
 
             Typed::Const(const_val) => const_val.decl.as_ref(),
 
-            Typed::VariantCtor(ctor) => Some(ctor.variant_name.full_path.last()),
+            Typed::VariantCtor(ctor) => Some(ctor.variant_name.ident()),
         }
     }
 

@@ -6,31 +6,30 @@ use std::fmt::Formatter;
 use std::rc::Rc;
 
 use crate::ast::Ident;
-use crate::ast::IdentPath;
 use crate::typ::ast::FunctionDecl;
-use crate::typ::Context;
 use crate::typ::Decl;
 use crate::typ::FunctionSig;
 use crate::typ::NameResult;
 use crate::typ::Type;
+use crate::typ::{Context, Symbol};
 
 #[derive(Clone, Debug)]
 pub enum InstanceMethod {
     FreeFunction {
         /// fully-qualified function name, starting with the namespace the function is declared in
-        func_name: IdentPath,
+        func_name: Symbol,
         sig: Rc<FunctionSig>,
     },
     Method {
         owning_ty: Type,
-        decl: FunctionDecl,
+        decl: Rc<FunctionDecl>,
     },
 }
 
 impl InstanceMethod {
     pub fn ident(&self) -> &Ident {
         match self {
-            InstanceMethod::FreeFunction { func_name, .. } => func_name.last(),
+            InstanceMethod::FreeFunction { func_name, .. } => func_name.ident(),
             InstanceMethod::Method { decl, .. } => &decl.name.ident,
         }
     }
@@ -79,18 +78,22 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
             return;
         }
 
-        let sig = match decl {
-            Decl::Function { sig, .. } if sig.params.len() > 0 => sig.clone(),
+        // ignore decls that can't possible be called via UFCS since they have 0 params
+        let func_decl = match decl {
+            Decl::Function { decl, .. } if decl.params.len() > 0 => decl,
             _ => return,
         };
-        let self_param = &sig.params[0];
+        let self_param = &func_decl.params[0];
 
         if self_param.ty == *ty
             || (self_param.ty.contains_generic_params(ctx) && self_param.ty.same_decl_type(ty))
         {
+            let func_name = Symbol::from(decl_path.clone())
+                .with_ty_params(func_decl.type_params.clone());
+            
             methods.push(InstanceMethod::FreeFunction {
-                func_name: decl_path.clone(),
-                sig: sig.clone(),
+                func_name,
+                sig: Rc::new(FunctionSig::of_decl(func_decl)),
             })
         }
     });

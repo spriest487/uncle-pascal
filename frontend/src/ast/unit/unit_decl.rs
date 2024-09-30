@@ -12,6 +12,7 @@ use common::{
     span::{Span, Spanned},
 };
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Visibility {
@@ -21,8 +22,8 @@ pub enum Visibility {
 
 #[derive(Clone, Debug)]
 pub enum UnitDecl<A: Annotation> {
-    FunctionDecl { decl: FunctionDecl<A> },
-    FunctionDef { def: FunctionDef<A> },
+    FunctionDecl { decl: Rc<FunctionDecl<A>> },
+    FunctionDef { def: Rc<FunctionDef<A>> },
     Type { decl: TypeDecl<A> },
     Uses { decl: UseDecl },
     GlobalBinding { decl: GlobalBinding<A> },

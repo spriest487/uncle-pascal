@@ -1,3 +1,5 @@
+use crate::ast::IdentPath;
+use crate::emit::builder::GenericContext;
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::syn;
 use crate::emit::typ;
@@ -14,7 +16,6 @@ impl NamePathExt for NamePath {
     fn from_decl(name: typ::Symbol, builder: &ModuleBuilder) -> Self {
         let path_parts = name
             .full_path
-            .into_parts()
             .into_iter()
             .map(|ident| ident.to_string());
 
@@ -56,9 +57,11 @@ impl NamePathExt for NamePath {
 
 pub fn translate_name(
     name: &typ::Symbol,
-    type_args: Option<&typ::TypeArgList>,
+    generic_ctx: &GenericContext,
     module: &mut ModuleBuilder,
 ) -> NamePath {
+    let name = name.clone().apply_type_args_by_name(generic_ctx, generic_ctx);
+
     if name.is_unspecialized_generic() {
         panic!("can't translate unspecialized generic name: {}", name);
     }
@@ -72,21 +75,18 @@ pub fn translate_name(
         }
     }
 
-    let path = name
-        .full_path
-        .clone()
-        .into_parts()
-        .into_iter()
-        .map(|ident| ident.to_string())
-        .collect();
+    let path = IdentPath::to_string_path(&name.full_path)
+        .into_vec();
 
-    let type_args = name.type_args.as_ref().map(|name_type_args_list| {
-        name_type_args_list
-            .items
-            .iter()
-            .map(|arg| module.translate_type(arg, type_args))
-            .collect()
-    });
+    let type_args = name.type_args
+        .as_ref()
+            .map(|name_type_args_list| {
+            name_type_args_list
+                .items
+                .iter()
+                .map(|arg| module.translate_type(arg, generic_ctx))
+                .collect()
+        });
 
     NamePath {
         path,

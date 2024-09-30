@@ -6,12 +6,12 @@ use crate::typ::ast::FunctionCallNoArgs;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
-use crate::typ::{GenericError, Specializable};
+use crate::typ::{GenericError, Specializable, TypeParamContainer};
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
 use crate::typ::Type;
 use crate::typ::TypeArgList;
-use crate::typ::TypeArgsResolver;
+use crate::typ::TypeArgResolver;
 use crate::typ::TypeParamList;
 use crate::typ::Typed;
 use crate::typ::{Context, TypeParam};
@@ -156,7 +156,7 @@ impl FunctionSig {
     /// of args provided, and that each arg passes the constraints for its corresponding param
     pub fn validate_type_args(
         &self,
-        type_args: &impl TypeArgsResolver,
+        type_args: &impl TypeArgResolver,
         ctx: &Context,
     ) -> GenericResult<()> {
         let expected_type_args_len = match self.type_params.as_ref() {
@@ -197,7 +197,7 @@ impl FunctionSig {
 
     pub fn specialize_generic(
         &self,
-        type_args: &impl TypeArgsResolver,
+        type_args: &impl TypeArgResolver,
         ctx: &Context,
     ) -> GenericResult<Self> {
         self.validate_type_args(type_args, ctx)?;
@@ -206,7 +206,7 @@ impl FunctionSig {
         Ok(specialized_sig)
     }
     
-    pub fn apply_ty_args(&self, ty_params: &TypeParamList, args: &impl TypeArgsResolver) -> Self {
+    pub fn apply_ty_args(&self, ty_params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         let params = self
             .params
             .iter()
@@ -249,7 +249,7 @@ impl FunctionSig {
         sig
     } 
 
-    pub fn substitute_type_args(&self, type_args: &impl TypeArgsResolver) -> Self {
+    pub fn substitute_type_args(&self, type_args: &impl TypeArgResolver) -> Self {
         let params = self
             .params
             .iter()

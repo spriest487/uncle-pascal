@@ -1,20 +1,19 @@
+use crate::ast;
+use crate::ast::Ident;
+use crate::ast::{FunctionName, TypeList};
 use crate::typ::ast::call;
 use crate::typ::ast::check_implicit_conversion;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
-use crate::typ::{Context, NameError};
 use crate::typ::FunctionSig;
 use crate::typ::InstanceMethod;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
+use crate::typ::{Context, NameError, Symbol};
 use common::span::Span;
 use common::span::Spanned;
-use crate::ast;
-use crate::ast::{FunctionName, TypeList};
-use crate::ast::Ident;
-use crate::ast::IdentPath;
 use std::fmt;
 use std::rc::Rc;
 
@@ -27,13 +26,13 @@ pub struct Overload {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum OverloadCandidate {
     Function {
-        decl_name: IdentPath,
+        decl_name: Symbol,
         sig: Rc<FunctionSig>,
     },
     Method {
         iface_ty: Type,
         ident: Ident,
-        decl: FunctionDecl,
+        decl: Rc<FunctionDecl>,
         sig: Rc<FunctionSig>,
     },
 }

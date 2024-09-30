@@ -112,7 +112,7 @@ fn typecheck_unit_func_def(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<UnitDecl> {
-    let func_def = typecheck_func_def(func_def, ctx)?;
+    let func_def = Rc::new(typecheck_func_def(func_def, ctx)?);
     let func_decl = &func_def.decl;
     let func_name = &func_decl.name;
 
@@ -125,7 +125,7 @@ fn typecheck_unit_func_def(
             let func_name_path = IdentPath::from(func_name.ident.clone());
             if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name_path) {
                 let func_decl = &func_decl;
-                ctx.declare_function(func_name.ident().clone(), func_decl, visibility)?;
+                ctx.declare_function(func_name.ident().clone(), (**func_decl).clone(), visibility)?;
             }
 
             ctx.define_function(func_name.ident().clone(), func_def.clone())?;
@@ -141,14 +141,14 @@ fn typecheck_unit_func_decl(
     ctx: &mut Context,
 ) -> TypeResult<UnitDecl> {
     let name = func_decl.name.clone();
-    let func_decl = typecheck_func_decl(func_decl, false, ctx)?;
+    let func_decl = Rc::new(typecheck_func_decl(func_decl, false, ctx)?);
 
     assert!(
         func_decl.name.owning_ty.is_none(),
         "not yet implemented: can't forward-declare method impls"
     );
 
-    ctx.declare_function(name.ident().clone(), &func_decl, visibility)?;
+    ctx.declare_function(name.ident().clone(), func_decl.clone(), visibility)?;
 
     Ok(UnitDecl::FunctionDecl { decl: func_decl })
 }
@@ -194,7 +194,7 @@ fn typecheck_type_decl_item(
             let alias = typecheck_alias(full_name, alias_decl, ctx)?;
 
             ctx.declare_type(
-                alias.name.full_path.last().clone(),
+                alias.name.ident().clone(),
                 (*alias.ty).clone(),
                 visibility,
             )?;

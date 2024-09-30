@@ -1,11 +1,12 @@
+use crate::emit::builder::GenericContext;
 use crate::emit::ir;
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::syn;
 use crate::emit::typ;
 use crate::emit::FunctionInstance;
+use ir_lang::FunctionSig;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
-use ir_lang::FunctionSig;
 use syn::Ident;
 
 #[derive(Debug, Clone)]
@@ -39,7 +40,7 @@ impl fmt::Display for ClosureInstance {
 pub fn translate_closure_struct(
     identity: ir::ClosureIdentity,
     captures: &LinkedHashMap<Ident, typ::Type>,
-    type_args: Option<&typ::TypeArgList>,
+    generic_ctx: &GenericContext,
     module: &mut ModuleBuilder,
 ) -> ir::TypeDefID {
     let id = module.metadata_mut().reserve_new_struct();
@@ -59,7 +60,7 @@ pub fn translate_closure_struct(
     let mut field_id = ir::FieldID(ir::CLOSURE_PTR_FIELD.0 + 1);
 
     for (capture_name, capture_ty) in captures {
-        let ty = module.translate_type(capture_ty, type_args);
+        let ty = module.translate_type(capture_ty, generic_ctx);
 
         fields.insert(
             field_id,
@@ -87,7 +88,7 @@ pub fn translate_closure_struct(
 
 pub fn translate_sig(
     sig: &typ::FunctionSig,
-    type_args: Option<&typ::TypeArgList>,
+    generic_ctx: &GenericContext,
     module: &mut ModuleBuilder,
 ) -> FunctionSig {
     assert!(
@@ -95,10 +96,10 @@ pub fn translate_sig(
         "cannot create type for a generic function pointer"
     );
 
-    let return_ty = module.translate_type(&sig.return_ty, type_args);
+    let return_ty = module.translate_type(&sig.return_ty, generic_ctx);
     let mut param_tys = Vec::new();
     for param in &sig.params {
-        let mut ty = module.translate_type(&param.ty, type_args);
+        let mut ty = module.translate_type(&param.ty, generic_ctx);
         if param.is_by_ref() {
             ty = ty.ptr();
         }

@@ -327,7 +327,7 @@ fn typecheck_func_overload(
             let return_annotation = TypedValue {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
-                decl: Some(decl_name.last().clone()),
+                decl: Some(decl_name.ident().clone()),
                 value_kind: ValueKind::Temporary,
             }
             .into();
@@ -458,17 +458,20 @@ fn typecheck_ufcs_call(
         span,
         ctx,
     )?;
+    
+    let func_sym = ufcs_call.function_name
+        .clone()
+        .with_ty_args(specialized_call_args.type_args.clone());
 
     let func_annotation = FunctionTyped {
-        sig: Rc::new(specialized_call_args.sig.clone()),
-        ident: ufcs_call.function_name.clone(),
+        name: func_sym,
         span: span.clone(),
-        type_args: specialized_call_args.type_args.clone(),
+        sig: Rc::new(specialized_call_args.sig.clone()),
     }
     .into();
 
     // todo: this should construct a fully qualified path expr instead
-    let target = ast::Expr::Ident(ufcs_call.function_name.last().clone(), func_annotation);
+    let target = ast::Expr::Ident(ufcs_call.function_name.ident().clone(), func_annotation);
 
     let annotation = TypedValue {
         ty: specialized_call_args.sig.return_ty.clone(),

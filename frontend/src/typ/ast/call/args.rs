@@ -13,7 +13,7 @@ use crate::typ::GenericTarget;
 use crate::typ::GenericTypeHint;
 use crate::typ::Specializable;
 use crate::typ::Type;
-use crate::typ::TypeArgsResolver;
+use crate::typ::TypeArgResolver;
 use crate::typ::TypeArgsResult;
 use crate::typ::TypeParamType;
 use crate::typ::TypeError;
@@ -32,7 +32,7 @@ struct PartiallySpecializedTypeArgsList<'a> {
     items: &'a [Option<Type>],
 }
 
-impl<'a> TypeArgsResolver for PartiallySpecializedTypeArgsList<'a> {
+impl<'a> TypeArgResolver for PartiallySpecializedTypeArgsList<'a> {
     fn resolve(&self, param: &TypeParamType) -> Cow<Type> {
         match self.items.get(param.pos) {
             Some(Some(specialized_ty)) => Cow::Borrowed(specialized_ty),

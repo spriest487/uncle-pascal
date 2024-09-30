@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod test;
 
+use std::rc::Rc;
 use crate::ast;
 use crate::ast::Visibility;
 use crate::ast::{FunctionName, StructKind};
@@ -202,7 +203,7 @@ pub fn typecheck_iface(
 
         let method_decl = typecheck_func_decl(&method.decl, false, ctx)?;
 
-        methods.push(ast::InterfaceMethodDecl { decl: method_decl });
+        methods.push(ast::InterfaceMethodDecl { decl: Rc::new(method_decl) });
     }
 
     Ok(InterfaceDecl {

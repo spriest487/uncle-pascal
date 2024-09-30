@@ -1,13 +1,14 @@
 mod init;
 mod literal;
 
+use std::rc::Rc;
 use crate::ast;
 use crate::ast::FunctionCallNoArgs;
 pub use crate::typ::ast::call::typecheck_call;
 pub use crate::typ::ast::call::Invocation;
 use crate::typ::ast::cast::typecheck_cast_expr;
 use crate::typ::ast::const_eval::ConstEval;
-use crate::typ::ast::typecheck_bin_op;
+use crate::typ::ast::{typecheck_bin_op, FunctionDecl};
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_case_expr;
 use crate::typ::ast::typecheck_collection_ctor;
@@ -18,7 +19,7 @@ use crate::typ::ast::typecheck_match_expr;
 use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::typecheck_raise;
 use crate::typ::ast::typecheck_unary_op;
-use crate::typ::Context;
+use crate::typ::{Context, FunctionSig, Symbol};
 use crate::typ::Decl;
 use crate::typ::FunctionTyped;
 use crate::typ::NameError;
@@ -175,22 +176,24 @@ fn typecheck_ident(
         // that function, but we wrap it in the NoArgs type so it can be unwrapped if this
         // expression appears in an actual call node
         ScopeMemberRef::Decl {
-            value: Decl::Function { sig, .. },
+            value: Decl::Function { decl, .. },
             parent_path,
             ..
-        } if sig.should_call_noargs_in_expr(expect_ty, &Type::Nothing) => {
+        } if should_call_noargs_in_expr(decl, expect_ty, &Type::Nothing) => {
             let annotation = TypedValue {
                 decl: None,
                 span: span.clone(),
-                ty: sig.return_ty.clone(),
+                ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
                 value_kind: ValueKind::Temporary,
             };
+            
+            let func_sym = Symbol::from(parent_path.to_namespace().child(ident.clone()))
+                .with_ty_params(decl.type_params.clone());
 
             let func_annotation = FunctionTyped {
-                ident: parent_path.to_namespace().child(ident.clone()),
-                sig: sig.clone(),
+                name: func_sym,
+                sig: Rc::new(FunctionSig::of_decl(decl)),
                 span: span.clone(),
-                type_args: None,
             };
 
             let call = ast::Call::FunctionNoArgs(FunctionCallNoArgs {
@@ -220,6 +223,11 @@ fn typecheck_ident(
     }
 }
 
+fn should_call_noargs_in_expr(decl: &FunctionDecl, expect_ty: &Type, self_arg_ty: &Type) -> bool {
+    let sig = FunctionSig::of_decl(decl);
+    sig.should_call_noargs_in_expr(expect_ty, self_arg_ty)
+}
+
 pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> Typed {
     match member {
         ScopeMemberRef::Decl {
@@ -245,7 +253,7 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
         .into(),
 
         ScopeMemberRef::Decl {
-            value: Decl::Function { sig, .. },
+            value: Decl::Function { decl, .. },
             ref parent_path,
             key,
         } => {
@@ -253,13 +261,15 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
                 panic!("empty path for decl {}", key);
             }
 
+            // the named version of the function never has type args, the caller will have
+            // to specialize the expr to add some
+            let func_sym = Symbol::from(parent_path.to_namespace().child(key.clone()))
+                .with_ty_params(decl.type_params.clone());
+
             FunctionTyped {
                 span,
-                ident: parent_path.to_namespace().child(key.clone()),
-                sig: sig.clone(),
-                // the named version of the function never has type args, the caller will have
-                // to specialize the expr to add some
-                type_args: None,
+                name: func_sym,
+                sig: Rc::new(FunctionSig::of_decl(decl)),
             }
             .into()
         },

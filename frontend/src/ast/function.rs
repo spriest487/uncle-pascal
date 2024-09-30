@@ -32,6 +32,7 @@ use common::TracedError;
 use derivative::*;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {
@@ -447,7 +448,7 @@ const LOCAL_INIT_DECL_OPERATOR: Operator = Operator::Equals;
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Hash, PartialEq, Debug)]
 pub struct FunctionDef<A: Annotation = Span> {
-    pub decl: FunctionDecl<A>,
+    pub decl: Rc<FunctionDecl<A>>,
 
     pub locals: Vec<FunctionLocalBinding<A>>,
 
@@ -460,7 +461,10 @@ pub struct FunctionDef<A: Annotation = Span> {
 }
 
 impl FunctionDef<Span> {
-    pub fn parse_body_of_decl(decl: FunctionDecl<Span>, tokens: &mut TokenStream) -> ParseResult<Self> {
+    pub fn parse_body_of_decl(
+        decl: Rc<FunctionDecl<Span>>,
+        tokens: &mut TokenStream
+    ) -> ParseResult<Self> {
         let body_start_matcher = Self::match_body_start();
         
         let mut trailing_semicolon = false;

@@ -1,4 +1,4 @@
-use crate::emit::builder::jmp_exists;
+use crate::emit::builder::{jmp_exists, GenericContext};
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::syn;
 use crate::emit::syn::FunctionParamMod;
@@ -23,22 +23,37 @@ fn create_function_body_builder<'m>(
     module: &'m mut ModuleBuilder,
     type_params: Option<&typ::TypeParamList>,
     type_args: Option<typ::TypeArgList>,
+    debug_name: &str,
 ) -> Builder<'m> {
     match type_args {
         Some(type_args) => {
             let type_params = match type_params {
-                Some(params) if params.len() == type_args.len() => params,
-                Some(params) => panic!(
-                    "type args in function body don't match params! expected {}, got {}",
-                    params, type_args
-                ),
+                Some(params) => {
+                    if params.len() == type_args.len() {
+                        params
+                    } else {
+                        panic!(
+                            "type args in body of {} don't match params! expected {}, got {}",
+                            debug_name,
+                            params, 
+                            type_args
+                        )
+                    }
+                }
+
                 _ => panic!(
-                    "type args in function body don't match params! expected nothing, got {}",
+                    "type args in body of {} don't match params! expected nothing, got {}",
+                    debug_name,
                     type_args
                 ),
             };
+            
+            let mut generic_ctx = GenericContext::new();
+            generic_ctx.add_all(type_params, &type_args);
 
-            let mut builder = Builder::new(module).with_type_args(type_args.clone());
+            let mut builder = Builder::new(module);
+            builder.add_generic_context(generic_ctx);
+
             builder.comment("function def body with type args:");
             for (type_param, type_arg) in type_params.iter().zip(type_args.iter()) {
                 builder.comment(&format!("{} = {}", type_param, type_arg));
@@ -60,7 +75,12 @@ pub fn build_func_def(
     src_span: Span,
     debug_name: String,
 ) -> FunctionDef {
-    let mut body_builder = create_function_body_builder(module, def_type_params, def_type_args);
+    let mut body_builder = create_function_body_builder(
+        module,
+        def_type_params,
+        def_type_args,
+        &debug_name
+    );
 
     let return_ty = bind_function_return(def_return_ty, &mut body_builder);
 
@@ -100,8 +120,10 @@ pub fn build_func_static_closure_def(
             ident: Ident::new(&format!("P{index}"), src_span.clone()),
         })
         .collect::<Vec<_>>();
-
-    let mut body_builder = create_function_body_builder(module, None, None);
+    
+    let debug_name = format!("static closure def ({})", target_ir_func.debug_name());
+    
+    let mut body_builder = create_function_body_builder(module, None, None, &debug_name);
 
     let bind_return_ty = match &target_func.sig.return_ty {
         typ::Type::Nothing => None,
@@ -154,7 +176,7 @@ pub fn build_closure_function_def(
 ) -> FunctionDef {
     let closure_def = module.metadata().get_struct_def(closure_id).cloned().unwrap();
 
-    let mut body_builder = create_function_body_builder(module, None, None);
+    let mut body_builder = create_function_body_builder(module, None, None, &debug_name);
 
     let return_ty = bind_function_return(func_def.return_ty.as_ref(), &mut body_builder);
 
@@ -307,19 +329,6 @@ fn build_func_body(
     }
 
     instructions
-}
-
-pub fn translate_func_params(sig: &typ::FunctionSig, module: &mut ModuleBuilder) -> Vec<Type> {
-    sig.params
-        .iter()
-        .map(|sig_param| {
-            let param_ty = module.translate_type(&sig_param.ty, None);
-            match sig_param.modifier {
-                None => param_ty,
-                Some(FunctionParamMod::Var | FunctionParamMod::Out) => param_ty.ptr(),
-            }
-        })
-        .collect()
 }
 
 pub fn build_static_closure_impl(

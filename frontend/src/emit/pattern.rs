@@ -1,7 +1,7 @@
 use crate::emit::ir;
 use crate::emit::typ::TypePattern;
 use crate::emit::Builder;
-use std::borrow::Cow;
+use crate::typ::Specializable;
 
 pub struct PatternMatchBinding {
     pub name: String,
@@ -89,13 +89,7 @@ pub fn translate_pattern_match(
              data_binding,
              ..
          } => {
-            let variant = match builder.type_args() {
-                Some(args) => {
-                    let specialized = builder.specialize_name(variant, args);
-                    Cow::Owned(specialized)
-                }
-                None => Cow::Borrowed(variant),
-            };
+            let variant = variant.clone().apply_type_args_by_name(builder.generic_context(), builder.generic_context());
 
             let (struct_id, case_index, case_ty) =
                 builder.translate_variant_case(&variant, case);

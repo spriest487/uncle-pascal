@@ -9,7 +9,7 @@ use crate::Operator;
 use common::span::Span;
 use common::span::Spanned;
 use derivative::*;
-use std::fmt;
+use std::{fmt, vec};
 use std::fmt::Write;
 use std::rc::Rc;
 
@@ -107,10 +107,6 @@ impl<Part> Path<Part> {
         self.parts.iter()
     }
 
-    pub fn into_parts(self) -> Vec<Part> {
-        self.parts
-    }
-
     pub fn map<IntoPart: fmt::Debug>(self, f: impl FnMut(Part) -> IntoPart) -> Path<IntoPart> {
         Path {
             parts: self.parts.into_iter().map(f).collect(),
@@ -177,6 +173,15 @@ impl<Part: PartialEq> Path<Part> {
     pub fn is_parent_of(&self, other: &Self) -> bool {
         self.parts.len() < other.parts.len()
             && &other.parts[0..self.parts.len()] == self.parts.as_slice()
+    }
+}
+
+impl<Part> IntoIterator for Path<Part> {
+    type Item = Part;
+    type IntoIter = vec::IntoIter<Part>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.parts.into_iter()
     }
 }
 

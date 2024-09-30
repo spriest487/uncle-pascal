@@ -13,6 +13,7 @@ use common::span::Spanned;
 use derivative::*;
 pub use member::*;
 use std::fmt;
+use std::rc::Rc;
 
 #[cfg(test)]
 mod test;
@@ -58,7 +59,7 @@ impl<A: Annotation> StructDef<A> {
         })
     }
 
-    pub fn find_method(&self, by_ident: &Ident) -> Option<&FunctionDecl<A>> {
+    pub fn find_method(&self, by_ident: &Ident) -> Option<&Rc<FunctionDecl<A>>> {
         self.members.iter().find_map(|m| match m {
             StructMember::MethodDecl(decl) if decl.name.ident() == by_ident => Some(decl),
             _ => None,
@@ -74,7 +75,7 @@ impl<A: Annotation> StructDef<A> {
             })
     }
 
-    pub fn methods(&self) -> impl Iterator<Item=&FunctionDecl<A>> {
+    pub fn methods(&self) -> impl Iterator<Item=&Rc<FunctionDecl<A>>> {
         self.members
             .iter()
             .filter_map(|m| match m {

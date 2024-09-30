@@ -480,7 +480,7 @@ impl Type {
         }
     }
     
-    pub fn methods(&self, ctx: &Context) -> NameResult<Vec<FunctionDecl>> {
+    pub fn methods(&self, ctx: &Context) -> NameResult<Vec<Rc<FunctionDecl>>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
@@ -530,16 +530,18 @@ impl Type {
     pub fn methods_at(&self,
         ctx: &Context,
         at: &Span
-    ) -> TypeResult<Vec<FunctionDecl>> {
-        self.methods(ctx).map_err(|err| {
-            TypeError::from_name_err(err, at.clone())
-        })
+    ) -> TypeResult<Vec<Rc<FunctionDecl>>> {
+        self
+            .methods(ctx)
+            .map_err(|err| {
+                TypeError::from_name_err(err, at.clone())
+            })
     }
 
     pub fn get_method(&self,
         method: &Ident,
         ctx: &Context
-    ) -> NameResult<Option<FunctionDecl>> {
+    ) -> NameResult<Option<Rc<FunctionDecl>>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
@@ -694,7 +696,7 @@ impl Type {
     }
 
     // todo: error handling
-    pub fn substitute_type_args(self, args: &impl TypeArgsResolver) -> Self {
+    pub fn substitute_type_args(self, args: &impl TypeArgResolver) -> Self {
         if args.len() == 0 {
             return self;
         }
@@ -1078,7 +1080,7 @@ pub fn specialize_struct_def<'a>(
 
                 ast::StructMember::MethodDecl(generic_method) => {
                     let mut method = apply_func_decl_named_ty_args(
-                        generic_method.clone(),
+                        (**generic_method).clone(),
                         struct_ty_params,
                         ty_args
                     );
@@ -1104,7 +1106,7 @@ pub fn specialize_struct_def<'a>(
                         },
                     };
 
-                    Ok(ast::StructMember::MethodDecl(method))
+                    Ok(ast::StructMember::MethodDecl(Rc::new(method)))
                 }
             }
         })
@@ -1178,7 +1180,7 @@ pub trait Specializable {
         }
     }
 
-    fn apply_type_args_by_name(self, params: &TypeParamList, args: &impl TypeArgsResolver) -> Self;
+    fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self;
 }
 
 impl Specializable for Type {
@@ -1212,7 +1214,7 @@ impl Specializable for Type {
     /// which parameters we're providing matching arguments for.
     /// e.g. in the method `Class[A].Method[B](a: A, b: B)`, there are two separate parameter
     /// lists which a provided arg list of length 1 could satisfy
-    fn apply_type_args_by_name(self, params: &TypeParamList, args: &impl TypeArgsResolver) -> Self {
+    fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         // callers should already have checked this
         assert_eq!(params.len(), args.len(), "apply_type_args: params and args counts did not match");
 
@@ -1220,9 +1222,8 @@ impl Specializable for Type {
             Type::GenericParam(param) => {
                 // search by name is OK because in any scope where there's multiple levels of 
                 // generic params, the names of params must be unique between all param lists
-                params.items
-                    .iter()
-                    .position(|p| *p.name.name == *param.name.name)
+                params
+                    .find_position(param.name.name.as_str())
                     .and_then(|pos| args.find_by_pos(pos))
                     .cloned()
                     .unwrap_or_else(|| Type::GenericParam(param))

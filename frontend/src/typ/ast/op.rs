@@ -12,7 +12,7 @@ use crate::typ::ast::Call;
 use crate::typ::ast::Expr;
 use crate::typ::ast::MethodCall;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::Context;
+use crate::typ::{Context, STRING_CONCAT_FUNC_NAME, SYSTEM_UNIT_NAME};
 use crate::typ::FunctionSig;
 use crate::typ::FunctionTyped;
 use crate::typ::InstanceMember;
@@ -349,21 +349,21 @@ fn desugar_string_concat(
         )),
 
         _ => {
-            let system_path = IdentPath::from(Ident::new("System", span.clone()));
-            let concat_path = system_path.child(Ident::new("StringConcat", span.clone()));
-            let (concat_path, concat_sig) = ctx
+            let system_path = IdentPath::from(Ident::new(SYSTEM_UNIT_NAME, span.clone()));
+            let concat_path = system_path.child(Ident::new(STRING_CONCAT_FUNC_NAME, span.clone()));
+            let (concat_path, concat_decl) = ctx
                 .find_function(&concat_path)
                 .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
+            
+            let concat_sym = Symbol::from(concat_path.clone());
 
-            let concat_annotation = FunctionTyped {
-                ident: concat_path.clone(),
+            let concat_typed = FunctionTyped {
+                name: concat_sym.clone(),
                 span: span.clone(),
-                sig: concat_sig.clone(),
-                type_args: None,
-            }
-            .into();
+                sig: Rc::new(FunctionSig::of_decl(&concat_decl)),
+            };
 
-            let concat_func = ast::Expr::Ident(concat_path.last().clone(), concat_annotation);
+            let concat_func = ast::Expr::Ident(concat_path.last().clone(), concat_typed.into());
 
             let concat_call = ast::Call::Function(ast::FunctionCall {
                 annotation: annotation.clone(),
@@ -485,11 +485,11 @@ fn typecheck_member_of(
                     match resolve_no_args_overload(overloaded, expect_ty, &member_op.lhs) {
                         Some(OverloadCandidate::Function { decl_name, sig }) => {
                             let sig = sig.clone();
+                            
                             member_op.annotation = Typed::from(FunctionTyped {
-                                ident: decl_name.clone(),
+                                name: decl_name.clone(),
                                 sig: sig.clone(),
                                 span: member_op.span().clone(),
-                                type_args: None,
                             });
                             let call = Call::FunctionNoArgs(sig.new_no_args_function_call(Expr::from(member_op)));
                             Ok(Expr::from(call))

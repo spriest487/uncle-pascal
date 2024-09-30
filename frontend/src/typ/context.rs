@@ -60,7 +60,7 @@ pub enum InstanceMember {
         method: Ident,
     },
     UFCSCall {
-        func_name: IdentPath,
+        func_name: Symbol,
         sig: Rc<FunctionSig>,
     },
     Overloaded {
@@ -70,12 +70,12 @@ pub enum InstanceMember {
 
 #[derive(Clone, Debug)]
 pub enum TypeMember {
-    Method { decl: FunctionDecl },
+    Method { decl: Rc<FunctionDecl> },
 }
 
 #[derive(Clone, Debug, PartialEq)]
 struct MethodCollection {
-    methods: HashMap<Ident, Option<FunctionDef>>,
+    methods: HashMap<Ident, Option<Rc<FunctionDef>>>,
 }
 
 impl MethodCollection {
@@ -159,7 +159,7 @@ pub struct Context {
     method_defs: HashMap<Type, MethodCollection>,
 
     // builtin methods declarations for primitive types that can't be declared normally in code
-    primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, FunctionDecl>>,
+    primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, Rc<FunctionDecl>>>,
     
     // all primitives currently implement the same set of non-generic interfaces, so we can
     // just use this same list for all of them
@@ -265,7 +265,7 @@ impl Context {
         where F: FnOnce(&mut Context) -> TypeResult<T>,
     {
         let path_len = unit_path.as_slice().len();
-        let mut path_parts = unit_path.into_parts();
+        let mut path_parts = unit_path.into_vec();
 
         let mut unit_scopes = Vec::with_capacity(path_len);
         let mut part_path = Vec::with_capacity(path_len);
@@ -553,7 +553,7 @@ impl Context {
         iface: Rc<InterfaceDecl>,
         visibility: Visibility,
     ) -> TypeResult<()> {
-        let name = iface.name.full_path.last().clone();
+        let name = iface.name.ident().clone();
         let iface_ty = Type::Interface(Box::new(iface.name.full_path.clone()));
         self.declare_type(name.clone(), iface_ty, visibility)?;
 
@@ -674,18 +674,18 @@ impl Context {
     pub fn declare_function(
         &mut self,
         name: Ident,
-        func_decl: &FunctionDecl,
+        func_decl: Rc<FunctionDecl>,
         visibility: Visibility,
     ) -> TypeResult<()> {
         let decl = Decl::Function {
-            sig: FunctionSig::of_decl(func_decl).into(),
+            decl: func_decl.clone(),
             visibility,
         };
         
         self.declare(name.clone(), decl)?;
 
         if func_decl.external_src().is_some() {
-            let def = Def::External(func_decl.clone());
+            let def = Def::External(func_decl);
             self.define(name, def, |_| DefDeclMatch::Match, |_, _| unreachable!())?;
         }
 
@@ -735,7 +735,7 @@ impl Context {
     fn insert_method_def(
         &mut self,
         ty: Type,
-        def: FunctionDef
+        def: Rc<FunctionDef>
     ) -> NameResult<()> {
         let method = &def.decl.name.ident;
         
@@ -789,7 +789,7 @@ impl Context {
         }
     }
 
-    fn insert_method_def_entry(&mut self, ty: Type, def: FunctionDef) -> NameResult<()> {
+    fn insert_method_def_entry(&mut self, ty: Type, def: Rc<FunctionDef>) -> NameResult<()> {
         let methods = self
             .method_defs
             .entry(ty.clone())
@@ -820,7 +820,7 @@ impl Context {
     pub fn define_method(
         &mut self,
         ty: Type,
-        method_def: FunctionDef,
+        method_def: Rc<FunctionDef>,
     ) -> TypeResult<()> {
         let span = method_def.decl.span().clone();
         self
@@ -937,7 +937,7 @@ impl Context {
     pub fn define_function(
         &mut self,
         name: Ident,
-        def: FunctionDef,
+        def: Rc<FunctionDef>,
     ) -> TypeResult<()> {
         let sig = FunctionSig::of_decl(&def.decl);
 
@@ -945,8 +945,9 @@ impl Context {
         // since the implementation of an interface func can be in the implementation section, but the implementation
         // of an implementation func can't be in the interface section, since it comes last
         let is_func_decl = |decl: &Decl| match decl {
-            Decl::Function { sig: existing_sig, .. } => {
-                if sig != **existing_sig {
+            Decl::Function { decl: existing_decl, .. } => {
+                let existing_sig = FunctionSig::of_decl(existing_decl);
+                if sig != existing_sig {
                     DefDeclMatch::Mismatch
                 } else {
                     DefDeclMatch::Match
@@ -1181,16 +1182,16 @@ impl Context {
         }
     }
 
-    pub fn find_function(&self, name: &IdentPath) -> NameResult<(IdentPath, Rc<FunctionSig>)> {
+    pub fn find_function(&self, name: &IdentPath) -> NameResult<(IdentPath, Rc<FunctionDecl>)> {
         match self.find_path(name) {
             Some(ScopeMemberRef::Decl {
-                value: Decl::Function { sig, .. },
+                value: Decl::Function { decl, .. },
                 key,
                 ref parent_path,
                 ..
             }) => {
                 let func_path = Path::new(key.clone(), parent_path.keys().cloned());
-                Ok((func_path, sig.clone()))
+                Ok((func_path, decl.clone()))
             }
 
             Some(ScopeMemberRef::Decl { value: other, .. }) => {
@@ -1217,7 +1218,7 @@ impl Context {
     pub fn get_primitive_methods(
         &self, 
         primitive: Primitive
-    ) -> &LinkedHashMap<Ident, FunctionDecl> {
+    ) -> &LinkedHashMap<Ident, Rc<FunctionDecl>> {
         &self.primitive_methods[&primitive]
     }
 
@@ -1565,7 +1566,7 @@ fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident
 
             ufcs::InstanceMethod::FreeFunction { sig, func_name, .. } => {
                 let of_ty = sig.params.first().unwrap().ty.clone();
-                (of_ty.clone(), func_name.last().clone())
+                (of_ty.clone(), func_name.ident().clone())
             }
         })
         .collect()

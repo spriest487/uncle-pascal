@@ -15,11 +15,12 @@ use derivative::Derivative;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::rc::Rc;
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum StructMember<A: Annotation = Span> {
     Field(Field<A>),
-    MethodDecl(FunctionDecl<A>),
+    MethodDecl(Rc<FunctionDecl<A>>),
 }
 
 impl<A: Annotation> StructMember<A> {
@@ -30,7 +31,7 @@ impl<A: Annotation> StructMember<A> {
         }
     }
     
-    pub fn as_method(&self) -> Option<&FunctionDecl<A>> {
+    pub fn as_method(&self) -> Option<&Rc<FunctionDecl<A>>> {
         match self {
             StructMember::MethodDecl(method) => Some(method),
             _ => None,
@@ -55,7 +56,7 @@ impl<A: Annotation> From<Field<A>> for StructMember<A> {
 
 impl<A: Annotation> From<FunctionDecl<A>> for StructMember<A> {
     fn from(value: FunctionDecl<A>) -> Self {
-        StructMember::MethodDecl(value)
+        StructMember::MethodDecl(Rc::new(value))
     }
 }
 
@@ -150,7 +151,7 @@ fn parse_method_decl(tokens: &mut TokenStream, members: &mut Vec<StructMember>) 
     // these get parsed one at a time
     let decl = FunctionDecl::parse(tokens)?;
     
-    members.push(StructMember::MethodDecl(decl));
+    members.push(StructMember::from(decl));
     
     Ok(())
 }

@@ -1,9 +1,10 @@
-use crate::ast::{IdentPath, StructKind};
+use crate::ast::{FunctionParamMod, IdentPath};
+use crate::ast::StructKind;
 use crate::emit::build_closure_function_def;
 use crate::emit::build_func_def;
 use crate::emit::build_func_static_closure_def;
 use crate::emit::build_static_closure_impl;
-use crate::emit::builder::Builder;
+use crate::emit::builder::{Builder, GenericContext};
 use crate::emit::ir;
 use crate::emit::metadata::translate_closure_struct;
 use crate::emit::metadata::translate_iface;
@@ -14,14 +15,13 @@ use crate::emit::metadata::translate_variant_def;
 use crate::emit::metadata::ClosureInstance;
 use crate::emit::metadata::NamePathExt;
 use crate::emit::stmt::translate_stmt;
-use crate::emit::translate_func_params;
 use crate::emit::typ;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ::ast::specialize_func_decl;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
-use crate::typ::specialize_generic_name;
+use crate::typ::{specialize_generic_name, Specializable, TypeArgResolver, TypeArgsResult, TypeParamContainer};
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
@@ -107,7 +107,7 @@ impl ModuleBuilder {
         self.module.init.extend(unit_init);
     }
 
-    pub(crate) fn instantiate_func(&mut self, key: FunctionDefKey) -> FunctionInstance {
+    pub(crate) fn instantiate_func(&mut self, key: &FunctionDefKey) -> FunctionInstance {
         if let Some(cached_func) = self.translated_funcs.get(&key) {
             return cached_func.clone();
         }
@@ -116,11 +116,11 @@ impl ModuleBuilder {
             FunctionDeclKey::Function { name } => {
                 match self.src_metadata.find_def(&name).cloned() {
                     Some(typ::Def::Function(func_def)) => {
-                        self.instantiate_func_def(&func_def, key)
+                        self.instantiate_func_def(&func_def, key.clone())
                     },
 
                     Some(typ::Def::External(extern_decl)) => {
-                        self.instantiate_func_external(&extern_decl, key)
+                        self.instantiate_func_external(&extern_decl, key.clone())
                     },
 
                     _ => panic!("missing source def for function {}", name),
@@ -128,11 +128,11 @@ impl ModuleBuilder {
             },
 
             FunctionDeclKey::Method(method_key) => {
-                self.instantiate_method(method_key.clone())
+                self.instantiate_method(method_key)
             },
 
             FunctionDeclKey::VirtualMethod(virtual_key) => {
-                self.instantiate_virtual_method(virtual_key.clone())
+                self.instantiate_virtual_method(virtual_key)
             }
         }
     }
@@ -152,7 +152,7 @@ impl ModuleBuilder {
 
                 specialized.expect("function specialization must be valid after typechecking")
             },
-            None => func_def.decl.clone(),
+            None => (*func_def.decl).clone(),
         };
 
         let sig = typ::FunctionSig::of_decl(&specialized_decl);
@@ -200,11 +200,23 @@ impl ModuleBuilder {
             "external function must not be generic"
         );
 
+        let generic_ctx = GenericContext::new();
+
         let id = self.declare_func(&extern_decl, key.decl_key.namespace(), None);
         let sig = typ::FunctionSig::of_decl(&extern_decl);
 
-        let return_ty = self.translate_type(&sig.return_ty, None);
-        let param_tys = translate_func_params(&sig, self);
+        let return_ty = self.translate_type(&sig.return_ty, &generic_ctx);
+
+        let param_tys = sig.params
+            .iter()
+            .map(|sig_param| {
+                let param_ty = self.translate_type(&sig_param.ty, &generic_ctx);
+                match sig_param.modifier {
+                    None => param_ty,
+                    Some(FunctionParamMod::Var | FunctionParamMod::Out) => param_ty.ptr(),
+                }
+            })
+            .collect();
 
         let cached_func = FunctionInstance {
             id,
@@ -234,33 +246,39 @@ impl ModuleBuilder {
 
     fn instantiate_method(
         &mut self,
-        mut method_key: MethodDeclKey,
+        method_key: &MethodDeclKey,
     ) -> FunctionInstance {
-        let type_args = method_key.type_args.clone();
+        let mut type_args = method_key.type_args.clone();
         
-        if let Some(ty_args) = &type_args {
-            method_key.owning_ty = method_key
-                .owning_ty
-                .specialize_generic(ty_args, &self.src_metadata)
-                .expect("instantiate_method: illegal type specialization")
-                .into_owned();
-        } else if method_key.owning_ty.contains_generic_params(&self.src_metadata) {
-            panic!(
-                "instantiate_method: trying to instantiate method of unspecialized type {} without type args", 
-                method_key.owning_ty
-            )
-        }
-
+        let mut owning_ty = method_key.owning_ty.clone();
+        
+        // if the owning type is a parameterized generic, we'll need to instantiate the specialized
+        // def here, since only the type's generic version will be in the definition map
+        match &owning_ty {
+            typ::Type::Class(sym) if sym.type_args.is_some() => {
+                owning_ty = typ::Type::class(remove_and_append_ty_args(&mut type_args, (**sym).clone()));
+            }
+            typ::Type::Record(sym) if sym.type_args.is_some() => {
+                owning_ty = typ::Type::record(remove_and_append_ty_args(&mut type_args, (**sym).clone()));
+            }
+            typ::Type::Variant(sym) if sym.type_args.is_some() => {
+                owning_ty = typ::Type::variant(remove_and_append_ty_args(&mut type_args, (**sym).clone()));
+            }
+        
+            // nothing to do if the type isn't parameterized
+            _ => {
+                assert_eq!(TypeArgsResult::NotGeneric, owning_ty.type_args());
+            }
+        };
+        
         let method_def = self
             .src_metadata
             .find_method(
-                &method_key.owning_ty,
+                &owning_ty,
                 &method_key.method,
             )
             .cloned()
             .unwrap_or_else(|| {
-                // typechecking should have already ensured any specialization of a method
-                // has been defined somewhere
                 panic!("instantiate_method: missing method def: {}.{}", method_key.owning_ty, method_key.method)
             });
 
@@ -272,7 +290,7 @@ impl ModuleBuilder {
                 specialize_func_decl(&method_def.decl, ty_args, &self.src_metadata)
                     .expect("instantiate_method: illegal function specialization")
             },
-            None => method_def.decl.clone(),
+            None => (*method_def.decl).clone(),
         };
 
         let ns = method_key
@@ -290,7 +308,7 @@ impl ModuleBuilder {
         };
 
         let key = FunctionDefKey {
-            decl_key: FunctionDeclKey::Method(method_key),
+            decl_key: FunctionDeclKey::Method(method_key.clone()),
             type_args: type_args.clone(),
         };
         self.translated_funcs.insert(key, cached_func.clone());
@@ -312,8 +330,8 @@ impl ModuleBuilder {
         cached_func
     }
 
-    fn instantiate_virtual_method(&mut self, virtual_key: VirtualMethodKey) -> FunctionInstance {
-        let instance = self.instantiate_method(virtual_key.impl_method.clone());
+    fn instantiate_virtual_method(&mut self, virtual_key: &VirtualMethodKey) -> FunctionInstance {
+        let instance = self.instantiate_method(&virtual_key.impl_method);
 
         let iface_ty_name = virtual_key
             .iface_ty
@@ -336,18 +354,21 @@ impl ModuleBuilder {
                 let iface_meta = builder.translate_iface(&src_iface_def);
                 self.module.metadata.define_iface(iface_meta)
             });
+        
+        // virtual methods can't be generic
+        let generic_ctx = GenericContext::new();
 
-        let self_ty = self.translate_type(&virtual_key.impl_method.owning_ty.clone(), None);
+        let self_ty = self.translate_type(&virtual_key.impl_method.owning_ty.clone(), &generic_ctx);
         let method_name = (*virtual_key.impl_method.method.name).clone();
 
         self.module.metadata.impl_method(iface_id, self_ty, method_name, instance.id);
 
         let key = FunctionDefKey {
-            decl_key: FunctionDeclKey::VirtualMethod(virtual_key),
+            decl_key: FunctionDeclKey::VirtualMethod(virtual_key.clone()),
             type_args: None,
         };
 
-        self.translated_funcs.insert(key, instance.clone());
+        self.translated_funcs.insert(key.clone(), instance.clone());
 
         instance
     }
@@ -368,7 +389,7 @@ impl ModuleBuilder {
             unimplemented!("check if this makes sense");
         }
 
-        let key = FunctionDefKey {
+        let mut key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 owning_ty,
                 method,
@@ -380,7 +401,7 @@ impl ModuleBuilder {
         };
 
         // methods must always be present so make sure they're immediately instantiated
-        self.instantiate_func(key)
+        self.instantiate_func(&mut key)
     }
 
     pub fn declare_func(
@@ -404,8 +425,14 @@ impl ModuleBuilder {
                 Some(match type_args {
                     None => global_name,
                     Some(type_args) => {
+                        let mut generic_ctx = GenericContext::new();
+                        let params_list = func_decl.type_params
+                            .as_ref()
+                            .expect("function decl with type args must have type params");
+                        generic_ctx.add_all(params_list, type_args);
+                        
                         let types = type_args.iter()
-                            .map(|ty| self.translate_type(ty, Some(type_args)));
+                            .map(|ty| self.translate_type(ty, &generic_ctx));
 
                         global_name.with_ty_args(types)
                     },
@@ -421,12 +448,12 @@ impl ModuleBuilder {
         func_name: IdentPath,
         type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
-        let key = FunctionDefKey {
+        let mut key = FunctionDefKey {
             type_args,
             decl_key: FunctionDeclKey::Function { name: func_name },
         };
 
-        self.instantiate_func(key)
+        self.instantiate_func(&mut key)
     }
 
     pub fn insert_func(&mut self, id: ir::FunctionID, function: ir::Function) {
@@ -497,7 +524,7 @@ impl ModuleBuilder {
                             },
                         });
 
-                        self.instantiate_func(FunctionDefKey {
+                        self.instantiate_func(&mut FunctionDefKey {
                             decl_key: virtual_key,
                             type_args: None,
                         });
@@ -619,6 +646,17 @@ impl ModuleBuilder {
             typ::Type::Any => ir::Type::RcPointer(ir::VirtualTypeID::Any),
         }
     }
+    
+    pub fn apply_ty_args<Generic>(&self,
+        target: Generic,
+        params: &impl TypeParamContainer,
+        args: &impl TypeArgResolver
+    ) -> Generic 
+    where 
+        Generic: typ::Specializable,
+    {
+        target.apply_type_args_by_name(params, args)
+    } 
 
     pub fn specialize_name(&self, name: &typ::Symbol, args: &typ::TypeArgList) -> typ::Symbol {
         specialize_generic_name(name, args, &self.src_metadata)
@@ -637,16 +675,9 @@ impl ModuleBuilder {
     pub fn translate_type(
         &mut self,
         src_ty: &typ::Type,
-        type_args: Option<&typ::TypeArgList>,
+        generic_ctx: &GenericContext,
     ) -> ir::Type {
-        let src_ty = match type_args {
-            Some(current_ty_args) => {
-                let src_ty = src_ty.clone().substitute_type_args(current_ty_args);
-                src_ty
-            },
-
-            None => src_ty.clone(),
-        };
+        let src_ty = src_ty.clone().apply_type_args_by_name(generic_ctx, generic_ctx);
 
         if let Some(cached) = self.type_cache.get(&src_ty) {
             return cached.clone();
@@ -661,10 +692,10 @@ impl ModuleBuilder {
                 let ty = ir::Type::Variant(id);
                 self.type_cache.insert(src_ty.clone(), ty.clone());
 
-                let name_path = translate_name(&variant, type_args, self);
+                let name_path = translate_name(&variant, generic_ctx, self);
                 self.module.metadata.declare_struct(id, &name_path);
 
-                let variant_meta = translate_variant_def(&variant_def, type_args, self);
+                let variant_meta = translate_variant_def(&variant_def, generic_ctx, self);
 
                 self.module.metadata.define_variant(id, variant_meta);
                 ty
@@ -695,11 +726,11 @@ impl ModuleBuilder {
 
                 self.type_cache.insert(src_ty.clone(), ty.clone());
 
-                let name_path = translate_name(&name, type_args, self);
+                let name_path = translate_name(&name, generic_ctx, self);
 
                 self.module.metadata.declare_struct(id, &name_path);
 
-                let struct_meta = translate_struct_def(&def, type_args, self);
+                let struct_meta = translate_struct_def(&def, generic_ctx, self);
                 self.module.metadata.define_struct(id, struct_meta);
 
                 ty
@@ -711,13 +742,13 @@ impl ModuleBuilder {
                     .cloned()
                     .unwrap();
 
-                let iface_name = translate_name(&iface_def.name, type_args, self);
+                let iface_name = translate_name(&iface_def.name, generic_ctx, self);
                 let id = self.module.metadata.declare_iface(&iface_name);
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Interface(id));
 
                 self.type_cache.insert(src_ty, ty.clone());
 
-                let iface_meta = translate_iface(&iface_def, type_args, self);
+                let iface_meta = translate_iface(&iface_def, generic_ctx, self);
                 let def_id = self.module.metadata.define_iface(iface_meta);
                 assert_eq!(def_id, id);
 
@@ -725,7 +756,7 @@ impl ModuleBuilder {
             },
 
             typ::Type::DynArray { element } => {
-                let id = self.translate_dyn_array_struct(&element, type_args);
+                let id = self.translate_dyn_array_struct(&element, generic_ctx);
 
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(id));
                 self.type_cache.insert(src_ty, ty.clone());
@@ -738,7 +769,7 @@ impl ModuleBuilder {
                     return ir::Type::Function(id);
                 }
 
-                let ir_sig = translate_sig(&func_sig, type_args, self);
+                let ir_sig = translate_sig(&func_sig, generic_ctx, self);
                 let func_ty_id = self.define_func_ty((**func_sig).clone(), ir_sig);
 
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Closure(func_ty_id));
@@ -860,9 +891,9 @@ impl ModuleBuilder {
     pub fn translate_dyn_array_struct(
         &mut self,
         element_ty: &typ::Type,
-        type_args: Option<&typ::TypeArgList>,
+        generic_ctx: &GenericContext,
     ) -> ir::TypeDefID {
-        let element_ty = self.translate_type(element_ty, type_args);
+        let element_ty = self.translate_type(element_ty, generic_ctx);
 
         match self.module.metadata.find_dyn_array_struct(&element_ty) {
             Some(id) => id,
@@ -892,12 +923,12 @@ impl ModuleBuilder {
     pub fn translate_func_ty(
         &mut self,
         func_sig: &typ::FunctionSig,
-        type_args: Option<&typ::TypeArgList>,
+        generic_ctx: &GenericContext,
     ) -> ir::TypeDefID {
         let func_ty_id = match self.find_func_ty(&func_sig) {
             Some(id) => id,
             None => {
-                let ir_sig = translate_sig(func_sig, type_args, self);
+                let ir_sig = translate_sig(func_sig, generic_ctx, self);
                 self.define_func_ty(func_sig.clone(), ir_sig)
             },
         };
@@ -908,7 +939,7 @@ impl ModuleBuilder {
     pub fn build_closure_instance(
         &mut self,
         func: &typ::ast::AnonymousFunctionDef,
-        type_args: Option<typ::TypeArgList>,
+        generic_ctx: &GenericContext,
     ) -> ClosureInstance {
         let id = self.module.metadata.insert_func(None);
 
@@ -917,7 +948,7 @@ impl ModuleBuilder {
         // for the closure itself
         let func_ty_sig = typ::FunctionSig::of_anonymous_func(func);
 
-        let func_ty_id = self.translate_func_ty(&func_ty_sig, type_args.as_ref());
+        let func_ty_id = self.translate_func_ty(&func_ty_sig, generic_ctx);
 
         let closure_identity = ir::ClosureIdentity {
             virt_func_ty: func_ty_id,
@@ -928,7 +959,7 @@ impl ModuleBuilder {
         let closure_id = translate_closure_struct(
             closure_identity,
             &func.captures,
-            type_args.as_ref(),
+            generic_ctx,
             self
         );
 
@@ -948,16 +979,18 @@ impl ModuleBuilder {
         }
     }
 
-    pub fn build_func_static_closure_instance(&mut self, func: &FunctionInstance) -> &ir::StaticClosure {
+    pub fn build_func_static_closure_instance(&mut self,
+        func: &FunctionInstance,
+        generic_ctx: &GenericContext
+    ) -> &ir::StaticClosure {
         if let Some(existing) = self.module.metadata.get_static_closure(func.id) {
             return &self.module.static_closures[existing.0];
         }
 
         // function reference closures can never have a capture list or type args
         let captures = LinkedHashMap::default();
-        let type_args = None;
 
-        let func_ty_id = self.translate_func_ty(func.sig.as_ref(), type_args);
+        let func_ty_id = self.translate_func_ty(func.sig.as_ref(), generic_ctx);
 
         let ir_func = self.module.functions.get(&func.id)
             .expect("function passed to build_function_closure_instance must have been previously translated")
@@ -977,7 +1010,7 @@ impl ModuleBuilder {
         let closure_id = translate_closure_struct(
             closure_identity,
             &captures,
-            type_args,
+            generic_ctx,
             self
         );
 
@@ -1415,4 +1448,18 @@ fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::T
             target
         );
     }
+}
+
+fn remove_and_append_ty_args(
+    base: &mut Option<typ::TypeArgList>,
+    mut sym: typ::Symbol
+) -> typ::Symbol {
+    if let Some(mut sym_args) = sym.type_args.take() {
+        match base {
+            None => *base = Some(sym_args),
+            Some(existing) => existing.items.append(&mut sym_args.items),
+        }
+    }
+
+    sym
 }

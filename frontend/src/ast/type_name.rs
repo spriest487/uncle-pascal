@@ -313,7 +313,7 @@ impl TypeName {
     pub fn into_single_ident(self) -> Result<Ident, Self> {
         match self {
             TypeName::Ident(name) if name.is_single_ident() => {
-                Ok(name.ident.into_parts().remove(0))
+                Ok(name.ident.into_vec().remove(0))
             }
             other => Err(other)
         }

@@ -3,19 +3,20 @@ use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::translate_name;
 use crate::emit::typ;
 use common::span::Spanned;
+use crate::emit::builder::GenericContext;
 
 pub fn translate_variant_def(
     variant_def: &typ::ast::VariantDef,
-    type_args: Option<&typ::TypeArgList>,
+    generic_ctx: &GenericContext,
     module: &mut ModuleBuilder,
 ) -> ir::VariantDef {
-    let name_path = translate_name(&variant_def.name, type_args, module);
+    let name_path = translate_name(&variant_def.name, generic_ctx, module);
 
     let mut cases = Vec::new();
     for case in &variant_def.cases {
         let (case_ty, case_rc) = match case.data_ty.as_ref() {
             Some(data_ty) => {
-                let case_ty = module.translate_type(data_ty, type_args);
+                let case_ty = module.translate_type(data_ty, generic_ctx);
                 (Some(case_ty), data_ty.is_rc_reference())
             },
             None => (None, false),

@@ -2,9 +2,10 @@ use crate::emit::builder::Builder;
 use crate::emit::expr;
 use crate::emit::syn;
 use crate::emit::typ;
+use ir_lang::*;
 use syn::Ident;
 use typ::Typed;
-use ir_lang::*;
+use crate::typ::Specializable;
 
 fn translate_call_with_args(
     call_target: CallTarget,
@@ -125,7 +126,7 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
         syn::Call::Function(func_call) => build_func_call(
             &func_call.target,
             &func_call.args,
-            func_call.type_args.as_ref(),
+            func_call.type_args.clone(),
             builder,
         ),
 
@@ -149,13 +150,13 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
 fn build_func_call(
     target: &typ::ast::Expr,
     args: &[typ::ast::Expr],
-    type_args: Option<&typ::TypeArgList>,
+    call_ty_args: Option<typ::TypeArgList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
     match target.annotation() {
         // calling a function directly
         typ::Typed::Function(func) => {
-            let func = builder.translate_func(func.ident.clone(), type_args.cloned());
+            let func = builder.translate_func(&func.name, call_ty_args);
 
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
             let func_sig = func.sig;
@@ -166,7 +167,7 @@ fn build_func_call(
         },
 
         typ::Typed::UfcsFunction(func) => {
-            let func_instance = builder.translate_func(func.function_name.clone(), None);
+            let func_instance = builder.translate_func(&func.function_name, None);
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func_instance.id)));
             let func_sig = func_instance.sig;
 
@@ -184,7 +185,7 @@ fn build_func_call(
             // it's impossible to invoke a closure with type args, so the typechecker should
             // ensure this never happens
             assert!(
-                type_args.is_none(),
+                call_ty_args.is_none(),
                 "closure invocation cannot include type args"
             );
 
@@ -232,10 +233,9 @@ fn build_method_call(
     ty_args: Option<&typ::TypeArgList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let mut self_ty = self_ty.clone();
-    if let Some(builder_ty_args) = builder.type_args() {
-        self_ty = self_ty.clone().substitute_type_args(builder_ty_args);
-    }
+    let self_ty = self_ty
+        .clone()
+        .apply_type_args_by_name(builder.generic_context(), builder.generic_context());
 
     let self_ir_ty = builder.translate_type(&self_ty);
 
@@ -271,12 +271,8 @@ fn build_variant_ctor_call(
     variant_ctor: &typ::ast::VariantCtorCall,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let variant_ty = typ::Type::Variant(Box::new(variant_ctor.variant.clone()));
-
-    let variant_ty = match builder.type_args() {
-        Some(builder_type_args) => variant_ty.substitute_type_args(builder_type_args),
-        None => variant_ty,
-    };
+    let variant_ty = typ::Type::Variant(Box::new(variant_ctor.variant.clone()))
+        .apply_type_args_by_name(builder.generic_context(), builder.generic_context());
 
     let variant_name = variant_ty.as_variant().unwrap();
 

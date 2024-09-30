@@ -1,6 +1,6 @@
 use crate::ast::{IdentPath, TypeConstraint};
 use crate::ast::TypeDeclName;
-use crate::typ::{typecheck_type_params, Context, TypeArgsResolver, TypeParam};
+use crate::typ::{typecheck_type_params, Context, TypeArgResolver, TypeParam, TypeParamContainer};
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::Specializable;
@@ -22,9 +22,16 @@ pub struct Symbol {
 }
 
 impl Symbol {
-    pub fn with_ty_params(self, params: TypeParamList) -> Self {
+    pub fn with_ty_params(self, type_params: Option<TypeParamList>) -> Self {
         Self {
-            type_params: Some(params),
+            type_params,
+            ..self
+        }
+    }
+    
+    pub fn with_ty_args(self, type_args: Option<TypeArgList>) -> Self {
+        Self {
+            type_args,
             ..self
         }
     }
@@ -60,7 +67,7 @@ impl Symbol {
         }
     }
 
-    pub fn substitute_ty_args(self, args: &impl TypeArgsResolver) -> Self {
+    pub fn substitute_ty_args(self, args: &impl TypeArgResolver) -> Self {
         let new_args = self
             .type_args
             .as_ref()
@@ -113,7 +120,7 @@ impl Specializable for Symbol {
         self.full_path.clone()
     }
 
-    fn apply_type_args_by_name(self, params: &TypeParamList, args: &impl TypeArgsResolver) -> Self {
+    fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         let sym_ty_args = match self.type_args {
             Some(args_list) => {
                 let items = args_list.items

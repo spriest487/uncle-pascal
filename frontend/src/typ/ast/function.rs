@@ -408,7 +408,7 @@ fn validate_method(
             if *method_sig != method_decl_sig {
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
-                    decl: method_decl.span,
+                    decl: method_decl.span.clone(),
                     ident: owning_ty_name.clone().child(method_ident.clone()),
                 })
             } else {
@@ -480,6 +480,8 @@ pub fn typecheck_func_def(
         decl = apply_func_decl_ty_args(&decl, &implicit_ty_args);
     }
     
+    let decl = Rc::new(decl);
+    
     let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
 
     let body_env = FunctionBodyEnvironment {
@@ -495,7 +497,7 @@ pub fn typecheck_func_def(
             None => {
                 let find_existing_decl = ctx.find_function(&IdentPath::from(decl.name.ident().clone()));
                 if find_existing_decl.is_err() {
-                    ctx.declare_function(decl.name.ident().clone(), &decl, Visibility::Implementation)?;
+                    ctx.declare_function(decl.name.ident().clone(), decl.clone(), Visibility::Implementation)?;
                 }
             }
 

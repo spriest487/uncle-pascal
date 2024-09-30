@@ -35,6 +35,8 @@ pub const STRING_TYPE_NAME: &str = "String";
 const STRING_CHARS_FIELD: &str = "chars";
 const STRING_LEN_FIELD: &str = "len";
 
+pub const STRING_CONCAT_FUNC_NAME: &str = "StringConcat";
+
 pub const BUILTIN_FILENAME: &str = "<builtin>";
 
 pub fn builtin_span() -> Span {
@@ -122,7 +124,7 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
     ast::InterfaceDecl {
         name: builtin_disposable_name(),
         methods: vec![ast::InterfaceMethodDecl {
-            decl: ast::FunctionDecl {
+            decl: Rc::new(ast::FunctionDecl {
                 name: builtin_disposable_dispose_name(None),
                 // TODO: this shouldn't be optional, use unspecified type for parsed functions
                 return_ty: Some(Type::Nothing),
@@ -135,7 +137,7 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
                     span: builtin_span.clone(),
                 }],
                 span: builtin_span.clone(),
-            }
+            }),
         }],
         span: builtin_span,
     }
@@ -157,7 +159,7 @@ pub fn builtin_comparable_iface() -> ast::InterfaceDecl {
         name: builtin_comparable_name(),
         methods: vec![
             ast::InterfaceMethodDecl {
-                decl: builtin_comparable_compare_method(iface_ty, Type::MethodSelf),
+                decl: Rc::new(builtin_comparable_compare_method(iface_ty, Type::MethodSelf)),
             }
         ],
         span: builtin_span.clone(),
@@ -210,7 +212,7 @@ pub fn builtin_displayable_iface() -> ast::InterfaceDecl {
         name: builtin_displayable_name(),
         methods: vec![
             ast::InterfaceMethodDecl {
-                decl: builtin_displayable_display_method(iface_ty, Type::MethodSelf),
+                decl: Rc::new(builtin_displayable_display_method(iface_ty, Type::MethodSelf)),
             }
         ],
         span: builtin_span.clone(),
@@ -250,7 +252,7 @@ pub fn declare_builtin_ty(
     ty: Type,
     comparable: bool,
     displayable: bool
-) -> TypeResult<LinkedHashMap<Ident, FunctionDecl>> {
+) -> TypeResult<LinkedHashMap<Ident, Rc<FunctionDecl>>> {
     let builtin_span = builtin_span();
     
     let ident = Ident::new(name, builtin_span.clone());
@@ -261,15 +263,15 @@ pub fn declare_builtin_ty(
         let mut methods = LinkedHashMap::new();
         
         if displayable {
-            let display_method = builtin_displayable_display_method(ty.clone(), ty.clone());
-            ctx.declare_function(display_method.name.ident.clone(), &display_method, Visibility::Interface)?;
+            let display_method = Rc::new(builtin_displayable_display_method(ty.clone(), ty.clone()));
+            ctx.declare_function(display_method.name.ident.clone(), display_method.clone(), Visibility::Interface)?;
 
             methods.insert(display_method.name.ident.clone(), display_method);
         }
 
         if comparable {
-            let compare_method = builtin_comparable_compare_method(ty.clone(), ty.clone());
-            ctx.declare_function(compare_method.name.ident.clone(), &compare_method, Visibility::Interface)?;
+            let compare_method = Rc::new(builtin_comparable_compare_method(ty.clone(), ty.clone()));
+            ctx.declare_function(compare_method.name.ident.clone(), compare_method.clone(), Visibility::Interface)?;
 
             methods.insert(compare_method.name.ident.clone(), compare_method);
         }

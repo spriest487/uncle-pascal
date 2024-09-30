@@ -7,13 +7,14 @@ use ir_lang::*;
 use std::collections::HashMap;
 use syn::StructKind;
 use typ::layout::StructLayoutMember;
+use crate::emit::builder::GenericContext;
 
 pub fn translate_struct_def(
     struct_def: &typ::ast::StructDef,
-    type_args: Option<&typ::TypeArgList>,
+    generic_ctx: &GenericContext,
     module: &mut ModuleBuilder,
 ) -> Struct {
-    let name_path = translate_name(&struct_def.name, type_args, module);
+    let name_path = translate_name(&struct_def.name, generic_ctx, module);
 
     let mut fields = HashMap::new();
     let mut pad_run = 0;
@@ -32,7 +33,7 @@ pub fn translate_struct_def(
                 }
 
                 let name = member.ident.to_string();
-                let ty = module.translate_type(&member.ty, type_args);
+                let ty = module.translate_type(&member.ty, generic_ctx);
                 let rc = member.ty.is_rc_reference();
                 fields.insert(next_id, StructFieldDef { name: Some(name), ty, rc });
                 next_id.0 += 1;
