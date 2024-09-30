@@ -15,18 +15,22 @@ pub struct GenericContext {
 }
 
 impl GenericContext {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
             items: Vec::new(),
         }
     }
     
-    pub fn add_all(&mut self, params: &TypeParamList, args: &TypeArgList) {
+    pub fn new(params: &TypeParamList, args: &TypeArgList) -> Self {
         assert_eq!(params.len(), args.len());
         
+        let mut ctx = GenericContext::empty();
+        
         for (param, arg) in params.iter().zip(args.iter()) {
-            self.add(param.clone(), arg.clone());
+            ctx.add(param.clone(), arg.clone());
         }
+        
+        ctx
     }
     
     pub fn child_context(&self, params: &TypeParamList, args: &TypeArgList) -> Self {
@@ -51,7 +55,11 @@ impl GenericContext {
         self.items.append(&mut other.items);
     }
     
-    pub fn add(&mut self, param: TypeParam, arg: Type) {
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+    
+    fn add(&mut self, param: TypeParam, arg: Type) {
         self.items.push(ResolvedTypeArg {
             arg,
             param,
@@ -97,7 +105,7 @@ impl TypeParamContainer for GenericContext {
 
 impl fmt::Display for GenericContext {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "GenericContext(")?;
+        write!(f, "[")?;
         
         for i in 0..self.items.len() {
             if i > 0 {
@@ -112,6 +120,6 @@ impl fmt::Display for GenericContext {
             write!(f, " = {}", self.items[i].arg)?;
         }
         
-        write!(f, ")")
+        write!(f, "]")
     }
 }

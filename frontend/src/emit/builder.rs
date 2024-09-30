@@ -14,8 +14,8 @@ use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ as typ;
-use crate::typ::{TypeArgList, TypeParamList, SYSTEM_UNIT_NAME};
 use crate::typ::Symbol;
+use crate::typ::SYSTEM_UNIT_NAME;
 use common::span::Span;
 use ir_lang::*;
 use std::borrow::Cow;
@@ -59,7 +59,7 @@ impl<'m> Builder<'m> {
 
             loop_stack: Vec::new(),
 
-            generic_context: GenericContext::new(),
+            generic_context: GenericContext::empty(),
         }
     }
 
@@ -67,8 +67,9 @@ impl<'m> Builder<'m> {
         &self.module.opts()
     }
     
-    pub fn push_generic_context(&mut self, params: &TypeParamList, args: &TypeArgList) {
-        self.generic_context = self.generic_context.child_context(params, args);
+    pub fn with_generic_ctx(mut self, ctx: GenericContext) -> Self {
+        self.generic_context = ctx;
+        self
     }
     
     pub fn generic_context(&self) -> &GenericContext {

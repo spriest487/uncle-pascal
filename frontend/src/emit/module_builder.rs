@@ -18,7 +18,7 @@ use crate::emit::stmt::translate_stmt;
 use crate::emit::typ;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
-use crate::typ::ast::{apply_func_decl_named_ty_args, specialize_func_decl};
+use crate::typ::ast::apply_func_decl_named_ty_args;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
 use crate::typ::{specialize_generic_name, Specializable, TypeArgResolver, TypeArgsResult, TypeParamContainer};
@@ -142,24 +142,27 @@ impl ModuleBuilder {
         func_def: &typ::ast::FunctionDef,
         key: FunctionDefKey,
     ) -> FunctionInstance {
-        let specialized_decl = match &key.type_args {
-            Some(key_type_args) => {
-                let specialized = specialize_func_decl(
-                    &func_def.decl,
-                    key_type_args,
-                    &self.src_metadata
-                );
+        let generic_ctx = match key.type_args.as_ref() {
+            Some(type_args) => {
+                let type_params = func_def
+                    .decl
+                    .type_params
+                    .as_ref()
+                    .expect("instantiate_func_def: function referenced with type args must have type params");
 
-                specialized.expect("function specialization must be valid after typechecking")
-            },
-            None => (*func_def.decl).clone(),
+                GenericContext::new(type_params, type_args)
+            }
+            None => {
+                GenericContext::empty()
+            }
         };
+        
+        let specialized_decl = apply_func_decl_named_ty_args((*func_def.decl).clone(), &generic_ctx, &generic_ctx);
 
         let sig = typ::FunctionSig::of_decl(&specialized_decl);
-        
         let ns = key.decl_key.namespace();
 
-        let id = self.declare_func(&func_def.decl, ns, key.type_args.as_ref());
+        let id = self.declare_func(&specialized_decl, ns, key.type_args.as_ref());
 
         // cache the function before translating the instantiation, because
         // it may recurse and instantiate itself in its own body
@@ -168,17 +171,14 @@ impl ModuleBuilder {
             sig: Rc::new(sig),
         };
 
-        let type_args = key.type_args.clone();
-
         self.translated_funcs.insert(key, cached_func.clone());
 
         let debug_name = specialized_decl.to_string();
         let ir_func = build_func_def(
             self,
-            &func_def.decl.params,
-            func_def.decl.type_params.as_ref(),
-            type_args,
-            func_def.decl.return_ty.as_ref(),
+            generic_ctx,
+            &specialized_decl.params,
+            specialized_decl.return_ty.as_ref(),
             &func_def.locals,
             &func_def.body,
             func_def.span.clone(),
@@ -200,7 +200,7 @@ impl ModuleBuilder {
             "external function must not be generic"
         );
 
-        let generic_ctx = GenericContext::new();
+        let generic_ctx = GenericContext::empty();
 
         let id = self.declare_func(&extern_decl, key.decl_key.namespace(), None);
         let sig = typ::FunctionSig::of_decl(&extern_decl);
@@ -250,7 +250,7 @@ impl ModuleBuilder {
     ) -> FunctionInstance {        
         let owning_ty = method_key.owning_ty.clone();
         
-        let mut generic_ctx = GenericContext::new();
+        let mut generic_ctx = GenericContext::empty();
         
         // if the owning type is a parameterized generic, we'll need to instantiate the specialized
         // def here, since only the type's generic version will be in the definition map
@@ -328,9 +328,8 @@ impl ModuleBuilder {
         let debug_name = specialized_decl.to_string();
         let ir_func = build_func_def(
             self,
+            generic_ctx,
             &generic_method_def.decl.params,
-            generic_method_def.decl.type_params.as_ref(),
-            method_key.type_args.clone(),
             generic_method_def.decl.return_ty.as_ref(),
             &generic_method_def.locals,
             &generic_method_def.body,
@@ -368,7 +367,7 @@ impl ModuleBuilder {
             });
         
         // virtual methods can't be generic
-        let generic_ctx = GenericContext::new();
+        let generic_ctx = GenericContext::empty();
 
         let self_ty = self.translate_type(&virtual_key.impl_method.owning_ty.clone(), &generic_ctx);
         let method_name = (*virtual_key.impl_method.method.name).clone();
@@ -437,12 +436,11 @@ impl ModuleBuilder {
                 Some(match type_args {
                     None => global_name,
                     Some(type_args) => {
-                        let mut generic_ctx = GenericContext::new();
                         let params_list = func_decl.type_params
                             .as_ref()
                             .expect("function decl with type args must have type params");
-                        generic_ctx.add_all(params_list, type_args);
-                        
+                        let generic_ctx = GenericContext::new(params_list, type_args);
+
                         let types = type_args.iter()
                             .map(|ty| self.translate_type(ty, &generic_ctx));
 

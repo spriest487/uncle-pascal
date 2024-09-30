@@ -1,4 +1,4 @@
-use crate::emit::builder::jmp_exists;
+use crate::emit::builder::{jmp_exists, GenericContext};
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::syn;
 use crate::emit::syn::FunctionParamMod;
@@ -21,51 +21,25 @@ pub struct FunctionInstance {
 
 fn create_function_body_builder<'m>(
     module: &'m mut ModuleBuilder,
-    type_params: Option<&typ::TypeParamList>,
-    type_args: Option<typ::TypeArgList>,
+    generic_ctx: GenericContext,
     debug_name: &str,
 ) -> Builder<'m> {
-    match type_args {
-        Some(type_args) => {
-            let type_params = match type_params {
-                Some(params) => {
-                    if params.len() == type_args.len() {
-                        params
-                    } else {
-                        panic!(
-                            "type args in body of {} don't match params! expected {}, got {}",
-                            debug_name,
-                            params, 
-                            type_args
-                        )
-                    }
-                }
-
-                _ => panic!(
-                    "type args in body of {} don't match params! expected nothing, got {}",
-                    debug_name,
-                    type_args
-                ),
-            };
-
-            let mut builder = Builder::new(module);
-            builder.push_generic_context(type_params, &type_args);
-
-            builder.comment("function def body with type args:");
-            for (type_param, type_arg) in type_params.iter().zip(type_args.iter()) {
-                builder.comment(&format!("{} = {}", type_param, type_arg));
-            }
-            builder
-        },
-        None => Builder::new(module),
+    let mut comment = format!("function def body of {}", debug_name);
+    if !generic_ctx.is_empty() {
+        comment += format!(" with generic context {}", generic_ctx).as_str();
     }
+
+    let mut builder = Builder::new(module)
+        .with_generic_ctx(generic_ctx);
+
+    builder.comment(&comment);
+    builder
 }
 
 pub fn build_func_def(
     module: &mut ModuleBuilder,
+    generic_ctx: GenericContext,
     def_params: &[typ::ast::FunctionParam],
-    def_type_params: Option<&typ::TypeParamList>,
-    def_type_args: Option<typ::TypeArgList>,
     def_return_ty: Option<&typ::Type>,
     def_locals: &[typ::ast::FunctionLocalBinding],
     def_body: &typ::ast::Block,
@@ -74,8 +48,7 @@ pub fn build_func_def(
 ) -> FunctionDef {
     let mut body_builder = create_function_body_builder(
         module,
-        def_type_params,
-        def_type_args,
+        generic_ctx,
         &debug_name
     );
 
@@ -120,7 +93,8 @@ pub fn build_func_static_closure_def(
     
     let debug_name = format!("static closure def ({})", target_ir_func.debug_name());
     
-    let mut body_builder = create_function_body_builder(module, None, None, &debug_name);
+    let generic_ctx = GenericContext::empty();
+    let mut body_builder = create_function_body_builder(module, generic_ctx, &debug_name);
 
     let bind_return_ty = match &target_func.sig.return_ty {
         typ::Type::Nothing => None,
@@ -173,7 +147,8 @@ pub fn build_closure_function_def(
 ) -> FunctionDef {
     let closure_def = module.metadata().get_struct_def(closure_id).cloned().unwrap();
 
-    let mut body_builder = create_function_body_builder(module, None, None, &debug_name);
+    let generic_ctx = GenericContext::empty();
+    let mut body_builder = create_function_body_builder(module, generic_ctx, &debug_name);
 
     let return_ty = bind_function_return(func_def.return_ty.as_ref(), &mut body_builder);
 
