@@ -1,5 +1,5 @@
 implementation
-uses System, Collections;
+uses System, System.Collections;
 
 initialization
     // not yet implemented

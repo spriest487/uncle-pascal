@@ -1,4 +1,4 @@
-unit PackingDemo;
+unit Packing;
 
 interface
 

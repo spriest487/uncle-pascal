@@ -1,4 +1,4 @@
-unit ObjectCtorDemo;
+unit ObjectCtor;
 
 implementation
 

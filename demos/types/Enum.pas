@@ -1,4 +1,4 @@
-unit EnumDemo;
+unit Enum;
 
 interface
 
