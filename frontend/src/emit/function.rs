@@ -1,4 +1,4 @@
-use crate::emit::builder::{jmp_exists, GenericContext};
+use crate::emit::builder::jmp_exists;
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::syn;
 use crate::emit::syn::FunctionParamMod;
@@ -47,12 +47,9 @@ fn create_function_body_builder<'m>(
                     type_args
                 ),
             };
-            
-            let mut generic_ctx = GenericContext::new();
-            generic_ctx.add_all(type_params, &type_args);
 
             let mut builder = Builder::new(module);
-            builder.add_generic_context(generic_ctx);
+            builder.push_generic_context(type_params, &type_args);
 
             builder.comment("function def body with type args:");
             for (type_param, type_arg) in type_params.iter().zip(type_args.iter()) {

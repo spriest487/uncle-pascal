@@ -11,7 +11,7 @@ use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::{typecheck_type_path, validate_ty_args, Specializable, TypeParam, TypeParamList};
+use crate::typ::typecheck_type_params;
 use crate::typ::Binding;
 use crate::typ::ClosureBodyEnvironment;
 use crate::typ::Context;
@@ -29,9 +29,18 @@ use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::typ::{string_type, TypeParamType};
-use crate::typ::{typecheck_type, GenericError, GenericTarget, TypeArgList};
-use crate::typ::typecheck_type_params;
+use crate::typ::string_type;
+use crate::typ::TypeParamType;
+use crate::typ::GenericTarget;
+use crate::typ::GenericError;
+use crate::typ::typecheck_type;
+use crate::typ::TypeArgList;
+use crate::typ::typecheck_type_path;
+use crate::typ::validate_ty_args;
+use crate::typ::Specializable;
+use crate::typ::TypeArgResolver;
+use crate::typ::TypeParam;
+use crate::typ::TypeParamContainer;
 use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
@@ -647,7 +656,11 @@ pub fn specialize_func_decl(
     Ok(decl)
 }
 
-pub fn apply_func_decl_named_ty_args(mut decl: FunctionDecl, params: &TypeParamList, args: &TypeArgList) -> FunctionDecl {
+pub fn apply_func_decl_named_ty_args(
+    mut decl: FunctionDecl,
+    params: &impl TypeParamContainer,
+    args: &impl TypeArgResolver
+) -> FunctionDecl {
     visit_type_refs(&mut decl, |ty| -> Result<(), ()> {
         *ty = ty.clone().apply_type_args_by_name(params, args);
         Ok(())

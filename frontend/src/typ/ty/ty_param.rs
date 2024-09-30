@@ -1,6 +1,6 @@
 use crate::ast;
-use crate::ast::Ident;
-use crate::typ::{Context, GenericError, GenericResult};
+use crate::ast::{Ident, TypeConstraint};
+use crate::typ::{Context, GenericError, GenericResult, Specializable};
 use crate::typ::Type;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
@@ -25,7 +25,32 @@ impl TypeParam {
 }
 
 pub type TypeArgList = ast::TypeArgList<Typed>;
+
+impl TypeArgList {
+    pub fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
+        self.map(|arg, _pos | arg.apply_type_args_by_name(params, args))
+    }
+}
+
 pub type TypeParamList = ast::TypeList<TypeParam>;
+
+impl TypeParamList {
+    pub fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
+        self
+            .map(|ty_param, _pos| {
+                let constraint = ty_param.constraint
+                    .map(|constraint| TypeConstraint {
+                        is_ty: constraint.is_ty.apply_type_args_by_name(params, args),
+                        ..constraint
+                    });
+
+                TypeParam {
+                    name: ty_param.name,
+                    constraint,
+                }
+            })
+    }
+}
 
 pub fn typecheck_type_params(
     type_params: &ast::TypeList<ast::TypeParam<ast::TypeName>>,

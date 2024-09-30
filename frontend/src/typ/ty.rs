@@ -1219,7 +1219,7 @@ impl Specializable for Type {
         assert_eq!(params.len(), args.len(), "apply_type_args: params and args counts did not match");
 
         match self {
-            Type::GenericParam(param) => {
+            Type::GenericParam(param) => {                
                 // search by name is OK because in any scope where there's multiple levels of 
                 // generic params, the names of params must be unique between all param lists
                 params

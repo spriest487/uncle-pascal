@@ -1,5 +1,5 @@
-use crate::ast::{FunctionParamMod, IdentPath};
 use crate::ast::StructKind;
+use crate::ast::{FunctionParamMod, IdentPath};
 use crate::emit::build_closure_function_def;
 use crate::emit::build_func_def;
 use crate::emit::build_func_static_closure_def;
@@ -18,7 +18,7 @@ use crate::emit::stmt::translate_stmt;
 use crate::emit::typ;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
-use crate::typ::ast::specialize_func_decl;
+use crate::typ::ast::{apply_func_decl_named_ty_args, specialize_func_decl};
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
 use crate::typ::{specialize_generic_name, Specializable, TypeArgResolver, TypeArgsResult, TypeParamContainer};
@@ -247,51 +247,63 @@ impl ModuleBuilder {
     fn instantiate_method(
         &mut self,
         method_key: &MethodDeclKey,
-    ) -> FunctionInstance {
-        let mut type_args = method_key.type_args.clone();
+    ) -> FunctionInstance {        
+        let owning_ty = method_key.owning_ty.clone();
         
-        let mut owning_ty = method_key.owning_ty.clone();
+        let mut generic_ctx = GenericContext::new();
         
         // if the owning type is a parameterized generic, we'll need to instantiate the specialized
         // def here, since only the type's generic version will be in the definition map
-        match &owning_ty {
+        let generic_owning_ty = match &owning_ty {
             typ::Type::Class(sym) if sym.type_args.is_some() => {
-                owning_ty = typ::Type::class(remove_and_append_ty_args(&mut type_args, (**sym).clone()));
+                generic_ctx.push(sym.type_params.as_ref().unwrap(), sym.type_args.as_ref().unwrap());
+                typ::Type::class(sym.clone().with_ty_args(None))
             }
             typ::Type::Record(sym) if sym.type_args.is_some() => {
-                owning_ty = typ::Type::record(remove_and_append_ty_args(&mut type_args, (**sym).clone()));
+                generic_ctx.push(sym.type_params.as_ref().unwrap(), sym.type_args.as_ref().unwrap());
+                typ::Type::record(sym.clone().with_ty_args(None))
             }
             typ::Type::Variant(sym) if sym.type_args.is_some() => {
-                owning_ty = typ::Type::variant(remove_and_append_ty_args(&mut type_args, (**sym).clone()));
+                generic_ctx.push(sym.type_params.as_ref().unwrap(), sym.type_args.as_ref().unwrap());
+                typ::Type::variant(sym.clone().with_ty_args(None))
             }
         
             // nothing to do if the type isn't parameterized
             _ => {
                 assert_eq!(TypeArgsResult::NotGeneric, owning_ty.type_args());
+                owning_ty.clone()
             }
         };
         
-        let method_def = self
+        let generic_method_def = self
             .src_metadata
             .find_method(
-                &owning_ty,
+                &generic_owning_ty,
                 &method_key.method,
             )
             .cloned()
             .unwrap_or_else(|| {
                 panic!("instantiate_method: missing method def: {}.{}", method_key.owning_ty, method_key.method)
             });
+        let generic_method_decl = generic_method_def.decl.as_ref();
 
         // the definition we found should already be correctly specialized - you can't pass
         // type args when calling an interface method, so the only thing that would change the method
         // being generated here is the self-type, which we already specialized
-        let specialized_decl = match &type_args {
-            Some(ty_args) => {
-                specialize_func_decl(&method_def.decl, ty_args, &self.src_metadata)
-                    .expect("instantiate_method: illegal function specialization")
-            },
-            None => (*method_def.decl).clone(),
+        if let Some(ty_args) = &method_key.type_args {
+            let decl_ty_params = generic_method_decl
+                .type_params
+                .as_ref()
+                .expect("instantiate_method: method called with type args must have type params");
+
+            generic_ctx.push(decl_ty_params, ty_args);
         };
+
+        let mut specialized_decl = apply_func_decl_named_ty_args(
+            generic_method_decl.clone(),
+            &generic_ctx,
+            &generic_ctx);
+        specialized_decl.name.owning_ty = Some(owning_ty);
 
         let ns = method_key
             .owning_ty
@@ -309,20 +321,20 @@ impl ModuleBuilder {
 
         let key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(method_key.clone()),
-            type_args: type_args.clone(),
+            type_args: method_key.type_args.clone(),
         };
         self.translated_funcs.insert(key, cached_func.clone());
 
         let debug_name = specialized_decl.to_string();
         let ir_func = build_func_def(
             self,
-            &method_def.decl.params,
-            method_def.decl.type_params.as_ref(),
-            type_args,
-            method_def.decl.return_ty.as_ref(),
-            &method_def.locals,
-            &method_def.body,
-            method_def.span().clone(),
+            &generic_method_def.decl.params,
+            generic_method_def.decl.type_params.as_ref(),
+            method_key.type_args.clone(),
+            generic_method_def.decl.return_ty.as_ref(),
+            &generic_method_def.locals,
+            &generic_method_def.body,
+            generic_method_def.span().clone(),
             debug_name,
         );
         self.module.functions.insert(id, ir::Function::Local(ir_func));
@@ -1448,18 +1460,4 @@ fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::T
             target
         );
     }
-}
-
-fn remove_and_append_ty_args(
-    base: &mut Option<typ::TypeArgList>,
-    mut sym: typ::Symbol
-) -> typ::Symbol {
-    if let Some(mut sym_args) = sym.type_args.take() {
-        match base {
-            None => *base = Some(sym_args),
-            Some(existing) => existing.items.append(&mut sym_args.items),
-        }
-    }
-
-    sym
 }

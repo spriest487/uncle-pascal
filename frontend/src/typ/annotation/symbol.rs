@@ -1,6 +1,5 @@
-use crate::ast::{IdentPath, TypeConstraint};
 use crate::ast::TypeDeclName;
-use crate::typ::{typecheck_type_params, Context, TypeArgResolver, TypeParam, TypeParamContainer};
+use crate::ast::IdentPath;
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::Specializable;
@@ -8,10 +7,14 @@ use crate::typ::Type;
 use crate::typ::TypeArgList;
 use crate::typ::TypeParamList;
 use crate::typ::TypeResult;
+use crate::typ::typecheck_type_params;
+use crate::typ::Context;
+use crate::typ::TypeArgResolver;
+use crate::typ::TypeParamContainer;
+use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
 use std::fmt;
-use crate::Ident;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Symbol {
@@ -121,35 +124,17 @@ impl Specializable for Symbol {
     }
 
     fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
-        let sym_ty_args = match self.type_args {
-            Some(args_list) => {
-                let items = args_list.items
-                    .into_iter()
-                    .map(|arg| arg.apply_type_args_by_name(params, args));
-                
-                Some(TypeArgList::new(items, args_list.span))
-            },
-            None => None,
-        };
-        
-        let sym_ty_params = match self.type_params {
-            Some(params_list) => {
-                let items = params_list.items
-                    .into_iter()
-                    .map(|param| TypeParam {
-                        name: param.name,
-                        constraint: param.constraint
-                            .map(|c| TypeConstraint {
-                                is_ty: c.is_ty.apply_type_args_by_name(params, args),
-                                param_ident: c.param_ident,
-                                span: c.span,
-                            })
-                    });
+        let sym_ty_args = self
+            .type_args
+            .map(|args_list| {
+                args_list.apply_type_args_by_name(params, args)
+            });
 
-                Some(TypeParamList::new(items, params_list.span))
-            },
-            None => None,
-        };
+        let sym_ty_params = self
+            .type_params
+            .map(|params_list| {
+                params_list.apply_type_args_by_name(params, args)
+            });
         
         Symbol {
             full_path: self.full_path,

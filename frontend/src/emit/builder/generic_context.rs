@@ -1,6 +1,13 @@
 use crate::typ;
-use crate::typ::{Type, TypeArgList, TypeArgResolver, TypeParam, TypeParamContainer, TypeParamList};
+use crate::typ::Type;
+use crate::typ::TypeArgList;
+use crate::typ::TypeArgResolver;
+use crate::typ::TypeParam;
+use crate::typ::TypeParamContainer;
+use crate::typ::TypeParamList;
 use std::borrow::Cow;
+use std::fmt;
+use std::fmt::Formatter;
 
 #[derive(Debug, Clone)]
 pub struct GenericContext {
@@ -20,6 +27,24 @@ impl GenericContext {
         for (param, arg) in params.iter().zip(args.iter()) {
             self.add(param.clone(), arg.clone());
         }
+    }
+    
+    pub fn child_context(&self, params: &TypeParamList, args: &TypeArgList) -> Self {
+        assert_eq!(params.len(), args.len());
+
+        let params = params.clone().apply_type_args_by_name(self, self);        
+        let args = args.clone().apply_type_args_by_name(self, self);
+
+        let mut child = self.clone();
+        for (param, arg) in params.items.into_iter().zip(args.items.into_iter()) {
+            child.add(param.clone(), arg.clone());
+        }
+        
+        child
+    }
+    
+    pub fn push(&mut self, params: &TypeParamList, args: &TypeArgList) {
+        *self = self.child_context(params, args);
     }
     
     pub fn append(&mut self, other: &mut Self) {
@@ -67,5 +92,26 @@ impl TypeParamContainer for GenericContext {
 
     fn len(&self) -> usize {
         self.items.len()
+    }
+}
+
+impl fmt::Display for GenericContext {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "GenericContext(")?;
+        
+        for i in 0..self.items.len() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            
+            write!(f, "{}", self.items[i].param.name)?;
+            if let Some(constraint) = &self.items[i].param.constraint {
+                write!(f, ": {}", constraint.is_ty)?;
+            }
+            
+            write!(f, " = {}", self.items[i].arg)?;
+        }
+        
+        write!(f, ")")
     }
 }

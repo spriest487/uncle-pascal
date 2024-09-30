@@ -14,8 +14,8 @@ use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ as typ;
-use crate::typ::SYSTEM_UNIT_NAME;
-use crate::typ::{Specializable, Symbol};
+use crate::typ::{TypeArgList, TypeParamList, SYSTEM_UNIT_NAME};
+use crate::typ::Symbol;
 use common::span::Span;
 use ir_lang::*;
 use std::borrow::Cow;
@@ -67,8 +67,8 @@ impl<'m> Builder<'m> {
         &self.module.opts()
     }
     
-    pub fn add_generic_context(&mut self, mut generic_context: GenericContext) {
-        self.generic_context.append(&mut generic_context);
+    pub fn push_generic_context(&mut self, params: &TypeParamList, args: &TypeArgList) {
+        self.generic_context = self.generic_context.child_context(params, args);
     }
     
     pub fn generic_context(&self) -> &GenericContext {
@@ -141,25 +141,9 @@ impl<'m> Builder<'m> {
         func_name: &Symbol,
         mut call_ty_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
-        let mut call_generic_ctx = self.generic_context.clone();
         if let Some(args_list) = &mut call_ty_args {
-            // specialize type args for current context
-            *args_list = args_list
-                .clone()
-                .map(|arg, _pos| self.module.apply_ty_args(
-                    arg,
-                    &self.generic_context,
-                    &self.generic_context
-                ));
-
-            let func_params = func_name.type_params
-                .as_ref()
-                .unwrap_or_else(|| panic!(
-                    "function reference {} with type arguments {} must be to a function with corresponding type params",
-                    func_name,
-                    args_list,
-                ));
-            call_generic_ctx.add_all(func_params, args_list);
+            *args_list = args_list.clone()
+                .apply_type_args_by_name(&self.generic_context, &self.generic_context);
         }
 
         let mut key = FunctionDefKey {
