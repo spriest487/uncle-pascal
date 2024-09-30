@@ -273,7 +273,7 @@ impl Typed {
             | Typed::Type(_, span) => (Type::Nothing, span),
 
             Typed::VariantCtor(ctor) => {
-                let variant_ty = Type::Variant(Box::new((*ctor.variant_name).clone()));
+                let variant_ty = Type::variant((*ctor.variant_name).clone());
 
                 (variant_ty, &ctor.span)
             },

@@ -554,7 +554,7 @@ impl Context {
         visibility: Visibility,
     ) -> TypeResult<()> {
         let name = iface.name.ident().clone();
-        let iface_ty = Type::Interface(Box::new(iface.name.full_path.clone()));
+        let iface_ty = Type::interface(iface.name.full_path.clone());
         self.declare_type(name.clone(), iface_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
@@ -575,7 +575,7 @@ impl Context {
     ) -> TypeResult<()> {
         let name = variant.name.ident().clone();
 
-        let variant_ty = Type::Variant(Box::new(variant.name.clone()));
+        let variant_ty = Type::variant(variant.name.clone());
         self.declare_type(name.clone(), variant_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
@@ -593,8 +593,8 @@ impl Context {
         let name = class.name.ident().clone();
 
         let class_ty = match class.kind {
-            syn::StructKind::Class => Type::Class(Box::new(class.name.clone())),
-            syn::StructKind::Record | syn::StructKind::PackedRecord => Type::Record(Box::new(class.name.clone())),
+            syn::StructKind::Class => Type::class(class.name.clone()),
+            syn::StructKind::Record | syn::StructKind::PackedRecord => Type::record(class.name.clone()),
         };
 
         self.declare_type(name.clone(), class_ty.clone(), visibility)?;
@@ -613,7 +613,7 @@ impl Context {
     pub fn declare_enum(&mut self, enum_decl: Rc<EnumDecl>, visibility: Visibility) -> TypeResult<()> {
         let name = enum_decl.name.ident().clone();
 
-        let enum_ty = Type::Enum(Box::new(enum_decl.name.clone()));
+        let enum_ty = Type::enumeration(enum_decl.name.clone());
 
         self.declare_type(name.clone(), enum_ty.clone(), visibility)?;
 
@@ -639,11 +639,11 @@ impl Context {
                 .constraint
                 .as_ref()
                 .map(|c| c.is_ty.clone())
-                .map(Box::new);
+                .map(Rc::new);
 
             self.declare_type(
                 param.name.clone(),
-                Type::GenericParam(Box::new(TypeParamType {
+                Type::GenericParam(Rc::new(TypeParamType {
                     name: param.name.clone(),
                     is_iface,
                     pos,
@@ -757,7 +757,7 @@ impl Context {
 
             Type::Record(sym) | Type::Class(sym) => {
                 let struct_def = self.find_struct_def(&sym.full_path)?;
-                let struct_ty = Type::struct_type(*sym, struct_def.kind);
+                let struct_ty = Type::struct_type((*sym).clone(), struct_def.kind);
 
                 struct_def
                     .find_method(&method)

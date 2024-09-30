@@ -579,7 +579,7 @@ fn typecheck_variant_ctor_call(
             return Err(TypeError::from_name_err(
                 NameError::MemberNotFound {
                     member: case.clone(),
-                    base: NameContainer::Type(Type::Variant(Box::new(variant_sym.clone()))),
+                    base: NameContainer::Type(Type::variant(variant_sym.clone())),
                 },
                 span,
             ));

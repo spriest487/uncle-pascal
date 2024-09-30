@@ -306,7 +306,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .unwrap();
 
     let a_int = specialize_struct_def(&a_class, &int_params, &module.context)
-        .map(|class| Type::Record(Box::new(class.name.clone())))
+        .map(|class| Type::record(class.name.clone()))
         .unwrap();
 
     let (_, b_func) = module.unit.func_defs().next().unwrap();

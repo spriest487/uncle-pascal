@@ -40,8 +40,8 @@ pub fn typecheck_struct_decl(
     ctx: &mut Context,
 ) -> TypeResult<StructDef> {
     let self_ty = match class.kind {
-        StructKind::Record | StructKind::PackedRecord => Type::Record(Box::new(name.clone())),
-        StructKind::Class => Type::Class(Box::new(name.clone())),
+        StructKind::Record | StructKind::PackedRecord => Type::record(name.clone()),
+        StructKind::Class => Type::class(name.clone()),
     };
 
     let implements: Vec<Type> = class.implements

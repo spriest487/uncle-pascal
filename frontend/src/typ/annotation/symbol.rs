@@ -16,6 +16,7 @@ use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Symbol {
@@ -66,7 +67,7 @@ impl Symbol {
             Ok(())
         } else {
             Err(GenericError::IllegalUnspecialized {
-                ty: Type::Class(Box::new(self.clone())),
+                ty: Type::Class(Rc::new(self.clone())),
             })
         }
     }

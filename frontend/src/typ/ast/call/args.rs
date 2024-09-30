@@ -36,7 +36,7 @@ impl<'a> TypeArgResolver for PartiallySpecializedTypeArgsList<'a> {
     fn resolve(&self, param: &TypeParamType) -> Cow<Type> {
         match self.items.get(param.pos) {
             Some(Some(specialized_ty)) => Cow::Borrowed(specialized_ty),
-            _ => Cow::Owned(Type::GenericParam(Box::new(param.clone()))),
+            _ => Cow::Owned(Type::generic_param(param.name.clone(), param.pos)),
         }
     }
 
@@ -112,7 +112,7 @@ fn infer_from_structural_ty_args(
 
         // dynarrays only need element type to match
         (Type::DynArray { element: param_el }, Type::DynArray { element: actual_el }) => {
-            (vec![*param_el.clone()], vec![*actual_el.clone()])
+            (vec![(**param_el).clone()], vec![(**actual_el).clone()])
         },
 
         _ => {

@@ -18,6 +18,7 @@ use crate::typ::ValueKind;
 use common::span::{Span, Spanned};
 use linked_hash_map::LinkedHashMap;
 use std::iter;
+use std::rc::Rc;
 
 pub type ObjectCtor = ast::ObjectCtor<Typed>;
 pub type ObjectCtorMember = ast::ObjectCtorMember<Typed>;
@@ -250,7 +251,7 @@ pub fn typecheck_collection_ctor(
     let collection_ty = match expect_ty {
         // known dyn array ty_def
         Type::DynArray { .. } => Type::DynArray {
-            element: Box::new(element_ty),
+            element: Rc::new(element_ty),
         },
 
         // known static array ty_def

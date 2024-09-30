@@ -271,7 +271,7 @@ fn build_variant_ctor_call(
     variant_ctor: &typ::ast::VariantCtorCall,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let variant_ty = typ::Type::Variant(Box::new(variant_ctor.variant.clone()))
+    let variant_ty = typ::Type::variant(variant_ctor.variant.clone())
         .apply_type_args_by_name(builder.generic_context(), builder.generic_context());
 
     let variant_name = variant_ty.as_variant().unwrap();

@@ -8,6 +8,7 @@ use crate::typ::typecheck_type;
 use common::span::Spanned;
 use std::borrow::Cow;
 use std::fmt;
+use std::rc::Rc;
 
 pub type TypeParam = ast::TypeParam<Type>;
 
@@ -100,7 +101,7 @@ pub fn validate_ty_args(args: &TypeArgList, params: &TypeParamList, ctx: &Contex
 pub struct TypeParamType {
     pub name: Ident,
     pub pos: usize,
-    pub is_iface: Option<Box<Type>>,
+    pub is_iface: Option<Rc<Type>>,
 }
 
 impl fmt::Display for TypeParamType {

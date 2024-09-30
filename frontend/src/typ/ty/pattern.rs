@@ -80,7 +80,7 @@ impl TypePattern {
                 // check case with this ident exists
                 if variant_def.case_position(case_ident).is_none() {
                     let err_span = path.first().span.to(&case_ident.span);
-                    let variant_ty = Type::Variant(Box::new(variant_def.name.clone()));
+                    let variant_ty = Type::variant(variant_def.name.clone());
 
                     return Err(TypeError::from_name_err(NameError::MemberNotFound {
                         base: NameContainer::Type(variant_ty),
@@ -141,7 +141,7 @@ impl TypePattern {
                 let variant_def = ctx.find_variant_def(variant)
                     .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
-                let var_ty = Type::Variant(Box::new(variant_def.name.clone()));
+                let var_ty = Type::variant(variant_def.name.clone());
 
                 var_ty.infer_specialized_from_hint(expect_var)
                     .map(|ty| match ty {

@@ -259,15 +259,15 @@ impl ModuleBuilder {
         let generic_owning_ty = match &owning_ty {
             typ::Type::Class(sym) if sym.type_args.is_some() => {
                 generic_ctx.push(sym.type_params.as_ref().unwrap(), sym.type_args.as_ref().unwrap());
-                typ::Type::class(sym.clone().with_ty_args(None))
+                typ::Type::class(sym.as_ref().clone().with_ty_args(None))
             }
             typ::Type::Record(sym) if sym.type_args.is_some() => {
                 generic_ctx.push(sym.type_params.as_ref().unwrap(), sym.type_args.as_ref().unwrap());
-                typ::Type::record(sym.clone().with_ty_args(None))
+                typ::Type::record(sym.as_ref().clone().with_ty_args(None))
             }
             typ::Type::Variant(sym) if sym.type_args.is_some() => {
                 generic_ctx.push(sym.type_params.as_ref().unwrap(), sym.type_args.as_ref().unwrap());
-                typ::Type::variant(sym.clone().with_ty_args(None))
+                typ::Type::variant(sym.as_ref().clone().with_ty_args(None))
             }
         
             // nothing to do if the type isn't parameterized
@@ -589,7 +589,7 @@ impl ModuleBuilder {
             typ::Type::Record(class) | typ::Type::Class(class) => {
                 expect_no_generic_args(&class, class.type_args.as_ref());
 
-                let ty_name = ir::NamePath::from_decl(*class.clone(), self);
+                let ty_name = ir::NamePath::from_decl(class.as_ref().clone(), self);
                 let struct_id = match self.metadata().find_type_decl(&ty_name) {
                     Some(id) => id,
                     None => panic!("{} was not found in metadata (not instantiated)", class),
@@ -632,7 +632,7 @@ impl ModuleBuilder {
             typ::Type::Variant(variant) => {
                 expect_no_generic_args(&variant, variant.type_args.as_ref());
 
-                let ty_name = ir::NamePath::from_decl(*variant.clone(), self);
+                let ty_name = ir::NamePath::from_decl(variant.as_ref().clone(), self);
 
                 match self.metadata().find_type_decl(&ty_name) {
                     Some(id) => ir::Type::Variant(id),

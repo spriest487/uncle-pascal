@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use crate::ast::TypeConstraint;
 use crate::ast::TypeParam;
 use crate::typ::ast::specialize_func_decl;
@@ -46,12 +47,12 @@ fn make_ty_param_of(name: &str, constraint: Type) -> TypeParam<Type> {
 fn make_ty_param_ty(param_list: &[TypeParam<Type>], pos: usize) -> Type {
     let param = &param_list[pos];
 
-    Type::GenericParam(Box::new(TypeParamType {
+    Type::GenericParam(Rc::new(TypeParamType {
         name: param.name.clone(),
         is_iface: param
             .constraint
             .as_ref()
-            .map(|constraint| Box::new(constraint.is_ty.clone())),
+            .map(|constraint| Rc::new(constraint.is_ty.clone())),
         pos,
     }))
 }

@@ -48,19 +48,18 @@ pub enum Type {
     Nothing,
     Nil,
     Primitive(Primitive),
-    Pointer(Box<Type>),
+    Pointer(Rc<Type>),
     Function(Rc<FunctionSig>),
-    // can these be Rc?
-    Record(Box<Symbol>),
-    Class(Box<Symbol>),
-    Interface(Box<IdentPath>),
-    Variant(Box<Symbol>),
+    Record(Rc<Symbol>),
+    Class(Rc<Symbol>),
+    Interface(Rc<IdentPath>),
+    Variant(Rc<Symbol>),
     Array(Rc<ArrayType>),
-    DynArray { element: Box<Type> },
+    DynArray { element: Rc<Type> },
     MethodSelf,
-    GenericParam(Box<TypeParamType>),
+    GenericParam(Rc<TypeParamType>),
     Any,
-    Enum(Box<Symbol>),
+    Enum(Rc<Symbol>),
 }
 
 impl From<Primitive> for Type {
@@ -77,23 +76,23 @@ impl From<ArrayType> for Type {
 
 impl Type {
     pub fn record(sym: impl Into<Symbol>) -> Self {
-        Type::Record(Box::new(sym.into()))
+        Type::Record(Rc::new(sym.into()))
     }
 
     pub fn class(sym: impl Into<Symbol>) -> Self {
-        Type::Class(Box::new(sym.into()))
+        Type::Class(Rc::new(sym.into()))
     }
 
     pub fn variant(sym: impl Into<Symbol>) -> Self {
-        Type::Variant(Box::new(sym.into()))
+        Type::Variant(Rc::new(sym.into()))
     }
 
     pub fn enumeration(sym: impl Into<Symbol>) -> Self {
-        Type::Enum(Box::new(sym.into()))
+        Type::Enum(Rc::new(sym.into()))
     }
     
     pub fn interface(name: impl Into<IdentPath>) -> Self {
-        Type::Interface(Box::new(name.into()))
+        Type::Interface(Rc::new(name.into()))
     }
     
     pub fn generic_param(name: Ident, pos: usize) -> Type {
@@ -103,7 +102,7 @@ impl Type {
             is_iface: None,
         };
         
-        Type::GenericParam(Box::new(ty_param_ty))
+        Type::GenericParam(Rc::new(ty_param_ty))
     }
 
     pub fn array(self, dim: usize) -> Self {
@@ -114,21 +113,21 @@ impl Type {
     }
 
     pub fn dyn_array(self) -> Self {
-        Type::DynArray { element: Box::new(self) }
+        Type::DynArray { element: Rc::new(self) }
     }
 
-    pub fn generic_constrained_param(name: Ident, pos: usize, is_iface: impl Into<Box<Type>>) -> Type {
+    pub fn generic_constrained_param(name: Ident, pos: usize, is_iface: impl Into<Rc<Type>>) -> Type {
         let ty_param_ty = TypeParamType {
             name,
             pos,
             is_iface: Some(is_iface.into()),
         };
 
-        Type::GenericParam(Box::new(ty_param_ty))
+        Type::GenericParam(Rc::new(ty_param_ty))
     }
     
     pub fn struct_type(sym: impl Into<Symbol>, kind: StructKind) -> Self {
-        let sym = Box::new(sym.into());
+        let sym = Rc::new(sym.into());
         
         match kind {
             StructKind::Class => Type::Class(sym),
@@ -197,18 +196,18 @@ impl Type {
     pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>) -> Self {
         match type_decl {
             ast::TypeDeclItem::Struct(class) if class.kind == StructKind::Record => {
-                Type::Record(Box::new(class.name.clone()))
+                Type::Record(Rc::new(class.name.clone()))
             },
 
-            ast::TypeDeclItem::Struct(class) => Type::Class(Box::new(class.name.clone())),
+            ast::TypeDeclItem::Struct(class) => Type::Class(Rc::new(class.name.clone())),
 
-            ast::TypeDeclItem::Variant(variant) => Type::Variant(Box::new(variant.name.clone())),
+            ast::TypeDeclItem::Variant(variant) => Type::Variant(Rc::new(variant.name.clone())),
 
             ast::TypeDeclItem::Interface(iface) => {
-                Type::Interface(Box::new(iface.name.full_path.clone()))
+                Type::Interface(Rc::new(iface.name.full_path.clone()))
             },
 
-            ast::TypeDeclItem::Enum(enum_decl) => Type::Enum(Box::new(enum_decl.name.clone())),
+            ast::TypeDeclItem::Enum(enum_decl) => Type::Enum(Rc::new(enum_decl.name.clone())),
 
             ast::TypeDeclItem::Alias(alias) => (*alias.ty).clone(),
         }
@@ -380,7 +379,7 @@ impl Type {
     }
 
     pub fn ptr(self) -> Self {
-        Type::Pointer(Box::new(self))
+        Type::Pointer(Rc::new(self))
     }
 
     pub fn indirect_by(self, indirection: usize) -> Self {
@@ -707,19 +706,19 @@ impl Type {
             Type::GenericParam(param) => args.resolve(&param).into_owned(),
 
             Type::Class(name) if name.type_params.is_some() => {
-                Type::Class(Box::new(name.clone().substitute_ty_args(args)))
+                Type::Class(Rc::new((*name).clone().substitute_ty_args(args)))
             },
 
             Type::Record(name) if name.type_params.is_some() => {
-                Type::Record(Box::new(name.clone().substitute_ty_args(args)))
+                Type::Record(Rc::new((*name).clone().substitute_ty_args(args)))
             },
 
             Type::Variant(name) if name.type_params.is_some() => {
-                Type::Variant(Box::new(name.clone().substitute_ty_args(args)))
+                Type::Variant(Rc::new((*name).clone().substitute_ty_args(args)))
             },
 
             Type::DynArray { element } => Type::DynArray {
-                element: element.substitute_type_args(args).into(),
+                element: (*element).clone().substitute_type_args(args).into(),
             },
 
             Type::Array(array_ty) => {
@@ -731,7 +730,7 @@ impl Type {
                 .into()
             },
 
-            Type::Pointer(base_ty) => base_ty.substitute_type_args(args).ptr(),
+            Type::Pointer(base_ty) => (*base_ty).clone().substitute_type_args(args).ptr(),
 
             Type::Function(sig) => {
                 let sig = sig.substitute_type_args(args);
@@ -755,21 +754,21 @@ impl Type {
 
             Type::Record(sym) => {
                 let sym = specialize_generic_name(&sym, args, ctx)?;
-                let record_ty = Type::Record(Box::new(sym.into_owned()));
+                let record_ty = Type::Record(Rc::new(sym.into_owned()));
 
                 Cow::Owned(record_ty)
             },
 
             Type::Class(sym) => {
                 let sym = specialize_generic_name(&sym, args, ctx)?;
-                let class_ty = Type::Class(Box::new(sym.into_owned()));
+                let class_ty = Type::Class(Rc::new(sym.into_owned()));
 
                 Cow::Owned(class_ty)
             },
 
             Type::Variant(variant) => {
                 let sym = specialize_generic_name(&variant, args, ctx)?;
-                let variant_ty = Type::Variant(Box::new(sym.into_owned()));
+                let variant_ty = Type::Variant(Rc::new(sym.into_owned()));
 
                 Cow::Owned(variant_ty)
             },
@@ -787,7 +786,7 @@ impl Type {
                 let element_ty = element.specialize_generic(args, ctx)?;
 
                 Cow::Owned(Type::DynArray {
-                    element: Box::new(element_ty.into_owned()),
+                    element: Rc::new(element_ty.into_owned()),
                 })
             },
 
@@ -952,7 +951,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
                 },
 
                 None => Ok(Type::DynArray {
-                    element: Box::new(element_ty),
+                    element: Rc::new(element_ty),
                 }),
             }
         },
@@ -1020,7 +1019,7 @@ pub fn specialize_generic_name<'a>(
         for (i, param) in type_params.items.iter().enumerate() {
             let is_iface = param.constraint
                 .clone()
-                .map(|constraint| Box::new(constraint.is_ty));
+                .map(|constraint| Rc::new(constraint.is_ty));
 
             let arg = args.resolve(&TypeParamType {
                 name: param.name.clone(),
@@ -1230,17 +1229,17 @@ impl Specializable for Type {
                     .cloned()
                     .unwrap_or_else(|| Type::GenericParam(param))
             }
-            
+
             Type::Record(name) => {
-                Type::record(name.apply_type_args_by_name(params, args))
+                Type::record(name.as_ref().clone().apply_type_args_by_name(params, args))
             }
-            
+
             Type::Class(name) => {
-                Type::class(name.apply_type_args_by_name(params, args))
+                Type::class(name.as_ref().clone().apply_type_args_by_name(params, args))
             }
-            
+
             Type::Variant(name) => {
-                Type::variant(name.apply_type_args_by_name(params, args))
+                Type::variant(name.as_ref().clone().apply_type_args_by_name(params, args))
             }
 
             Type::Function(sig) => {
@@ -1250,6 +1249,8 @@ impl Specializable for Type {
 
             Type::Pointer(deref_ty) => {
                 deref_ty
+                    .as_ref()
+                    .clone()
                     .apply_type_args_by_name(params, args)
                     .ptr()
             }
@@ -1264,6 +1265,8 @@ impl Specializable for Type {
             
             Type::DynArray { element, .. } => {
                 element
+                    .as_ref()
+                    .clone()
                     .apply_type_args_by_name(params, args)
                     .dyn_array()
             }
