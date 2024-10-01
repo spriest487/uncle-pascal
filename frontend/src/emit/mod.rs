@@ -80,7 +80,7 @@ pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Module {
     }
 
     for unit in &module.units {
-        ir_module.translate_unit(&unit.unit);
+        ir_module.translate_unit_init(&unit.unit);
     }
 
     ir_module.build()

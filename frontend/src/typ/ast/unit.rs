@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::ast::BindingDeclKind;
+use crate::ast::{BindingDeclKind, InitBlock};
 use crate::ast::Visibility;
 use crate::ast::{FunctionName, IdentPath, StructKind};
 use crate::typ::ast::const_eval::ConstEval;
@@ -455,22 +455,33 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypeResult<M
             impl_decls.push(typecheck_unit_decl(decl, ctx, Visibility::Implementation)?);
         }
 
-        // init stmt is implicitly a block
-        let init = ctx.scope(
-            Environment::Block {
-                allow_unsafe: false,
-            },
-            |ctx| {
-                let mut init = Vec::new();
-                for stmt in &unit.init {
-                    let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
-                    expect_stmt_initialized(&stmt, ctx)?;
-                    init.push(stmt);
-                }
+        let init = match &unit.init {
+            Some(init_block) => {
+                // init stmt is implicitly a block
+                let init_env = Environment::Block {
+                    allow_unsafe: false,
+                };
 
-                Ok(init)
+                let result = ctx.scope(init_env, |ctx| {
+                    let mut body = Vec::new();
+                    for stmt in &init_block.body {
+                        let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
+                        expect_stmt_initialized(&stmt, ctx)?;
+                        
+                        body.push(stmt);
+                    }
+
+                    Ok(InitBlock {
+                        body,
+                        keyword_span: init_block.keyword_span.clone(),
+                    })
+                })?;
+                
+                Some(result)
             },
-        )?;
+
+            None => None,
+        };
 
         let undefined = ctx.undefined_syms();
         if !undefined.is_empty() {

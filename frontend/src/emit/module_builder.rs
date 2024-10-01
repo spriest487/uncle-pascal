@@ -34,6 +34,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use ir_lang::{Function, FunctionDef, FunctionSig, GlobalRef, Instruction, Ref, Type};
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -102,14 +103,35 @@ impl ModuleBuilder {
         &mut self.module.metadata
     }
 
-    pub fn translate_unit(&mut self, unit: &typ::ast::Unit) {
-        let mut init_builder = Builder::new(self);
-        for stmt in &unit.init {
-            translate_stmt(stmt, &mut init_builder);
-        }
-        let unit_init = init_builder.finish();
+    pub fn translate_unit_init(&mut self, unit: &typ::ast::Unit) {
+        if let Some(init_block) = &unit.init {
+            let mut init_builder = Builder::new(self);
+            
+            for stmt in &init_block.body {
+                translate_stmt(stmt, &mut init_builder);
+            }
+            
+            let unit_init = init_builder.finish();
 
-        self.module.init.extend(unit_init);
+            let init_func = FunctionDef {
+                body: unit_init,
+                sig: FunctionSig {
+                    param_tys: Vec::new(),
+                    return_ty: Type::Nothing
+                },
+                src_span: init_block.keyword_span.clone(),
+                debug_name: format!("{}.<init>", unit.ident),
+            };
+
+            let init_func_id = self.module.metadata.insert_func(None);
+            self.module.functions.insert(init_func_id, Function::Local(init_func));
+
+            self.module.init.push(Instruction::Call {
+                function: Ref::Global(GlobalRef::Function(init_func_id)).into(),
+                args: Vec::new(),
+                out: None,
+            });
+        }
     }
 
     pub(crate) fn instantiate_func(&mut self, key: &FunctionDefKey) -> FunctionInstance {

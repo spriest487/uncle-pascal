@@ -1,19 +1,23 @@
-use common::span::Span;
-use std::collections::HashMap;
-use std::fmt;
-use serde::{Deserialize, Serialize};
+use crate::{Function, Instruction};
+use crate::FunctionID;
 use crate::InstructionFormatter;
 use crate::Metadata;
+use crate::StaticClosure;
+use common::span::Span;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Module {
     pub metadata: Metadata,
 
-    pub functions: HashMap<crate::FunctionID, crate::Function>,
+    pub functions: HashMap<FunctionID, Function>,
 
-    pub static_closures: Vec<crate::StaticClosure>,
+    pub static_closures: Vec<StaticClosure>,
 
-    pub init: Vec<crate::Instruction>,
+    pub init: Vec<Instruction>,
     
     pub span: Option<Span>,
 }

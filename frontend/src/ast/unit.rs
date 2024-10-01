@@ -40,14 +40,21 @@ pub enum UnitKind {
 }
 
 #[derive(Clone, Debug)]
-pub struct Unit<A: Annotation> {
+pub struct Unit<A: Annotation = Span> {
     pub kind: UnitKind,
 
     pub ident: IdentPath,
 
     pub iface_decls: Vec<UnitDecl<A>>,
     pub impl_decls: Vec<UnitDecl<A>>,
-    pub init: Vec<Stmt<A>>,
+
+    pub init: Option<InitBlock<A>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InitBlock<A: Annotation = Span> {
+    pub keyword_span: Span,
+    pub body: Vec<Stmt<A>>,
 }
 
 impl<A: Annotation> Unit<A> {
@@ -117,7 +124,7 @@ impl Unit<Span> {
 
         let mut iface_decls = Vec::new();
         let mut impl_decls = Vec::new();
-        let mut init = Vec::new();
+        let mut init = None;
 
         if unit_kind == UnitKind::Program {
             let decls = UnitDecl::parse_seq(Keyword::Implementation, tokens)?;
@@ -128,23 +135,30 @@ impl Unit<Span> {
 
             impl_decls.extend(decls);
 
+            // instead of a separate init block, program units always have a "main" block
+            // after any decls with the usual begin/end keywords
             let main_block = Block::parse(tokens)?;
-            init.push(Stmt::Block(Box::new(main_block)));
-
-            // allow the traditional period after the final end
-            tokens.match_one_maybe(Operator::Period);
+            
+            init = Some(InitBlock {
+                keyword_span: main_block.begin.clone(),
+                body: vec![Stmt::Block(Box::new(main_block))],
+            });
         } else {
             let has_interface = parse_decls_section(Keyword::Interface, &mut iface_decls, tokens)?;
             let has_implementation =
                 parse_decls_section(Keyword::Implementation, &mut impl_decls, tokens)?;
 
-            let has_initialization = tokens.match_one_maybe(Keyword::Initialization).is_some();
-            if has_initialization {
-                let init_section = parse_init_section(tokens)?;
-                init.extend(init_section);
+            let init_kw = tokens.match_one_maybe(Keyword::Initialization);
+            if let Some(init_kw) = &init_kw {
+                let init_body = parse_init_section(tokens)?;
+                
+                init = Some(InitBlock {
+                    keyword_span: init_kw.span().clone(),
+                    body: init_body,
+                })
             }
 
-            if !(has_interface || has_implementation || has_initialization) {
+            if !(has_interface || has_implementation || init_kw.is_some()) {
                 // empty units are invalid! use this to throw an error
                 tokens.match_one(unit_kind_kw_match
                     .or(Keyword::Interface)
@@ -285,16 +299,16 @@ impl<A: Annotation> fmt::Display for Unit<A> {
             writeln!(f, "{};", decl)?;
         }
         writeln!(f)?;
-
-        writeln!(f, "initialization")?;
-        writeln!(f)?;
-
-        for init_stmt in &self.init {
-            writeln!(f, "{};", init_stmt)?;
+        
+        if let Some(init_block) = &self.init {
+            writeln!(f, "initialization")?;
+            
+            for init_stmt in &init_block.body {
+                writeln!(f, "\t{};", init_stmt)?;
+            }
         }
-        writeln!(f)?;
 
-        writeln!(f, "end")?;
+        writeln!(f, "end.")?;
 
         Ok(())
     }

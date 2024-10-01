@@ -360,8 +360,11 @@ fn can_infer_ty_arg_from_real_record_arg() {
         ])
         ).unwrap();
 
-    let func_call = module.unit.init
-        .get(0)
+    let func_call = module
+        .unit
+        .init
+        .as_ref()
+        .and_then(|block| block.body.get(0))
         .and_then(Stmt::as_call)
         .and_then(Call::as_func_call)
         .unwrap_or_else(|| {
@@ -391,7 +394,11 @@ fn can_infer_ty_arg_from_real_int_arg() {
         "
     );
     
-    let func_call = module.unit.init.get(0)
+    let func_call = module
+        .unit
+        .init
+        .as_ref()
+        .and_then(|block| block.body.get(0))
         .and_then(Stmt::as_call)
         .and_then(Call::as_func_call)
         .unwrap_or_else(|| {

@@ -12,10 +12,11 @@ pub use self::annotation::*;
 pub use self::context::*;
 pub use self::result::*;
 pub use self::ty::*;
+use crate::ast as syn;
+use crate::ast::IdentPath;
+use crate::ast::UnitKind;
 use ast::typecheck_unit;
 use common::span::*;
-use crate::ast as syn;
-use crate::ast::{IdentPath, UnitKind};
 
 #[derive(Debug, Clone)]
 pub struct ModuleUnit {
@@ -57,7 +58,7 @@ impl Module {
             let system = syn::Unit {
                 kind: UnitKind::Unit,
                 ident: IdentPath::from(system_ident),
-                init: Vec::new(),
+                init: None,
                 iface_decls: Vec::new(),
                 impl_decls: Vec::new(),
             };
