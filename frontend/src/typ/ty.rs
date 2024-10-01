@@ -981,7 +981,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
             Ok(ty)
         },
 
-        ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
+        ast::TypeName::Unspecified(_) => unreachable!("trying to resolve unknown type"),
     }
 }
 

@@ -2,7 +2,7 @@
 mod test;
 
 use crate::ast::type_name::TypeName;
-use crate::ast::{Annotation, IdentPath};
+use crate::ast::{Annotation, IdentPath, TypeAnnotation};
 use crate::ast::BindingDeclKind;
 use crate::ast::Block;
 use crate::ast::DeclMod;
@@ -94,7 +94,7 @@ pub struct FunctionDecl<A: Annotation = Span> {
     pub params: Vec<FunctionParam<A>>,
     pub type_params: Option<TypeList<TypeParam<A::Type>>>,
 
-    pub return_ty: Option<A::Type>,
+    pub return_ty: A::Type,
 
     pub mods: Vec<DeclMod<A>>,
 }
@@ -129,9 +129,10 @@ impl FunctionDecl<Span> {
                 // look for a return type
                 let ty = TypeName::parse(tokens)?;
                 span = span.to(ty.span());
-                Some(ty)
+                ty
             },
-            None => None,
+
+            None => TypeName::Unspecified(ident.span().clone()),
         };
 
         let mods = DeclMod::parse_seq(tokens)?;
@@ -399,8 +400,8 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
             write!(f, ")")?;
         }
 
-        if let Some(ty) = &self.return_ty {
-            write!(f, ": {}", ty)?;
+        if self.return_ty.is_known() {
+            write!(f, ": {}", self.return_ty)?;
         }
         Ok(())
     }
@@ -551,7 +552,7 @@ impl FunctionDef<Span> {
 
             // if there's a colon following the names, expect an explicit type name to follow
             let ty = match tokens.match_one_maybe(Separator::Colon) {
-                None => TypeName::Unknown(Span::of_slice(&idents)),
+                None => TypeName::Unspecified(Span::of_slice(&idents)),
                 Some(..) => TypeName::parse(tokens)?,
             };
 
@@ -626,7 +627,7 @@ pub struct AnonymousFunctionDef<A: Annotation> {
     pub annotation: A,
 
     pub params: Vec<FunctionParam<A>>,
-    pub return_ty: Option<A::Type>,
+    pub return_ty: A::Type,
 
     pub body: Block<A>,
     pub captures: LinkedHashMap<Ident, A::Type>,
@@ -647,8 +648,8 @@ impl<A: Annotation> fmt::Display for AnonymousFunctionDef<A> {
         }
 
         write!(f, ")")?;
-        if let Some(return_ty) = &self.return_ty {
-            write!(f, ": {}", return_ty)?;
+        if self.return_ty.is_known() {
+            write!(f, ": {}", self.return_ty)?;
         }
         writeln!(f, "; ")?;
 
@@ -673,7 +674,7 @@ impl Parse for AnonymousFunctionDef<Span> {
             while let Some(TokenTree::Ident(ident)) = tokens.match_one_maybe(Matcher::AnyIdent) {
                 params.push(FunctionParam {
                     span: ident.span().clone(),
-                    ty: TypeName::Unknown(ident.span.clone()),
+                    ty: TypeName::Unspecified(ident.span.clone()),
                     modifier: None,
                     ident,
                 });
@@ -701,7 +702,7 @@ impl Parse for AnonymousFunctionDef<Span> {
                 annotation: span,
                 body,
                 params,
-                return_ty: Some(TypeName::Unknown(func_kw.span().clone())),
+                return_ty: TypeName::Unspecified(func_kw.span().clone()),
                 captures: Default::default(),
             }
         } else {
@@ -714,10 +715,9 @@ impl Parse for AnonymousFunctionDef<Span> {
             params_tokens.finish()?;
 
             let return_ty = if tokens.match_one_maybe(Separator::Colon).is_some() {
-                let ty = TypeName::parse(tokens)?;
-                Some(ty)
+                TypeName::parse(tokens)?
             } else {
-                None
+                TypeName::Unspecified(func_kw.span().clone())
             };
 
             tokens.match_one(Separator::Semicolon)?;

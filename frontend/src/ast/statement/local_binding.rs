@@ -27,7 +27,7 @@ impl LocalBinding<Span> {
 
         let ty = match tokens.match_one_maybe(Separator::Colon) {
             Some(_) => TypeName::parse(tokens)?,
-            None => TypeName::Unknown(name.span().clone()),
+            None => TypeName::Unspecified(name.span().clone()),
         };
 
         let (val, span) = match tokens.match_one_maybe(Operator::Assignment) {

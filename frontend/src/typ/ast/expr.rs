@@ -183,7 +183,7 @@ fn typecheck_ident(
             let annotation = TypedValue {
                 decl: None,
                 span: span.clone(),
-                ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
+                ty: decl.return_ty.clone(),
                 value_kind: ValueKind::Temporary,
             };
             

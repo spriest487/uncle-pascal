@@ -106,7 +106,7 @@ impl fmt::Display for ArrayTypeName {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeName {
     /// type is unknown or unnamed at parse time
-    Unknown(Span),
+    Unspecified(Span),
 
     Ident(IdentTypeName),
     Array(ArrayTypeName),
@@ -119,7 +119,7 @@ impl Spanned for TypeName {
         match self {
             TypeName::Ident(i) => i.span(),
             TypeName::Array(a) => a.span(),
-            TypeName::Unknown(span) => span,
+            TypeName::Unspecified(span) => span,
             TypeName::Function(f) => f.span(),
         }
     }
@@ -128,7 +128,7 @@ impl Spanned for TypeName {
 impl TypeAnnotation for TypeName {
     fn is_known(&self) -> bool {
         match self {
-            TypeName::Unknown(_) => false,
+            TypeName::Unspecified(_) => false,
             _ => true,
         }
     }
@@ -326,7 +326,7 @@ impl fmt::Display for TypeName {
             TypeName::Ident(ident_type_name) => write!(f, "{}", ident_type_name),
             TypeName::Array(array_type_name) => write!(f, "{}", array_type_name),
             TypeName::Function(func_type_name) => write!(f, "{}", func_type_name),
-            TypeName::Unknown(_) => write!(f, "<unknown type>"),
+            TypeName::Unspecified(_) => write!(f, "<unknown type>"),
         }
     }
 }

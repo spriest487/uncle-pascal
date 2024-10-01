@@ -40,7 +40,7 @@ pub fn build_func_def(
     module: &mut ModuleBuilder,
     generic_ctx: GenericContext,
     def_params: &[typ::ast::FunctionParam],
-    def_return_ty: Option<&typ::Type>,
+    def_return_ty: &typ::Type,
     def_locals: &[typ::ast::FunctionLocalBinding],
     def_body: &typ::ast::Block,
     src_span: Span,
@@ -96,12 +96,7 @@ pub fn build_func_static_closure_def(
     let generic_ctx = GenericContext::empty();
     let mut body_builder = create_function_body_builder(module, generic_ctx, &debug_name);
 
-    let bind_return_ty = match &target_func.sig.return_ty {
-        typ::Type::Nothing => None,
-        ty => Some(ty),
-    };
-
-    let return_ty = bind_function_return(bind_return_ty, &mut body_builder);
+    let return_ty = bind_function_return(&target_func.sig.return_ty, &mut body_builder);
 
     let closure_ptr_local_id = body_builder.bind_closure_ptr();
 
@@ -150,7 +145,7 @@ pub fn build_closure_function_def(
     let generic_ctx = GenericContext::empty();
     let mut body_builder = create_function_body_builder(module, generic_ctx, &debug_name);
 
-    let return_ty = bind_function_return(func_def.return_ty.as_ref(), &mut body_builder);
+    let return_ty = bind_function_return(&func_def.return_ty, &mut body_builder);
 
     // the type-erased pointer to the closure struct is included as the 0th param but
     // *not* bound like a normal param since it can't be named from code, so bind it in the scope
@@ -215,10 +210,11 @@ pub fn build_closure_function_def(
     }
 }
 
-fn bind_function_return(return_ty: Option<&typ::Type>, builder: &mut Builder) -> Type {
+fn bind_function_return(return_ty: &typ::Type, builder: &mut Builder) -> Type {
     match return_ty {
-        None | Some(typ::Type::Nothing) => Type::Nothing,
-        Some(return_ty) => {
+        typ::Type::Nothing => Type::Nothing,
+        
+        return_ty => {
             let return_ty = builder.translate_type(return_ty);
 
             // anonymous return binding at %0

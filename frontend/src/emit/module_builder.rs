@@ -1,6 +1,6 @@
-use std::borrow::Cow;
+use crate::ast::FunctionParamMod;
+use crate::ast::IdentPath;
 use crate::ast::StructKind;
-use crate::ast::{FunctionParamMod, IdentPath};
 use crate::emit::build_closure_function_def;
 use crate::emit::build_func_def;
 use crate::emit::build_func_static_closure_def;
@@ -22,11 +22,15 @@ use crate::emit::IROptions;
 use crate::typ::ast::apply_func_decl_named_ty_args;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
-use crate::typ::{specialize_generic_name, Specializable, TypeArgResolver, TypeArgsResult, TypeParamContainer};
+use crate::typ::Specializable;
+use crate::typ::TypeArgResolver;
+use crate::typ::TypeArgsResult;
+use crate::typ::TypeParamContainer;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
 use linked_hash_map::LinkedHashMap;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
@@ -179,7 +183,7 @@ impl ModuleBuilder {
             self,
             generic_ctx,
             &specialized_decl.params,
-            specialized_decl.return_ty.as_ref(),
+            &specialized_decl.return_ty,
             &func_def.locals,
             &func_def.body,
             func_def.span.clone(),
@@ -333,7 +337,7 @@ impl ModuleBuilder {
             self,
             generic_ctx,
             &generic_method_def.decl.params,
-            generic_method_def.decl.return_ty.as_ref(),
+            &generic_method_def.decl.return_ty,
             &generic_method_def.locals,
             &generic_method_def.body,
             generic_method_def.span().clone(),
@@ -666,23 +670,9 @@ impl ModuleBuilder {
         args: &impl TypeArgResolver
     ) -> Generic 
     where 
-        Generic: typ::Specializable,
+        Generic: Specializable,
     {
         target.apply_type_args_by_name(params, args)
-    } 
-
-    pub fn specialize_name(&self, name: &typ::Symbol, args: &typ::TypeArgList) -> typ::Symbol {
-        specialize_generic_name(name, args, &self.src_metadata)
-            .expect("specializing name failed")
-            .into_owned()
-    }
-
-    pub fn specialize_generic_type(
-        &self,
-        src_ty: &typ::Type,
-        type_args: &typ::TypeArgList,
-    ) -> typ::Type {
-        src_ty.specialize_generic(type_args, &self.src_metadata).unwrap().into_owned()
     }
 
     pub fn translate_type(

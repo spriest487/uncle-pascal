@@ -23,9 +23,8 @@ pub fn translate_iface(
             ir::Method {
                 name: method.ident().to_string(),
                 return_ty: match &method.decl.return_ty {
-                    Some(typ::Type::MethodSelf) => self_ty.clone(),
-                    Some(return_ty) => module.translate_type(return_ty, generic_ctx),
-                    None => ir::Type::Nothing,
+                    typ::Type::MethodSelf => self_ty.clone(),
+                    return_ty => module.translate_type(return_ty, generic_ctx),
                 },
                 params: method
                     .decl

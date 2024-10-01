@@ -126,8 +126,7 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
         methods: vec![ast::InterfaceMethodDecl {
             decl: Rc::new(ast::FunctionDecl {
                 name: builtin_disposable_dispose_name(None),
-                // TODO: this shouldn't be optional, use unspecified type for parsed functions
-                return_ty: Some(Type::Nothing),
+                return_ty: Type::Nothing,
                 mods: Vec::new(),
                 type_params: None,
                 params: vec![ast::FunctionParam {
@@ -189,7 +188,7 @@ pub fn builtin_comparable_compare_method(owning_ty: Type, self_ty: Type) -> ast:
             owning_ty.clone(),
             builtin_span.clone(),
         ),
-        return_ty: Some(Type::from(Primitive::Int32)),
+        return_ty: Type::from(Primitive::Int32),
         type_params: None,
         mods: Vec::new(),
         span: builtin_span.clone(),
@@ -236,10 +235,10 @@ pub fn builtin_displayable_display_method(owning_ty: Type, self_ty: Type) -> ast
             owning_ty.clone(),
             builtin_span.clone(),
         ),
-        return_ty: Some(Type::class(IdentPath::from_vec(vec![
+        return_ty: Type::class(IdentPath::from_vec(vec![
             Ident::new(SYSTEM_UNIT_NAME, builtin_span.clone()),
             Ident::new(STRING_TYPE_NAME, builtin_span.clone()),
-        ]))),
+        ])),
         type_params: None,
         mods: Vec::new(),
         span: builtin_span.clone(),

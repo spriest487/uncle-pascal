@@ -90,7 +90,7 @@ fn make_decl(
             })
             .collect(),
         type_params: ty_params_list,
-        return_ty: return_ty.into_something(),
+        return_ty,
         mods: Vec::new(),
         span: test_span.clone(),
     }
@@ -109,7 +109,7 @@ fn specialized_func_decl_has_specialized_return_ty() {
     let specialized = specialize_func_decl(&decl, &args, &ctx)
         .unwrap();
     
-    assert_eq!(Some(Type::Primitive(Primitive::Int32)), specialized.return_ty);
+    assert_eq!(Type::Primitive(Primitive::Int32), specialized.return_ty);
 }
 
 #[test]

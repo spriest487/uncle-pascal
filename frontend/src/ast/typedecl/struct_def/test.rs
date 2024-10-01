@@ -1,6 +1,9 @@
 use crate::ast::util::*;
+use crate::ast::StructDef;
+use crate::ast::Unit;
+use crate::ast::Visibility;
+use crate::ast::TypeAnnotation;
 use crate::ast::TypeDeclItem;
-use crate::ast::{StructDef, Unit, Visibility};
 use crate::parse::ParseError;
 use crate::Separator;
 use common::span::Span;
@@ -149,8 +152,8 @@ pub fn method_decl_is_valid() {
     let method = class_def.methods().nth(0).unwrap();
     assert_eq!("Greet", method.name.to_string());
 
-    assert!(&method.return_ty.is_some());
-    assert_eq!("Int32", class_def.methods().nth(0).unwrap().return_ty.as_ref().unwrap().to_string());
+    assert!(method.return_ty.is_known());
+    assert_eq!("Int32", class_def.methods().nth(0).unwrap().return_ty.to_string());
 }
 
 

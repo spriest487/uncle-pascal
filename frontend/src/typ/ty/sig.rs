@@ -132,7 +132,7 @@ impl FunctionSig {
     }
 
     pub fn of_decl(decl: &FunctionDecl) -> Self {
-        let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
+        let return_ty = decl.return_ty.clone();
         let param_sigs = decl
             .params
             .iter()

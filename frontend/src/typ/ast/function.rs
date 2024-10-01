@@ -185,8 +185,8 @@ pub fn typecheck_func_decl(
         };
 
         let return_ty = match &decl.return_ty {
-            Some(ty_name) => typecheck_type(ty_name, ctx)?.clone(),
-            None => Type::Nothing,
+            ast::TypeName::Unspecified(..) => Type::Nothing,
+            ty_name => typecheck_type(ty_name, ctx)?,
         };
 
         let params: Vec<FunctionParam>;
@@ -295,7 +295,7 @@ pub fn typecheck_func_decl(
             },
             params,
             type_params: type_params.clone(),
-            return_ty: Some(return_ty),
+            return_ty,
             span: decl.span.clone(),
             mods: decl_mods,
         })
@@ -491,7 +491,7 @@ pub fn typecheck_func_def(
     
     let decl = Rc::new(decl);
     
-    let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
+    let return_ty = decl.return_ty.clone();
 
     let body_env = FunctionBodyEnvironment {
         result_ty: return_ty,
@@ -527,7 +527,7 @@ pub fn typecheck_func_def(
 
         let locals = declare_locals_in_body(&def, ctx)?;
     
-        let body = typecheck_block(&def.body, decl.return_ty.as_ref().unwrap(), ctx)?;
+        let body = typecheck_block(&def.body, &decl.return_ty, ctx)?;
 
         Ok(FunctionDef {
             decl,
@@ -688,9 +688,7 @@ where
         f(&mut param.ty)?;
     }
 
-    if let Some(return_ty) = &mut decl.return_ty {
-        f(return_ty)?;
-    }
+    f(&mut decl.return_ty)?;
     
     Ok(())
 }
@@ -726,16 +724,18 @@ pub fn typecheck_func_expr(
     }
 
     let return_ty = match &src_def.return_ty {
-        Some(ast::TypeName::Unknown(..)) => match expect_sig.map(|sig| &sig.return_ty){
-            Some(expect_return_ty) => expect_return_ty.clone(),
-            None => {
-                return Err(TypeError::UnableToInferFunctionExprType {
-                    func: Box::new(src_def.clone()),
-                })
+        ast::TypeName::Unspecified(..) => {
+            match expect_sig.map(|sig| &sig.return_ty) {
+                Some(expect_return_ty) => expect_return_ty.clone(),
+                None => {
+                    return Err(TypeError::UnableToInferFunctionExprType {
+                        func: Box::new(src_def.clone()),
+                    })
+                }
             }
         },
-        Some(src_return_ty) => typecheck_type(src_return_ty, ctx)?,
-        None => Type::Nothing,
+
+        src_return_ty => typecheck_type(src_return_ty, ctx)?,
     };
 
     let sig_params = params.iter().map(|p| p.clone().into()).collect();
@@ -772,7 +772,7 @@ pub fn typecheck_func_expr(
 
     Ok(AnonymousFunctionDef {
         params,
-        return_ty: Some(return_ty),
+        return_ty,
         annotation,
         body,
         captures: closure_env.captures,
