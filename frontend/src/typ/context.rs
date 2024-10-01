@@ -28,7 +28,7 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::SELF_TY_NAME;
-use crate::typ::{specialize_generic_variant, TypeParamList};
+use crate::typ::{specialize_variant_def, TypeParamList};
 use crate::typ::specialize_struct_def;
 use crate::typ::FunctionSig;
 use crate::typ::Primitive;
@@ -1073,7 +1073,7 @@ impl Context {
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
-                let instance_def = specialize_generic_variant(
+                let instance_def = specialize_variant_def(
                     base_def.as_ref(), 
                     type_args, 
                     self

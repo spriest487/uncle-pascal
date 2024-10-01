@@ -550,7 +550,7 @@ fn typecheck_variant_ctor_call(
     // version of that same generic variant
     let variant_sym = match expect_ty {
         Type::Variant(expect_variant)
-            if expect_variant.is_specialization_of(&unspecialized_def.name) =>
+            if expect_variant.full_path == unspecialized_def.name.full_path =>
         {
             (*expect_variant).as_ref()
         },

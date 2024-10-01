@@ -1,21 +1,31 @@
+mod specialize;
+mod array;
+
+#[cfg(test)]
+mod test;
+
+pub mod layout;
+pub mod pattern;
+pub mod primitive;
+pub mod sig;
+pub mod ty_param;
+
 pub use self::pattern::*;
 pub use self::primitive::*;
 pub use self::sig::*;
+pub use self::specialize::*;
 pub use self::ty_param::*;
+pub use self::array::*;
 use crate::ast;
-use crate::ast::ArrayTypeName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
+use crate::ast::ArrayTypeName;
 use crate::typ::ast::Field;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
-use crate::typ::ast::StructDef;
-use crate::typ::ast::VariantDef;
-use crate::typ::ast::{apply_func_decl_named_ty_args, typecheck_expr};
-use crate::typ::ast::{const_eval_integer, TypedFunctionName};
 use crate::typ::builtin_span;
 use crate::typ::builtin_unit_path;
 use crate::typ::context;
@@ -33,15 +43,6 @@ use common::span::*;
 use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
-
-#[cfg(test)]
-mod test;
-
-pub mod layout;
-pub mod pattern;
-pub mod primitive;
-pub mod sig;
-pub mod ty_param;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum Type {
@@ -828,24 +829,6 @@ impl TypeAnnotation for Type {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ArrayType {
-    pub element_ty: Type,
-    pub dim: usize,
-}
-
-impl ArrayType {
-    pub fn new(element_ty: Type, dim: usize) -> Self {
-        Self { element_ty, dim }
-    }
-}
-
-impl fmt::Display for ArrayType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "array[{}] of {}", self.dim, self.element_ty)
-    }
-}
-
 #[derive(Debug, Copy, Clone)]
 pub struct TypeMemberRef<'ty> {
     pub ident: &'ty Ident,
@@ -931,29 +914,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
         },
 
         ast::TypeName::Array(ArrayTypeName { element, dim, .. }) => {
-            let element_ty = typecheck_type(element.as_ref(), ctx)?;
-
-            match dim {
-                Some(dim_expr) => {
-                    let dim_expr =
-                        typecheck_expr(dim_expr, &Type::Primitive(Primitive::Int32), ctx)?;
-                    let dim_val = const_eval_integer(&dim_expr, ctx)?;
-
-                    let dim = dim_val
-                        .as_usize()
-                        .ok_or_else(|| TypeError::TypeMismatch {
-                            span: dim_expr.span().clone(),
-                            actual: dim_expr.annotation().ty().into_owned(),
-                            expected: Type::Primitive(Primitive::Int32),
-                        })?;
-
-                    Ok(ArrayType { element_ty, dim }.into())
-                },
-
-                None => Ok(Type::DynArray {
-                    element: Rc::new(element_ty),
-                }),
-            }
+            typecheck_array_type(element, dim, ctx)
         },
 
         ast::TypeName::Function(func_ty_name) => {
@@ -983,205 +944,6 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
 
         ast::TypeName::Unspecified(_) => unreachable!("trying to resolve unknown type"),
     }
-}
-
-pub fn specialize_generic_name<'a>(
-    name: &'a Symbol,
-    args: &TypeArgList,
-    ctx: &Context,
-) -> GenericResult<Cow<'a, Symbol>> {
-    let type_params = match name.type_params.as_ref() {
-        None => return Ok(Cow::Borrowed(name)),
-        Some(type_params) => type_params,
-    };
-
-    if args.len() != type_params.items.len() {
-        return Err(GenericError::ArgsLenMismatch {
-            target: GenericTarget::Name(name.full_path.clone()),
-            expected: type_params.items.len(),
-            actual: args.len(),
-        });
-    }
-    
-    validate_ty_args(args, type_params, ctx)?;
-
-    let type_args = if let Some(existing_args) = &name.type_args {
-        let specialized_args = existing_args
-            .items
-            .iter()
-            .cloned()
-            .map(|arg| arg.apply_type_args_by_name(type_params, args));
-
-        TypeArgList::new(specialized_args, existing_args.span().clone())
-    } else {
-        let mut resolved_args = Vec::with_capacity(type_params.len());
-
-        for (i, param) in type_params.items.iter().enumerate() {
-            let is_iface = param.constraint
-                .clone()
-                .map(|constraint| Rc::new(constraint.is_ty));
-
-            let arg = args.resolve(&TypeParamType {
-                name: param.name.clone(),
-                is_iface,
-                pos: i,
-            });
-
-            resolved_args.push(arg.into_owned());
-        }
-        TypeArgList::new(resolved_args, name.span().clone())
-    };
-
-    let name = Symbol {
-        type_args: Some(type_args),
-        ..name.clone()
-    };
-
-    Ok(Cow::Owned(name))
-}
-
-pub fn specialize_struct_def<'a>(
-    generic_class: &Rc<StructDef>,
-    ty_args: &TypeArgList,
-    ctx: &Context,
-) -> GenericResult<Rc<StructDef>> {    
-    let struct_ty_params = match &generic_class.name.type_params {
-        None => return Ok(generic_class.clone()),
-        Some(param_list) => param_list,
-    };
-    
-    let specialized_name = specialize_generic_name(&generic_class.name, ty_args, ctx)?
-        .into_owned();
-
-    let implements: Vec<Type> = generic_class.implements
-        .iter()
-        .map(|implements_ty| {
-            let specialized = implements_ty
-                .clone()
-                .apply_type_args_by_name(struct_ty_params, ty_args);
-            Ok(specialized)
-        })
-        .collect::<GenericResult<_>>()?;
-
-    let members: Vec<_> = generic_class
-        .members
-        .iter()
-        .map(|member| {
-            match member {
-                ast::StructMember::Field(field) => {
-                    let ty = field.ty
-                        .clone()
-                        .apply_type_args_by_name(struct_ty_params, ty_args);
-
-                    Ok(ast::StructMember::Field(ast::Field {
-                        ty,
-                        ..field.clone()
-                    }))
-                }
-
-                ast::StructMember::MethodDecl(generic_method) => {
-                    let mut method = apply_func_decl_named_ty_args(
-                        (**generic_method).clone(),
-                        struct_ty_params,
-                        ty_args
-                    );
-
-                    // specialize the owning type of all methods
-                    method.name = TypedFunctionName {
-                        ident: method.name.ident.clone(),
-                        span: method.name.span.clone(),
-                        owning_ty: match &method.name.owning_ty {
-                            Some(ty) => {
-                                assert_eq!(
-                                    ty.full_path().map(Cow::into_owned).as_ref(), 
-                                    Some(&generic_class.name.full_path), 
-                                    "owning type of a method must always be the type it's declared in"
-                                );
-
-                                Some(Type::struct_type(
-                                    specialized_name.clone(),
-                                    generic_class.kind
-                                ))
-                            },
-                            None => None,
-                        },
-                    };
-
-                    Ok(ast::StructMember::MethodDecl(Rc::new(method)))
-                }
-            }
-        })
-        .collect::<GenericResult<_>>()?;
-
-    Ok(Rc::new(StructDef {
-        name: specialized_name,
-        implements,
-        members,
-        span: generic_class.span.clone(),
-        kind: generic_class.kind,
-    }))
-}
-
-pub fn specialize_generic_variant(
-    variant: &VariantDef,
-    args: &TypeArgList,
-    ctx: &Context,
-) -> GenericResult<VariantDef> {
-    let parameterized_name = specialize_generic_name(&variant.name, args, ctx)?;
-
-    let cases: Vec<_> = variant
-        .cases
-        .iter()
-        .map(|case| {
-            let data_ty = match &case.data_ty {
-                None => None,
-                Some(ty) => {
-                    let ty = ty.clone().substitute_type_args(args);
-                    Some(ty)
-                },
-            };
-
-            Ok(ast::VariantCase {
-                data_ty,
-                ..case.clone()
-            })
-        })
-        .collect::<GenericResult<_>>()?;
-
-    Ok(VariantDef {
-        name: parameterized_name.into_owned(),
-        span: variant.span().clone(),
-        cases,
-    })
-}
-
-pub trait Specializable {
-    type GenericID: PartialEq + Clone;
-
-    fn is_unspecialized_generic(&self) -> bool;
-    fn name(&self) -> Cow<Self::GenericID>;
-
-    fn is_specialization_of(&self, generic: &Self) -> bool {
-        generic.is_unspecialized_generic()
-            && !self.is_unspecialized_generic()
-            && self.name() == generic.name()
-    }
-
-    fn infer_specialized_from_hint<'a, 'b>(&'a self, hint: &'a Self) -> Option<&'b Self>
-        where 'a: 'b
-    {
-        if self.is_unspecialized_generic() {
-            if hint.is_specialization_of(self) {
-                Some(hint)
-            } else {
-                None
-            }
-        } else {
-            Some(self)
-        }
-    }
-
-    fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self;
 }
 
 impl Specializable for Type {
