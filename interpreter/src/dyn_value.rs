@@ -291,6 +291,7 @@ impl DynValue {
             (DynValue::U32(a), DynValue::U32(b)) => Some(a > b),
             (DynValue::I64(a), DynValue::I64(b)) => Some(a > b),
             (DynValue::U64(a), DynValue::U64(b)) => Some(a > b),
+            (DynValue::F32(a), DynValue::F32(b)) => Some(a > b),
             (DynValue::ISize(a), DynValue::ISize(b)) => Some(a > b),
             (DynValue::USize(a), DynValue::USize(b)) => Some(a > b),
             (DynValue::Pointer(a), DynValue::Pointer(b)) => {
@@ -409,6 +410,13 @@ impl DynValue {
     pub fn as_usize(&self) -> Option<usize> {
         match self {
             DynValue::USize(i) => Some(*i),
+            _ => None,
+        }
+    }
+    
+    pub fn as_f32(&self) -> Option<f32> {
+        match self {
+            DynValue::F32(f) => Some(*f),
             _ => None,
         }
     }
