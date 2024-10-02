@@ -1723,6 +1723,66 @@ impl Interpreter {
                 ir::Type::any(),
                 vec![ir::Type::any(), ir::Type::I32, ir::Type::any()],
             ),
+            (
+                "RandomInteger",
+                builtin::random_integer,
+                ir::Type::I32,
+                vec![ir::Type::I32, ir::Type::I32]
+            ),
+            (
+                "RandomSingle",
+                builtin::random_single,
+                ir::Type::F32,
+                vec![ir::Type::F32, ir::Type::F32]
+            )
+            ,(
+                "Pow",
+                builtin::pow,
+                ir::Type::F32,
+                vec![ir::Type::F32, ir::Type::F32]
+            ),
+            (
+                "Sqrt",
+                builtin::sqrt,
+                ir::Type::F32,
+                vec![ir::Type::F32]
+            ),
+            (
+                "Sin",
+                builtin::sin,
+                ir::Type::F32,
+                vec![ir::Type::F32]
+            ),
+            (
+                "ArcSin",
+                builtin::arc_sin,
+                ir::Type::F32,
+                vec![ir::Type::F32]
+            ),
+            (
+                "Cos",
+                builtin::cos,
+                ir::Type::F32,
+                vec![ir::Type::F32]
+            ),
+            (
+                "ArcCos",
+                builtin::arc_cos,
+                ir::Type::F32,
+                vec![ir::Type::F32]
+            ),
+            (
+                "Tan",
+                builtin::tan,
+                ir::Type::F32,
+                vec![ir::Type::F32]
+            ),
+            (
+                "ArcTan",
+                builtin::arc_tan,
+                ir::Type::F32,
+                vec![ir::Type::F32]
+            )
         ];
 
         for (ident, func, ret, params) in system_funcs {

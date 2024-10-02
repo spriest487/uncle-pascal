@@ -10,7 +10,8 @@ use std::fmt;
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
-use ir_lang::{LocalID, Ref, Type, TypeDefID, Value};
+use rand::Rng;
+use ir_lang::{LocalID, Ref, Type, TypeDefID, Value, RETURN_REF};
 
 fn primitive_to_str<T, UnwrapFn>(state: &mut Interpreter, unwrap_fn: UnwrapFn) -> ExecResult<()>
 where
@@ -248,3 +249,102 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
     Ok(())
 }
+
+fn load_integer(state: &mut Interpreter, at: &Ref) -> ExecResult<i32> {
+    state.load(at)?
+        .as_i32()
+        .ok_or_else(|| {
+            let msg = format!("bad type: expected i32 at {}", at);
+            ExecError::IllegalState { msg }
+        })
+}
+
+fn load_single(state: &mut Interpreter, at: &Ref) -> ExecResult<f32> {
+    state.load(at)?
+        .as_f32()
+        .ok_or_else(|| {
+            let msg = format!("bad type: expected f32 at {}", at);
+            ExecError::IllegalState { msg }
+        })
+}
+
+pub(super) fn random_integer(state: &mut Interpreter) -> ExecResult<()> {
+    let from = load_integer(state, &Ref::Local(LocalID(1)))?;
+    let to = load_integer(state, &Ref::Local(LocalID(2)))?;
+
+    let range = from..to;
+    let val = if range.is_empty() {
+        from
+    } else {
+        rand::thread_rng().gen_range(from..to)
+    };
+
+    state.store(&RETURN_REF, DynValue::I32(val))
+}
+
+pub(super) fn random_single(state: &mut Interpreter) -> ExecResult<()> {
+    let from = load_single(state, &Ref::Local(LocalID(1)))?;
+    let to = load_single(state, &Ref::Local(LocalID(2)))?;
+
+    let range = from..to;
+    let val = if range.is_empty() {
+        from
+    } else {
+        rand::thread_rng().gen_range(from..to)
+    };
+
+    state.store(&RETURN_REF, DynValue::F32(val))
+}
+
+pub(super) fn pow(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+    let power = load_single(state, &Ref::Local(LocalID(2)))?;
+
+    state.store(&RETURN_REF, DynValue::F32(val.powf(power)))
+}
+
+pub(super) fn sqrt(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+    
+    state.store(&RETURN_REF, DynValue::F32(val.sqrt()))
+}
+
+pub(super) fn sin(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+
+    state.store(&RETURN_REF, DynValue::F32(val.sin()))
+}
+
+pub(super) fn arc_sin(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+
+    state.store(&RETURN_REF, DynValue::F32(val.asin()))
+}
+
+pub(super) fn cos(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+
+    state.store(&RETURN_REF, DynValue::F32(val.cos()))
+}
+
+pub(super) fn arc_cos(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+
+    state.store(&RETURN_REF, DynValue::F32(val.acos()))
+}
+
+pub(super) fn tan(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+
+    state.store(&RETURN_REF, DynValue::F32(val.tan()))
+}
+
+pub(super) fn arc_tan(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+
+    state.store(&RETURN_REF, DynValue::F32(val.atan()))
+}
+
+
+
+
