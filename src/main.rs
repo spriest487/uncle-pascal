@@ -14,7 +14,7 @@ use common::read_source_file;
 use common::span::*;
 use common::BuildOptions;
 use frontend::ast;
-use frontend::ast::IdentPath;
+use frontend::ast::{IdentPath, Unit};
 use frontend::emit::IROptions;
 use frontend::pp as pp;
 use frontend::typ as ty;
@@ -43,7 +43,7 @@ const IR_LIB_EXT: &str = "lib";
 
 enum CompileOutput {
     Preprocess(Vec<PreprocessedUnit>),
-    Parse(Vec<ast::Unit<Span>>),
+    Parse(Vec<Unit>),
     Typecheck(ty::Module),
     IR(ir::Module),
 }
@@ -100,8 +100,10 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         }
         return Ok(CompileOutput::Preprocess(pp_units));
     }
+    
+    let mut parsed_files: HashMap<PathBuf, Unit> = HashMap::new();
+    let mut filenames_by_ident: HashMap<IdentPath, PathBuf> = HashMap::new();
 
-    let mut parsed_units = HashMap::new();
     let mut compilation_order = TopologicalSort::<IdentPath>::new();
 
     loop {
@@ -109,19 +111,53 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
             None => break,
             Some(f) => f,
         };
+        
+        let canon_filename = unit_filename
+            .canonicalize()
+            .map_err(|e| CompileError::ReadSourceFileFailed {
+                msg: e.to_string(),
+                path: unit_filename.clone(),
+            })?;
+        
+        let unit = match parsed_files.get(&canon_filename) {
+            Some(unit) => unit,
+            None => {
+                let pp_unit = preprocess(&unit_filename, opts.clone())?;
 
-        let pp_unit = preprocess(&unit_filename, opts.clone())?;
-        for warning in &pp_unit.warnings {
-            if report_err(warning, Severity::Warning).is_err() {
-                eprintln!("warning: {}", warning);
+                for warning in &pp_unit.warnings {
+                    if report_err(warning, Severity::Warning).is_err() {
+                        eprintln!("warning: {}", warning);
+                    }
+                }
+
+                let tokens = frontend::tokenize(pp_unit)?;
+                let parsed_unit = frontend::parse(unit_filename.clone(), tokens)?;
+
+                match filenames_by_ident.entry(parsed_unit.ident.clone()) {
+                    Entry::Occupied(occupied_ident_filename) => {
+                        // the same unit can't be loaded from two separate filenames
+                        return Err(CompileError::DuplicateUnit {
+                            unit_ident: occupied_ident_filename.key().clone(),
+                            duplicate_path: occupied_ident_filename.get().to_path_buf(),
+                        });
+                    },
+
+                    Entry::Vacant(vacant_ident_filename) => {
+                        let unit_ident = vacant_ident_filename.key().clone();
+
+                        compilation_order.insert(unit_ident);
+                        vacant_ident_filename.insert(canon_filename.clone());
+                    }
+                }
+
+                parsed_files.insert(canon_filename.clone(), parsed_unit);
+                &parsed_files[&canon_filename]
             }
-        }
+        };
 
-        let tokens = frontend::tokenize(pp_unit)?;
-        let parsed_unit = frontend::parse(unit_filename.clone(), tokens)?;
-
-        let unit_ident = parsed_unit.ident.clone();
-        let uses_units: Vec<_> = parsed_unit
+        let unit_ident = unit.ident.clone();
+        
+        let uses_units: Vec<_> = unit
             .all_decls()
             .filter_map(|(_vis, decl)| match decl {
                 ast::UnitDecl::Uses { decl } => Some(decl.clone()),
@@ -129,20 +165,6 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
             })
             .flat_map(|uses| uses.units)
             .collect();
-
-        match parsed_units.entry(unit_ident.clone()) {
-            Entry::Occupied(..) => {
-                return Err(CompileError::DuplicateUnit {
-                    unit_ident: parsed_unit.ident,
-                    duplicate_path: unit_filename,
-                });
-            },
-
-            Entry::Vacant(entry) => {
-                entry.insert(parsed_unit);
-                compilation_order.insert(unit_ident.clone());
-            },
-        }
 
         for used_unit in uses_units {
             let span = used_unit.span().clone();
@@ -160,7 +182,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
                 });
             }
 
-            if !parsed_units.contains_key(&used_unit.ident) {
+            if !filenames_by_ident.contains_key(&used_unit.ident) {
                 match used_unit.path {
                     Some(path) => {
                         let filename = PathBuf::from(path);
@@ -177,12 +199,15 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
     }
 
     if let Some(CompileStage::Parse) = args.print_stage {
-        return Ok(CompileOutput::Parse(parsed_units.into_values().collect()));
+        return Ok(CompileOutput::Parse(parsed_files.into_values().collect()));
     }
 
     let mut compile_units = Vec::new();
     while let Some(next_compiled_unit) = compilation_order.pop() {
-        compile_units.push(parsed_units.remove(&next_compiled_unit).unwrap());
+        let filename = filenames_by_ident.remove(&next_compiled_unit).unwrap();
+        let unit = parsed_files.remove(&filename).unwrap();
+
+        compile_units.push(unit);
     }
 
     assert_eq!(compilation_order.len(), 0);

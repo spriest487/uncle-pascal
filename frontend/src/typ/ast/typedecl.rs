@@ -41,6 +41,7 @@ pub const VARIANT_TAG_TYPE: Type = Type::Primitive(Primitive::Int32);
 pub fn typecheck_struct_decl(
     name: Symbol,
     struct_def: &ast::StructDef<Span>,
+    visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<StructDef> {
     let self_ty = match struct_def.kind {
@@ -57,7 +58,7 @@ pub fn typecheck_struct_decl(
     ctx.declare_type(
         struct_def.name.ident.clone(),
         self_ty.clone(),
-        Visibility::Implementation,
+        visibility,
         true,
     )?;
 
@@ -169,11 +170,18 @@ fn typecheck_field(
 pub fn typecheck_iface(
     name: Symbol,
     iface: &ast::InterfaceDecl<Span>,
+    visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<InterfaceDecl> {
     // declare Self type - type decls are always in their own scope so we don't need to push
     // another one
     ctx.declare_self_ty(Type::MethodSelf, iface.name.span().clone())?;
+    ctx.declare_type(
+        iface.name.ident.clone(),
+        Type::interface(name.full_path.clone()),
+        visibility,
+        true
+    )?;
 
     let mut methods: Vec<InterfaceMethodDecl> = Vec::new();
     for method in &iface.methods {
@@ -211,11 +219,20 @@ pub fn typecheck_iface(
 pub fn typecheck_variant(
     name: Symbol,
     variant_def: &ast::VariantDef<Span>,
+    visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<VariantDef> {
     if variant_def.cases.is_empty() {
         return Err(TypeError::EmptyVariant(Box::new(variant_def.clone())));
     }
+    
+    ctx.declare_self_ty(Type::MethodSelf, variant_def.name.span().clone())?;
+    ctx.declare_type(
+        variant_def.name.ident.clone(),
+        Type::variant(name.full_path.clone()),
+        visibility,
+        true
+    )?;
 
     let mut cases = Vec::with_capacity(variant_def.cases.len());
     for case in &variant_def.cases {

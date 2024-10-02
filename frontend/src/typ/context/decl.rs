@@ -47,6 +47,7 @@ impl Decl {
     /// Handles forward declarations and source code definitions of builtin decls.
     pub fn get_conflict(&self, new_decl: &Decl) -> Option<DeclConflict> {
         if self.visibility() != new_decl.visibility() {
+            eprintln!("here: {self:#?},\n\n{new_decl:#?}");
             return Some(DeclConflict::Visibility);
         }
 

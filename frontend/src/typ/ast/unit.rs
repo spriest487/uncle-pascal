@@ -249,7 +249,7 @@ fn typecheck_type_decl_item_with_def(
         ctx.declare_type_params(&ty_params)?;
     }
 
-    let type_decl = typecheck_type_decl_body(full_name, type_decl, ctx)?;
+    let type_decl = typecheck_type_decl_body(full_name, type_decl, visibility, ctx)?;
 
     ctx.pop_scope(ty_scope);
 
@@ -279,20 +279,22 @@ fn typecheck_type_decl_item_with_def(
 fn typecheck_type_decl_body(
     name: Symbol,
     type_decl: &ast::TypeDeclItem<Span>,
+    visibility: Visibility,
     ctx: &mut Context,
-) -> TypeResult<TypeDeclItem> {
+) -> TypeResult<TypeDeclItem> {    
     let type_decl = match type_decl {
         ast::TypeDeclItem::Struct(class) => {
-            let class = typecheck_struct_decl(name, class, ctx)?;
+            let class = typecheck_struct_decl(name, class, visibility, ctx)?;
             ast::TypeDeclItem::Struct(Rc::new(class))
         },
+
         ast::TypeDeclItem::Interface(iface) => {
-            let iface = typecheck_iface(name, iface, ctx)?;
+            let iface = typecheck_iface(name, iface, visibility, ctx)?;
             ast::TypeDeclItem::Interface(Rc::new(iface))
         },
 
         ast::TypeDeclItem::Variant(variant) => {
-            let variant = typecheck_variant(name, variant, ctx)?;
+            let variant = typecheck_variant(name, variant, visibility, ctx)?;
             ast::TypeDeclItem::Variant(Rc::new(variant))
         },
 
