@@ -513,6 +513,7 @@ dependencies = [
  "dlopen",
  "ir-lang",
  "libffi",
+ "rand",
  "rouille",
  "serde",
  "serde_json",
