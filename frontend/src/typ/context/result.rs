@@ -236,6 +236,7 @@ pub enum NameError {
         new: Ident,
         existing: IdentPath,
         existing_kind: ScopeMemberKind,
+        conflict: DeclConflict,
     },
     AlreadyDefined {
         ident: IdentPath,
@@ -300,8 +301,15 @@ impl fmt::Display for NameError {
                     ident, expected_desc, actual,
                 )
             },
-            NameError::AlreadyDeclared { new, .. } => {
-                write!(f, "`{}` was already declared in this scope", new)
+            NameError::AlreadyDeclared { new, conflict, .. } => {
+                write!(f, "`{}` was already declared in this scope with ", new)?;
+                write!(f, "{}", match conflict {
+                    DeclConflict::Name => "the same name",
+                    DeclConflict::Type => "a conflicting type",
+                    DeclConflict::Visibility => "conflicting visibility",
+                })?;
+
+                Ok(())
             },
             NameError::AlreadyDefined { ident, .. } => {
                 write!(f, "`{}` was already defined", ident)
@@ -334,6 +342,13 @@ impl fmt::Display for NameError {
             NameError::GenericError(err) => write!(f, "{}", err),
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DeclConflict {
+    Name,
+    Type,
+    Visibility,
 }
 
 pub type NameResult<T> = Result<T, NameError>;

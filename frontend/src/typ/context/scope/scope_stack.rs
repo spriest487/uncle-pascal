@@ -2,11 +2,11 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Visibility;
 use crate::typ::scope::*;
-use crate::typ::Decl;
 use crate::typ::NameError;
 use crate::typ::NameResult;
 use crate::typ::ScopeMember;
 use crate::typ::ScopeMemberRef;
+use crate::typ::Decl;
 use std::mem;
 
 #[derive(Debug, Clone)]
@@ -67,15 +67,15 @@ impl ScopeStack {
     // todo: different error codes for "not defined at all" vs "defined but not in the current scope"
     pub fn replace_decl(
         &mut self,
-        member_key: impl Into<Ident>,
-        member: Decl,
+        key: impl Into<Ident>,
+        decl: Decl,
     ) -> NameResult<()> {
-        let member_key = member_key.into();
+        let member_key = key.into();
         let top = self.current_mut();
 
         match top.get_member(&member_key) {
             Some(_) => {
-                top.replace_member(member_key, ScopeMember::Decl(member));
+                top.replace_member(member_key, ScopeMember::Decl(decl));
                 Ok(())
             }
 
@@ -91,7 +91,7 @@ impl ScopeStack {
 
     pub fn current_path(&self) -> ScopePathRef {
         ScopePathRef {
-            namespaces: self.scopes.iter().collect(),
+            scopes: self.scopes.iter().collect(),
         }
     }
 
@@ -103,6 +103,10 @@ impl ScopeStack {
         ScopePathRefMut {
             namespaces: self.scopes.iter_mut().collect(),
         }
+    }
+
+    pub fn current(&self) -> &Scope {
+        self.scopes.last().unwrap()
     }
 
     pub fn current_mut(&mut self) -> &mut Scope {
@@ -120,9 +124,9 @@ impl ScopeStack {
             if next_path.is_parent_of(&current_path) {
                 // if the next named part in the current path is the part we're looking for, the
                 // path we're looking for is the current path
-                let next_named_part = current_path.namespaces
+                let next_named_part = current_path.scopes
                     .iter()
-                    .skip(next_path.namespaces.len())
+                    .skip(next_path.scopes.len())
                     .find_map(|s| s.key());
 
                 if next_named_part == Some(part) {
@@ -163,8 +167,8 @@ impl ScopeStack {
 
     pub fn visit_members<Predicate, Visitor>(&self, predicate: Predicate, mut visitor: Visitor)
         where
-            Visitor: FnMut(&IdentPath, &Decl),
             Predicate: Fn(&IdentPath, &ScopeMember) -> bool,
+            Visitor: FnMut(&IdentPath, &Decl),
     {
         // reused IdentPath instance so we don't need to reallocate this for every single entry
         // we can't make an empty IdentPath so we create this in the first iteration for each scope

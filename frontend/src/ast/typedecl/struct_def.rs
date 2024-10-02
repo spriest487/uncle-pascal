@@ -37,6 +37,9 @@ pub enum StructKind {
 pub struct StructDef<A: Annotation = Span> {
     pub kind: StructKind,
     pub name: A::Name,
+    
+    pub forward: bool,
+
     pub members: Vec<StructMember<A>>,
     
     pub implements: Vec<A::Type>,
@@ -102,10 +105,14 @@ impl StructDef<Span> {
             _ => unreachable!(),
         };
         
+        let mut span = kw_token.into_span();
+        
         let mut implements = Vec::new();
         if tokens.match_one_maybe(Keyword::Of).is_some() {
             loop {
                 let implement_iface = TypeName::parse(tokens)?;
+                
+                span = span.to(implement_iface.span());
                 implements.push(implement_iface);
 
                 if tokens.match_one_maybe(Separator::Comma).is_none() {
@@ -113,18 +120,32 @@ impl StructDef<Span> {
                 }
             }
         }
+        
+        // the last type in a section can never be forward, so every legal forward declaration
+        // will end with a semicolon
+        if tokens.look_ahead().match_one(Separator::Semicolon).is_some() {
+            Ok(StructDef {
+                kind,
+                name,
+                implements,
+                forward: true,
+                members: Vec::new(),
+                span,
+            })
+        } else {
+            let members = parse_struct_members(tokens)?;
 
-        let members = parse_struct_members(tokens)?;
+            let end_token = tokens.match_one(Keyword::End)?;
 
-        let end_token = tokens.match_one(Keyword::End)?;
-
-        Ok(StructDef {
-            kind,
-            name,
-            members,
-            implements,
-            span: kw_token.span().to(end_token.span()),
-        })
+            Ok(StructDef {
+                kind,
+                name,
+                implements,
+                forward: false,
+                members,
+                span: span.to(end_token.span()),
+            })
+        }
     }
 }
 

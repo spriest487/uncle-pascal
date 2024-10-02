@@ -19,6 +19,8 @@ use crate::ast::type_name::TypeName;
 #[derivative(Debug, PartialEq, Hash)]
 pub struct VariantDef<A: Annotation> {
     pub name: A::Name,
+    pub forward: bool,
+    
     pub cases: Vec<VariantCase<A>>,
 
     #[derivative(Debug = "ignore")]
@@ -88,14 +90,30 @@ impl VariantDef<Span> {
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Variant)?;
 
-        let cases = VariantCase::parse_seq(tokens)?;
-        tokens.match_one_maybe(Separator::Semicolon);
+        // the last type in a section can never be forward, so every legal forward declaration
+        // will end with a semicolon
+        if tokens.look_ahead().match_one(Separator::Semicolon).is_some() {
+            Ok(VariantDef {
+                name,
+                forward: true,
+                cases: Vec::new(),
+                span: kw.into_span(),
+            })
+        } else {
+            let cases = VariantCase::parse_seq(tokens)?;
+            tokens.match_one_maybe(Separator::Semicolon);
 
-        let end_kw = tokens.match_one(Keyword::End)?;
+            let end_kw = tokens.match_one(Keyword::End)?;
 
-        let span = kw.span().to(end_kw.span());
+            let span = kw.span().to(end_kw.span());
 
-        Ok(VariantDef { name, cases, span })
+            Ok(VariantDef {
+                name,
+                forward: false,
+                cases,
+                span,
+            })
+        }
     }
 }
 

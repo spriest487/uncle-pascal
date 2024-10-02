@@ -1,7 +1,9 @@
 use crate::ast;
-use crate::ast::{BindingDeclKind, InitBlock};
+use crate::ast::BindingDeclKind;
+use crate::ast::FunctionName;
+use crate::ast::IdentPath;
+use crate::ast::StructKind;
 use crate::ast::Visibility;
-use crate::ast::{FunctionName, IdentPath, StructKind};
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::expr::expect_stmt_initialized;
 use crate::typ::ast::typecheck_alias;
@@ -40,6 +42,7 @@ pub type GlobalBinding = ast::GlobalBinding<Typed>;
 pub type GlobalBindingItem = ast::GlobalBindingItem<Typed>;
 pub type TypeDecl = ast::TypeDecl<Typed>;
 pub type TypeDeclItem = ast::TypeDeclItem<Typed>;
+pub type InitBlock = ast::InitBlock<Typed>;
 
 fn typecheck_unit_decl(
     decl: &ast::UnitDecl<Span>,
@@ -197,6 +200,7 @@ fn typecheck_type_decl_item(
                 alias.name.ident().clone(),
                 (*alias.ty).clone(),
                 visibility,
+                false
             )?;
 
             Ok(TypeDeclItem::Alias(Rc::new(alias)))
@@ -259,7 +263,7 @@ fn typecheck_type_decl_item_with_def(
         },
 
         TypeDeclItem::Struct(class) => {
-            ctx.declare_class(class.clone(), visibility)?;
+            ctx.declare_struct(class.clone(), visibility)?;
         },
 
         TypeDeclItem::Enum(enum_decl) => {
@@ -445,39 +449,12 @@ fn typecheck_global_binding_item(
 
 pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypeResult<ModuleUnit> {
     ctx.unit_scope(unit.ident.clone(), |ctx| {
-        let mut iface_decls = Vec::new();
-        for decl in &unit.iface_decls {
-            iface_decls.push(typecheck_unit_decl(decl, ctx, Visibility::Interface)?);
-        }
-
-        let mut impl_decls = Vec::new();
-        for decl in &unit.impl_decls {
-            impl_decls.push(typecheck_unit_decl(decl, ctx, Visibility::Implementation)?);
-        }
+        let iface_decls = typecheck_section(&unit.iface_decls, Visibility::Interface, ctx)?;
+        let impl_decls = typecheck_section(&unit.impl_decls, Visibility::Implementation, ctx)?;
 
         let init = match &unit.init {
             Some(init_block) => {
-                // init stmt is implicitly a block
-                let init_env = Environment::Block {
-                    allow_unsafe: false,
-                };
-
-                let result = ctx.scope(init_env, |ctx| {
-                    let mut body = Vec::new();
-                    for stmt in &init_block.body {
-                        let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
-                        expect_stmt_initialized(&stmt, ctx)?;
-                        
-                        body.push(stmt);
-                    }
-
-                    Ok(InitBlock {
-                        body,
-                        keyword_span: init_block.keyword_span.clone(),
-                    })
-                })?;
-                
-                Some(result)
+                Some(typecheck_init_block(&init_block, ctx)?)
             },
 
             None => None,
@@ -506,4 +483,42 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypeResult<M
             unit,
         })
     })
+}
+
+fn typecheck_init_block(init_block: &ast::InitBlock, ctx: &mut Context) -> TypeResult<InitBlock> {
+    // init stmt is implicitly a block
+    let init_env = Environment::Block {
+        allow_unsafe: false,
+    };
+
+    let result = ctx.scope(init_env, |ctx| {
+        let mut body = Vec::new();
+        for stmt in &init_block.body {
+            let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
+            expect_stmt_initialized(&stmt, ctx)?;
+
+            body.push(stmt);
+        }
+
+        Ok(InitBlock {
+            body,
+            keyword_span: init_block.keyword_span.clone(),
+        })
+    })?;
+
+    Ok(result)
+}
+
+fn typecheck_section(
+    src_decls: &[ast::UnitDecl<Span>],
+    visibility: Visibility,
+    ctx: &mut Context
+) -> TypeResult<Vec<UnitDecl>> {
+    let mut decls = Vec::new();
+
+    for decl in src_decls {
+        decls.push(typecheck_unit_decl(decl, ctx, visibility)?);
+    }
+    
+    Ok(decls)
 }

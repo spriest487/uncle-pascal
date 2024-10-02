@@ -371,6 +371,26 @@ impl Type {
             _ => false,
         }
     }
+    
+    pub fn is_sized(&self, ctx: &Context) -> NameResult<bool> {
+        let is_unsized = ctx.is_unsized_ty(self)?;
+        Ok(!is_unsized)
+    }
+    
+    pub fn expect_sized(&self, ctx: &Context, at: &Span) -> TypeResult<()> {
+        let sized = self
+            .is_sized(ctx)
+            .map_err(|e| TypeError::from_name_err(e, at.clone()))?;
+
+        if !sized {
+            return Err(TypeError::InvalidUnsizedType {
+                ty: self.clone(),
+                at: at.clone(),
+            });
+        }
+        
+        Ok(())
+    }
 
     pub fn deref_ty(&self) -> Option<&Type> {
         match self {

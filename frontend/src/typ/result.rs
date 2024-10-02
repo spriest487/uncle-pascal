@@ -171,10 +171,9 @@ pub enum TypeError {
         stmt: Box<ast::Stmt<Span>>,
     },
 
-    UnsizedMember {
-        decl: IdentPath,
-        member: Ident,
-        member_ty: Type,
+    InvalidUnsizedType {
+        ty: Type,
+        at: Span,
     },
 
     InvalidMethodModifiers {
@@ -329,7 +328,7 @@ impl Spanned for TypeError {
             TypeError::EmptyVariantCaseBinding { span, .. } => span,
             TypeError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
             TypeError::NoFunctionContext { stmt, .. } => stmt.annotation().span(),
-            TypeError::UnsizedMember { member, .. } => member.span(),
+            TypeError::InvalidUnsizedType { at, .. } => at,
             
             TypeError::InvalidMethodModifiers { span, .. } => span,
             TypeError::InvalidMethodExplicitInterface { span, .. } => span,
@@ -435,7 +434,7 @@ impl DiagnosticOutput for TypeError {
             TypeError::NoLoopContext { .. } => "Statement requires loop context",
             TypeError::NoFunctionContext { .. } => "Statement requires function context",
 
-            TypeError::UnsizedMember { .. } => "Unsized member",
+            TypeError::InvalidUnsizedType { .. } => "Size of type is unknown",
             
             TypeError::InvalidMethodExplicitInterface { .. } => "Explicit interface implementation for method is invalid",
             TypeError::InvalidMethodModifiers { .. } => "Invalid method modifier(s)",
@@ -489,7 +488,7 @@ impl DiagnosticOutput for TypeError {
     fn see_also(&self) -> Vec<DiagnosticMessage> {
         match self {
             TypeError::NameError { err, .. } => match err {
-                NameError::AlreadyDeclared { new, existing, existing_kind } => {
+                NameError::AlreadyDeclared { new, existing, existing_kind, .. } => {
                     if *existing.span().file.as_ref() == PathBuf::from("<builtin>") {
                         // don't show this message for conflicts with builtin identifiers
                         return Vec::new()
@@ -829,8 +828,8 @@ impl fmt::Display for TypeError {
                 write!(f, "the stmt `{}` can only appear inside a function", stmt)
             }
 
-            TypeError::UnsizedMember { decl, member_ty, .. } => {
-                write!(f, "`{}` cannot have member of type `{}` because its size is unknown in this context", decl, member_ty)
+            TypeError::InvalidUnsizedType { ty, .. } => {
+                write!(f, "the type `{}` cannot be used because its size is unknown in this context", ty)
             }
 
             TypeError::InvalidMethodModifiers { mods, .. } => {

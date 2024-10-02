@@ -64,6 +64,8 @@ impl ParseSeq for InterfaceMethodDecl<Span> {
 pub struct InterfaceDecl<A: Annotation> {
     pub name: A::Name,
     pub methods: Vec<InterfaceMethodDecl<A>>,
+    
+    pub forward: bool,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -80,17 +82,29 @@ impl<A: Annotation> InterfaceDecl<A> {
 impl InterfaceDecl<Span> {
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let iface_kw = tokens.match_one(Keyword::Interface)?;
+        
+        // the last type in a section can never be forward, so every legal forward declaration
+        // will end with a semicolon
+        if tokens.look_ahead().match_one(Separator::Semicolon).is_some() {
+            Ok(InterfaceDecl {
+                name,
+                span: iface_kw.into_span(),
+                forward: true,
+                methods: Vec::new()
+            })
+        } else {
+            let methods = InterfaceMethodDecl::parse_seq(tokens)?;
+            tokens.match_one_maybe(Separator::Semicolon);
 
-        let methods = InterfaceMethodDecl::parse_seq(tokens)?;
-        tokens.match_one_maybe(Separator::Semicolon);
+            let end = tokens.match_one(Keyword::End)?;
 
-        let end = tokens.match_one(Keyword::End)?;
-
-        Ok(InterfaceDecl {
-            name,
-            span: iface_kw.span().to(end.span()),
-            methods,
-        })
+            Ok(InterfaceDecl {
+                name,
+                span: iface_kw.span().to(end.span()),
+                forward: false,
+                methods,
+            })
+        }
     }
 }
 

@@ -8,7 +8,7 @@ pub use self::path_ref::*;
 pub use self::scope_stack::*;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
-use crate::typ::Decl;
+use crate::typ::{Decl, DeclConflict};
 use crate::typ::Environment;
 use crate::typ::NameError;
 use crate::typ::NameResult;
@@ -25,7 +25,8 @@ pub struct ScopeID(pub usize);
 pub struct Scope {
     id: ScopeID,
     env: Environment,
-    decls: HashMap<Ident, ScopeMember>,
+
+    members: HashMap<Ident, ScopeMember>,
 
     use_units: Vec<IdentPath>,
 }
@@ -35,7 +36,7 @@ impl Scope {
         Self {
             id,
             env,
-            decls: HashMap::new(),
+            members: HashMap::new(),
 
             use_units: Vec::new(),
         }
@@ -49,15 +50,19 @@ impl Scope {
     }
 
     pub fn keys(&self) -> Vec<Ident> {
-        self.decls.keys().cloned().collect()
+        self.members.keys().cloned().collect()
     }
 
     pub fn get_member(&self, member_key: &Ident) -> Option<(&Ident, &ScopeMember)> {
-        self.decls.get_key_value(member_key)
+        self.members.get_key_value(member_key)
+    }
+
+    pub fn get_member_mut(&mut self, member_key: &Ident) -> Option<&mut ScopeMember> {
+        self.members.get_mut(member_key)
     }
 
     pub fn insert_member(&mut self, key: Ident, member_val: ScopeMember) -> NameResult<()> {
-        if let Some(existing) = self.decls.get(&key) {
+        if let Some(existing) = self.members.get(&key) {
             let kind = existing.kind();
             let mut path = self.keys();
             path.push(key.clone());
@@ -66,19 +71,20 @@ impl Scope {
                 new: key,
                 existing: IdentPath::from_parts(path),
                 existing_kind: kind,
+                conflict: DeclConflict::Name,
             });
         }
 
-        self.decls.insert(key.clone(), member_val);
+        self.members.insert(key.clone(), member_val);
         Ok(())
     }
 
     pub fn replace_member(&mut self, key: Ident, member_val: ScopeMember) {
-        self.decls.insert(key, member_val);
+        self.members.insert(key, member_val);
     }
 
     pub fn remove_member(&mut self, key: &Ident) -> Option<ScopeMember> {
-        self.decls.remove(key)
+        self.members.remove(key)
     }
 
     pub fn add_use_unit(&mut self, use_unit: IdentPath) {
@@ -108,15 +114,15 @@ impl Scope {
     }
 
     pub fn members(&self) -> impl Iterator<Item = (&Ident, &ScopeMember)> {
-        self.decls.iter()
+        self.members.iter()
     }
 
     pub fn get_decl(&self, ident: &Ident) -> Option<&ScopeMember> {
-        self.decls.get(ident)
+        self.members.get(ident)
     }
 
     pub fn get_decl_mut(&mut self, ident: &Ident) -> Option<&mut ScopeMember> {
-        self.decls.get_mut(ident)
+        self.members.get_mut(ident)
     }
 
     #[allow(unused)]

@@ -5,7 +5,6 @@ use crate::ast::Visibility;
 use crate::typ::ast;
 use crate::typ::ast::{FunctionDecl, SELF_PARAM_NAME};
 use crate::typ::Context;
-use crate::typ::Decl;
 use crate::typ::Environment;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
@@ -94,6 +93,7 @@ pub fn builtin_string_class() -> ast::StructDef {
             Type::interface(builtin_displayable_name().full_path),
             Type::interface(builtin_comparable_name().full_path),
         ],
+        forward: false,
         kind: StructKind::Class,
         span: builtin_span,
     }
@@ -138,6 +138,7 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
                 span: builtin_span.clone(),
             }),
         }],
+        forward: false,
         span: builtin_span,
     }
 }
@@ -161,6 +162,7 @@ pub fn builtin_comparable_iface() -> ast::InterfaceDecl {
                 decl: Rc::new(builtin_comparable_compare_method(iface_ty, Type::MethodSelf)),
             }
         ],
+        forward: false,
         span: builtin_span.clone(),
     }
 }
@@ -214,6 +216,7 @@ pub fn builtin_displayable_iface() -> ast::InterfaceDecl {
                 decl: Rc::new(builtin_displayable_display_method(iface_ty, Type::MethodSelf)),
             }
         ],
+        forward: false,
         span: builtin_span.clone(),
     }
 }
@@ -255,7 +258,7 @@ pub fn declare_builtin_ty(
     let builtin_span = builtin_span();
     
     let ident = Ident::new(name, builtin_span.clone());
-    ctx.declare_type(ident, ty.clone(), Visibility::Interface)?;
+    ctx.declare_type(ident, ty.clone(), Visibility::Interface, false)?;
 
     let type_env = Environment::TypeDecl { ty: ty.clone() };
     ctx.scope(type_env, |ctx| {
@@ -277,21 +280,4 @@ pub fn declare_builtin_ty(
 
         Ok(methods)
     })
-}
-
-// builtin types are OK to redeclare in System.pas
-pub fn is_valid_builtin_redecl(decl: &Decl) -> bool {
-    match decl {
-        Decl::Type { ty: Type::Interface(iface), .. } => {            
-            **iface == builtin_displayable_name().full_path 
-                || **iface == builtin_comparable_name().full_path 
-                || **iface == builtin_disposable_name().full_path
-        },
-        
-        Decl::Type { ty: Type::Class(sym), .. } => {
-            **sym == builtin_string_name()
-        },
-        
-        _ => false,
-    }
 }

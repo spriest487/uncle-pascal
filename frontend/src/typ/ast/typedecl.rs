@@ -1,16 +1,20 @@
 #[cfg(test)]
 mod test;
 
-use std::rc::Rc;
 use crate::ast;
-use crate::ast::Visibility;
-use crate::ast::{FunctionName, StructKind};
+use crate::ast::FunctionName;
 use crate::ast::Ident;
+use crate::ast::StructKind;
+use crate::ast::Visibility;
 use crate::typ::ast::const_eval_integer;
+use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_func_decl;
+use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::InterfaceMethodDecl;
-use crate::typ::ast::{typecheck_expr, FunctionDecl};
+use crate::typ::typecheck_type;
 use crate::typ::Context;
+use crate::typ::FunctionSig;
+use crate::typ::MissingImplementation;
 use crate::typ::NameError;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
@@ -18,10 +22,10 @@ use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
-use crate::typ::{typecheck_type, FunctionSig, MissingImplementation};
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
+use std::rc::Rc;
 
 pub type StructDef = ast::StructDef<Typed>;
 pub type StructMember = ast::StructMember<Typed>;
@@ -36,31 +40,32 @@ pub const VARIANT_TAG_TYPE: Type = Type::Primitive(Primitive::Int32);
 
 pub fn typecheck_struct_decl(
     name: Symbol,
-    class: &ast::StructDef<Span>,
+    struct_def: &ast::StructDef<Span>,
     ctx: &mut Context,
 ) -> TypeResult<StructDef> {
-    let self_ty = match class.kind {
+    let self_ty = match struct_def.kind {
         StructKind::Record | StructKind::PackedRecord => Type::record(name.clone()),
         StructKind::Class => Type::class(name.clone()),
     };
 
-    let implements: Vec<Type> = class.implements
+    let implements: Vec<Type> = struct_def.implements
         .iter()
         .map(|implements_ty| typecheck_type(implements_ty, ctx))
         .collect::<TypeResult<_>>()?;
 
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(
-        class.name.ident.clone(),
+        struct_def.name.ident.clone(),
         self_ty.clone(),
         Visibility::Implementation,
+        true,
     )?;
 
     let mut members = Vec::new();
-    for member in &class.members {
+    for member in &struct_def.members {
         match member {
             ast::StructMember::Field(field) => {
-                let field = typecheck_field(class, &name, &field, ctx)?; 
+                let field = typecheck_field(&field, ctx)?; 
                 members.push(field.into());
             }
             
@@ -75,7 +80,7 @@ pub fn typecheck_struct_decl(
     for iface_ty in implements.iter() {
         if let Type::Interface(iface_name) = &iface_ty {
             let iface = ctx.find_iface_def(iface_name.as_ref())
-                .map_err(|e| TypeError::from_name_err(e, class.name.span.clone()))?;
+                .map_err(|e| TypeError::from_name_err(e, struct_def.name.span.clone()))?;
             
             let mut missing_methods = Vec::new();
             
@@ -110,7 +115,7 @@ pub fn typecheck_struct_decl(
             if !missing_methods.is_empty() {
                 return Err(TypeError::IncompleteImplementation {
                     ty: self_ty,
-                    span: Span::range(&class.implements).unwrap_or(class.name.span.clone()),
+                    span: Span::range(&struct_def.implements).unwrap_or(struct_def.name.span.clone()),
                     missing: missing_methods
                 });
             }
@@ -118,11 +123,12 @@ pub fn typecheck_struct_decl(
     }
 
     Ok(StructDef {
-        kind: class.kind,
+        kind: struct_def.kind,
         name,
-        span: class.span.clone(),
+        span: struct_def.span.clone(),
         implements,
         members,
+        forward: struct_def.forward,
     })
 }
 
@@ -144,24 +150,12 @@ fn typecheck_method(decl: &ast::FunctionDecl, ctx: &mut Context) -> TypeResult<F
 }
 
 fn typecheck_field(
-    struct_def: &ast::StructDef,
-    struct_name: &Symbol,
     field: &ast::Field,
     ctx: &mut Context
 ) -> TypeResult<Field> {
     let ty = typecheck_type(&field.ty, ctx)?.clone();
 
-    let is_unsized = ctx
-        .is_unsized_ty(&ty)
-        .map_err(|err| TypeError::from_name_err(err, struct_def.span().clone()))?;
-
-    if is_unsized {
-        return Err(TypeError::UnsizedMember {
-            decl: struct_name.full_path.clone(),
-            member: field.ident.clone(),
-            member_ty: ty,
-        });
-    }
+    ty.expect_sized(ctx, &field.span)?;
 
     let field = Field {
         ty,
@@ -208,6 +202,7 @@ pub fn typecheck_iface(
 
     Ok(InterfaceDecl {
         name,
+        forward: iface.forward,
         span: iface.span.clone(),
         methods,
     })
@@ -215,15 +210,15 @@ pub fn typecheck_iface(
 
 pub fn typecheck_variant(
     name: Symbol,
-    variant: &ast::VariantDef<Span>,
+    variant_def: &ast::VariantDef<Span>,
     ctx: &mut Context,
 ) -> TypeResult<VariantDef> {
-    if variant.cases.is_empty() {
-        return Err(TypeError::EmptyVariant(Box::new(variant.clone())));
+    if variant_def.cases.is_empty() {
+        return Err(TypeError::EmptyVariant(Box::new(variant_def.clone())));
     }
 
-    let mut cases = Vec::with_capacity(variant.cases.len());
-    for case in &variant.cases {
+    let mut cases = Vec::with_capacity(variant_def.cases.len());
+    for case in &variant_def.cases {
         let data_ty = match &case.data_ty {
             Some(data_ty) => Some(typecheck_type(data_ty, ctx)?),
             None => None,
@@ -238,8 +233,9 @@ pub fn typecheck_variant(
 
     Ok(VariantDef {
         name,
+        forward: variant_def.forward,
         cases,
-        span: variant.span().clone(),
+        span: variant_def.span().clone(),
     })
 }
 

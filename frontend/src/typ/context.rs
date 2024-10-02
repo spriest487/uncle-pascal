@@ -28,7 +28,6 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::SELF_TY_NAME;
-use crate::typ::{specialize_variant_def, TypeParamList};
 use crate::typ::specialize_struct_def;
 use crate::typ::FunctionSig;
 use crate::typ::Primitive;
@@ -37,6 +36,7 @@ use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeParamType;
 use crate::typ::TypeResult;
+use crate::typ::{specialize_variant_def, TypeParamList};
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
 use std::collections::hash_map::Entry;
@@ -397,7 +397,6 @@ impl Context {
         }
     }
     
-    
     fn find_path_in_used_units(&self, path: &IdentPath) -> Option<ScopeMemberRef> {
         let current_path = self.scopes.current_path();
 
@@ -469,7 +468,7 @@ impl Context {
     }
 
     fn declare(&mut self, name: Ident, decl: Decl) -> TypeResult<()> {
-        let local_name_path = IdentPath::from_parts([name.clone()]);
+        let local_name_path = IdentPath::from(name.clone());
 
         match self.find_path(&local_name_path) {
             Some(ScopeMemberRef::Decl {
@@ -495,6 +494,7 @@ impl Context {
                                 new: name,
                                 existing_kind: ScopeMemberKind::Decl,
                                 existing: old_ident,
+                                conflict: DeclConflict::Type,
                             },
                         })
                     }
@@ -502,32 +502,44 @@ impl Context {
             }
 
             Some(old_ref) => {
-                if let ScopeMemberRef::Decl { value: old_decl, .. } = old_ref {
-                    if is_valid_builtin_redecl(&decl) 
-                        && old_decl.visibility() == decl.visibility() {
-                        return Ok(())
-                    }
-                }
-                
                 let old_kind = old_ref.kind();
-                let old_ident = match old_ref {
+                let old_ident = match &old_ref {
                     ScopeMemberRef::Decl { key, parent_path, .. } => {
-                        Path::new(key.clone(), parent_path.keys().cloned())
+                        Path::new((*key).clone(), parent_path.keys().cloned())
                     },
 
                     ScopeMemberRef::Scope { path } => {
                         Path::from_parts(path.keys().cloned())
                     },
                 };
-                
-                Err(TypeError::NameError {
-                    span: name.span().clone(),
-                    err: NameError::AlreadyDeclared {
-                        new: name,
-                        existing_kind: old_kind,
-                        existing: old_ident,
+
+                match &old_ref {
+                    ScopeMemberRef::Decl { value: old_decl, parent_path, .. } => {
+                        // re-declarations are only valid in the same scope as the original
+                        if parent_path.to_namespace() != self.namespace() {
+                            return Err(Self::redecl_error(name, old_kind, old_ident, DeclConflict::Name));
+                        }
+
+                        if let Some(conflict) = (**old_decl).get_conflict(&decl) {
+                            return Err(Self::redecl_error(name, old_kind, old_ident, conflict));
+                        }
+
+                        match self.get_decl_scope_mut(&name) {
+                            None => {
+                                Err(Self::redecl_error(name, old_kind, old_ident, DeclConflict::Name))
+                            }
+
+                            Some(redecl_scope) => {
+                                redecl_scope.replace_member(name.clone(), ScopeMember::Decl(decl));
+                                Ok(())
+                            }
+                        }
+                    }
+
+                    _ => {
+                        Err(Self::redecl_error(name, old_kind, old_ident, DeclConflict::Name))
                     },
-                })
+                }
             }
 
             _ => {
@@ -542,6 +554,23 @@ impl Context {
             }
         }
     }
+    
+    fn redecl_error(
+        key: Ident,
+        old_kind: ScopeMemberKind,
+        old_ident: IdentPath,
+        conflict: DeclConflict
+    ) -> TypeError {
+        let err_span = key.span().clone();
+        let err = NameError::AlreadyDeclared {
+            new: key,
+            existing_kind: old_kind,
+            existing: old_ident,
+            conflict,
+        };
+
+        TypeError::from_name_err(err, err_span)
+    }
 
     pub fn declare_binding(&mut self, name: Ident, binding: Binding) -> TypeResult<()> {
         self.declare(name, Decl::BoundValue(binding))?;
@@ -555,15 +584,17 @@ impl Context {
     ) -> TypeResult<()> {
         let name = iface.name.ident().clone();
         let iface_ty = Type::interface(iface.name.full_path.clone());
-        self.declare_type(name.clone(), iface_ty, visibility)?;
+        self.declare_type(name.clone(), iface_ty, visibility, iface.forward)?;
 
-        let map_unexpected = |_, _| unreachable!();
-        self.define(
-            name,
-            Def::Interface(iface.clone()),
-            DefDeclMatch::always_match,
-            map_unexpected,
-        )?;
+        if !iface.forward {
+            let map_unexpected = |_, _| unreachable!();
+            self.define(
+                name,
+                Def::Interface(iface.clone()),
+                DefDeclMatch::always_match,
+                map_unexpected,
+            )?;
+        }
 
         Ok(())
     }
@@ -576,36 +607,40 @@ impl Context {
         let name = variant.name.ident().clone();
 
         let variant_ty = Type::variant(variant.name.clone());
-        self.declare_type(name.clone(), variant_ty, visibility)?;
+        self.declare_type(name.clone(), variant_ty, visibility, variant.forward)?;
 
-        let map_unexpected = |_, _| unreachable!();
-        self.define(
-            name,
-            Def::Variant(variant.clone()),
-            DefDeclMatch::always_match,
-            map_unexpected,
-        )?;
+        if !variant.forward {
+            let map_unexpected = |_, _| unreachable!();
+            self.define(
+                name,
+                Def::Variant(variant.clone()),
+                DefDeclMatch::always_match,
+                map_unexpected,
+            )?;
+        }
 
         Ok(())
     }
 
-    pub fn declare_class(&mut self, class: Rc<StructDef>, visibility: Visibility) -> TypeResult<()> {
-        let name = class.name.ident().clone();
+    pub fn declare_struct(&mut self, struct_def: Rc<StructDef>, visibility: Visibility) -> TypeResult<()> {
+        let name = struct_def.name.ident().clone();
 
-        let class_ty = match class.kind {
-            syn::StructKind::Class => Type::class(class.name.clone()),
-            syn::StructKind::Record | syn::StructKind::PackedRecord => Type::record(class.name.clone()),
+        let class_ty = match struct_def.kind {
+            syn::StructKind::Class => Type::class(struct_def.name.clone()),
+            syn::StructKind::Record | syn::StructKind::PackedRecord => Type::record(struct_def.name.clone()),
         };
 
-        self.declare_type(name.clone(), class_ty.clone(), visibility)?;
-
-        let map_unexpected = |_, _| unreachable!();
-        self.define(
-            name,
-            Def::Class(class.clone()),
-            DefDeclMatch::always_match,
-            map_unexpected,
-        )?;
+        self.declare_type(name.clone(), class_ty.clone(), visibility, struct_def.forward)?;
+        
+        if !struct_def.forward {
+            let map_unexpected = |_, _| unreachable!();
+            self.define(
+                name,
+                Def::Class(struct_def.clone()),
+                DefDeclMatch::always_match,
+                map_unexpected,
+            )?;
+        }
 
         Ok(())
     }
@@ -615,7 +650,7 @@ impl Context {
 
         let enum_ty = Type::enumeration(enum_decl.name.clone());
 
-        self.declare_type(name.clone(), enum_ty.clone(), visibility)?;
+        self.declare_type(name.clone(), enum_ty.clone(), visibility, false)?;
 
         self.define(
             name,
@@ -649,6 +684,7 @@ impl Context {
                     pos,
                 })),
                 Visibility::Implementation,
+                false,
             )?;
         }
 
@@ -657,7 +693,7 @@ impl Context {
 
     pub fn declare_self_ty(&mut self, ty: Type, span: Span) -> TypeResult<()> {
         let self_ident = Ident::new(SELF_TY_NAME, span);
-        self.declare_type(self_ident, ty, Visibility::Implementation)
+        self.declare_type(self_ident, ty, Visibility::Implementation, false)
     }
 
     pub fn declare_type(
@@ -665,8 +701,9 @@ impl Context {
         name: Ident,
         ty: Type,
         visibility: Visibility,
+        forward: bool,
     ) -> TypeResult<()> {
-        self.declare(name, Decl::Type { ty: ty.clone(), visibility })?;
+        self.declare(name, Decl::Type { ty: ty.clone(), visibility, forward })?;
 
         Ok(())
     }
@@ -885,7 +922,7 @@ impl Context {
                         if let Some(existing) = self.defs.get(&full_name) {
                             // allow the redeclaration of certain builtin types in System.pas,
                             // as long as the new definition matches the builtin one exactly
-                            if !is_valid_builtin_redecl(value) || *existing != def {
+                            if !value.is_valid_builtin_redecl() || *existing != def {
                                 dbg!(existing);
                                 dbg!(&def);
                                 
@@ -1294,16 +1331,18 @@ impl Context {
 
             Type::Record(class) => {
                 match self.find_struct_def(&class.full_path) {
-                    Ok(..) => Ok(false),
+                    Ok(def) => Ok(def.forward),
                     Err(NameError::NotFound { .. }) => Ok(true),
                     Err(err) => Err(err),
                 }
             }
 
-            Type::Variant(variant) => match self.find_variant_def(&variant.full_path) {
-                Ok(..) => Ok(false),
-                Err(NameError::NotFound { .. }) => Ok(true),
-                Err(err) => Err(err.into()),
+            Type::Variant(variant) => {
+                match self.find_variant_def(&variant.full_path) {
+                    Ok(def) => Ok(def.forward),
+                    Err(NameError::NotFound { .. }) => Ok(true),
+                    Err(err) => Err(err.into()),
+                }
             },
 
             Type::Array(array_ty) => self.is_unsized_ty(&array_ty.element_ty),
@@ -1364,8 +1403,15 @@ impl Context {
             for (ident, decl) in scope.members() {
                 match decl {
                     // all types except interfaces must define any methods they declare
-                    ScopeMember::Decl(Decl::Type { ty, .. }) => {
-                        syms.append(&mut self.undefined_ty_members(ty));
+                    ScopeMember::Decl(Decl::Type { ty, forward, .. }) => {
+                        if *forward {
+                            // all forward-declared types must be fully defined within the unit
+                            syms.push(current_scope_ns
+                                .clone()
+                                .child(ident.clone()))
+                        } else {
+                            syms.append(&mut self.undefined_ty_members(ty));
+                        }
                     },
                     
                     ScopeMember::Decl(Decl::Function { .. }) => {
@@ -1478,6 +1524,16 @@ impl Context {
     pub fn get_decl_scope(&self, id: &Ident) -> Option<&Scope> {
         for scope in self.scopes.iter().rev() {
             if scope.get_decl(id).is_some() {
+                return Some(scope);
+            }
+        }
+
+        None
+    }
+
+    pub fn get_decl_scope_mut(&mut self, id: &Ident) -> Option<&mut Scope> {
+        for scope in self.scopes.iter_mut().rev() {
+            if scope.get_decl_mut(id).is_some() {
                 return Some(scope);
             }
         }

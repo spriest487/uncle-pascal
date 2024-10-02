@@ -102,19 +102,19 @@ pub fn specialize_generic_name<'a>(
 }
 
 pub fn specialize_struct_def<'a>(
-    generic_class: &Rc<StructDef>,
+    generic_def: &Rc<StructDef>,
     ty_args: &TypeArgList,
     ctx: &Context,
 ) -> GenericResult<Rc<StructDef>> {
-    let struct_ty_params = match &generic_class.name.type_params {
-        None => return Ok(generic_class.clone()),
+    let struct_ty_params = match &generic_def.name.type_params {
+        None => return Ok(generic_def.clone()),
         Some(param_list) => param_list,
     };
 
-    let specialized_name = specialize_generic_name(&generic_class.name, ty_args, ctx)?
+    let specialized_name = specialize_generic_name(&generic_def.name, ty_args, ctx)?
         .into_owned();
 
-    let implements: Vec<Type> = generic_class.implements
+    let implements: Vec<Type> = generic_def.implements
         .iter()
         .map(|implements_ty| {
             let specialized = implements_ty
@@ -124,7 +124,7 @@ pub fn specialize_struct_def<'a>(
         })
         .collect::<GenericResult<_>>()?;
 
-    let members: Vec<_> = generic_class
+    let members: Vec<_> = generic_def
         .members
         .iter()
         .map(|member| {
@@ -155,13 +155,13 @@ pub fn specialize_struct_def<'a>(
                             Some(ty) => {
                                 assert_eq!(
                                     ty.full_path().map(Cow::into_owned).as_ref(),
-                                    Some(&generic_class.name.full_path),
+                                    Some(&generic_def.name.full_path),
                                     "owning type of a method must always be the type it's declared in"
                                 );
 
                                 Some(Type::struct_type(
                                     specialized_name.clone(),
-                                    generic_class.kind
+                                    generic_def.kind
                                 ))
                             },
                             None => None,
@@ -178,8 +178,9 @@ pub fn specialize_struct_def<'a>(
         name: specialized_name,
         implements,
         members,
-        span: generic_class.span.clone(),
-        kind: generic_class.kind,
+        span: generic_def.span.clone(),
+        kind: generic_def.kind,
+        forward: generic_def.forward,
     }))
 }
 
@@ -212,6 +213,7 @@ pub fn specialize_variant_def(
     Ok(VariantDef {
         name: parameterized_name.into_owned(),
         span: variant.span().clone(),
+        forward: variant.forward,
         cases,
     })
 }
