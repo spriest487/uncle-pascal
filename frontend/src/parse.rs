@@ -42,7 +42,8 @@ pub enum ParseError {
     UnexpectedEOF(Matcher, Span),
     EmptyOperand { operator: Span, before: bool },
     UnexpectedOperator { operator: Span },
-    
+
+    IsStatement(Box<Stmt<Span>>),
     InvalidStatement(InvalidStatement<Span>),
     UnterminatedStatement { span: Span },
     InvalidForLoopInit(Stmt<Span>),
@@ -78,6 +79,7 @@ impl Spanned for ParseError {
             ParseError::UnexpectedEOF(_, tt) => tt.span(),
             ParseError::EmptyOperand { operator, .. } => operator.span(),
             ParseError::UnexpectedOperator { operator } => operator.span(),
+            ParseError::IsStatement(stmt) => stmt.span(),
             ParseError::InvalidStatement(invalid) => invalid.0.annotation().span(),
             ParseError::DuplicateModifier { new, .. } => new.span(),
             ParseError::CtorWithTypeArgs { span } => span,
@@ -107,6 +109,7 @@ impl fmt::Display for ParseError {
             ParseError::EmptyOperand { .. } => write!(f, "Empty operand"),
             ParseError::UnexpectedOperator { .. } => write!(f, "Unexpected operator"),
 
+            ParseError::IsStatement(..) => write!(f, "Statement is not a valid expression"),
             ParseError::InvalidStatement(invalid) => write!(f, "{}", invalid.title()),
             ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated stmt"),
             ParseError::InvalidForLoopInit( .. ) => write!(f, "Invalid for-loop initialization stmt"),
@@ -155,6 +158,8 @@ impl DiagnosticOutput for ParseError {
             }
 
             ParseError::UnexpectedOperator { .. } => Some("expected operand, found operator".to_string()),
+            
+            ParseError::IsStatement(..) => None,
 
             ParseError::InvalidStatement(invalid_stmt) => Some(invalid_stmt.to_string()),
 

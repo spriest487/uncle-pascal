@@ -5,7 +5,7 @@ pub(crate) mod test;
 
 use crate::ast::expression::parse::CompoundExpressionParser;
 use crate::ast::match_block::MatchExpr;
-use crate::ast::Annotation;
+use crate::ast::{Annotation, Stmt};
 use crate::ast::AnonymousFunctionDef;
 use crate::ast::BinOp;
 use crate::ast::Block;
@@ -25,6 +25,7 @@ use crate::parse::*;
 use common::span::*;
 use std::fmt;
 use std::rc::Rc;
+use common::TracedError;
 use crate::Operator;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -293,7 +294,28 @@ impl Parse for Expr<Span> {
 impl Expr<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let parser = CompoundExpressionParser::new(tokens);
-        parser.parse()
+        let expr = parser.parse()?;
+        
+        // handle any expressions which get parsed by the expression parser but aren't actually
+        // valid expressions - i.e. assignment operators
+        if let Expr::BinOp(bin_op) = &expr {
+            let stmt_only = match bin_op.op {
+                Operator::Assignment | Operator::CompoundAssignment(..) => true,
+                _ => false,
+            };
+            
+            if stmt_only {
+                let stmt = Stmt::try_from_expr(expr.clone())
+                    .map_err(|bad_expr| {
+                        let err = ParseError::InvalidStatement(InvalidStatement(Box::new(bad_expr)));
+                        TracedError::trace(err)
+                    })?;
+                
+                return Err(TracedError::trace(ParseError::IsStatement(Box::new(stmt))));
+            }
+        }
+        
+        Ok(expr)
     }
 }
 

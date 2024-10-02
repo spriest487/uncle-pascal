@@ -79,6 +79,10 @@ pub fn typecheck_bin_op(
             let bin_op = typecheck_bitwise_op(bin_op, expect_ty, ctx)?;
             Ok(Expr::from(bin_op))
         },
+        
+        Operator::Assignment => {
+            unreachable!("typecheck_bin_op: assignment should never be checked as expression, only a statement")
+        }
 
         _ => {
             let mut lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
