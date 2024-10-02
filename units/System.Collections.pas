@@ -18,6 +18,8 @@ type LinkedList[T] = class
     
     function Set(n: Integer; value: T);
     
+    function Remove(n: Integer);
+    
     function Append(item: T);
     
     function Clear;
@@ -116,6 +118,34 @@ begin
         node.val := value
     else
         raise 'index out of range: ' + n.ToString();
+end;
+
+function LinkedList[T].Remove(n: Integer);
+begin
+    if n = 0 then
+    begin
+        match self.head of
+            Option.Some head:
+                self.head := head.next;
+                
+            Option.None:
+                raise 'index out of range: 0'; 
+        end; 
+    end
+    else
+        match GetNthNode[T](self, n - 1) of
+            Option.Some parent: 
+                match parent.next of
+                    Option.Some removed:
+                        parent.next := removed.next;
+                    
+                    Option.None:
+                        raise 'index out of range: ' + n.ToString();    
+                
+            Option.None:
+                raise 'index out of range: ' + n.ToString();
+        end;
+    end;
 end;
 
 function LinkedList[T].Clear;
