@@ -10,6 +10,8 @@ type
     Byte = UInt8;
     Word = UInt16;
     Cardinal = UInt32;
+    
+    Single = Real32;
 
     String = class of Displayable, Comparable
         chars: ^Byte;
@@ -97,6 +99,24 @@ function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer): An
 
 function Length[T](arr: array of T): Integer;
 function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);
+
+function RandomInteger(rangeStart, rangeEnd: Integer): Integer; external 'rt';
+function RandomSingle(rangeStart, rangeEnd: Single): Single; external 'rt';
+
+function Pow(value, power: Single): Single; external 'rt';
+function Sqrt(value: Single): Single; external 'rt';
+
+function Sin(value: Single): Single; external 'rt';
+function ArcSin(value: Single): Single; external 'rt';
+function Cos(value: Single): Single; external 'rt';
+function ArcCos(value: Single): Single; external 'rt';
+function Tan(value: Single): Single; external 'rt';
+function ArcTan(value: Single): Single; external 'rt';
+
+const
+    PI = 3.1415926;
+    RAD_TO_DEG = 180.0 / PI;
+    DEG_TO_RAD = PI / 180.0;
 
 implementation
 

@@ -12,8 +12,15 @@ type LinkedList[T] = class
     head: Option[Node[T]];
     
     function Length: Integer;
-    function Nth(n: Integer): Option[T];
+    
+    function Get(n: Integer): T;
+    function TryGet(n: Integer): Option[T];
+    
+    function Set(n: Integer; value: T);
+    
     function Append(item: T);
+    
+    function Clear;
 end;
 
 function NewLinkedList[T](): LinkedList[T];
@@ -81,7 +88,15 @@ begin
     else 0;
 end;
 
-function LinkedList[T].Nth(n: Integer): Option[T];
+function LinkedList[T].Get(n: Integer): T;
+begin
+    match self.TryGet(n) of
+        Option.Some item: item;
+        Option.None: raise 'index out of range: ' + n.ToString();
+    end;
+end;
+
+function LinkedList[T].TryGet(n: Integer): Option[T];
 begin
     var nth := GetNthNode[T](self, n);
 
@@ -91,6 +106,21 @@ begin
         Option.None();
 
     result
+end;
+
+function LinkedList[T].Set(n: Integer; value: T);
+begin
+    var nth := GetNthNode[T](self, n);
+
+    if nth is Option.Some node then
+        node.val := value
+    else
+        raise 'index out of range: ' + n.ToString();
+end;
+
+function LinkedList[T].Clear;
+begin
+    self.head := Option.None();
 end;
 
 function LinkedList[T].Append(item: T);
