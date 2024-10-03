@@ -88,6 +88,11 @@ pub(super) fn pointer_to_str(state: &mut Interpreter) -> ExecResult<()> {
     })
 }
 
+/// %1: F32 -> %0: String
+pub(super) fn real_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, DynValue::as_f32)
+}
+
 /// %1: String -> %0: I32
 pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(1));

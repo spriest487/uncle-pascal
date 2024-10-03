@@ -1,5 +1,6 @@
 #include <inttypes.h>
 #include <math.h>
+#include <float.h>
 
 #if _WIN32
 #   define WIN32_LEAN_AND_MEAN
@@ -54,7 +55,8 @@ INT_TO_STR_IMPL(System_UInt64ToStr,     uint64_t,       PRIu64, 24 + 0)
 INT_TO_STR_IMPL(System_Int64ToStr,      int64_t,        PRId64, 24 + 1)
 INT_TO_STR_IMPL(System_NativeUIntToStr, size_t,         "zu",   24 + 0)
 INT_TO_STR_IMPL(System_NativeIntToStr,  ptrdiff_t,      "zd",   24 + 1)
-INT_TO_STR_IMPL(System_PointerToStr,  const void*,    "%p",   24 + 0)
+INT_TO_STR_IMPL(System_PointerToStr,    const void*,    "p",    24 + 0)
+INT_TO_STR_IMPL(System_RealToStr,       float,          "f",    3 + FLT_MANT_DIG - FLT_MIN_EXP)
 
 static unsigned char* System_GetMem(int32_t len) {
     return (unsigned char*) Alloc(len);

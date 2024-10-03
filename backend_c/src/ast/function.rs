@@ -42,6 +42,7 @@ pub enum FunctionName {
     NativeIntToStr,
     NativeUIntToStr,
     PointerToStr,
+    RealToStr,
 
     StrToInt,
     Write,
@@ -103,6 +104,7 @@ impl fmt::Display for FunctionName {
             FunctionName::NativeIntToStr => write!(f, "System_NativeIntToStr"),
             FunctionName::NativeUIntToStr => write!(f, "System_NativeUIntToStr"),
             FunctionName::PointerToStr => write!(f, "System_PointerToStr"),
+            FunctionName::RealToStr => write!(f, "System_RealToStr"),
 
             FunctionName::ArrayLengthInternal => write!(f, "System_ArrayLengthInternal"),
             FunctionName::ArraySetLengthInternal => write!(f, "System_ArraySetLengthInternal"),

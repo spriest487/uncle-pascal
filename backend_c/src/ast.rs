@@ -111,6 +111,12 @@ impl Module {
                 string_ty.clone(),
             ),
             (
+                "RealToStr",
+                FunctionName::RealToStr,
+                vec![Type::Float.ptr()],
+                string_ty.clone(),
+            ),
+            (
                 "StrToInt",
                 FunctionName::StrToInt,
                 vec![string_ty.clone()],

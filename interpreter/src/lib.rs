@@ -1696,6 +1696,12 @@ impl Interpreter {
                 vec![ir::Type::Nothing.ptr()],
             ),
             (
+                "RealToStr",
+                builtin::real_to_str,
+                ir::Type::string_ptr(),
+                vec![ir::Type::F32],
+            ),
+            (
                 "StrToInt",
                 builtin::str_to_int,
                 ir::Type::I32,
