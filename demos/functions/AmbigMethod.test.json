@@ -1,5 +1,0 @@
-{
-  "steps": [
-    { "error_regex": "Function reference is ambiguous" }
-  ]
-}
