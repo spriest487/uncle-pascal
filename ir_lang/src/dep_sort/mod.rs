@@ -6,9 +6,9 @@ use crate::TypeDef;
 use crate::TypeDefID;
 use crate::VariantDef;
 use linked_hash_map::LinkedHashMap;
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use topological_sort::TopologicalSort;
 
 // sort list of type defs to resolve deep structural dependencies on other defs.
 // struct, variant and static array fields count as structural dependencies (and are
@@ -19,28 +19,25 @@ pub fn sort_defs<Defs>(defs: Defs, metadata: &Metadata) -> LinkedHashMap<TypeDef
 where
     Defs: IntoIterator<Item = (TypeDefID, TypeDef)>,
 {
+    let mut sort = TopologicalSort::new();
+
     let defs: HashMap<TypeDefID, TypeDef> = defs.into_iter().collect();
-    let mut ids: Vec<_> = defs.keys().map(|id| *id).collect();
-
-    let mut def_deps = HashMap::new();
-
+    
     for (id, def) in defs.iter() {
-        let deps = find_deps(def, metadata);
-        def_deps.insert(*id, deps);
+        sort.insert(*id);
+        
+        for dep in find_deps(def, metadata) {
+            sort.add_dependency(*id, dep);
+            
+            if sort.peek().is_none() {
+                panic!("circular dependency in definitions: {} -> {}", id, dep);
+            }
+        }
     }
 
-    ids.sort_unstable_by(|a, b| {
-        if def_deps[a].contains(b) {
-            Ordering::Greater
-        } else if def_deps[b].contains(a) {
-            Ordering::Less
-        } else {
-            Ordering::Equal
-        }
-    });
-
     let mut defs = defs;
-    ids.into_iter()
+    
+    sort
         .map(|id| (id, defs.remove(&id).unwrap()))
         .collect()
 }

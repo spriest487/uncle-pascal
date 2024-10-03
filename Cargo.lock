@@ -529,6 +529,7 @@ dependencies = [
  "frontend",
  "linked-hash-map",
  "serde",
+ "topological-sort",
 ]
 
 [[package]]
