@@ -214,7 +214,7 @@ static void RcRelease(void* instance) {
     Free(instance);
 }
 
-static void Raise(STRING_STRUCT* msg_str);
+_Noreturn static void Raise(STRING_STRUCT* msg_str);
 
 // implementations of System.pas builtins
 

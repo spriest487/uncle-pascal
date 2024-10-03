@@ -9,7 +9,7 @@
 #   include <dlfcn.h>
 #endif
 
-static void Raise(STRING_STRUCT* msg_str) {
+_Noreturn static void Raise(STRING_STRUCT* msg_str) {
     if (msg_str && msg_str->rc.strong_count != 0) {
         int32_t msg_len = STRING_LEN(msg_str);
         char* msg_chars = (char*) STRING_CHARS(msg_str);

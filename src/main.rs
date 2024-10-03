@@ -386,6 +386,11 @@ fn clang_compile(module: &ir::Module, args: &Args, out_path: &OsStr) -> io::Resu
         .arg("-x").arg("c")
         .arg("-o").arg(out_path)
         .arg("-")
+        .arg("-Werror")
+        .arg("-Wall")
+        .arg("-Wextra")
+        .arg("-Wno-unused-function")
+        .arg("-Wno-unused-parameter")
         .stdin(Stdio::piped());
     
     if args.debug || args.debug_codeview {
