@@ -3,13 +3,16 @@ interface
 
 uses System;
 
-type Node[T] = class
-    next: Option[Node[T]];
+type LinkedListNode[T] = class
+    next: Option[LinkedListNode[T]];
     val: T;
+    
+    function Next: Option[LinkedListNode[T]];
+    function Value: T;
 end;
 
 type LinkedList[T] = class
-    head: Option[Node[T]];
+    head: Option[LinkedListNode[T]];
     
     function Length: Integer;
     
@@ -18,18 +21,42 @@ type LinkedList[T] = class
     
     function Set(n: Integer; value: T);
     
+    function Head: Option[LinkedListNode[T]];
+    
+    function Add(item: T);
     function Remove(n: Integer);
     
-    function Append(item: T);
+    function Clear;
+end;
+
+type ArrayList[T] = class
+    items: array of T;
+    len: Integer;
+    
+    function Length: Integer;
+    function Capacity: Integer;
+    
+    function Get(n: Integer): T;
+    function TryGet(n: Integer): Option[T];
+    
+    function Set(n: Integer; value: T);
+    
+    function Add(item: T);
+    function Remove(n: Integer);
     
     function Clear;
 end;
 
 function NewLinkedList[T](): LinkedList[T];
+function NewArrayList[T](): ArrayList[T];
 
 implementation
 
-function GetNthNode[T](list: LinkedList[T]; n: Integer): Option[Node[T]];
+const 
+    ARRAYLIST_INITIAL_CAPACITY = 4;
+    ARRAYLIST_GROWTH = 2;
+
+function GetNodeAt[T](list: LinkedList[T]; n: Integer): Option[LinkedListNode[T]];
 begin
     if list.head is Option.Some head then begin
         if n = 0 then
@@ -66,6 +93,21 @@ begin
     )
 end;
 
+function LinkedListNode[T].Next: Option[LinkedListNode[T]];
+begin
+    self.next;
+end;
+
+function LinkedListNode[T].Value: T;
+begin
+    self.val;
+end;
+
+function LinkedList[T].Head: Option[LinkedListNode[T]];
+begin
+    self.head;
+end;
+
 function LinkedList[T].Length: Integer;
 begin
     if self.head is Option.Some head then 
@@ -100,7 +142,7 @@ end;
 
 function LinkedList[T].TryGet(n: Integer): Option[T];
 begin
-    var nth := GetNthNode[T](self, n);
+    var nth := GetNodeAt[T](self, n);
 
     var result: Option[T] := if nth is Option.Some node then
         Option.Some(node.val)
@@ -112,7 +154,7 @@ end;
 
 function LinkedList[T].Set(n: Integer; value: T);
 begin
-    var nth := GetNthNode[T](self, n);
+    var nth := GetNodeAt[T](self, n);
 
     if nth is Option.Some node then
         node.val := value
@@ -133,7 +175,7 @@ begin
         end; 
     end
     else
-        match GetNthNode[T](self, n - 1) of
+        match GetNodeAt[T](self, n - 1) of
             Option.Some parent: 
                 match parent.next of
                     Option.Some removed:
@@ -153,7 +195,7 @@ begin
     self.head := Option.None();
 end;
 
-function LinkedList[T].Append(item: T);
+function LinkedList[T].Add(item: T);
 begin
     if self.head is Option.Some head then begin
         var current := head;
@@ -162,7 +204,7 @@ begin
             if current.next is Option.Some next then
                 current := next
             else begin
-                current.next := Option.Some(Node(
+                current.next := Option.Some(LinkedListNode(
                     next: Option.None();
                     val: item;
                 ));
@@ -171,11 +213,111 @@ begin
         end
     end
     else begin
-        self.head := Option.Some(Node(
+        self.head := Option.Some(LinkedListNode(
             next: Option.None();
             val: item;
         ));
     end;
+end;
+
+function NewArrayList[T]: ArrayList[T];
+begin
+    ArrayList(
+        items: [];
+        len: 0;
+    );
+end;
+
+function ArrayList[T].Length: Integer;
+begin
+    self.len;
+end;
+
+function ArrayList[T].Capacity: Integer;
+begin
+    Length(self.items);
+end;
+    
+function ArrayList[T].Get(n: Integer): T;
+begin
+    match self.TryGet(n) of
+        Option.Some item: item;
+        Option.None: raise 'index out of range: ' + n;
+    end;
+end;
+
+function ArrayList[T].TryGet(n: Integer): Option[T];
+begin
+    if n >= 0 and n < self.len then
+    begin
+        var item := self.items[n];
+        Option.Some(item);
+    end
+    else Option.None();
+end;
+
+function ArrayList[T].Set(n: Integer; value: T);
+begin
+    if n < 0 or n >= self.len then
+    begin
+        raise 'index out of range: ' + n.ToString();
+    end
+    else
+        self.items[n] := value;
+end;
+
+function ReallocItems[T](list: ArrayList[T]; size: Integer);
+unsafe begin
+    // workaround for non-nullable RC types - needs compiler support 
+    var nothing := GetMem(sizeof(T)) as ^Byte;
+    for var i := 0 to sizeof(T) - 1 do
+        nothing[i] := 0;
+    
+    SetLength(list.items, size, (nothing as ^T)^); 
+    
+    FreeMem(nothing);
+end;
+
+function ArrayList[T].Add(item: T);
+begin
+    var capacity := Length(self.items);
+    if self.len + 1 > capacity then
+    begin
+        capacity := if capacity = 0 then 
+            ARRAYLIST_INITIAL_CAPACITY
+        else
+            capacity * ARRAYLIST_GROWTH;
+
+        ReallocItems(self, capacity);
+    end;
+        
+    self.items[self.len] := item;
+    self.len += 1;
+end;
+
+function ArrayList[T].Remove(n: Integer);
+begin
+    for var i := n to Length(self.items) - 2 do
+    begin
+        self.items[i] := self.items[i + 1];
+    end;
+    
+    self.len -= 1;
+    
+    // throw the last item into the RC void by replacing it with null
+    // workaround for non-nullable RC types - needs compiler support
+    var nothing := GetMem(sizeof(T)) as ^Byte;
+    for var i := 0 to sizeof(T) - 1 do
+        nothing[i] := 0;
+
+    self.items[self.len] := (nothing as ^T)^;
+    FreeMem(nothing);
+end;
+
+function ArrayList[T].Clear;
+begin
+    ReallocItems(self, 0);
+    self.len := 0;
 end;
 
 end
