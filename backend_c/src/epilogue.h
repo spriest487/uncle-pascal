@@ -159,8 +159,10 @@ static int32_t System_RandomInteger(int32_t from, int32_t to) {
 }
 
 static float System_RandomSingle(float from, float to) {
-    float range = to - from;
-    return to + (float) rand() / (float) (RAND_MAX / range);
+    float range = (float) rand() / (float) RAND_MAX;
+    range *= (to - from);
+
+    return from + range;
 }
 
 static float System_Pow(float val, float pow) {
