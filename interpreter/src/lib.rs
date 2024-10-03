@@ -559,10 +559,12 @@ impl Interpreter {
     }
 
     fn release_dyn_val(&mut self, val: &DynValue) -> ExecResult<bool> {
-        let ptr = val.as_pointer().ok_or_else(|| {
-            let msg = format!("released val was not a pointer, found: {:?}", val);
-            ExecError::illegal_state(msg)
-        })?;
+        let ptr = val
+            .as_pointer()
+            .ok_or_else(|| {
+                let msg = format!("released val was not a pointer, found: {:?}", val);
+                ExecError::illegal_state(msg)
+            })?;
 
         // NULL is a valid release target because we release uninitialized local RC pointers
         // just do nothing
@@ -656,6 +658,13 @@ impl Interpreter {
     fn retain_dyn_val(&mut self, val: &DynValue) -> ExecResult<()> {
         match val {
             DynValue::Pointer(ptr) => {
+                // retain on null is valid and does nothing
+                // it should never normally happen in user code, but with unsafe casting it's
+                // possible to create a null RC pointer
+                if ptr.is_null() {
+                    return Ok(());
+                }
+                
                 let mut rc_val = self.load_indirect(ptr)?.into_owned();
 
                 match &mut rc_val {

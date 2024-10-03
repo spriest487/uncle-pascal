@@ -141,8 +141,12 @@ static void* RcAlloc(struct Class* class) {
 }
 
 static void RcRetain(void* instance) {
+    if (!instance) {
+        return;
+    }
+
     struct Rc* rc = (struct Rc*)instance;
-    if (!rc || rc->strong_count == 0) {
+    if (rc->strong_count == 0) {
         fprintf(stderr, "called RcRetain for an invalid pointer\n");
         abort();
     }
