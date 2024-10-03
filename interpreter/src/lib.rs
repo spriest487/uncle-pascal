@@ -1681,6 +1681,12 @@ impl Interpreter {
                 vec![ir::Type::USize],
             ),
             (
+                "PointerToStr",
+                builtin::pointer_to_str,
+                ir::Type::string_ptr(),
+                vec![ir::Type::Nothing.ptr()],
+            ),
+            (
                 "StrToInt",
                 builtin::str_to_int,
                 ir::Type::I32,
@@ -1734,8 +1740,8 @@ impl Interpreter {
                 builtin::random_single,
                 ir::Type::F32,
                 vec![ir::Type::F32, ir::Type::F32]
-            )
-            ,(
+            ),
+            (
                 "Pow",
                 builtin::pow,
                 ir::Type::F32,
@@ -1782,7 +1788,7 @@ impl Interpreter {
                 builtin::arc_tan,
                 ir::Type::F32,
                 vec![ir::Type::F32]
-            )
+            ),
         ];
 
         for (ident, func, ret, params) in system_funcs {

@@ -105,6 +105,12 @@ impl Module {
                 string_ty.clone(),
             ),
             (
+                "PointerToStr",
+                FunctionName::PointerToStr,
+                vec![Type::Void.ptr()],
+                string_ty.clone(),
+            ),
+            (
                 "StrToInt",
                 FunctionName::StrToInt,
                 vec![string_ty.clone()],
@@ -147,6 +153,66 @@ impl Module {
                 vec![Type::Void.ptr(), Type::Int32, Type::Void.ptr()],
                 Type::Void.ptr(),
             ),
+            (
+                "RandomInteger",
+                FunctionName::RandomInteger,
+                vec![Type::Int32, Type::Int32],
+                Type::Int32,
+            ),
+            (
+                "RandomSingle",
+                FunctionName::RandomSingle,
+                vec![Type::Float, Type::Float],
+                Type::Float,
+            ),
+            (
+                "Pow",
+                FunctionName::Pow,
+                vec![Type::Float, Type::Float],
+                Type::Float,
+            ),
+            (
+                "Sqrt",
+                FunctionName::Sqrt,
+                vec![Type::Float],
+                Type::Float,
+            ),
+            (
+                "Sin",
+                FunctionName::Sin,
+                vec![Type::Float],
+                Type::Float,
+            ),
+            (
+                "ArcSin",
+                FunctionName::ArcSin,
+                vec![Type::Float],
+                Type::Float,
+            ),
+            (
+                "Cos",
+                FunctionName::Cos,
+                vec![Type::Float],
+                Type::Float,
+            ),
+            (
+                "ArcCos",
+                FunctionName::ArcCos,
+                vec![Type::Float],
+                Type::Float,
+            ),
+            (
+                "Tan",
+                FunctionName::Tan,
+                vec![Type::Float],
+                Type::Float,
+            ),
+            (
+                "ArcTan",
+                FunctionName::ArcTan,
+                vec![Type::Float],
+                Type::Float,
+            )
         ];
 
         let mut builtin_funcs = HashMap::new();

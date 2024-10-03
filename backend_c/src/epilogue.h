@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <math.h>
 
 #if _WIN32
 #   define WIN32_LEAN_AND_MEAN
@@ -43,16 +44,17 @@ static STRING_STRUCT* FuncName(DataType i) { \
     return str; \
 }
  
-INT_TO_STR_IMPL(System_ByteToStr,       uint8_t,    PRIu8,  4  + 0)
-INT_TO_STR_IMPL(System_Int8ToStr,       int8_t,     PRId8,  4  + 1)
-INT_TO_STR_IMPL(System_UInt16ToStr,     uint16_t,   PRIu16, 8  + 0)
-INT_TO_STR_IMPL(System_Int16ToStr,      int16_t,    PRId16, 8  + 1)
-INT_TO_STR_IMPL(System_UInt32ToStr,     uint32_t,   PRIu32, 12 + 0)
-INT_TO_STR_IMPL(System_IntToStr,        int32_t,    PRId32, 12 + 1)
-INT_TO_STR_IMPL(System_UInt64ToStr,     uint64_t,   PRIu64, 24 + 0)
-INT_TO_STR_IMPL(System_Int64ToStr,      int64_t,    PRId64, 24 + 1)
-INT_TO_STR_IMPL(System_NativeUIntToStr, size_t,     "zu",   24 + 0)
-INT_TO_STR_IMPL(System_NativeIntToStr,  ptrdiff_t,  "zd",   24 + 1)
+INT_TO_STR_IMPL(System_ByteToStr,       uint8_t,        PRIu8,  4  + 0)
+INT_TO_STR_IMPL(System_Int8ToStr,       int8_t,         PRId8,  4  + 1)
+INT_TO_STR_IMPL(System_UInt16ToStr,     uint16_t,       PRIu16, 8  + 0)
+INT_TO_STR_IMPL(System_Int16ToStr,      int16_t,        PRId16, 8  + 1)
+INT_TO_STR_IMPL(System_UInt32ToStr,     uint32_t,       PRIu32, 12 + 0)
+INT_TO_STR_IMPL(System_IntToStr,        int32_t,        PRId32, 12 + 1)
+INT_TO_STR_IMPL(System_UInt64ToStr,     uint64_t,       PRIu64, 24 + 0)
+INT_TO_STR_IMPL(System_Int64ToStr,      int64_t,        PRId64, 24 + 1)
+INT_TO_STR_IMPL(System_NativeUIntToStr, size_t,         "zu",   24 + 0)
+INT_TO_STR_IMPL(System_NativeIntToStr,  ptrdiff_t,      "zd",   24 + 1)
+INT_TO_STR_IMPL(System_PointerToStr,  const void*,    "%p",   24 + 0)
 
 static unsigned char* System_GetMem(int32_t len) {
     return (unsigned char*) Alloc(len);
@@ -148,4 +150,45 @@ static void* LoadSymbol(const char* src, const char* sym) {
     }
 
     return sym_ptr;
+}
+
+static int32_t System_RandomInteger(int32_t from, int32_t to) {
+    return rand() % (to + 1 - from) + from;
+}
+
+static float System_RandomSingle(float from, float to) {
+    float range = to - from;
+    return to + (float) rand() / (float) (RAND_MAX / range);
+}
+
+static float System_Pow(float val, float pow) {
+    return powf(val, pow);
+}
+
+static float System_Sqrt(float val) {
+    return sqrtf(val);
+}
+
+static float System_Sin(float val) {
+    return sinf(val);
+}
+
+static float System_ArcSin(float val) {
+    return asinf(val);
+}
+
+static float System_Cos(float val) {
+    return cosf(val);
+}
+
+static float System_ArcCos(float val) {
+    return acosf(val);
+}
+
+static float System_Tan(float val) {
+    return tanf(val);
+}
+
+static float System_ArcTan(float val) {
+    return atanf(val);
 }

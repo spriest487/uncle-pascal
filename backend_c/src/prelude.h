@@ -226,6 +226,7 @@ static STRING_STRUCT* System_Int64ToStr(int64_t i);
 static STRING_STRUCT* System_UInt64ToStr(uint64_t i);
 static STRING_STRUCT* System_NativeIntToStr(ptrdiff_t i);
 static STRING_STRUCT* System_NativeUIntToStr(size_t i);
+static STRING_STRUCT* System_PointerToStr(const void* i);
 
 static unsigned char* System_GetMem(int32_t len);
 static void System_FreeMem(unsigned char* mem);
@@ -234,6 +235,18 @@ static void System_WriteLn(STRING_STRUCT* str);
 static STRING_STRUCT* System_ReadLn(void);
 static int32_t System_ArrayLengthInternal(void* arr);
 static void* System_ArraySetLengthInternal(void* arr, int32_t new_len, void* default_val);
+
+static int32_t System_RandomInteger(int32_t from, int32_t to);
+static float System_RandomSingle(float from, float to);
+
+static float System_Pow(float val, float pow);
+static float System_Sqrt(float val);
+static float System_Sin(float val);
+static float System_ArcSin(float val);
+static float System_Cos(float val);
+static float System_ArcCos(float val);
+static float System_Tan(float val);
+static float System_ArcTan(float val);
 
 // runtime start/stop
 

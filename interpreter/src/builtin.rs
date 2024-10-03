@@ -36,52 +36,59 @@ pub(super) fn i8_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_i8)
 }
 
-/// %1: I8 -> %0: String
+/// %1: U8 -> %0: String
 pub(super) fn u8_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_u8)
 }
 
-/// %1: Integer -> %0: String
+/// %1: I16 -> %0: String
 pub(super) fn i16_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_i16)
 }
 
-/// %1: Integer -> %0: String
+/// %1: U16 -> %0: String
 pub(super) fn u16_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_u16)
 }
 
-/// %1: Integer -> %0: String
+/// %1: I32 -> %0: String
 pub(super) fn i32_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_i32)
 }
 
-/// %1: Integer -> %0: String
+/// %1: U32 -> %0: String
 pub(super) fn u32_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_u32)
 }
 
-/// %1: Integer -> %0: String
+/// %1: I64 -> %0: String
 pub(super) fn i64_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_i64)
 }
 
-/// %1: Integer -> %0: String
+/// %1: U64 -> %0: String
 pub(super) fn u64_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_u64)
 }
 
-/// %1: Integer -> %0: String
+/// %1: ISize -> %0: String
 pub(super) fn isize_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_isize)
 }
 
-/// %1: Integer -> %0: String
+/// %1: USize -> %0: String
 pub(super) fn usize_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, DynValue::as_usize)
 }
 
-/// %1: String -> %0: Integer
+/// %1: Pointer -> %0: String
+pub(super) fn pointer_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, |val| {
+        val.as_pointer().cloned()
+    })
+}
+
+/// %1: String -> %0: I32
 pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(1));
 

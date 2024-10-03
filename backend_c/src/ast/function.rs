@@ -41,6 +41,7 @@ pub enum FunctionName {
     UInt64ToStr,
     NativeIntToStr,
     NativeUIntToStr,
+    PointerToStr,
 
     StrToInt,
     Write,
@@ -51,6 +52,18 @@ pub enum FunctionName {
 
     ArrayLengthInternal,
     ArraySetLengthInternal,
+    
+    RandomInteger,
+    RandomSingle,
+    
+    Pow,
+    Sqrt,
+    Sin,
+    ArcSin,
+    Cos,
+    ArcCos,
+    Tan,
+    ArcTan,
 }
 
 impl fmt::Display for FunctionName {
@@ -89,9 +102,22 @@ impl fmt::Display for FunctionName {
             FunctionName::UInt64ToStr => write!(f, "System_UInt64ToStr"),
             FunctionName::NativeIntToStr => write!(f, "System_NativeIntToStr"),
             FunctionName::NativeUIntToStr => write!(f, "System_NativeUIntToStr"),
+            FunctionName::PointerToStr => write!(f, "System_PointerToStr"),
 
             FunctionName::ArrayLengthInternal => write!(f, "System_ArrayLengthInternal"),
             FunctionName::ArraySetLengthInternal => write!(f, "System_ArraySetLengthInternal"),
+            
+            FunctionName::RandomInteger => write!(f, "System_RandomInteger"),
+            FunctionName::RandomSingle => write!(f, "System_RandomSingle"),
+
+            FunctionName::Pow => write!(f, "System_Pow"),
+            FunctionName::Sqrt => write!(f, "System_Sqrt"),
+            FunctionName::Sin => write!(f, "System_Sin"),
+            FunctionName::ArcSin => write!(f, "System_ArcSin"),
+            FunctionName::Cos => write!(f, "System_Cos"),
+            FunctionName::ArcCos => write!(f, "System_ArcCos"),
+            FunctionName::Tan => write!(f, "System_Tan"),
+            FunctionName::ArcTan => write!(f, "System_ArcTan"),
         }
     }
 }
