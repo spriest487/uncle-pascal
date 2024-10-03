@@ -1,6 +1,5 @@
 # critical
 
-* C codegen broken with undeclared functions
 * extra params to method calls aren't invalid!!
 * trailing comma after func param decl with random junk doesn't fail parsing
 * allow trailing comma in collection init!!
@@ -10,6 +9,8 @@
 
 # big features
 
+* decl names shadowing unit names
+* weak refs
 * option/result unwrapping
 * private methods
 * vector list impl
