@@ -391,6 +391,8 @@ fn clang_compile(module: &ir::Module, args: &Args, out_path: &OsStr) -> io::Resu
         .arg("-Wextra")
         .arg("-Wno-unused-function")
         .arg("-Wno-unused-parameter")
+        .arg("-Wno-unused-variable")
+        .arg("-Wno-unused-label")
         .stdin(Stdio::piped());
     
     if args.debug || args.debug_codeview {
