@@ -1,6 +1,8 @@
 # critical
 
+* default operator <- allow defaulting non-defaultable types in unsafe mode (nil rc pointers)
 * extra params to method calls aren't invalid!!
+* better error when existing method impl doesn't match interface
 * trailing comma after func param decl with random junk doesn't fail parsing
 * allow trailing comma in collection init!!
 * c codegen: escaping! can't do ""

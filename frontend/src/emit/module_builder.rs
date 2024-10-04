@@ -34,7 +34,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use ir_lang::{Function, FunctionDef, FunctionSig, GlobalRef, Instruction, Ref, Type};
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -113,21 +112,21 @@ impl ModuleBuilder {
             
             let unit_init = init_builder.finish();
 
-            let init_func = FunctionDef {
+            let init_func = ir::FunctionDef {
                 body: unit_init,
-                sig: FunctionSig {
+                sig: ir::FunctionSig {
                     param_tys: Vec::new(),
-                    return_ty: Type::Nothing
+                    return_ty: ir::Type::Nothing
                 },
                 src_span: init_block.keyword_span.clone(),
                 debug_name: format!("{}.<init>", unit.ident),
             };
 
             let init_func_id = self.module.metadata.insert_func(None);
-            self.module.functions.insert(init_func_id, Function::Local(init_func));
+            self.module.functions.insert(init_func_id, ir::Function::Local(init_func));
 
-            self.module.init.push(Instruction::Call {
-                function: Ref::Global(GlobalRef::Function(init_func_id)).into(),
+            self.module.init.push(ir::Instruction::Call {
+                function: ir::Ref::Global(ir::GlobalRef::Function(init_func_id)).into(),
                 args: Vec::new(),
                 out: None,
             });
@@ -779,6 +778,18 @@ impl ModuleBuilder {
 
                 ty
             },
+
+            typ::Type::Array(array_ty) => {
+                let elem_ty = self.translate_type(&array_ty.element_ty, generic_ctx);
+                let ty = ir::Type::Array {
+                    element: Rc::new(elem_ty),
+                    dim: array_ty.dim,
+                };
+
+                self.type_cache.insert(src_ty, ty.clone());
+                ty
+            },
+
 
             typ::Type::DynArray { element } => {
                 let id = self.translate_dyn_array_struct(&element, generic_ctx);

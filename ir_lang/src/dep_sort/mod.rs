@@ -21,7 +21,7 @@ where
 {
     let mut sort = TopologicalSort::new();
 
-    let defs: HashMap<TypeDefID, TypeDef> = defs.into_iter().collect();
+    let mut defs: HashMap<TypeDefID, TypeDef> = defs.into_iter().collect();
     
     for (id, def) in defs.iter() {
         sort.insert(*id);
@@ -35,8 +35,6 @@ where
         }
     }
 
-    let mut defs = defs;
-    
     sort
         .map(|id| (id, defs.remove(&id).unwrap()))
         .collect()
