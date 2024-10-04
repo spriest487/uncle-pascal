@@ -257,29 +257,38 @@ impl Class {
                 "struct MethodTable_{} ImplTable_{}_{} = {{\n",
                 iface_id.0, self.struct_id.0, iface_id.0
             ));
+
+            def.push_str("  .base = {\n");
+
+            def.push_str("    .iface = ");
+            def.push_str(&iface_id.to_string());
+            def.push_str(",\n");
+
+            def.push_str("    .next = ");
+            match impls.get(i + 1) {
+                Some((_, (next_impl_id, _))) => {
+                    def.push_str(&format!(
+                        "&ImplTable_{}_{}.base",
+                        self.struct_id, next_impl_id
+                    ));
+                },
+                None => def.push_str("NULL"),
+            }
+
+            def.push_str(",\n");
+            def.push_str("  }");
+            
+            if iface_impl.method_impls.len() > 0 {
+                def.push_str(",");
+            }
+            def.push_str("\n");
+            
             for (method_id, _method_name) in &iface_impl.method_impls {
-                let wrapper_name =
-                    FunctionName::MethodWrapper(**iface_id, *method_id, self.struct_id);
-
-                def.push_str("  .base = {\n");
-
-                def.push_str("    .iface = ");
-                def.push_str(&iface_id.to_string());
-                def.push_str(",\n");
-
-                def.push_str("    .next = ");
-                match impls.get(i + 1) {
-                    Some((_, (next_impl_id, _))) => {
-                        def.push_str(&format!(
-                            "&ImplTable_{}_{}.base",
-                            self.struct_id, next_impl_id
-                        ));
-                    },
-                    None => def.push_str("NULL"),
-                }
-
-                def.push_str(",\n");
-                def.push_str("  },\n");
+                let wrapper_name = FunctionName::MethodWrapper(
+                    **iface_id,
+                    *method_id,
+                    self.struct_id
+                );
 
                 def.push_str("  .method_");
                 def.push_str(&method_id.0.to_string());
