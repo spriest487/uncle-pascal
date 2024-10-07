@@ -139,6 +139,7 @@ impl From<ClosureBodyEnvironment> for Environment {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionBodyEnvironment {
     pub result_ty: Type, 
+    pub self_ty: Option<Type>,
     pub ty_params: Option<TypeParamList>
 }
 

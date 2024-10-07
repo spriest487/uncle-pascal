@@ -1,5 +1,5 @@
 use crate::typ::ast::Expr;
-use crate::typ::string_type;
+use crate::typ::{string_type, TypeError};
 use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::Primitive;
@@ -9,6 +9,7 @@ use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use common::span::Span;
 use crate::ast;
+use crate::ast::TypeAnnotation;
 use crate::IntConstant;
 
 pub type Literal = ast::Literal<Type>;
@@ -98,7 +99,50 @@ pub fn typecheck_literal(
                 annotation.into(),
             ))
         },
+        
+        ast::Literal::DefaultValue(default_of_ty) => {
+            let ty = if !default_of_ty.is_known() {
+                if *expect_ty == Type::Nothing {
+                    return Err(TypeError::UnableToInferType {
+                        expr: Box::new(ast::Expr::Literal(lit.clone(), span.clone())),
+                    })
+                } else {
+                    expect_ty.clone()
+                }
+            } else {
+                typecheck_type(default_of_ty, ctx)?
+            };
+
+            ty.expect_sized(ctx, span)?;
+
+            let has_default = ty
+                .has_default(ctx)
+                .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
+            
+            if !has_default {
+                return Err(TypeError::NotDefaultable {
+                    ty,
+                    span: span.clone(),
+                });
+            }
+            
+            Ok(create_default_literal(ty, span.clone()))
+        }
     }
+}
+
+pub fn create_default_literal(ty: Type, span: Span) -> Expr {
+    let annotation = TypedValue {
+        ty: ty.clone(),
+        decl: None,
+        span: span.clone(),
+        value_kind: ValueKind::Temporary,
+    };
+    
+    Expr::Literal(
+        Literal::DefaultValue(Box::new(ty)),
+        annotation.into()
+    )
 }
 
 fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypeResult<Expr> {

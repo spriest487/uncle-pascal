@@ -135,7 +135,7 @@ impl fmt::Display for Matcher {
                 Ok(())
             },
             Matcher::ExprOperandStart => {
-                write!(f, "expression")
+                write!(f, "start of expression")
             }
             Matcher::AnyOperatorInPosition(pos) => write!(f, "any {} operator", match pos {
                 Position::Prefix => "prefix",
@@ -190,6 +190,7 @@ impl Matcher {
                     // literals
                     | Keyword::Nil
                     | Keyword::SizeOf
+                    | Keyword::Default
                     | Keyword::True
                     | Keyword::False
                     => true,

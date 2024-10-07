@@ -12,9 +12,8 @@ use crate::typ::STRING_TYPE_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
 pub use call::*;
 use common::span::*;
+use ir_lang::Value;
 use syn::Ident;
-use typ::Typed;
-use typ::ValueKind;
 
 pub fn expr_to_val(expr: &typ::ast::Expr, builder: &mut Builder) -> ir::Value {
     match expr {
@@ -340,6 +339,42 @@ pub fn literal_to_val(
             let ty = builder.translate_type(ty);
             ir::Value::SizeOf(ty)
         },
+
+        syn::Literal::DefaultValue(ty) => {
+            let ir_ty = builder.translate_type(ty);
+            match ir_ty {
+                ir::Type::Pointer(_)
+                | ir::Type::RcPointer(_)
+                | ir::Type::Function(_) => {
+                    ir::Value::LiteralNull
+                },
+
+                ir::Type::Bool => ir::Value::LiteralBool(false),
+                ir::Type::U8 => ir::Value::LiteralU8(0),
+                ir::Type::I8 => ir::Value::LiteralI8(0),
+                ir::Type::I16 => ir::Value::LiteralI16(0),
+                ir::Type::U16 => ir::Value::LiteralU16(0),
+                ir::Type::I32 => ir::Value::LiteralI32(0),
+                ir::Type::U32 => ir::Value::LiteralU32(0),
+                ir::Type::I64 => ir::Value::LiteralI64(0),
+                ir::Type::U64 => ir::Value::LiteralU64(0),
+                ir::Type::USize => ir::Value::LiteralUSize(0),
+                ir::Type::ISize => ir::Value::LiteralISize(0),
+                ir::Type::F32 => ir::Value::LiteralF32(0.0),
+                
+                ir::Type::Struct(_)
+                | ir::Type::Variant(_)
+                | ir::Type::Array { .. }
+                | ir::Type::Nothing => {
+                    let size_expr = ir::Value::SizeOf(ir_ty.clone());
+                    let temp_ref = builder.local_temp(ir_ty.clone());
+                    
+                    gen_fill_byte(temp_ref.clone(), ir_ty, size_expr, ir::Value::LiteralU8(0), builder);
+                    
+                    ir::Value::Ref(temp_ref)
+                }
+            }
+        }
     }
 }
 
@@ -357,9 +392,54 @@ pub fn translate_literal(
     out
 }
 
-fn translate_ident(ident: &Ident, annotation: &Typed, builder: &mut Builder) -> ir::Ref {
+// inline IR for FillByte-style memory set procedure
+fn gen_fill_byte(at: ir::Ref, at_ty: ir::Type, count: ir::Value, byte_val: ir::Value, builder: &mut Builder) {
+    builder.comment(&format!("fill_byte: {}, count={}, value {}", at, count, byte_val));
+    
+    let byte_ptr_ty = ir::Type::U8.ptr();
+    
+    // dst_ptr := @at as ^UInt8
+    let at_addr = builder.local_temp(at_ty.ptr());
+    builder.addr_of(at_addr.clone(), at);
+
+    let dst_ptr = builder.local_temp(byte_ptr_ty.clone());
+    builder.cast(dst_ptr.clone(), at_addr, byte_ptr_ty.clone());
+    
+    // end_ptr := dst_ptr + count 
+    let end_ptr = builder.local_temp(byte_ptr_ty.clone());
+    builder.add(end_ptr.clone(), dst_ptr.clone(), count);
+    
+    let continue_label = builder.alloc_label();
+    let break_label = builder.alloc_label();
+    
+    builder.label(continue_label);
+    
+    // at_end := dst_ptr = end_ptr
+    let at_end = builder.local_temp(ir::Type::Bool);
+    builder.eq(at_end.clone(), dst_ptr.clone(), end_ptr);
+    
+    // if at_end then break
+    builder.jmp_if(break_label, at_end);
+    
+    // else dst_ptr^ := byte_val
+    builder.mov(dst_ptr.clone().to_deref(), byte_val.clone());
+
+    // inc := 1 as ^UInt8
+    let inc = builder.local_temp(byte_ptr_ty.clone());
+    builder.cast(inc.clone(), Value::LiteralUSize(1), byte_ptr_ty);
+
+    // dst_ptr += inc;
+    builder.add(dst_ptr.clone(), dst_ptr.clone(), inc);
+    
+    // continue
+    builder.jmp(continue_label);
+
+    builder.label(break_label);
+}
+
+fn translate_ident(ident: &Ident, annotation: &typ::Typed, builder: &mut Builder) -> ir::Ref {
     match annotation {
-        Typed::Function(func) => {
+        typ::Typed::Function(func) => {
             let func = builder.translate_func(&func.name, None);
             
             // references to functions by value are turned into references to the static
@@ -367,7 +447,7 @@ fn translate_ident(ident: &Ident, annotation: &Typed, builder: &mut Builder) -> 
             builder.build_function_closure(&func)
         },
 
-        Typed::TypedValue(val) => {
+        typ::Typed::TypedValue(val) => {
             let local_ref = builder
                 .find_local(&ident.to_string())
                 .map(|local| {
@@ -390,7 +470,7 @@ fn translate_ident(ident: &Ident, annotation: &Typed, builder: &mut Builder) -> 
                 // ident lvalues are evaluated as pointers to the original values. they don't need
                 // to be refcounted separately, because if they have a name, they must exist
                 // in a scope at least as wide as the current one
-                ValueKind::Immutable | ValueKind::Mutable | ValueKind::Uninitialized => {
+                typ::ValueKind::Immutable | typ::ValueKind::Mutable | typ::ValueKind::Uninitialized => {
                     let ref_ty = builder.translate_type(&annotation.ty());
                     let ref_temp = builder.local_temp(ref_ty.ptr());
 
@@ -402,7 +482,7 @@ fn translate_ident(ident: &Ident, annotation: &Typed, builder: &mut Builder) -> 
                 },
 
                 // ident rvalue - just evaluate it
-                ValueKind::Temporary => local_ref,
+                typ::ValueKind::Temporary => local_ref,
             }
         },
 

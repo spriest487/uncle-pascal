@@ -4,8 +4,8 @@ mod parse;
 pub(crate) mod test;
 
 use crate::ast::expression::parse::CompoundExpressionParser;
+use crate::ast::ident::*;
 use crate::ast::match_block::MatchExpr;
-use crate::ast::{Annotation, Stmt};
 use crate::ast::AnonymousFunctionDef;
 use crate::ast::BinOp;
 use crate::ast::Block;
@@ -17,16 +17,18 @@ use crate::ast::Exit;
 use crate::ast::IfCond;
 use crate::ast::ObjectCtor;
 use crate::ast::Raise;
+use crate::ast::Stmt;
 use crate::ast::TypeAnnotation;
 use crate::ast::UnaryOp;
+use crate::ast::Annotation;
 use crate::consts::*;
-use crate::ast::ident::*;
 use crate::parse::*;
+use crate::Operator;
 use common::span::*;
+use common::TracedError;
+use derivative::Derivative;
 use std::fmt;
 use std::rc::Rc;
-use common::TracedError;
-use crate::Operator;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Literal<T: TypeAnnotation> {
@@ -36,6 +38,7 @@ pub enum Literal<T: TypeAnnotation> {
     String(Rc<String>),
     Boolean(bool),
     SizeOf(Box<T>),
+    DefaultValue(Box<T>),
 }
 
 impl<T: TypeAnnotation> fmt::Display for Literal<T> {
@@ -47,16 +50,30 @@ impl<T: TypeAnnotation> fmt::Display for Literal<T> {
             Literal::String(s) => write!(f, "'{}'", s),
             Literal::Boolean(b) => write!(f, "{}", b),
             Literal::SizeOf(ty) => write!(f, "sizeof({})", ty),
+            Literal::DefaultValue(ty) => write!(f, "default({})", ty),
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub enum Expr<A: Annotation = Span> {
     BinOp(Box<BinOp<A>>),
     UnaryOp(Box<UnaryOp<A>>),
-    Literal(Literal<A::Type>, A),
-    Ident(Ident, A),
+    Literal(
+        Literal<A::Type>,
+        #[derivative(Hash = "ignore")]
+        #[derivative(Debug = "ignore")]
+        #[derivative(PartialEq = "ignore")]
+        A
+    ),
+    Ident(
+        Ident,
+        #[derivative(Hash = "ignore")]
+        #[derivative(Debug = "ignore")]
+        #[derivative(PartialEq = "ignore")]
+        A
+    ),
     Call(Box<Call<A>>),
     ObjectCtor(Box<ObjectCtor<A>>),
     CollectionCtor(Box<CollectionCtor<A>>),

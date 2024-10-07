@@ -415,13 +415,19 @@ fn typecheck_global_binding_item(
                     })
                 },
             };
-            
+
             // global bindings must always be initialized or be of a default-able type
-            if ty.default_val().is_none() && val.is_none() {
-                return Err(TypeError::UninitGlobalBinding {
-                    ident: item.ident.clone(),
-                    ty,
-                });
+            if val.is_none() {
+                let has_default = ty
+                    .has_default(ctx)
+                    .map_err(|e| TypeError::from_name_err(e, item.span.clone()))?;
+
+                if !has_default {
+                    return Err(TypeError::UninitGlobalBinding {
+                        ident: item.ident.clone(),
+                        ty,
+                    });
+                }
             }
             
             ctx.declare_binding(item.ident.clone(), Binding {

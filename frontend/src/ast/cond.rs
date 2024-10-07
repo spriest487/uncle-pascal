@@ -9,8 +9,10 @@ use crate::{
 };
 use common::span::{Span, Spanned};
 use std::fmt;
+use derivative::Derivative;
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct IfCond<A, B>
 where
     A: Annotation,
@@ -21,6 +23,10 @@ where
 
     pub then_branch: B,
     pub else_branch: Option<B>,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub annotation: A,
 }
 

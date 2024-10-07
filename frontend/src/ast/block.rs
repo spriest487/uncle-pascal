@@ -1,15 +1,21 @@
-use crate::{
-    ast::{Annotation, Expr, Stmt},
-    parse::*,
-    token_tree::*,
-    Keyword,
-};
+use crate::ast::Annotation;
+use crate::ast::Expr;
+use crate::ast::Stmt;
+use crate::parse::*;
+use crate::token_tree::*;
+use crate::Keyword;
 use common::span::*;
+use derivative::Derivative;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct Block<A: Annotation> {
     pub stmts: Vec<Stmt<A>>,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub annotation: A,
 
     // the final expr of the block which determines its value.
@@ -21,9 +27,19 @@ pub struct Block<A: Annotation> {
     // would HAVE to be the block output to be valid!
     pub output: Option<Expr<A>>,
 
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub unsafe_kw: Option<Span>,
 
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub begin: Span,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub end: Span,
 }
 

@@ -1,12 +1,18 @@
 use std::fmt;
+use derivative::Derivative;
 use common::span::{Span, Spanned};
 use crate::ast::{Annotation, Expr};
 use crate::{Operator, Position};
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct UnaryOp<A: Annotation> {
     pub op: Operator,
     pub operand: Expr<A>,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub annotation: A,
 }
 
@@ -32,11 +38,16 @@ impl<A: Annotation> Spanned for UnaryOp<A> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct BinOp<A: Annotation> {
     pub lhs: Expr<A>,
     pub op: Operator,
     pub rhs: Expr<A>,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub annotation: A,
 }
 

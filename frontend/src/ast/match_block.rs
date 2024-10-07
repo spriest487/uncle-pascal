@@ -1,4 +1,5 @@
 use std::fmt;
+use derivative::Derivative;
 use common::span::{Span, Spanned};
 use crate::{
     DelimiterPair,
@@ -9,7 +10,8 @@ use crate::{
     parse::{LookAheadTokenStream, Parse, ParseResult, ParseSeq, TokenStream}
 };
 
-#[derive(Clone, Debug, Eq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct MatchBlock<A, B>
 where
     A: Annotation
@@ -19,19 +21,27 @@ where
     pub branches: Vec<MatchBlockBranch<A, B>>,
     pub else_branch: Option<B>,
 
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub annotation: A,
 }
 
 pub type MatchExpr<A> = MatchBlock<A, Expr<A>>;
 pub type MatchStmt<A> = MatchBlock<A, Stmt<A>>;
 
-#[derive(Clone, Debug, Eq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct MatchBlockBranch<A, B>
 where
     A: Annotation
 {
     pub pattern: A::Pattern,
     pub item: B,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub span: Span,
 }
 
@@ -66,28 +76,6 @@ where
             Some(tt) if !tt.is_keyword(Keyword::Else) => true,
             _ => false,
         }
-    }
-}
-
-impl<A, B> PartialEq for MatchBlock<A, B>
-where
-    A: Annotation,
-    B: PartialEq
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.branches == other.branches
-            && self.else_branch == other.else_branch
-            && self.cond_expr == other.cond_expr
-    }
-}
-
-impl<A, B> PartialEq for MatchBlockBranch<A, B>
-where
-    A: Annotation,
-    B: PartialEq
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.item == other.item && self.pattern == other.pattern
     }
 }
 

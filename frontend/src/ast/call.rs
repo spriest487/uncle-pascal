@@ -1,15 +1,23 @@
-use crate::ast::{Annotation, ObjectCtor, TypeArgList};
+use crate::ast;
+use crate::ast::Annotation;
 use crate::ast::Expr;
-use crate::ast::TypeList;
-use crate::{ast, DelimiterPair};
 use crate::ast::Ident;
+use crate::ast::ObjectCtor;
+use crate::ast::TypeArgList;
+use crate::ast::TypeList;
+use crate::parse::LookAheadTokenStream;
+use crate::parse::Matcher;
+use crate::parse::ParseResult;
+use crate::parse::ParseSeq;
+use crate::parse::TokenStream;
+use crate::token_tree::DelimitedGroup;
+use crate::DelimiterPair;
 use crate::Separator;
 use crate::TokenTree;
-use std::{fmt};
-use common::span::{Span, Spanned};
-use crate::parse::{LookAheadTokenStream, Matcher, ParseResult, ParseSeq, TokenStream};
-use crate::token_tree::DelimitedGroup;
+use common::span::Span;
+use common::span::Spanned;
 use derivative::*;
+use std::fmt;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {

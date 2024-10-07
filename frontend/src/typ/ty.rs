@@ -10,22 +10,21 @@ pub mod primitive;
 pub mod sig;
 pub mod ty_param;
 
+pub use self::array::*;
 pub use self::pattern::*;
 pub use self::primitive::*;
 pub use self::sig::*;
 pub use self::specialize::*;
 pub use self::ty_param::*;
-pub use self::array::*;
 use crate::ast;
+use crate::ast::ArrayTypeName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
-use crate::ast::ArrayTypeName;
 use crate::typ::ast::Field;
 use crate::typ::ast::FunctionDecl;
-use crate::typ::ast::Literal;
 use crate::typ::builtin_span;
 use crate::typ::builtin_unit_path;
 use crate::typ::context;
@@ -173,25 +172,70 @@ impl Type {
         }
     }
 
-    pub fn default_val(&self) -> Option<Literal> {
-        match self {
-            Type::Function(_)
-            | Type::Nothing
-            | Type::Record(_)
+    pub fn has_default(&self, ctx: &Context) -> NameResult<bool> {
+        // in an unsafe context, we can assign a default value to any variable
+        if ctx.allow_unsafe() {
+            return Ok(true);
+        }
+
+        let result = match self {
+            Type::Any
             | Type::Class(_)
             | Type::Interface(_)
-            | Type::Variant(_)
-            | Type::Array(_)
             | Type::DynArray { .. }
-            | Type::MethodSelf
+            | Type::Function(_)
+            | Type::Nothing
             | Type::GenericParam(_)
-            | Type::Any
-            | Type::Enum(_) => None,
+            | Type::Enum(_) => false,
 
-            Type::Nil => Some(Literal::Nil),
-            Type::Primitive(p) => Some(p.default_val()),
-            Type::Pointer(..) => Some(Literal::Nil),
-        }
+            | Type::Variant(variant_name) => {
+                let def = ctx.instantiate_variant_def(&variant_name)?;
+                let mut result = true;
+                for case in &def.cases {
+                    if let Some(data_ty) = &case.data_ty {
+                        if !data_ty.has_default(ctx)? {
+                            result = false;
+                            break;
+                        }
+                    }
+                }
+
+                result
+            }
+
+            | Type::Record(..) => {
+                let fields = self.fields(ctx)?;
+                let mut result = true;
+                for field in &fields {
+                    if !field.ty.has_default(ctx)? {
+                        result = false;
+                        break;
+                    }
+                }
+                
+                result
+            }
+
+            Type::Array(array_ty) => array_ty.element_ty.has_default(ctx)?,
+
+            Type::Nil => true,
+            Type::Primitive(..) => true,
+            Type::Pointer(..) => true,
+            
+            Type::MethodSelf => {
+                let current_self_ty = ctx
+                    .current_function_env()
+                    .and_then(|env| env.self_ty.as_ref());
+                
+                if let Some(self_ty) = current_self_ty {
+                    self_ty.has_default(ctx)?
+                } else {
+                    false
+                }
+            }
+        };
+        
+        Ok(result)
     }
 
     pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>) -> Self {

@@ -490,12 +490,13 @@ pub fn typecheck_func_def(
     }
     
     let decl = Rc::new(decl);
-    
+
     let return_ty = decl.return_ty.clone();
 
     let body_env = FunctionBodyEnvironment {
         result_ty: return_ty,
         ty_params: decl.type_params.clone(),
+        self_ty: decl.name.owning_ty.clone(),
     };
     
     ctx.scope(body_env, |ctx| {

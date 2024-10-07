@@ -68,6 +68,10 @@ pub enum TypeError {
         ty: Type,
         span: Span,
     },
+    NotDefaultable {
+        ty: Type,
+        span: Span,
+    },
     InvalidUnaryOp {
         op: Operator,
         operand: Type,
@@ -300,6 +304,7 @@ impl Spanned for TypeError {
             TypeError::NotAddressable { span, .. } => span,
             TypeError::NotDerefable { span, .. } => span,
             TypeError::NotMatchable { span, .. } => span,
+            TypeError::NotDefaultable { span, .. } => span,
             TypeError::InvalidBinOp { span, .. } => span,
             TypeError::InvalidUnaryOp { span, .. } => span,
             TypeError::BlockOutputIsNotExpression { stmt, .. } => stmt.annotation().span(),
@@ -388,6 +393,7 @@ impl DiagnosticOutput for TypeError {
             TypeError::NotAddressable { .. } => "Value not addressable",
             TypeError::NotDerefable { .. } => "Value cannot be dereferenced",
             TypeError::NotMatchable { .. } => "Type is not matchable",
+            TypeError::NotDefaultable { .. } => "Type has no default value",
             TypeError::InvalidBinOp { .. } => "Invalid binary operation",
             TypeError::InvalidUnaryOp { .. } => "Invalid unary operation",
             TypeError::BlockOutputIsNotExpression { .. } => "Expected block output expr",
@@ -715,6 +721,10 @@ impl fmt::Display for TypeError {
 
             TypeError::NotMatchable { ty, .. } => {
                 write!(f, "type {} cannot be used in matching constructs", ty)
+            }
+            
+            TypeError::NotDefaultable { ty, .. } => {
+                write!(f, "type {} does not have a default value in this context", ty)
             }
 
             TypeError::InvalidBinOp { lhs, rhs, op, .. } => {

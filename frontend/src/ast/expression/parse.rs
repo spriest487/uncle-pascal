@@ -1,34 +1,32 @@
 mod operator;
 
-use crate::{
-    ast::{
-        expression::parse::operator::{
-            resolve_ops_by_precedence, OperatorPart, SymbolOperator,
-        },
-        match_block::MatchExpr,
-        AnonymousFunctionDef,
-        ArgList,
-        Block,
-        CaseExpr,
-        CollectionCtor,
-        Exit,
-        Expr,
-        IfCond,
-        Literal,
-        ObjectCtor,
-        ObjectCtorArgs,
-        Raise,
-        TypeList
-    },
-    parse::*,
-    token_tree::*,
-    Keyword
-};
-use common::{span::*, TracedError};
-use std::fmt;
-use crate::ast::{ObjectCtorMember, TypeArgList};
+use crate::ast::expression::parse::operator::resolve_ops_by_precedence;
+use crate::ast::expression::parse::operator::OperatorPart;
+use crate::ast::expression::parse::operator::SymbolOperator;
+use crate::ast::match_block::MatchExpr;
 use crate::ast::operators::*;
 use crate::ast::type_name::TypeName;
+use crate::ast::AnonymousFunctionDef;
+use crate::ast::ArgList;
+use crate::ast::Block;
+use crate::ast::CaseExpr;
+use crate::ast::CollectionCtor;
+use crate::ast::Exit;
+use crate::ast::Expr;
+use crate::ast::IfCond;
+use crate::ast::Literal;
+use crate::ast::ObjectCtor;
+use crate::ast::ObjectCtorArgs;
+use crate::ast::ObjectCtorMember;
+use crate::ast::Raise;
+use crate::ast::TypeArgList;
+use crate::ast::TypeList;
+use crate::parse::*;
+use crate::token_tree::*;
+use crate::Keyword;
+use common::span::*;
+use common::TracedError;
+use std::fmt;
 
 fn parse_identifier(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     // the context of an identifier expr should be the first part of the
@@ -94,6 +92,31 @@ fn parse_size_of(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     let span = kw.span().to(close_bracket.span());
 
     Ok(Expr::Literal(Literal::SizeOf(Box::new(ty)), span))
+}
+
+fn parse_default(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
+    let kw = tokens.match_one(Keyword::Default)?;
+
+    let (ty, span) = match tokens.match_one_maybe(DelimiterPair::Bracket) {
+        Some(TokenTree::Delimited(group)) => {
+            let span = kw.span().to(group.close.span());
+
+            let mut ty_tokens = group.to_inner_tokens();
+            let ty_name = TypeName::parse(&mut ty_tokens)?;
+            ty_tokens.finish()?;
+
+            (ty_name, span)
+        },
+        
+        Some(..) => unreachable!(),
+
+        None => {
+            let no_type = TypeName::Unspecified(kw.span().clone());
+            (no_type, kw.into_span())
+        }
+    };
+
+    Ok(Expr::Literal(Literal::DefaultValue(Box::new(ty)), span))
 }
 
 pub fn parse_case_expr(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
@@ -272,6 +295,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             Some(tt) if tt.is_keyword(Keyword::SizeOf) => {
                 let size_of_expr = parse_size_of(self.tokens)?;
                 self.push_operand(size_of_expr);
+            },
+
+            Some(tt) if tt.is_keyword(Keyword::Default) => {
+                let default_expr = parse_default(self.tokens)?;
+                self.push_operand(default_expr);
             },
 
             Some(tt) if tt.is_keyword(Keyword::If) => {

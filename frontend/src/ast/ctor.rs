@@ -187,9 +187,14 @@ impl<A: Annotation> Spanned for ObjectCtor<A> {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Hash, Debug)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct CollectionCtor<A: Annotation> {
     pub elements: Vec<CollectionCtorElement<A>>,
+
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub annotation: A,
 }
 

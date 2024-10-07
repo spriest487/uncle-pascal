@@ -1,8 +1,9 @@
 use crate::ast;
 use crate::typ::ast::cast::implicit_conversion;
+use crate::typ::ast::create_default_literal;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_type_args;
-use crate::typ::ast::Expr;
+use crate::typ::ArrayType;
 use crate::typ::Context;
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
@@ -11,13 +12,12 @@ use crate::typ::NameContainer;
 use crate::typ::NameError;
 use crate::typ::Specializable;
 use crate::typ::Type;
+use crate::typ::TypeArgList;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::typ::TypeArgList;
-use crate::typ::ArrayType;
 use common::span::Span;
 use common::span::Spanned;
 use linked_hash_map::LinkedHashMap;
@@ -81,7 +81,7 @@ pub fn typecheck_object_ctor(
             span: span.clone(),
         })?
         .into_iter()
-        .map(|member| (member.ident, member.ty))
+        .map(|member| (member.ident, (member.ty, member.span)))
         .collect();
 
     let mut members: Vec<ObjectCtorMember> = Vec::new();
@@ -100,7 +100,7 @@ pub fn typecheck_object_ctor(
             });
         }
 
-        let member_ty = match expect_members.remove(&arg.ident) {
+        let (member_ty, _member_span) = match expect_members.remove(&arg.ident) {
             Some(member) => member,
             None => {
                 // ctor has a named argument which doesn't exist in the type
@@ -130,23 +130,19 @@ pub fn typecheck_object_ctor(
 
     // any remaining members must have valid default values
     let mut missing_members = Vec::new();
-    for (member_ident, member_ty) in expect_members {
-        match member_ty.default_val() {
-            Some(default_lit) => {
-                let value = Expr::Literal(default_lit, TypedValue {
-                    decl: None,
-                    span: ctor.annotation.clone(),
-                    ty: member_ty,
-                    value_kind: ValueKind::Temporary,
-                }.into());
+    for (member_ident, (member_ty, member_span)) in expect_members {
+        let has_default = member_ty
+            .has_default(ctx)
+            .map_err(|e| TypeError::from_name_err(e, member_span.clone()))?;
 
-                members.push(ObjectCtorMember {
-                    ident: member_ident,
-                    span: ctor.annotation.clone(),
-                    value,
-                });
-            }
-            None => missing_members.push(member_ident),
+        if has_default {
+            members.push(ObjectCtorMember {
+                ident: member_ident,
+                span: member_span.clone(),
+                value: create_default_literal(member_ty, ctor.annotation.clone()),
+            });
+        } else {
+            missing_members.push(member_ident);
         }
     }
 
@@ -259,8 +255,15 @@ pub fn typecheck_collection_ctor(
         },
 
         // known static array ty_def
-        Type::Array(array_ty) => {
-            default_fill_elements(array_ty.dim, &element_ty, &mut elements, ctor.annotation.span());
+        Type::Array(array_ty) => {            
+            default_fill_elements(
+                array_ty.dim,
+                &element_ty,
+                &mut elements,
+                ctx,
+                ctor.annotation.span()
+            )?;
+
             ArrayType::new(element_ty, elements.len()).into()
         }
 
@@ -327,23 +330,32 @@ fn elements_for_expected_ty(
     Ok(elements)
 }
 
-fn default_fill_elements(expect_dim: usize, element_ty: &Type, elements: &mut Vec<CollectionCtorElement>, span: &Span) {
+fn default_fill_elements(
+    expect_dim: usize,
+    element_ty: &Type,
+    elements: &mut Vec<CollectionCtorElement>,
+    ctx: &Context,
+    span: &Span
+) -> TypeResult<()> {
     if expect_dim <= elements.len() {
-        return;
+        return Ok(());
     }
 
-    if let Some(default_lit) = element_ty.default_val() {
-        let default_count = expect_dim - elements.len();
-        let default_val = Expr::Literal(default_lit, TypedValue {
-            decl: None,
-            span: span.clone(),
-            ty: element_ty.clone(),
-            value_kind: ValueKind::Temporary,
-        }.into());
+    let has_default = element_ty
+        .has_default(ctx)
+        .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
 
-        let default_elements = iter::repeat(CollectionCtorElement { value: default_val.clone() })
+    if has_default {
+        let default_count = expect_dim - elements.len();
+        let default_val = create_default_literal(element_ty.clone(), span.clone());
+        
+        let default_element = CollectionCtorElement { value: default_val.clone() };
+
+        let default_elements = iter::repeat(default_element)
             .take(default_count);
 
         elements.extend(default_elements);
     }
+    
+    Ok(())
 }
