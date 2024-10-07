@@ -424,12 +424,8 @@ fn gen_fill_byte(at: ir::Ref, at_ty: ir::Type, count: ir::Value, byte_val: ir::V
     // else dst_ptr^ := byte_val
     builder.mov(dst_ptr.clone().to_deref(), byte_val.clone());
 
-    // inc := 1 as ^UInt8
-    let inc = builder.local_temp(byte_ptr_ty.clone());
-    builder.cast(inc.clone(), Value::LiteralUSize(1), byte_ptr_ty);
-
-    // dst_ptr += inc;
-    builder.add(dst_ptr.clone(), dst_ptr.clone(), inc);
+    // dst_ptr += 1;
+    builder.add(dst_ptr.clone(), dst_ptr.clone(), Value::LiteralISize(1));
     
     // continue
     builder.jmp(continue_label);
