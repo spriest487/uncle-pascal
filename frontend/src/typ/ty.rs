@@ -498,7 +498,7 @@ impl Type {
                 Type::Primitive(rhs_primitive),
             ) => {
                 // can't offset untyped pointers
-                if op == Operator::Add || op == Operator::Sub && self.deref_ty().is_none() {
+                if (op == Operator::Add || op == Operator::Sub) && self.deref_ty().is_none() {
                     return false;
                 }
                 
@@ -520,7 +520,7 @@ impl Type {
                 Type::Pointer(..),
             ) => {
                 // can't offset untyped pointers
-                if op == Operator::Add || op == Operator::Sub && self.deref_ty().is_none() {
+                if (op == Operator::Add || op == Operator::Sub) && self.deref_ty().is_none() {
                     return false;
                 }
 
