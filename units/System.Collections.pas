@@ -268,14 +268,8 @@ end;
 
 function ReallocItems[T](list: ArrayList[T]; size: Integer);
 unsafe begin
-    // workaround for non-nullable RC types - needs compiler support 
-    var nothing := GetMem(sizeof(T)) as ^Byte;
-    for var i := 0 to sizeof(T) - 1 do
-        nothing[i] := 0;
-    
-    SetLength(list.items, size, (nothing as ^T)^); 
-    
-    FreeMem(nothing);
+    // unsafe: element type might be non-nullable reference
+    SetLength(list.items, size, default(T)); 
 end;
 
 function ArrayList[T].Add(item: T);
@@ -296,27 +290,30 @@ begin
 end;
 
 function ArrayList[T].Remove(n: Integer);
-begin
-    for var i := n to Length(self.items) - 2 do
+unsafe begin
+    if n < 0 or n >= self.len then 
+        exit;
+
+    var capacity := Length(self.items);
+    for var i := n to capacity - 2 do
     begin
         self.items[i] := self.items[i + 1];
     end;
     
     self.len -= 1;
-    
-    // throw the last item into the RC void by replacing it with null
-    // workaround for non-nullable RC types - needs compiler support
-    var nothing := GetMem(sizeof(T)) as ^Byte;
-    for var i := 0 to sizeof(T) - 1 do
-        nothing[i] := 0;
 
-    self.items[self.len] := (nothing as ^T)^;
-    FreeMem(nothing);
+    // unsafe: element type might be non-nullable reference
+    self.items[self.len] := default;
 end;
 
 function ArrayList[T].Clear;
-begin
-    ReallocItems(self, 0);
+unsafe begin
+    for var i := 0 to self.len - 1 do
+    begin
+        // unsafe: element type might be non-nullable reference 
+        self.items[i] := default;
+    end;
+
     self.len := 0;
 end;
 
