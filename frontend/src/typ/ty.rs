@@ -483,7 +483,7 @@ impl Type {
     }
 
     pub fn valid_math_op(&self, op: Operator, rhs: &Self) -> bool {
-        match (self, op, rhs) {
+        match (self, op, rhs) {            
             // pointer arithmetic:
             // - lhs is any pointer
             // - operator is +, - or any bitwise operator
@@ -497,6 +497,11 @@ impl Type {
                 | Operator::Caret,
                 Type::Primitive(rhs_primitive),
             ) => {
+                // can't offset untyped pointers
+                if op == Operator::Add || op == Operator::Sub && self.deref_ty().is_none() {
+                    return false;
+                }
+                
                 let rhs_valid = rhs_primitive.is_integer() || rhs_primitive.is_pointer();
                 rhs_valid && rhs_primitive.native_size() <= Primitive::Pointer.native_size()
             },
@@ -513,7 +518,14 @@ impl Type {
                 | Operator::BitOr
                 | Operator::Caret,
                 Type::Pointer(..),
-            ) => *self == *rhs,
+            ) => {
+                // can't offset untyped pointers
+                if op == Operator::Add || op == Operator::Sub && self.deref_ty().is_none() {
+                    return false;
+                }
+
+                *self == *rhs
+            },
 
             // integer division is valid for two of the same primitive integer type
             (Type::Primitive(a), Operator::IDiv, Type::Primitive(b)) => {
