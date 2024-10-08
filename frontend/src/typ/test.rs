@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::typ::FunctionParamSig;
+use crate::typ::{FunctionParamSig, TypeResult};
 use crate::typ::FunctionSig;
 use crate::typ::Module;
 use crate::typ::ModuleUnit;
@@ -13,11 +13,15 @@ use std::path::PathBuf;
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
 
+pub fn try_module_from_src(unit_name: &str, src: &str) -> TypeResult<Module> {
+    try_module_from_srcs(vec![(unit_name, src)])
+}
+
 pub fn module_from_src(unit_name: &str, src: &str) -> Module {
     module_from_srcs(vec![(unit_name, src)])
 }
 
-pub fn module_from_srcs<'a, UnitSources>(unit_srcs: UnitSources) -> Module
+pub fn try_module_from_srcs<'a, UnitSources>(unit_srcs: UnitSources) -> TypeResult<Module>
 where
     UnitSources: IntoIterator<Item = (&'a str, &'a str)>,
 {
@@ -39,7 +43,15 @@ where
         units.push(unit);
     }
 
-    Module::typecheck(&units).unwrap()
+    Module::typecheck(&units)
+}
+
+pub fn module_from_srcs<'a, UnitSources>(unit_srcs: UnitSources) -> Module
+where
+    UnitSources: IntoIterator<Item = (&'a str, &'a str)>,
+{
+
+    try_module_from_srcs(unit_srcs).unwrap()
 }
 
 pub fn unit_from_src(unit_name: &'static str, src: &'static str) -> ModuleUnit {

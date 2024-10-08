@@ -36,6 +36,7 @@ use crate::ast;
 use crate::ast::TypeList;
 use crate::ast::Ident;
 use std::borrow::Cow;
+use std::iter;
 use std::rc::Rc;
 
 pub type MethodCall = ast::MethodCall<Typed>;
@@ -57,12 +58,19 @@ fn invalid_args(
     expected: &[FunctionParamSig],
     span: Span,
 ) -> TypeError {
+    let expected: Vec<_> = expected
+        .iter()
+        .map(|p| p.ty.clone())
+        .collect();
+
+    let actual: Vec<_> = actual_args
+        .into_iter()
+        .map(|arg| arg.annotation().ty().into_owned())
+        .collect();
+
     TypeError::InvalidArgs {
-        expected: expected.iter().map(|p| p.ty.clone()).collect(),
-        actual: actual_args
-            .into_iter()
-            .map(|arg| arg.annotation().ty().into_owned())
-            .collect(),
+        expected,
+        actual,
         span,
     }
 }
@@ -76,7 +84,7 @@ fn build_args_for_params(
 ) -> TypeResult<Vec<Expr>> {
     let mut checked_args = Vec::new();
 
-    let rest_args = if let Some(self_arg) = self_arg {
+    let rest_params = if let Some(self_arg) = self_arg {
         let self_ty = &params[0].ty;
 
         let self_arg = implicit_conversion(self_arg.clone(), self_ty, ctx)?;
@@ -87,9 +95,23 @@ fn build_args_for_params(
         params
     };
 
+    // iterator of the rest of the params wrapped in Some until we run out of those, then None
+    let rest_params_or_none = rest_params
+        .iter()
+        .map(Some)
+        .chain(iter::repeat(None));
+
     // typ each arg (don't do conversions yet, we haven't figured out the self ty_def yet)
-    for (arg, expected_param) in src_args.iter().zip(rest_args.iter()) {
-        let arg_expr = typecheck_expr(arg, &expected_param.ty, ctx)?;
+    for (expected_param, arg) in rest_params_or_none.zip(src_args.iter()) {
+        // keep checking the provided arguments even when there aren't parameters for them,
+        // so we can show a complete error message. this will also make any errors checking the 
+        // args themselves take precedence over the invalid args error
+        let param_expect_ty = match expected_param {
+            Some(param) => &param.ty,
+            None => &Type::Nothing,
+        };
+
+        let arg_expr = typecheck_expr(arg, param_expect_ty, ctx)?;
         checked_args.push(arg_expr);
     }
 

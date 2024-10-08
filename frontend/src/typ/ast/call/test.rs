@@ -6,8 +6,8 @@ use crate::parse::TokenStream;
 use crate::pp::Preprocessor;
 use crate::typ::ast::call::overload::resolve_overload;
 use crate::typ::ast::call::overload::OverloadCandidate;
-use crate::typ::test::module_from_src;
-use crate::typ::{Context, Symbol};
+use crate::typ::test::{module_from_src, try_module_from_src};
+use crate::typ::{Context, Symbol, TypeError};
 use crate::typ::FunctionSig;
 use crate::TokenTree;
 use common::span::Span;
@@ -125,4 +125,64 @@ fn resolves_overload_by_arg_ty() {
     assert_eq!(0, overload.selected_sig);
     assert_eq!(1, overload.args.len());
     assert_eq!("i", overload.args[0].to_string());
+}
+
+#[test]
+fn method_call_validates_too_many_args() {
+    let src = r"
+        implementation
+        uses System;
+        
+        type AClass = class
+            function M1(a: Integer);
+        end;
+        
+        function AClass.M1(a: Integer);
+        begin
+        end;
+        
+        initialization
+            var instance := AClass();
+            instance.M1(1, 2);
+        end.
+    ";
+    
+    match try_module_from_src("method_call_validates_too_many_args", src) {
+        Err(TypeError::InvalidArgs { actual, expected, .. }) => {
+            assert_eq!(3, actual.len());
+            assert_eq!(2, expected.len());
+        }
+        
+        other => panic!("expected invalid args error, got: {:?}", other),
+    }
+}
+
+#[test]
+fn method_call_validates_too_few_args() {
+    let src = r"
+        implementation
+        uses System;
+        
+        type AClass = class
+            function M1(a, b: Integer);
+        end;
+        
+        function AClass.M1(a, b: Integer);
+        begin
+        end;
+        
+        initialization
+            var instance := AClass();
+            instance.M1(1);
+        end.
+    ";
+
+    match try_module_from_src("method_call_validates_too_many_args", src) {
+        Err(TypeError::InvalidArgs { actual, expected, .. }) => {
+            assert_eq!(2, actual.len());
+            assert_eq!(3, expected.len());
+        }
+
+        other => panic!("expected invalid args error, got: {:?}", other),
+    }
 }
