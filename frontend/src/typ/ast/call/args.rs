@@ -168,27 +168,37 @@ pub fn specialize_call_args(
     span: &Span,
     ctx: &mut Context,
 ) -> TypeResult<SpecializedCallArgs> {
-    if decl_sig.type_params.is_none() {
-        if let Some(explicit_ty_args) = explicit_ty_args {
-            return Err(TypeError::from_generic_err(
-                GenericError::ArgsLenMismatch {
-                    expected: 0,
-                    actual: explicit_ty_args.len(),
-                    target: GenericTarget::FunctionSig(decl_sig.clone()),
-                },
-                span.clone(),
-            ));
+    let ty_params = match &decl_sig.type_params {
+        None => {
+            if let Some(explicit_ty_args) = explicit_ty_args {
+                return Err(TypeError::from_generic_err(
+                    GenericError::ArgsLenMismatch {
+                        expected: 0,
+                        actual: explicit_ty_args.len(),
+                        target: GenericTarget::FunctionSig(decl_sig.clone()),
+                    },
+                    span.clone(),
+                ));
+            }
+
+            // no type params
+            let actual_args = call::build_args_for_params(
+                &decl_sig.params,
+                args,
+                self_arg,
+                span,
+                ctx
+            )?;
+
+            return Ok(SpecializedCallArgs {
+                sig: decl_sig.clone(),
+                actual_args,
+                type_args: None,
+            });
         }
 
-        // no type params
-        let actual_args = call::build_args_for_params(&decl_sig.params, args, self_arg, span, ctx)?;
-
-        return Ok(SpecializedCallArgs {
-            sig: decl_sig.clone(),
-            actual_args,
-            type_args: None,
-        });
-    }
+        Some(params) => params,
+    };
 
     if let Some(explicit_ty_args) = explicit_ty_args {
         // we have explicit args, don't try to infer types
@@ -220,7 +230,7 @@ pub fn specialize_call_args(
         }
 
         // try to infer type from args, left to right
-        let mut inferred_ty_args = vec![None; decl_sig.type_params.as_ref().unwrap().len()];
+        let mut inferred_ty_args = vec![None; ty_params.len()];
         let mut actual_args = Vec::new();
 
         if let Some(self_arg) = self_arg.cloned() {

@@ -28,41 +28,48 @@ pub fn parse_expr(src: &str) -> Expr<Span> {
     try_parse_expr(src).unwrap()
 }
 
-/// for an expr like x := Y() we should read it as x := (Y()) not (x := Y)()
+/// for an expr like x := Y() we should read it as the statement x := (Y()) 
+/// not the invalid binary operation (x := Y)()
 #[test]
-fn parse_assignment_then_call_in_order() {
-    let expr = parse_expr("x := Y()");
-
-    match expr.as_bin_op() {
-        Some(bin_op) => {
-            let lhs_ident = bin_op.lhs.as_ident().unwrap_or_else(|| {
-                panic!(
-                    "parsed expr should have ident x on the lhs, found {}",
-                    bin_op.lhs
-                )
-            });
-            assert_eq!("x", lhs_ident.name.as_str());
+fn parse_assignment_then_call_in_order_as_stmt() {
+    let assignment = match try_parse_expr("x := Y()") {
+        Err(TracedError { err: ParseError::IsStatement(stmt), .. }) => match *stmt {
+            Stmt::Assignment(assignment) => *assignment,
+            other => panic!("expected assignment, got {}", other),
         }
+        
+        other => panic!("expected statement, got {:?}", other),
+    };
+    
+    let lhs_ident = assignment.lhs.as_ident().unwrap_or_else(|| {
+        panic!(
+            "parsed statement should have ident x on the lhs, found {}",
+            assignment.lhs
+        )
+    });
 
-        _ => panic!("expected binary op, got `{:#?}`", expr),
-    }
+    assert_eq!("x", lhs_ident.name.as_str());
 }
 
 #[test]
 fn parse_assignment_then_call_in_order_explicit() {
-    match parse_expr("x := (Y())") {
-        Expr::BinOp(bin_op) => {
-            let lhs_ident = bin_op.lhs.as_ident().unwrap_or_else(|| {
-                panic!(
-                    "parsed expr should have ident x on the lhs, found {}",
-                    bin_op.lhs
-                )
-            });
-            assert_eq!("x", lhs_ident.name.as_str());
+    let assignment = match try_parse_expr("x := (Y())") {
+        Err(TracedError { err: ParseError::IsStatement(stmt), .. }) => match *stmt {
+            Stmt::Assignment(assignment) => *assignment,
+            other => panic!("expected assignment, got {}", other),
         }
 
-        invalid => panic!("expected binary op, got `{:#?}`", invalid),
-    }
+        other => panic!("expected statement, got {:?}", other),
+    };
+
+    let lhs_ident = assignment.lhs.as_ident().unwrap_or_else(|| {
+        panic!(
+            "parsed statement should have ident x on the lhs, found {}",
+            assignment.lhs
+        )
+    });
+
+    assert_eq!("x", lhs_ident.name.as_str());
 }
 
 #[test]

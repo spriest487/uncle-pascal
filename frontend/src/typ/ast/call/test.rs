@@ -7,7 +7,7 @@ use crate::pp::Preprocessor;
 use crate::typ::ast::call::overload::resolve_overload;
 use crate::typ::ast::call::overload::OverloadCandidate;
 use crate::typ::test::{module_from_src, try_module_from_src};
-use crate::typ::{Context, Symbol, TypeError};
+use crate::typ::{Context, Symbol, TypeError, Typed};
 use crate::typ::FunctionSig;
 use crate::TokenTree;
 use common::span::Span;
@@ -89,7 +89,7 @@ fn resolves_overload_single() {
     let expr = parse_expr("i");
     let span = expr.annotation().clone();
 
-    let overload = resolve_overload(&candidates, &[expr], None, &span, &mut ctx).unwrap();
+    let overload = resolve_overload(&candidates, &[expr], None, None, &span, &mut ctx).unwrap();
 
     assert_eq!(0, overload.selected_sig);
     assert_eq!(1, overload.args.len());
@@ -120,7 +120,7 @@ fn resolves_overload_by_arg_ty() {
     let expr = parse_expr("i");
     let span = expr.annotation().clone();
 
-    let overload = resolve_overload(&candidates, &[expr], None, &span, &mut ctx).unwrap();
+    let overload = resolve_overload(&candidates, &[expr], None, None, &span, &mut ctx).unwrap();
 
     assert_eq!(0, overload.selected_sig);
     assert_eq!(1, overload.args.len());
@@ -184,5 +184,96 @@ fn method_call_validates_too_few_args() {
         }
 
         other => panic!("expected invalid args error, got: {:?}", other),
+    }
+}
+
+#[test]
+fn specializes_func_call_by_arg_ty() {
+    let src = r"
+        implementation
+        
+        type B = class
+        end;
+        
+        function A[T](arg: T);
+        begin
+        end;
+        
+        initialization
+            var arg := B();
+            A(arg);
+        end.
+    ";
+    
+    let module = module_from_src("Test", src);
+    let unit = module.units.iter().last().unwrap();
+    let init = unit.unit.init.as_ref().unwrap();
+
+    match init.body[1].as_call() {
+        Some(ast::Call::Function(func_call)) => {
+            assert_eq!("A", func_call.target.to_string());
+            assert_eq!("Test.B", func_call.args[0].annotation().ty().to_string());
+            
+            match func_call.target.annotation() {
+                Typed::Function(func) => {
+                    assert_eq!("Test.B", func.name.type_args.as_ref().unwrap()[0].to_string());
+                    assert_eq!("Test.A[Test.B]",  func.name.to_string());
+                    assert_eq!("Test.B", func.sig.params[0].ty.to_string());
+                }
+
+                other => panic!("expected function, got {:?}", other),
+            }
+        }
+        
+        other => panic!("expected call to A, got {:?}", other),
+    }
+}
+
+#[test]
+fn specializes_method_call_by_arg_ty() {
+    let src = r"
+        implementation
+        
+        type C = class
+            function A[T](arg: T);
+        end;
+        
+        type B = class
+        end;
+        
+        function C.A[T](arg: T);
+        begin
+        end;
+        
+        initialization
+            var instance := C();
+            var arg := B();
+            instance.A(arg);
+        end.
+    ";
+
+    let module = module_from_src("Test", src);
+    let unit = module.units.iter().last().unwrap();
+    let init = unit.unit.init.as_ref().unwrap();
+
+    match init.body[2].as_call() {
+        Some(ast::Call::Method(method_call)) => {
+            assert_eq!("instance", method_call.args[0].to_string());
+            assert_eq!("Test.C", method_call.args[0].annotation().ty().to_string());
+
+            assert_eq!("arg", method_call.args[1].to_string());
+            assert_eq!("Test.B", method_call.args[1].annotation().ty().to_string());
+            
+            match &method_call.annotation {
+                Typed::Method(method_typed) => {
+                    assert_eq!("A", method_typed.method_ident.to_string());
+                    assert_eq!("C", method_typed.iface_ty.to_string());
+                }
+
+                other => panic!("expected method, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected call to A, got {:?}", other),
     }
 }

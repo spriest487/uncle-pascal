@@ -242,10 +242,12 @@ pub fn typecheck_variant(
         implements.push(typecheck_type(implements_ty, ctx)?);
     }
     
-    ctx.declare_self_ty(Type::MethodSelf, variant_def.name.span().clone())?;
+    let variant_ty = Type::variant(name.clone());
+
+    ctx.declare_self_ty(variant_ty.clone(), variant_def.name.span().clone())?;
     ctx.declare_type(
         variant_def.name.ident.clone(),
-        Type::variant(name.full_path.clone()),
+        variant_ty,
         visibility,
         true
     )?;

@@ -281,9 +281,15 @@ fn typecheck_func_overload(
     target: &Expr,
     overloaded: &OverloadTyped,
 ) -> TypeResult<Call> {
+    let type_args = match &func_call.type_args {
+        Some(args) => Some(typecheck_type_args(args, ctx)?),
+        None => None,
+    };
+
     let overload = resolve_overload(
         &overloaded.candidates,
         &func_call.args,
+        type_args.as_ref(),
         overloaded.self_arg.as_ref().map(|arg| arg.as_ref()),
         &overloaded.span,
         ctx,
@@ -513,7 +519,7 @@ fn typecheck_ufcs_call(
 }
 
 fn typecheck_func_call(
-    target: Expr,
+    mut target: Expr,
     func_call: &ast::FunctionCall<Span>,
     sig: &FunctionSig,
     ctx: &mut Context,
@@ -525,9 +531,16 @@ fn typecheck_func_call(
         None => None,
     };
 
-    let mut specialized_call_args =
-        args::specialize_call_args(sig, &func_call.args, None, type_args, &span, ctx)?;
-    args::validate_args(
+    let mut specialized_call_args = specialize_call_args(
+        sig,
+        &func_call.args,
+        None,
+        type_args,
+        &span,
+        ctx
+    )?;
+
+    validate_args(
         &mut specialized_call_args.actual_args,
         &specialized_call_args.sig.params,
         func_call.span(),
@@ -546,6 +559,21 @@ fn typecheck_func_call(
         }
         .into(),
     };
+    
+    if let Some(ty_args) = &specialized_call_args.type_args {
+        match target.annotation_mut() {
+            Typed::Function(func_type) => {
+                let specialized_func_type = FunctionTyped {
+                    name: (**func_type).clone().name.with_ty_args(Some(ty_args.clone())),
+                    sig: Rc::new(specialized_call_args.sig),
+                    span: func_type.span.clone(),
+                };
+                
+                *func_type = Rc::new(specialized_func_type);
+            }
+            _ => panic!("typecheck_func_call: target did not have function type"),
+        }
+    }
 
     Ok(ast::Call::Function(FunctionCall {
         annotation,
