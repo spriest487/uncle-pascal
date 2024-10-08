@@ -440,11 +440,33 @@ impl Context {
         
         None
     }
-    
+
+    // get the return type of the current function body scope. in a closure where the type hasn't
+    // been inferred yet, returns the Nothing type. returns None if we're not currently in
+    // a function body scope
     pub fn current_func_return_ty(&self) -> Option<&Type> {
-        self.current_function_env().map(|env| &env.result_ty)
+        self.current_function_env()
+            .map(|env| &env.result_ty)
             .or_else(|| self.current_closure_env()
-                .and_then(|env| env.result_ty.as_ref()))
+                .and_then(|env| env.result_ty
+                    .as_ref()
+                    .or_else(|| Some(&Type::Nothing))))
+    }
+    
+    // if we are in a function body context where the result type is not yet inferred, set it now.
+    pub fn set_inferred_result_ty(&mut self, ty: &Type) -> bool {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Environment::ClosureBody(env) = scope.env_mut() {
+                if env.result_ty.is_some() {
+                    return false
+                }
+
+                env.result_ty = Some(ty.clone());
+                return true;
+            }
+        }
+        
+        false
     }
     
     pub fn current_enclosing_ty(&self) -> Option<&Type> {

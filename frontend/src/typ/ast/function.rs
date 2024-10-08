@@ -727,37 +727,30 @@ pub fn typecheck_func_expr(
         });
     }
 
-    let return_ty = match &src_def.return_ty {
-        ast::TypeName::Unspecified(..) => {
-            match expect_sig.map(|sig| &sig.return_ty) {
-                Some(expect_return_ty) => expect_return_ty.clone(),
-                None => {
-                    return Err(TypeError::UnableToInferFunctionExprType {
-                        func: Box::new(src_def.clone()),
-                    })
-                }
-            }
-        },
-
-        src_return_ty => typecheck_type(src_return_ty, ctx)?,
+    // if the return type isn't explicitly specified, we might be able to infer it to aid
+    // in typechecking the body if we have an expected function signature
+    let known_return_ty = match &src_def.return_ty {
+        ast::TypeName::Unspecified(..) => expect_sig.map(|sig| sig.return_ty.clone()),
+        src_return_ty => Some(typecheck_type(src_return_ty, ctx)?),
     };
 
     let sig_params = params.iter().map(|p| p.clone().into()).collect();
 
-    let sig = Rc::new(FunctionSig {
-        return_ty: return_ty.clone(),
-        params: sig_params,
-        type_params: None,
-    });
-
+    // we manage the scope manually here so we can retrieve this environment object after
+    // the body is finished and get the final captures
     let body_scope_id = ctx.push_scope(ClosureBodyEnvironment {
-        result_ty: Some(return_ty.clone()),
+        result_ty: known_return_ty.clone(),
         captures: LinkedHashMap::new(),
     });
 
-    let body_result = declare_func_params_in_body(&params, ctx).and_then(|_| {
-        typecheck_block(&src_def.body, &return_ty, ctx)
-    });
+    let body_result = declare_func_params_in_body(&params, ctx)
+        .and_then(|_| {
+            let expect_block_return = known_return_ty
+                .as_ref()
+                .unwrap_or(&Type::Nothing);
+    
+            typecheck_block(&src_def.body, &expect_block_return, ctx)
+        });
 
     let closure_env = match ctx.pop_scope(body_scope_id).into_env() {
         Environment::ClosureBody(body) => body,
@@ -765,6 +758,21 @@ pub fn typecheck_func_expr(
     };
     
     let body = body_result?;
+
+    // use the result type here, because checking the body of the closure might have given
+    // us an inferred return type too e.g. an explicit exit statement
+    let return_ty = match closure_env.result_ty {
+        Some(ty) => ty,
+        None => body.annotation.ty().into_owned(),
+    };
+
+    let sig = Rc::new(FunctionSig {
+        return_ty: return_ty.clone(),
+        params: sig_params,
+        type_params: None,
+    });
+    
+    eprintln!("inferred sig: {sig}");
 
     let annotation = TypedValue {
         decl: None,

@@ -1,4 +1,4 @@
-use crate::typ::ast::StructDef;
+use crate::typ::ast::{FunctionCall, StructDef};
 use crate::typ::context::*;
 use crate::typ::ty::*;
 use crate::{ast, typ};
@@ -328,6 +328,19 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     assert_eq!(expect_sig, b_int_sig);
 }
 
+fn get_func_call(module_unit: &ModuleUnit, init_pos: usize) -> &FunctionCall {
+    module_unit
+        .unit
+        .init
+        .as_ref()
+        .and_then(|block| block.body.get(init_pos))
+        .and_then(Stmt::as_call)
+        .and_then(Call::as_func_call)
+        .unwrap_or_else(|| {
+            panic!("expected unit to have a single function call at positions {} in its init block", init_pos)
+        })
+}
+
 #[test]
 fn can_infer_ty_arg_from_real_record_arg() {
     const UNIT_NAME: &str = "can_infer_ty_args_from_real_record_arg";
@@ -360,16 +373,7 @@ fn can_infer_ty_arg_from_real_record_arg() {
         ])
         ).unwrap();
 
-    let func_call = module
-        .unit
-        .init
-        .as_ref()
-        .and_then(|block| block.body.get(0))
-        .and_then(Stmt::as_call)
-        .and_then(Call::as_func_call)
-        .unwrap_or_else(|| {
-            panic!("expected unit to have a single function call in its init block")
-        });
+    let func_call = get_func_call(&module, 0);
 
     assert!(func_call.type_args.is_some());
     let type_args = func_call.type_args.as_ref().unwrap();
@@ -393,20 +397,36 @@ fn can_infer_ty_arg_from_real_int_arg() {
             end
         "
     );
-    
-    let func_call = module
-        .unit
-        .init
-        .as_ref()
-        .and_then(|block| block.body.get(0))
-        .and_then(Stmt::as_call)
-        .and_then(Call::as_func_call)
-        .unwrap_or_else(|| {
-            panic!("expected unit to have a single function call in its init block")
-        });
+
+    let func_call = get_func_call(&module, 0);
     
     assert!(func_call.type_args.is_some());
     let type_args = func_call.type_args.as_ref().unwrap();
     
+    assert_eq!(type_args[0], Type::Primitive(Primitive::Int32));
+}
+
+#[test]
+fn can_infer_ty_arg_from_lambda() {
+    let module = module_from_src(
+        "can_infer_ty_arg_from_lambda",
+        r"
+            implementation
+            
+            function Func[T](item: function: T);
+            begin
+            end;
+            
+            initialization
+                var f := lambda: 1;
+                Func(f);
+            end
+        "
+    );
+
+    let func_call = get_func_call(&module, 1);
+    assert!(func_call.type_args.is_some());
+    let type_args = func_call.type_args.as_ref().unwrap();
+
     assert_eq!(type_args[0], Type::Primitive(Primitive::Int32));
 }

@@ -258,13 +258,6 @@ pub fn typecheck_exit(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypeResult<Exit> {
-    let ret_ty = ctx
-        .current_func_return_ty()
-        .ok_or_else(|| TypeError::NoFunctionContext {
-            stmt: Box::new(ast::Stmt::Exit(Box::new(exit.clone()))),
-        })?
-        .clone();
-
     // exit expressions always count as the expected type, so you can write e.g.
     // `let x := if true then 1 else exit;`
     // since no value will ever be assigned to `x` if the exit expr is reached
@@ -283,12 +276,26 @@ pub fn typecheck_exit(
         ast::Exit::WithoutValue(span) => Exit::WithoutValue(make_annotation(span).into()),
 
         ast::Exit::WithValue(value, span) => {
+            let mut ret_ty = ctx
+                .current_func_return_ty()
+                .ok_or_else(|| TypeError::NoFunctionContext {
+                    stmt: Box::new(ast::Stmt::Exit(Box::new(exit.clone()))),
+                })?
+                .clone();
+
+            let value = typecheck_expr(value, &ret_ty, ctx)?;
+            let val_ty = value.annotation().ty();
+
+            if ctx.set_inferred_result_ty(val_ty.as_ref()) {
+                ret_ty = val_ty.into_owned();
+            };
+
             if ret_ty == Type::Nothing {
                 return Err(TypeError::InvalidExitWithValue {
                     span: exit.span().clone(),
                 });
             }
-            let value = typecheck_expr(value, &ret_ty, ctx)?;
+            
             let value = implicit_conversion(value, &ret_ty, ctx)?;
 
             Exit::WithValue(value, make_annotation(span).into())
