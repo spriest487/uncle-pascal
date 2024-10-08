@@ -119,7 +119,10 @@ impl FunctionDecl<Span> {
             span = span.to(&params_group.span);
 
             let mut params_tokens = params_group.to_inner_tokens();
-            Self::parse_params(&mut params_tokens)?
+            let params = Self::parse_params(&mut params_tokens)?;
+            
+            params_tokens.finish()?;
+            params
         } else {
             Vec::new()
         };

@@ -132,3 +132,15 @@ fn fails_with_invalid_type_params() {
     assert!(is_error_on_int_ptr, "was: {:#?}", err);
 }
 
+#[test]
+fn rejects_tokens_after_param_list() {
+    let result = try_parse_func_decl("function A(a: Integer foo)");
+    let err = result.err().expect("should return a parse error");
+
+    let is_unexpected_foo = match &err.err {
+        ParseError::UnexpectedToken(tt, ..) => tt.is_ident("foo"),
+        _ => false,
+    };
+    
+    assert!(is_unexpected_foo, "was: {:#?}", err.err)
+}
