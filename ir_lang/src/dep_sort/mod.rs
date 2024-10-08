@@ -35,8 +35,13 @@ where
         }
     }
 
-    sort
+    let sorted: Vec<_> = sort
         .map(|id| (id, defs.remove(&id).unwrap()))
+        .collect();
+    
+    sorted
+        .into_iter()
+        .rev()
         .collect()
 }
 
