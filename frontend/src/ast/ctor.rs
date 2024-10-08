@@ -222,7 +222,7 @@ impl CollectionCtor<Span> {
 
         let elements = CollectionCtorElement::parse_seq(&mut elems_tokens)?;
         if elements.len() > 0 {
-            elems_tokens.match_one_maybe(Separator::Colon);
+            elems_tokens.match_one_maybe(Separator::Comma);
         }
 
         elems_tokens.finish()?;
