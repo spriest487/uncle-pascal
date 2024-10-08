@@ -1,13 +1,16 @@
 mod member;
 
-use crate::ast::{Annotation, FunctionName, TypeName};
+use crate::ast::parse_implements_clause;
+use crate::ast::Annotation;
 use crate::ast::FunctionDecl;
+use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::TypeDeclName;
-use crate::parse::{Matcher, Parse};
 use crate::parse::ParseResult;
 use crate::parse::TokenStream;
-use crate::{Keyword, Separator};
+pub use crate::parse::Matcher;
+use crate::Keyword;
+use crate::Separator;
 use common::span::Span;
 use common::span::Spanned;
 use derivative::*;
@@ -104,22 +107,8 @@ impl StructDef<Span> {
             },
             _ => unreachable!(),
         };
-        
-        let mut span = kw_token.into_span();
-        
-        let mut implements = Vec::new();
-        if tokens.match_one_maybe(Keyword::Of).is_some() {
-            loop {
-                let implement_iface = TypeName::parse(tokens)?;
-                
-                span = span.to(implement_iface.span());
-                implements.push(implement_iface);
 
-                if tokens.match_one_maybe(Separator::Comma).is_none() {
-                    break;
-                }
-            }
-        }
+        let span = kw_token.into_span();
         
         // the last type in a section can never be forward, so every legal forward declaration
         // will end with a semicolon
@@ -127,12 +116,14 @@ impl StructDef<Span> {
             Ok(StructDef {
                 kind,
                 name,
-                implements,
                 forward: true,
+                implements: Vec::new(),
                 members: Vec::new(),
                 span,
             })
         } else {
+            let implements = parse_implements_clause(tokens)?;
+            
             let members = parse_struct_members(tokens)?;
 
             let end_token = tokens.match_one(Keyword::End)?;
@@ -140,8 +131,8 @@ impl StructDef<Span> {
             Ok(StructDef {
                 kind,
                 name,
-                implements,
                 forward: false,
+                implements,
                 members,
                 span: span.to(end_token.span()),
             })

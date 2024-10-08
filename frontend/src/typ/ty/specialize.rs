@@ -1,9 +1,10 @@
 use crate::ast;
-use crate::typ::ast::apply_func_decl_named_ty_args;
+use crate::ast::IdentPath;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::ast::VariantDef;
-use crate::typ::validate_ty_args;
+use crate::typ::ast::apply_func_decl_named_ty_args;
+use crate::typ::ast::FunctionDecl;
 use crate::typ::Context;
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
@@ -14,6 +15,8 @@ use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeParamType;
+use crate::typ::validate_ty_args;
+use crate::typ::TypeParamList;
 use common::span::Spanned;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -111,18 +114,14 @@ pub fn specialize_struct_def<'a>(
         Some(param_list) => param_list,
     };
 
-    let specialized_name = specialize_generic_name(&generic_def.name, ty_args, ctx)?
+    let specialized_name= specialize_generic_name(&generic_def.name, ty_args, ctx)?
         .into_owned();
 
-    let implements: Vec<Type> = generic_def.implements
-        .iter()
-        .map(|implements_ty| {
-            let specialized = implements_ty
-                .clone()
-                .apply_type_args_by_name(struct_ty_params, ty_args);
-            Ok(specialized)
-        })
-        .collect::<GenericResult<_>>()?;
+    let implements = specialize_implements_clause(
+        &generic_def.implements,
+        struct_ty_params,
+        ty_args
+    );
 
     let members: Vec<_> = generic_def
         .members
@@ -141,34 +140,20 @@ pub fn specialize_struct_def<'a>(
                 }
 
                 ast::StructMember::MethodDecl(generic_method) => {
-                    let mut method = apply_func_decl_named_ty_args(
-                        (**generic_method).clone(),
-                        struct_ty_params,
-                        ty_args
+                    let self_ty = Type::struct_type(
+                        specialized_name.clone(),
+                        generic_def.kind
                     );
 
-                    // specialize the owning type of all methods
-                    method.name = TypedFunctionName {
-                        ident: method.name.ident.clone(),
-                        span: method.name.span.clone(),
-                        owning_ty: match &method.name.owning_ty {
-                            Some(ty) => {
-                                assert_eq!(
-                                    ty.full_path().map(Cow::into_owned).as_ref(),
-                                    Some(&generic_def.name.full_path),
-                                    "owning type of a method must always be the type it's declared in"
-                                );
-
-                                Some(Type::struct_type(
-                                    specialized_name.clone(),
-                                    generic_def.kind
-                                ))
-                            },
-                            None => None,
-                        },
-                    };
-
-                    Ok(ast::StructMember::MethodDecl(Rc::new(method)))
+                    let specialized = specialize_method_decl(
+                        &generic_def.name.full_path,
+                        self_ty,
+                        generic_method,
+                        struct_ty_params,
+                        ty_args,
+                    )?;
+                    
+                    Ok(ast::StructMember::MethodDecl(Rc::new(specialized)))
                 }
             }
         })
@@ -189,7 +174,19 @@ pub fn specialize_variant_def(
     args: &TypeArgList,
     ctx: &Context,
 ) -> GenericResult<VariantDef> {
-    let parameterized_name = specialize_generic_name(&variant.name, args, ctx)?;
+    let variant_ty_params = match &variant.name.type_params {
+        None => return Ok(variant.clone()),
+        Some(param_list) => param_list,
+    };
+
+    let parameterized_name= specialize_generic_name(&variant.name, args, ctx)?
+        .into_owned();
+    
+    let implements = specialize_implements_clause(
+        &variant.implements,
+        variant_ty_params,
+        args
+    );
 
     let cases: Vec<_> = variant
         .cases
@@ -209,11 +206,77 @@ pub fn specialize_variant_def(
             })
         })
         .collect::<GenericResult<_>>()?;
+    
+    let mut methods = Vec::new();
+
+    let self_ty = Type::variant(parameterized_name.clone());
+    for method in &variant.methods{ 
+        let specialized_method = specialize_method_decl(
+            &parameterized_name.full_path,
+            self_ty.clone(),
+            method,
+            variant_ty_params,
+            args
+        )?;
+        methods.push(Rc::new(specialized_method));
+    }
 
     Ok(VariantDef {
-        name: parameterized_name.into_owned(),
+        name: parameterized_name,
         span: variant.span().clone(),
         forward: variant.forward,
         cases,
+        implements,
+        methods,
     })
+}
+
+fn specialize_implements_clause(
+    implements: &[Type],
+    params: &TypeParamList,
+    args: &TypeArgList
+) -> Vec<Type> {
+    implements
+        .iter()
+        .map(|implements_ty| {
+            implements_ty
+                .clone()
+                .apply_type_args_by_name(params, args)
+        })
+        .collect()
+}
+
+fn specialize_method_decl(
+    owning_ty_generic_name: &IdentPath,
+    self_ty: Type,
+    generic_method: &FunctionDecl,
+    struct_ty_params: &TypeParamList,
+    ty_args: &TypeArgList
+) -> GenericResult<FunctionDecl> {
+    let mut method = apply_func_decl_named_ty_args(
+        generic_method.clone(),
+        struct_ty_params,
+        ty_args
+    );
+
+    // specialize the owning type of all methods
+    method.name = TypedFunctionName {
+        ident: method.name.ident.clone(),
+        span: method.name.span.clone(),
+        owning_ty: match &method.name.owning_ty {
+            Some(ty) => {
+                assert_eq!(
+                    ty.full_path().map(Cow::into_owned).as_ref(),
+                    Some(owning_ty_generic_name),
+                    "owning type of a method must always be the type it's declared in"
+                );
+
+                Some(self_ty)
+            },
+
+            None => None,
+        },
+    };
+
+    Ok(method)
 }

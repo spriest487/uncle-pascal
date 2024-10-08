@@ -586,6 +586,16 @@ impl Type {
                 Ok(methods)
             }
 
+            Type::Variant(name) => {
+                let variant_def = if name.is_unspecialized_generic() {
+                    ctx.find_variant_def(&name.full_path)?.clone()
+                } else {
+                    ctx.instantiate_variant_def(&name)?
+                };
+                
+                Ok(variant_def.methods.clone())
+            }
+
             Type::Primitive(primitive) => {
                 let methods = ctx
                     .get_primitive_methods(*primitive)
@@ -642,6 +652,17 @@ impl Type {
                 let method = struct_def.find_method(method);
                 Ok(method.cloned())
             }
+
+            Type::Variant(name) => {
+                let variant_def = if name.is_unspecialized_generic() {
+                    ctx.find_variant_def(&name.full_path)?.clone()
+                } else {
+                    ctx.instantiate_variant_def(&name)?
+                };
+
+                let method = variant_def.find_method(method);
+                Ok(method.cloned())
+            }
             
             Type::Primitive(primitive) => {
                 let methods = ctx.get_primitive_methods(*primitive);
@@ -672,6 +693,11 @@ impl Type {
 
             Type::Record(name) | Type::Class(name) => {
                 let def = ctx.instantiate_struct_def(name)?;
+                Ok(def.implements.clone())
+            }
+            
+            Type::Variant(name) => {
+                let def = ctx.instantiate_variant_def(name)?;
                 Ok(def.implements.clone())
             }
 
@@ -1057,7 +1083,7 @@ impl Specializable for Type {
         // callers should already have checked this
         assert_eq!(params.len(), args.len(), "apply_type_args: params and args counts did not match");
 
-        match self {
+        let result = match self.clone() {
             Type::GenericParam(param) => {                
                 // search by name is OK because in any scope where there's multiple levels of 
                 // generic params, the names of params must be unique between all param lists
@@ -1065,7 +1091,7 @@ impl Specializable for Type {
                     .find_position(param.name.name.as_str())
                     .and_then(|pos| args.find_by_pos(pos))
                     .cloned()
-                    .unwrap_or_else(|| Type::GenericParam(param))
+                    .unwrap_or_else(|| Type::GenericParam(param.clone()))
             }
 
             Type::Record(name) => {
@@ -1111,7 +1137,9 @@ impl Specializable for Type {
             
             // non-generic types
             other => other,
-        }
+        };
+
+        result
     }
 }
 

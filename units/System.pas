@@ -54,17 +54,28 @@ function IntToStr(i: Integer): String;
 
 type
     Box[T] = class
-        value: T
+        value: T;
+        
+        function Get: T;
     end;
 
     Option[T] = variant
         Some: T;
         None;
+
+        function Get: T;
+        function IsSome: Boolean;
     end;
 
     Result[T, E] = variant
         Ok: T;
         Error: E;
+        
+        function Get: T;
+        function GetError: E;
+        
+        function IsOk: Boolean;
+        function IsError: Boolean;
     end;
 
     Comparable = interface
@@ -72,7 +83,7 @@ type
     end;
 
     Displayable = interface
-        function ToString(): String;
+        function ToString: String;
     end;
 
 function Unbox[T](b: Box[T]): T;
@@ -133,6 +144,59 @@ end;
 function StringLen(s: String): Integer;
 begin
     s.len
+end;
+
+function Box[T].Get: T;
+begin
+    self.value
+end;
+
+function Option[T].Get: T;
+begin
+    match self of
+        Option.Some value: value;
+        else raise 'called Get on an empty optional object';
+    end;
+end;
+
+function Option[T].IsSome: Boolean;
+begin
+    match self of
+        Option.Some value: true;
+        else false;
+    end;
+end;
+
+function Result[T, E].Get: T;
+begin
+    match self of
+        Result.Ok value: value;
+        else raise 'called Get on a result object containing an error';
+    end;
+end;
+
+function Result[T, E].GetError: E;
+begin
+    match self of
+        Result.Error err: err;
+        else raise 'called GetError on a result object containing a valid result';
+    end;
+end;
+
+function Result[T, E].IsOk: Boolean;
+begin
+    match self of
+        Result.Ok value: true;
+        else false;
+    end;
+end;
+
+function Result[T, E].IsError: Boolean;
+begin
+    match self of
+        Result.Error err: true;
+        else false;
+    end;
 end;
 
 function Then[T, E](result: Result[T, E]; f: function(T): Result[T, E]): Result[T, E];

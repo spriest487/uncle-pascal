@@ -1,14 +1,11 @@
 # critical
 
-* c codegen: escaping! can't do ""
-* unique compiler error codes
-* does symbol with same name declared in branch scope confuse the initialization consolidation?
-
-# big features
-
 * decl names shadowing unit names
 * weak refs
 * option/result unwrapping
+
+# big features
+
 * private methods
 * vector list impl
 * enums/sets/range types
@@ -23,3 +20,4 @@
 * type cache so we don't need to construct/pass around type objects all the time in the typechecker (This is really slow)
 * stop outputting empty releaser funcs where there's nothing ot be released
 * parser: newlines/escape chars in string literals~~~~
+* unique compiler error codes

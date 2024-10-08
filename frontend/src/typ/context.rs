@@ -806,6 +806,20 @@ impl Context {
 
                 self.insert_method_def_entry(struct_ty, def)
             }
+            
+            Type::Variant(sym) => {
+                let variant_def = self.find_variant_def(&sym.full_path)?;
+                let variant_ty = Type::variant((*sym).clone());
+
+                variant_def
+                    .find_method(&method)
+                    .ok_or_else(|| NameError::MemberNotFound {
+                    base: NameContainer::Type(variant_ty.clone()),
+                    member: method.clone(),
+                })?;
+
+                self.insert_method_def_entry(variant_ty, def)
+            }
 
             Type::Primitive(primitive) => {
                 let ty_methods = self.get_primitive_methods(primitive);
@@ -1113,7 +1127,7 @@ impl Context {
             Some(type_args) => {
                 let instance_def = specialize_variant_def(
                     base_def.as_ref(), 
-                    type_args, 
+                    type_args,
                     self
                 )?;
 

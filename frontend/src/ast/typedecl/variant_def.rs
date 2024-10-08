@@ -1,4 +1,4 @@
-use crate::ast::Ident;
+use crate::ast::{parse_implements_clause, FunctionDecl, FunctionName, Ident};
 use crate::parse::LookAheadTokenStream;
 use crate::parse::Matcher;
 use crate::parse::ParseResult;
@@ -13,6 +13,7 @@ use derivative::*;
 use common::span::Span;
 use common::span::Spanned;
 use std::fmt;
+use std::rc::Rc;
 use crate::ast::type_name::TypeName;
 
 #[derive(Clone, Eq, Derivative)]
@@ -22,6 +23,10 @@ pub struct VariantDef<A: Annotation> {
     pub forward: bool,
     
     pub cases: Vec<VariantCase<A>>,
+
+    pub implements: Vec<A::Type>,
+    
+    pub methods: Vec<Rc<FunctionDecl<A>>>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -86,6 +91,14 @@ impl<A: Annotation> VariantDef<A> {
     }
 }
 
+impl<A: Annotation> VariantDef<A> {
+    pub fn find_method(&self, ident: &Ident) -> Option<&Rc<FunctionDecl<A>>> {
+        self.methods
+            .iter()
+            .find(|m| m.name.ident() == ident)
+    }
+}
+
 impl VariantDef<Span> {
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Variant)?;
@@ -96,22 +109,49 @@ impl VariantDef<Span> {
             Ok(VariantDef {
                 name,
                 forward: true,
+                
                 cases: Vec::new(),
+                
+                implements: Vec::new(),
+                methods: Vec::new(),
+                
                 span: kw.into_span(),
             })
         } else {
+            let implements = parse_implements_clause(tokens)?;
+
             let cases = VariantCase::parse_seq(tokens)?;
             tokens.match_one_maybe(Separator::Semicolon);
+            
+            let mut methods = Vec::new();
+            
+            loop {
+                let func_ahead = tokens
+                    .look_ahead()
+                    .match_one(Keyword::Function | Keyword::Procedure);
+                
+                if func_ahead.is_none() {
+                    break;
+                }
+
+                let method_decl= FunctionDecl::parse(tokens)?;
+                methods.push(Rc::new(method_decl));
+
+                if tokens.match_one_maybe(Separator::Semicolon).is_none() {
+                    break;
+                }
+            }
 
             let end_kw = tokens.match_one(Keyword::End)?;
-
-            let span = kw.span().to(end_kw.span());
 
             Ok(VariantDef {
                 name,
                 forward: false,
                 cases,
-                span,
+                span: kw.span().to(end_kw.span()),
+
+                implements,
+                methods,
             })
         }
     }

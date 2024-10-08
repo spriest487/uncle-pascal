@@ -237,6 +237,11 @@ pub fn typecheck_variant(
         return Err(TypeError::EmptyVariant(Box::new(variant_def.clone())));
     }
     
+    let mut implements = Vec::new();
+    for implements_ty in &variant_def.implements {
+        implements.push(typecheck_type(implements_ty, ctx)?);
+    }
+    
     ctx.declare_self_ty(Type::MethodSelf, variant_def.name.span().clone())?;
     ctx.declare_type(
         variant_def.name.ident.clone(),
@@ -259,10 +264,18 @@ pub fn typecheck_variant(
         });
     }
 
+    let mut methods = Vec::new();
+    for src_method in &variant_def.methods {
+        let method = typecheck_method(src_method, ctx)?;
+        methods.push(Rc::new(method));
+    }
+
     Ok(VariantDef {
         name,
         forward: variant_def.forward,
         cases,
+        implements,
+        methods,
         span: variant_def.span().clone(),
     })
 }

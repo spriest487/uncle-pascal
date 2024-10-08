@@ -13,8 +13,8 @@ use crate::ast::Keyword;
 use crate::ast::Operator;
 use crate::ast::TypeList;
 use crate::ast::TypeParam;
-use crate::ast::{Annotation, TypeName};
-use crate::parse::Matcher;
+use crate::ast::Annotation;
+use crate::ast::TypeName;
 use crate::parse::Parse;
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
@@ -259,4 +259,24 @@ impl<A: Annotation> fmt::Display for TypeDeclItem<A> {
             TypeDeclItem::Enum(enum_decl) => write!(f, "{}", enum_decl),
         }
     }
+}
+
+pub fn parse_implements_clause(
+    tokens: &mut TokenStream,
+) -> ParseResult<Vec<TypeName>> {
+    let mut implements = Vec::new();
+
+    if tokens.match_one_maybe(Keyword::Of).is_some() {
+        loop {
+            let implement_iface = TypeName::parse(tokens)?;
+
+            implements.push(implement_iface);
+
+            if tokens.match_one_maybe(Separator::Comma).is_none() {
+                break;
+            }
+        }
+    }
+    
+    Ok(implements)
 }

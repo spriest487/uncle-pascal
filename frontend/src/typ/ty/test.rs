@@ -45,7 +45,7 @@ fn specialize_class_has_correct_field_types() {
     let span = Span::zero("test");
 
     let type_args = TypeArgList::new(vec![INT32.clone()], span.clone());
-    let result = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+    let result = specialize_struct_def(&tys[0], &type_args).unwrap();
 
     assert!(result.name.type_args.is_some());
     let actual_type_args = result.name.type_args.as_ref().unwrap();
@@ -75,7 +75,7 @@ fn specialize_class_has_multi_correct_field_types() {
     let span = Span::zero("test");
 
     let type_args = TypeArgList::new(vec![INT32.clone(), BYTE.clone()], span.clone());
-    let result = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+    let result = specialize_struct_def(&tys[0], &type_args).unwrap();
 
     assert!(result.name.type_args.is_some());
     let actual_type_args = result.name.type_args.as_ref().unwrap();
@@ -116,7 +116,7 @@ fn specialized_class_has_correct_non_generic_method_types() {
     assert_eq!(BYTE, methods[0].return_ty);
 
     let type_args = TypeArgList::new(vec![INT32.clone()], builtin_span());
-    let specialized_def = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+    let specialized_def = specialize_struct_def(&tys[0], &type_args).unwrap();
 
     assert_eq!(1, specialized_def.name.type_args.as_ref().unwrap().len());
     assert_eq!(INT32, specialized_def.name.type_args.as_ref().unwrap().items[0]);
@@ -156,7 +156,7 @@ fn specialized_class_has_correct_method_types_using_class_ty_params() {
     assert_eq!("T", methods[0].return_ty.to_string());
 
     let type_args = TypeArgList::new(vec![INT32.clone()], builtin_span());
-    let specialized_def = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+    let specialized_def = specialize_struct_def(&tys[0], &type_args).unwrap();
 
     let methods: Vec<_> = specialized_def.methods().collect();
     assert_eq!("test.A[System.Int32]", methods[0].params[0].ty.to_string());
@@ -185,7 +185,7 @@ fn specialized_class_has_correct_method_types_with_method_ty_params() {
     let tys = main_unit_structs(&module);
 
     let type_args = TypeArgList::new(vec![INT32.clone()], builtin_span());
-    let specialized_def = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
+    let specialized_def = specialize_struct_def(&tys[0], &type_args).unwrap();
 
     let self_ty = Type::class(specialized_def.name.clone());
     let generic_u = Type::generic_param(builtin_ident("U"), 0);
@@ -225,7 +225,7 @@ fn specialize_class_with_deep_params() {
 
     let type_args = TypeArgList::new(vec![INT32], span.clone());
 
-    let result = specialize_struct_def(&tys[1], &type_args, &module.context).unwrap();
+    let result = specialize_struct_def(&tys[1], &type_args).unwrap();
 
     let a_name = result.fields().nth(0).unwrap().ty.as_record().unwrap();
 
@@ -305,7 +305,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .next()
         .unwrap();
 
-    let a_int = specialize_struct_def(&a_class, &int_params, &module.context)
+    let a_int = specialize_struct_def(&a_class, &int_params)
         .map(|class| Type::record(class.name.clone()))
         .unwrap();
 
