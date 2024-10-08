@@ -47,8 +47,6 @@ pub struct OverloadTyped {
     sig: Option<Rc<FunctionSig>>,
 
     pub self_arg: Option<Box<Expr>>,
-
-    pub type_args: Vec<Type>,
 }
 
 impl OverloadTyped {
@@ -57,7 +55,6 @@ impl OverloadTyped {
 
         Self {
             span,
-            type_args: Vec::new(), // NYI: methods can't have type args yet,
             self_arg: Some(Box::new(self_arg)),
             sig: Some(sig.clone()),
             candidates: vec![OverloadCandidate::Method {
@@ -72,7 +69,6 @@ impl OverloadTyped {
     pub fn new(
         candidates: Vec<OverloadCandidate>,
         self_arg: Option<Box<Expr>>,
-        type_args: Vec<Type>,
         span: Span,
     ) -> Self {
         let sig = if candidates.len() == 1 {
@@ -87,7 +83,6 @@ impl OverloadTyped {
             sig,
             span,
             self_arg,
-            type_args,
         }
     }
 

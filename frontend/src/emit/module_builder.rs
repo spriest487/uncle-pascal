@@ -154,7 +154,7 @@ impl ModuleBuilder {
             },
 
             FunctionDeclKey::Method(method_key) => {
-                self.instantiate_method(method_key)
+                self.instantiate_method(method_key, key.type_args.as_ref())
             },
 
             FunctionDeclKey::VirtualMethod(virtual_key) => {
@@ -274,6 +274,7 @@ impl ModuleBuilder {
     fn instantiate_method(
         &mut self,
         method_key: &MethodDeclKey,
+        type_args: Option<&typ::TypeArgList>,
     ) -> FunctionInstance {        
         let owning_ty = method_key.owning_ty.clone();
         
@@ -317,7 +318,7 @@ impl ModuleBuilder {
         // the definition we found should already be correctly specialized - you can't pass
         // type args when calling an interface method, so the only thing that would change the method
         // being generated here is the self-type, which we already specialized
-        if let Some(ty_args) = &method_key.type_args {
+        if let Some(ty_args) = type_args {
             let decl_ty_params = generic_method_decl
                 .type_params
                 .as_ref()
@@ -338,7 +339,7 @@ impl ModuleBuilder {
             .expect("instantiate_method: methods should only be generated for named types")
             .into_owned();
 
-        let id = self.declare_func(&specialized_decl, ns, method_key.type_args.as_ref());
+        let id = self.declare_func(&specialized_decl, ns, type_args);
 
         // cache the function before translating the instantiation, because
         // it may recurse and instantiate itself in its own body
@@ -349,7 +350,7 @@ impl ModuleBuilder {
 
         let key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(method_key.clone()),
-            type_args: method_key.type_args.clone(),
+            type_args: type_args.cloned(),
         };
         self.translated_funcs.insert(key, cached_func.clone());
 
@@ -370,7 +371,10 @@ impl ModuleBuilder {
     }
 
     fn instantiate_virtual_method(&mut self, virtual_key: &VirtualMethodKey) -> FunctionInstance {
-        let instance = self.instantiate_method(&virtual_key.impl_method);
+        // virtual calls can't have type args yet
+        let type_args = None;
+
+        let instance = self.instantiate_method(&virtual_key.impl_method, type_args);
 
         let iface_ty_name = virtual_key
             .iface_ty
@@ -421,22 +425,14 @@ impl ModuleBuilder {
         method: Ident,
         type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
-        // while we can't pass type args to an interface method call, we can call one in a
-        // context where the self-type is a generic that needs resolving before codegen
-        if let Some(_args) = &type_args {
-            // owning_ty = owning_ty.substitute_type_args(args);
-            unimplemented!("check if this makes sense");
-        }
-
         let mut key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 owning_ty,
                 method,
-                type_args,
             }),
 
             // interface method calls can't pass type args
-            type_args: None,
+            type_args: type_args.clone(),
         };
 
         // methods must always be present so make sure they're immediately instantiated
@@ -558,7 +554,6 @@ impl ModuleBuilder {
                             impl_method: MethodDeclKey {
                                 method: method.name.ident.clone(),
                                 owning_ty: real_ty.clone(),
-                                type_args: None
                             },
                         });
 
@@ -1142,8 +1137,6 @@ impl FunctionDeclKey {
 pub struct MethodDeclKey {
     pub owning_ty: typ::Type,
     pub method: Ident,
-    
-    pub type_args: Option<typ::TypeArgList>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

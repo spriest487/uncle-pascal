@@ -14,8 +14,8 @@ use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ as typ;
-use crate::typ::Symbol;
 use crate::typ::SYSTEM_UNIT_NAME;
+use crate::typ::Symbol;
 use common::span::Span;
 use ir_lang::*;
 use std::borrow::Cow;
@@ -128,13 +128,19 @@ impl<'m> Builder<'m> {
             .translate_dyn_array_struct(element_ty, &self.generic_context)
     }
 
-    pub fn translate_method_impl(
+    pub fn translate_method(
         &mut self,
         owning_ty: typ::Type,
         method: Ident,
-        type_args: Option<typ::TypeArgList>
+        mut call_ty_args: Option<typ::TypeArgList>
     ) -> FunctionInstance {
-        self.module.translate_method_impl(owning_ty, method, type_args)
+        if let Some(args_list) = &mut call_ty_args {
+            *args_list = args_list
+                .clone()
+                .apply_type_args_by_name(&self.generic_context, &self.generic_context);
+        }
+        
+        self.module.translate_method_impl(owning_ty, method, call_ty_args)
     }
 
     pub fn translate_func(
@@ -143,7 +149,8 @@ impl<'m> Builder<'m> {
         mut call_ty_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         if let Some(args_list) = &mut call_ty_args {
-            *args_list = args_list.clone()
+            *args_list = args_list
+                .clone()
                 .apply_type_args_by_name(&self.generic_context, &self.generic_context);
         }
 

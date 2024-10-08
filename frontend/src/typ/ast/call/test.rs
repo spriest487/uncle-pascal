@@ -264,14 +264,10 @@ fn specializes_method_call_by_arg_ty() {
             assert_eq!("arg", method_call.args[1].to_string());
             assert_eq!("Test.B", method_call.args[1].annotation().ty().to_string());
             
-            match &method_call.annotation {
-                Typed::Method(method_typed) => {
-                    assert_eq!("A", method_typed.method_ident.to_string());
-                    assert_eq!("C", method_typed.iface_ty.to_string());
-                }
-
-                other => panic!("expected method, got {:?}", other),
-            }
+            assert_eq!("A", method_call.ident.to_string());
+            assert_eq!("Test.C", method_call.iface_type.to_string());
+            
+            assert_eq!("Test.B", method_call.type_args.as_ref().unwrap().items[0].to_string());
         }
 
         other => panic!("expected call to A, got {:?}", other),

@@ -6,9 +6,8 @@ initialization
     
     var multiplier := 2;
     
-    var finalResult := initial
-        .Then(lambda val: Result.Ok(val + 1))
-        .Then(lambda val: Result.Ok(val * multiplier));
+    var plusOne: Result[Integer, String] := initial.Then[Integer](lambda val: Result.Ok(val + 1));
+    var finalResult := plusOne.Then[Integer](lambda val: Result.Ok(val * multiplier));
     
     match finalResult of
         Result.Ok val: WriteLn('OK: ' + val);

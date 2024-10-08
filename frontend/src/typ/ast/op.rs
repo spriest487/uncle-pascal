@@ -659,7 +659,6 @@ pub fn typecheck_member_value(
         InstanceMember::Overloaded { candidates } => OverloadTyped::new(
             candidates,
             Some(Box::new(lhs.clone())),
-            Vec::new(),
             span.clone(),
         )
         .into(),

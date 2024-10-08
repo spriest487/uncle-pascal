@@ -76,6 +76,8 @@ type
         
         function IsOk: Boolean;
         function IsError: Boolean;
+
+        function Then[TNext](f: function(T): Result[TNext, E]): Result[TNext, E];
     end;
 
     Comparable = interface
@@ -88,8 +90,6 @@ type
 
 function Unbox[T](b: Box[T]): T;
 function NewBox[T](value: T): Box[T];
-
-function Then[T, E](result: Result[T, E]; f: function(T): Result[T, E]): Result[T, E];
 
 function IsWhiteSpace(char: Byte): Boolean;
 
@@ -199,11 +199,11 @@ begin
     end;
 end;
 
-function Then[T, E](result: Result[T, E]; f: function(T): Result[T, E]): Result[T, E];
+function Result[T, E].Then[TNext](f: function(T): Result[TNext, E]): Result[TNext, E];
 begin
-    match result of
+    match self of
         Result.Ok val: f(val);
-        else result;
+        Result.Error err: Result.Error(err);
     end;
 end;
 

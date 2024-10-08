@@ -1,17 +1,21 @@
 use crate::ast;
+use crate::ast::FunctionName;
 use crate::ast::Ident;
-use crate::ast::{FunctionName, TypeList};
-use crate::typ::ast::call;
+use crate::ast::TypeList;
 use crate::typ::ast::check_implicit_conversion;
+use crate::typ::ast::specialize_call_args;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
+use crate::typ::Context;
 use crate::typ::FunctionSig;
 use crate::typ::InstanceMethod;
+use crate::typ::NameError;
+use crate::typ::Symbol;
 use crate::typ::Type;
+use crate::typ::TypeArgList;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::{Context, NameError, Symbol};
 use common::span::Span;
 use common::span::Spanned;
 use std::fmt;
@@ -92,6 +96,7 @@ impl fmt::Display for OverloadCandidate {
 pub fn resolve_overload(
     candidates: &[OverloadCandidate],
     args: &[ast::Expr<Span>],
+    type_args: Option<&TypeArgList>,
     self_arg: Option<&Expr>,
     span: &Span,
     ctx: &mut Context,
@@ -114,9 +119,19 @@ pub fn resolve_overload(
 
     // no overload resolution needed, we can use the param type hint for all args
     if candidates.len() == 1 {
-        let sig = &candidate_sigs[0];
+        let specialized = specialize_call_args(
+            &candidate_sigs[0],
+            args,
+            self_arg,
+            type_args.cloned(),
+            span,
+            ctx
+        )?;
 
-        let args = call::build_args_for_params(&sig.params, args, self_arg, span, ctx)?;
+        let args = specialized.actual_args;
+        let sig= specialized.sig;
+        // eprintln!("specialized: {}", specialized.sig);
+
         let actual_arg_tys: Vec<_> = args
             .iter()
             .map(|arg_expr| arg_expr.annotation().ty().into_owned())
@@ -155,7 +170,7 @@ pub fn resolve_overload(
         return Ok(Overload {
             selected_sig: 0,
             args,
-            type_args: None, //todo
+            type_args: specialized.type_args,
         });
     }
 

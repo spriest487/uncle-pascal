@@ -415,6 +415,9 @@ fn validate_method(
             let method_decl_sig = FunctionSig::of_decl(&method_decl);
 
             if *method_sig != method_decl_sig {
+                eprintln!("expect: {:#?}", method_decl_sig);
+                eprintln!("actual: {:#?}", method_sig);
+                
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
                     decl: method_decl.span.clone(),

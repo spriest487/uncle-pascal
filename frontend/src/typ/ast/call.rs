@@ -144,7 +144,7 @@ fn build_args_for_params(
             },
         }
     }
-
+    
     args::validate_args(&mut checked_args, &params, span, ctx)?;
 
     Ok(checked_args)
@@ -304,6 +304,14 @@ fn typecheck_func_overload(
             sig,
             ..
         } => {
+            // we resolved the overload using the local type args earlier, but we only get an
+            // index back, so we need to apply them here
+            let sig = match &type_args {
+                Some(args) => sig.specialize_generic(args, ctx)
+                    .map_err(|e| TypeError::from_generic_err(e, func_call.span().clone()))?,
+                None => (**sig).clone(),
+            };
+            
             let self_type = match &overloaded.self_arg {
                 Some(self_arg) => self_arg.annotation().ty().into_owned(),
 
@@ -446,7 +454,7 @@ fn typecheck_method_call(
         with_self_arg.as_ref(), 
         func_call.span(), ctx
     )?;
-
+    
     Ok(Call::Method(MethodCall {
         annotation: TypedValue {
             ty: sig.return_ty.clone(),

@@ -252,7 +252,7 @@ fn build_method_call(
         },
 
         _ => {
-            let method_decl = builder.translate_method_impl(
+            let method_decl = builder.translate_method(
                 self_ty.clone(),
                 method_ident.clone(),
                 ty_args.cloned(),
