@@ -85,7 +85,7 @@ fn infer_from_structural_ty_args(
     param_ty: &Type,
     actual_ty: &Type,
     inferred_ty_args: &mut [Option<Type>],
-) {
+) {    
     // in param_ty, find all the references to generic params within the type and their
     // corresponding values in the actual type, in the order they appear.
     // for example if the expected type is `array of T`, and the actual
@@ -114,6 +114,18 @@ fn infer_from_structural_ty_args(
         (Type::DynArray { element: param_el }, Type::DynArray { element: actual_el }) => {
             (vec![(**param_el).clone()], vec![(**actual_el).clone()])
         },
+
+        (Type::Function(param_sig), Type::Function(actual_sig)) => {
+            let mut param_tys = Vec::new();
+            param_tys.push(param_sig.return_ty.clone());
+            param_tys.extend(param_sig.params.iter().map(|p| p.ty.clone()));
+
+            let mut arg_tys = Vec::new();
+            arg_tys.push(actual_sig.return_ty.clone());
+            arg_tys.extend(actual_sig.params.iter().map(|p| p.ty.clone()));
+
+            (param_tys, arg_tys)
+        }
 
         _ => {
             // all other types: must be the exact same declaration (struct, enum etc)
@@ -248,6 +260,7 @@ pub fn specialize_call_args(
 
         for (i, arg) in args.iter().enumerate() {
             let param_ty = &decl_sig.params[i + self_arg_len].ty;
+
             let actual_arg = specialize_arg(
                 param_ty,
                 &mut inferred_ty_args,

@@ -772,8 +772,6 @@ pub fn typecheck_func_expr(
         type_params: None,
     });
     
-    eprintln!("inferred sig: {sig}");
-
     let annotation = TypedValue {
         decl: None,
         span: src_def.span().clone(),
