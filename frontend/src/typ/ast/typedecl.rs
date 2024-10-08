@@ -14,6 +14,7 @@ use crate::typ::ast::InterfaceMethodDecl;
 use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
+use crate::typ::MismatchedImplementation;
 use crate::typ::MissingImplementation;
 use crate::typ::NameError;
 use crate::typ::Primitive;
@@ -72,7 +73,6 @@ pub fn typecheck_struct_decl(
             
             ast::StructMember::MethodDecl(decl) => {
                 let decl = typecheck_method(decl, ctx)?;
-                
                 members.push(decl.into());
             }
         }
@@ -84,40 +84,51 @@ pub fn typecheck_struct_decl(
                 .map_err(|e| TypeError::from_name_err(e, struct_def.name.span.clone()))?;
             
             let mut missing_methods = Vec::new();
+            let mut mismatched_methods = Vec::new();
             
-            for method in &iface.methods {
-                let expect_sig = FunctionSig::of_decl(&method.decl)
+            for iface_method in &iface.methods {
+                let expect_sig = FunctionSig::of_decl(&iface_method.decl)
                     .with_self(&self_ty);
                 
-                let matching_method = members
+                let actual_method = members
                     .iter()
                     .filter_map(|m| match m {
                         ast::StructMember::MethodDecl(method) => Some(method),
                         _ => None,
                     })
-                    .any(|decl| {
-                        if decl.name.ident() != method.ident() {
-                            return false;
-                        }
-                        
-                        let actual_sig = FunctionSig::of_decl(decl);
-                        actual_sig == expect_sig
+                    .find(|decl| {
+                        decl.name.ident() == iface_method.ident()
                     });
                 
-                if !matching_method {
-                    missing_methods.push(MissingImplementation {
-                        iface_ty: iface_ty.clone(),
-                        method: method.ident().clone(),
-                        sig: expect_sig, 
-                    });
+                match actual_method {
+                    None => {
+                        missing_methods.push(MissingImplementation {
+                            method_name: iface_method.decl.name.clone(),
+                            sig: expect_sig,
+                        });
+                    }
+                    
+                    Some(impl_method) => {
+                        let actual_sig = FunctionSig::of_decl(impl_method.as_ref());
+
+                        if actual_sig != expect_sig {                            
+                            mismatched_methods.push(MismatchedImplementation {
+                                impl_method_name: impl_method.name.clone(),
+                                iface_method_name: iface_method.decl.name.clone(),
+                                expect_sig,
+                                actual_sig,
+                            });
+                        }
+                    }
                 }
             }
             
-            if !missing_methods.is_empty() {
-                return Err(TypeError::IncompleteImplementation {
+            if !missing_methods.is_empty() || !mismatched_methods.is_empty() {
+                return Err(TypeError::InvalidImplementation {
                     ty: self_ty,
                     span: Span::range(&struct_def.implements).unwrap_or(struct_def.name.span.clone()),
-                    missing: missing_methods
+                    missing: missing_methods,
+                    mismatched: mismatched_methods,
                 });
             }
         }

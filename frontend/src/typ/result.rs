@@ -9,9 +9,11 @@ use crate::typ::ast::DeclMod;
 use crate::typ::ast::Expr;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::Stmt;
+use crate::typ::ast::TypedFunctionName;
 use crate::typ::ast::VariantDef;
 use crate::typ::context::NameError;
-use crate::typ::{FunctionSig, GenericError};
+use crate::typ::FunctionSig;
+use crate::typ::GenericError;
 use crate::typ::Type;
 use crate::typ::ValueKind;
 use crate::IntConstant;
@@ -198,9 +200,10 @@ pub enum TypeError {
         span: Span,
     },
     
-    IncompleteImplementation {
+    InvalidImplementation {
         ty: Type,
         missing: Vec<MissingImplementation>,
+        mismatched: Vec<MismatchedImplementation>,
         span: Span,
     },
 
@@ -339,7 +342,7 @@ impl Spanned for TypeError {
             TypeError::InvalidMethodExplicitInterface { span, .. } => span,
             TypeError::InvalidMethodInstanceType { span, .. } => span,
             TypeError::NoMethodContext { span, .. } => span,
-            TypeError::IncompleteImplementation { span, .. } => span,
+            TypeError::InvalidImplementation { span, .. } => span,
             TypeError::AbstractMethodDefinition { span, .. } => span,
 
             TypeError::Private { span, .. } => span,
@@ -449,7 +452,7 @@ impl DiagnosticOutput for TypeError {
                 "Invalid instance type for method"
             },
             
-            TypeError::IncompleteImplementation { .. } => {
+            TypeError::InvalidImplementation { .. } => {
                 "Incomplete interface implementation"
             }
             
@@ -631,25 +634,50 @@ impl DiagnosticOutput for TypeError {
                     .collect()
             }
             
-            TypeError::IncompleteImplementation { missing, .. } => {
-                missing
+            TypeError::InvalidImplementation { missing, mismatched, .. } => {
+                let mut messages = Vec::new();
+
+                messages.extend(mismatched
                     .iter()
-                    .map(|missing_impl| {
+                    .flat_map(|i| {
+                        vec![
+                            DiagnosticMessage {
+                                title: format!(
+                                    "{} declared here ({})", 
+                                    i.iface_method_name, 
+                                    i.expect_sig
+                                ),
+                                label: Some(DiagnosticLabel {
+                                    text: None,
+                                    span: i.iface_method_name.span.clone(),
+                                }),
+                                notes: Vec::new(),
+                            },
+                            DiagnosticMessage {
+                              title: format!("mismatched implementation here {} ({})", i.impl_method_name, i.actual_sig),
+                                label: Some(DiagnosticLabel {
+                                    text: None,
+                                    span: i.impl_method_name.span.clone(),
+                                }),
+                                notes: Vec::new(),
+                            },
+                        ]
+                    }));
+                    
+                messages.extend(missing
+                    .iter()
+                    .map(|i| {
                         DiagnosticMessage {
-                            title: format!(
-                                "{}.{} declared here", 
-                                missing_impl.iface_ty, 
-                                missing_impl.method
-                            ),
+                            title: format!("{} declared here", i.method_name),
                             label: Some(DiagnosticLabel {
                                 text: None,
-                                span: missing_impl.method.span.clone(),
+                                span: i.method_name.span.clone(),
                             }),
                             notes: Vec::new(),
                         }
-                    })
-                    .collect()
-                
+                    }));
+                messages
+                            
             }
 
             _ => Vec::new(),
@@ -866,14 +894,20 @@ impl fmt::Display for TypeError {
                 write!(f, "`{}` is not a type which supports methods", ty)
             }
             
-            TypeError::IncompleteImplementation { ty, missing, .. } => {
-                writeln!(f, "type `{}` is missing the following methods for interfaces it implements:", ty)?;
-                for i in 0..missing.len() {
-                    let item = &missing[i];
+            TypeError::InvalidImplementation { ty, missing, mismatched, .. } => {
+                write!(f, "type `{}` is missing the following methods for interfaces it implements: ", ty)?;
+                let names = mismatched.iter()
+                    .map(|item| &item.iface_method_name)
+                    .chain(missing
+                        .iter()
+                        .map(|item| &item.method_name))
+                    .enumerate();
+
+                for (i, name) in names {
                     if i > 0 {
-                        writeln!(f)?;
+                        write!(f, ", ")?;
                     }
-                    write!(f, " - {}.{}: {}", item.iface_ty, item.method, item.sig)?;
+                    write!(f, "{}", name)?;
                 }
                 Ok(())
             }
@@ -962,7 +996,15 @@ impl fmt::Display for TypeError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissingImplementation {
-    pub iface_ty: Type,
-    pub method: Ident,
+    pub method_name: TypedFunctionName,
     pub sig: FunctionSig,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MismatchedImplementation {
+    pub iface_method_name: TypedFunctionName,
+    pub expect_sig: FunctionSig,
+
+    pub impl_method_name: TypedFunctionName,
+    pub actual_sig: FunctionSig,
+} 
