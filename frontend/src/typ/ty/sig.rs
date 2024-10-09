@@ -480,18 +480,20 @@ impl fmt::Display for FunctionSig {
             write!(f, "]")?;
         }
 
-        write!(f, " (")?;
-        for (i, param) in self.params.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            if let Some(modifier) = &param.modifier {
-                write!(f, "{} ", modifier)?;
-            }
+        if !self.params.is_empty() {
+            write!(f, "(")?;
+            for (i, param) in self.params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                if let Some(modifier) = &param.modifier {
+                    write!(f, "{} ", modifier)?;
+                }
 
-            write!(f, "{}", param.ty)?;
+                write!(f, "{}", param.ty)?;
+            }
+            write!(f, ")")?;
         }
-        write!(f, ")")?;
         
         if self.return_ty != Type::Nothing {
             write!(f, ": {}", self.return_ty)?;
