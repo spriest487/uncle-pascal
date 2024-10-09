@@ -638,25 +638,43 @@ pub struct AnonymousFunctionDef<A: Annotation> {
 
 impl<A: Annotation> fmt::Display for AnonymousFunctionDef<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function (")?;
+        write!(f, "function")?;
 
-        for (i, param) in self.params.iter().enumerate() {
-            if i > 0 {
-                write!(f, ";")?;
+        if !self.params.is_empty() {
+            write!(f, "(")?;
+
+            for (i, param) in self.params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ";")?;
+                }
+                if let Some(modifier) = &param.modifier {
+                    write!(f, "{} ", modifier)?;
+                }
+                write!(f, "{}: {}", param.ident, param.ty)?;
             }
-            if let Some(modifier) = &param.modifier {
-                write!(f, "{} ", modifier)?;
-            }
-            write!(f, "{}: {}", param.ident, param.ty)?;
+
+            write!(f, ")")?;
         }
 
-        write!(f, ")")?;
         if self.return_ty.is_known() {
             write!(f, ": {}", self.return_ty)?;
         }
-        writeln!(f, "; ")?;
+        write!(f, ";")?;
+        
+        match (self.body.stmts.len(), &self.body.output) {
+            (0, Some(output)) => {
+                write!(f, " {}", output)?;
+            }
 
-        write!(f, "{}", self.body)?;
+            (1, None) => {
+                write!(f, " {}", self.body.stmts[0])?;
+            }
+            
+            _ => {
+                writeln!(f)?;
+                write!(f, "{}", self.body)?;
+            }
+        }
         
         Ok(())
     }
