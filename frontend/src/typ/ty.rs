@@ -338,11 +338,17 @@ impl Type {
             return type_args.items.iter().any(|a| a.contains_generic_params(ctx));
         }
 
-        if let Some(array_el) = self.array_element_ty() {
-            return array_el.contains_generic_params(ctx);
-        }
+        match self {
+            Type::Array(array_ty) => array_ty.element_ty.contains_generic_params(ctx),
+            
+            Type::DynArray { element, .. } => element.contains_generic_params(ctx),
+            
+            Type::Function(sig) => {
+                sig.contains_generic_params(ctx)
+            }
 
-        false
+            _ => false,
+        }
     }
 
     pub fn same_array_dim(&self, other: &Self) -> bool {
