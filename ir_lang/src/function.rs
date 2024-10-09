@@ -2,7 +2,7 @@ use std::fmt;
 use serde::Deserialize;
 use serde::Serialize;
 use common::span::Span;
-use crate::Label;
+use crate::{Label, Type};
 use crate::Instruction;
 use crate::NamePath;
 use crate::TypeDefID;
@@ -50,14 +50,24 @@ pub struct FunctionSig {
 
 impl fmt::Display for FunctionSig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function(")?;
-        for (i, param_ty) in self.param_tys.iter().enumerate() {
-            if i > 0 {
-                write!(f, "; ")?;
+        write!(f, "function")?;
+        
+        if self.param_tys.len() > 0 {
+            write!(f, "(")?;
+
+            for (i, param_ty) in self.param_tys.iter().enumerate() {
+                if i > 0 {
+                    write!(f, "; ")?;
+                }
+                write!(f, "{}", param_ty)?;
             }
-            write!(f, "{}", param_ty)?;
+            
+            write!(f, ")")?;
         }
-        write!(f, "): {}", self.return_ty)?;
+        
+        if self.return_ty != Type::Nothing {
+            write!(f, ": {}", self.return_ty)?;
+        }
 
         Ok(())
     }
