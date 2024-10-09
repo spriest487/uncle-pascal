@@ -194,6 +194,16 @@ impl FunctionSig {
 
         Ok(())
     }
+    
+    pub fn contains_generic_params(&self, ctx: &Context) -> bool {
+        if self.return_ty.contains_generic_params(ctx) {
+            return true;
+        }
+        
+        self.params
+            .iter()
+            .any(|param| param.ty.contains_generic_params(ctx))
+    }
 
     pub fn specialize_generic(
         &self,
