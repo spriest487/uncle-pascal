@@ -5,18 +5,17 @@ use crate::typ::ast::call;
 use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
-use crate::typ::Context;
+use crate::typ::{Context, Specializable};
 use crate::typ::FunctionParamSig;
 use crate::typ::FunctionSig;
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
 use crate::typ::GenericTypeHint;
-use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeArgsResult;
-use crate::typ::TypeParamType;
 use crate::typ::TypeError;
+use crate::typ::TypeParamType;
 use crate::typ::TypeResult;
 use crate::typ::ValueKind;
 use common::span::Span;
@@ -56,7 +55,6 @@ fn specialize_arg<ArgProducer>(
     _span: &Span,
     ctx: &mut Context,
 ) -> TypeResult<Expr>
-// (expected type, ctx) -> expr val
 where
     ArgProducer: FnOnce(&Type, &mut Context) -> TypeResult<Expr>,
 {
@@ -67,9 +65,11 @@ where
     let mut expect_ty = param_ty
         .clone()
         .substitute_type_args(&partial_args_resolver);
-    
-    if expect_ty.is_generic_param() || expect_ty.is_unspecialized_generic() {
-        // not enough info to resolve this generic type fully yet: arg expr ty_def drives param type
+
+    if expect_ty.is_generic_param()
+        || expect_ty.is_unspecialized_generic()
+        || expect_ty.contains_generic_params(ctx) {
+        // not enough info to resolve this generic type fully yet: arg expr type drives param type
         expect_ty = Type::Nothing;
     }
 
