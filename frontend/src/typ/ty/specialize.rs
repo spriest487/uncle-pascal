@@ -70,13 +70,9 @@ pub fn specialize_generic_name<'a>(
     validate_ty_args(args, type_params, ctx)?;
 
     let type_args = if let Some(existing_args) = &name.type_args {
-        let specialized_args = existing_args
-            .items
-            .iter()
-            .cloned()
-            .map(|arg| arg.apply_type_args_by_name(type_params, args));
-
-        TypeArgList::new(specialized_args, existing_args.span().clone())
+        existing_args
+            .clone()
+            .map(|arg, _pos| arg.apply_type_args_by_name(type_params, args))
     } else {
         let mut resolved_args = Vec::with_capacity(type_params.len());
 

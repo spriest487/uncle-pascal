@@ -324,9 +324,9 @@ impl Type {
                 .and_then(|env| env.ty_params.as_ref());
 
             return if let Some(ctx_ty_params) = current_func_ty_params {
-                let is_param_defined_in_scope = ctx_ty_params.iter()
-                    .find(|p| ty_param_ty.name == p.name)
-                    .is_some();
+                let is_param_defined_in_scope = ctx_ty_params
+                    .iter()
+                    .any(|p| ty_param_ty.name == p.name);
 
                 !is_param_defined_in_scope
             } else {
@@ -334,7 +334,7 @@ impl Type {
             }
         }
 
-        if let TypeArgsResult::Specialized(type_args) = &self.type_args() {
+        if let TypeArgsResult::Specialized(_, type_args) = &self.type_args() {
             return type_args.items.iter().any(|a| a.contains_generic_params(ctx));
         }
 
@@ -367,9 +367,18 @@ impl Type {
         match self {
             Type::Variant(name) | Type::Class(name) | Type::Record(name) => {
                 match (&name.type_params, &name.type_args) {
-                    (Some(type_params), None) => TypeArgsResult::Unspecialized(type_params),
-                    (Some(..), Some(type_args)) => TypeArgsResult::Specialized(type_args),
-                    (None, None) => TypeArgsResult::NotGeneric,
+                    (Some(type_params), None) => {
+                        TypeArgsResult::Unspecialized(type_params)
+                    }
+
+                    (Some(type_params), Some(type_args)) => {
+                        TypeArgsResult::Specialized(type_params, type_args)
+                    }
+                    
+                    (None, None) => {
+                        TypeArgsResult::NotGeneric
+                    }
+                    
                     (None, Some(..)) => unreachable!(),
                 }
             },

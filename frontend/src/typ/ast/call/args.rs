@@ -81,7 +81,7 @@ where
     Ok(actual_arg)
 }
 
-fn infer_from_structural_ty_args(
+pub fn infer_from_structural_ty_args(
     param_ty: &Type,
     actual_ty: &Type,
     inferred_ty_args: &mut [Option<Type>],
@@ -134,11 +134,11 @@ fn infer_from_structural_ty_args(
             }
 
             let param_ty_args = match param_ty.type_args() {
-                TypeArgsResult::Specialized(args) => args.items.clone(),
+                TypeArgsResult::Specialized(_, args) => args.items.clone(),
                 _ => return,
             };
             let actual_ty_args = match actual_ty.type_args() {
-                TypeArgsResult::Specialized(args) => args.items.clone(),
+                TypeArgsResult::Specialized(_, args) => args.items.clone(),
                 _ => return,
             };
             (param_ty_args, actual_ty_args)
