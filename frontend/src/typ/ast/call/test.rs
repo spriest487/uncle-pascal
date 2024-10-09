@@ -1,17 +1,20 @@
-use std::rc::Rc;
-
 use crate::ast;
 use crate::ast::IdentPath;
 use crate::parse::TokenStream;
 use crate::pp::Preprocessor;
 use crate::typ::ast::call::overload::resolve_overload;
 use crate::typ::ast::call::overload::OverloadCandidate;
-use crate::typ::test::{module_from_src, try_module_from_src};
-use crate::typ::{Context, Symbol, TypeError, Typed};
+use crate::typ::test::module_from_src;
+use crate::typ::test::try_module_from_src;
+use crate::typ::Context;
 use crate::typ::FunctionSig;
+use crate::typ::Symbol;
+use crate::typ::TypeError;
+use crate::typ::Typed;
 use crate::TokenTree;
 use common::span::Span;
 use common::BuildOptions;
+use std::rc::Rc;
 
 fn parse_expr(src: &str) -> ast::Expr<Span> {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
@@ -267,6 +270,49 @@ fn specializes_method_call_by_arg_ty() {
             assert_eq!("A", method_call.ident.to_string());
             assert_eq!("Test.C", method_call.iface_type.to_string());
             
+            assert_eq!("Test.B", method_call.type_args.as_ref().unwrap().items[0].to_string());
+        }
+
+        other => panic!("expected call to A, got {:?}", other),
+    }
+}
+
+#[test]
+fn specializes_method_call_by_lambda_arg_ty() {
+    let src = r"
+        implementation
+        
+        type C = class
+            function A[T](arg: function: T);
+        end;
+        
+        type B = class
+        end;
+        
+        function C.A[T](arg: function: T);
+        begin
+        end;
+        
+        initialization
+            var instance := C();
+            instance.A(lambda: B());
+        end.
+    ";
+
+    let module = module_from_src("Test", src);
+    let unit = module.units.iter().last().unwrap();
+    let init = unit.unit.init.as_ref().unwrap();
+
+    match init.body[1].as_call() {
+        Some(ast::Call::Method(method_call)) => {
+            assert_eq!("instance", method_call.args[0].to_string());
+            assert_eq!("Test.C", method_call.args[0].annotation().ty().to_string());
+
+            assert_eq!("function: Test.B", method_call.args[1].annotation().ty().to_string());
+
+            assert_eq!("A", method_call.ident.to_string());
+            assert_eq!("Test.C", method_call.iface_type.to_string());
+
             assert_eq!("Test.B", method_call.type_args.as_ref().unwrap().items[0].to_string());
         }
 
