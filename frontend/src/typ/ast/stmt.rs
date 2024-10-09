@@ -70,8 +70,8 @@ pub fn typecheck_local_binding(
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
 
-                    let val =
-                        implicit_conversion(val, &explicit_ty, ctx).map_err(|err| match err {
+                    let val = implicit_conversion(val, &explicit_ty, ctx)
+                        .map_err(|err| match err {
                             TypeError::TypeMismatch {
                                 expected,
                                 actual,
