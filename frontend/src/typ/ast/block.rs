@@ -75,7 +75,7 @@ pub fn typecheck_block(
             assert_eq!(None, output);
 
             let mut out_expr = typecheck_expr(src_output_expr, expect_ty, ctx)?;
-            if *expect_ty != Type::Nothing {
+            if *expect_ty != Type::Nothing && !expect_ty.contains_generic_params(ctx) {
                 out_expr = implicit_conversion(out_expr, expect_ty, ctx)?;
             }
             output = Some(out_expr);
