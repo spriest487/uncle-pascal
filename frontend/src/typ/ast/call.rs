@@ -172,7 +172,7 @@ pub fn typecheck_call(
         ast::Call::Function(func_call) => func_call,
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
     };
-    
+
     let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
 
     // if the call target is a no-args call itself and this is also a no-args call, we are just
