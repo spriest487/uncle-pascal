@@ -306,9 +306,13 @@ fn typecheck_func_overload(
         } => {
             // we resolved the overload using the local type args earlier, but we only get an
             // index back, so we need to apply them here
-            let sig = match &type_args {
-                Some(args) => sig.specialize_generic(args, ctx)
-                    .map_err(|e| TypeError::from_generic_err(e, func_call.span().clone()))?,
+            let sig = match &overload.type_args {
+                Some(args) => {
+                    sig.specialize_generic(args, ctx)
+                        .map_err(|e| {
+                            TypeError::from_generic_err(e, func_call.span().clone())
+                            })?
+                },
                 None => (**sig).clone(),
             };
             
@@ -336,6 +340,7 @@ fn typecheck_func_overload(
             };
 
             let sig = Rc::new(sig.with_self(&self_type));
+            
 
             let return_annotation = TypedValue {
                 span: overloaded.span.clone(),

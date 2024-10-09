@@ -130,7 +130,6 @@ pub fn resolve_overload(
 
         let args = specialized.actual_args;
         let sig= specialized.sig;
-        // eprintln!("specialized: {}", specialized.sig);
 
         let actual_arg_tys: Vec<_> = args
             .iter()
@@ -144,8 +143,7 @@ pub fn resolve_overload(
                 iface_ty,
                 ident: method_ident,
                 ..
-            } = &candidates[0]
-            {
+            } = &candidates[0] {
                 let self_ty = sig.self_ty_from_args(&actual_arg_tys).ok_or_else(|| {
                     TypeError::AmbiguousSelfType {
                         iface: iface_ty.clone(),

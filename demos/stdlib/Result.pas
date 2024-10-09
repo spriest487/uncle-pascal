@@ -6,7 +6,13 @@ initialization
     
     var multiplier := 2;
     
-    var plusOne: Result[Integer, String] := initial.Then[Integer](lambda val: Result.Ok(val + 1));
+    var plusOne: Result[Integer, String] := initial.Then(
+        function(val: Integer): Result[Integer, String]; 
+        begin
+            Result.Ok(val + 1)
+        end
+    );
+
     var finalResult := plusOne.Then[Integer](lambda val: Result.Ok(val * multiplier));
     
     match finalResult of

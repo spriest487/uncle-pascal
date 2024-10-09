@@ -280,7 +280,17 @@ pub fn specialize_call_args(
             .specialize_generic(&inferred_ty_args, ctx)
             .map_err(|err| TypeError::from_generic_err(err, span.clone()))?;
 
-        // eprintln!("INFERRED ARGS:\n\tdecl: {}\n\tinferred:{}\n\tfinal sig: {}", decl_sig, inferred_ty_args, actual_sig);
+        // eprintln!(
+        //     "INFERRED ARGS:\n\tdecl: {}\n\tinferred:{}\n\tfinal sig: {}\n\tfinal argument types: [{}]", 
+        //     decl_sig, 
+        //     inferred_ty_args, 
+        //     actual_sig,
+        //     actual_args
+        //         .iter()
+        //         .map(|arg| arg.annotation().ty().to_string())
+        //         .collect::<Vec<_>>()
+        //         .join(", ")
+        // );
 
         Ok(SpecializedCallArgs {
             type_args: Some(inferred_ty_args),
