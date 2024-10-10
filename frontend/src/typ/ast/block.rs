@@ -74,7 +74,8 @@ pub fn typecheck_block(
                 },
 
                 Err(TypeError::InvalidStatement(invalid)) if allow_output_expr => {
-                    output = Some(*invalid.0);
+                    let expr = *invalid.0;
+                    output = Some(expr);
                 }
                 
                 Err(err) => return Err(err),

@@ -524,44 +524,27 @@ impl Context {
                 }
             }
 
-            Some(old_ref) => {
-                let old_kind = old_ref.kind();
-                let old_ident = match &old_ref {
-                    ScopeMemberRef::Decl { key, parent_path, .. } => {
-                        Path::new((*key).clone(), parent_path.keys().cloned())
-                    },
+            Some(ScopeMemberRef::Decl { key: old_key, value: old_decl, parent_path, .. }) => {
+                let old_ident = Path::new((*old_key).clone(), parent_path.keys().cloned());
 
-                    ScopeMemberRef::Scope { path } => {
-                        Path::from_parts(path.keys().cloned())
-                    },
-                };
+                // re-declarations are only valid in the same scope as the original
+                if parent_path.to_namespace() != self.namespace() {
+                    return Err(Self::redecl_error(name, ScopeMemberKind::Decl, old_ident, DeclConflict::Name));
+                }
 
-                match &old_ref {
-                    ScopeMemberRef::Decl { value: old_decl, parent_path, .. } => {
-                        // re-declarations are only valid in the same scope as the original
-                        if parent_path.to_namespace() != self.namespace() {
-                            return Err(Self::redecl_error(name, old_kind, old_ident, DeclConflict::Name));
-                        }
+                if let Some(conflict) = old_decl.get_conflict(&decl) {
+                    return Err(Self::redecl_error(name, ScopeMemberKind::Decl, old_ident, conflict));
+                }
 
-                        if let Some(conflict) = (**old_decl).get_conflict(&decl) {
-                            return Err(Self::redecl_error(name, old_kind, old_ident, conflict));
-                        }
-
-                        match self.get_decl_scope_mut(&name) {
-                            None => {
-                                Err(Self::redecl_error(name, old_kind, old_ident, DeclConflict::Name))
-                            }
-
-                            Some(redecl_scope) => {
-                                redecl_scope.replace_member(name.clone(), ScopeMember::Decl(decl));
-                                Ok(())
-                            }
-                        }
+                match self.get_decl_scope_mut(&name) {
+                    None => {
+                        Err(Self::redecl_error(name, ScopeMemberKind::Decl, old_ident, DeclConflict::Name))
                     }
 
-                    _ => {
-                        Err(Self::redecl_error(name, old_kind, old_ident, DeclConflict::Name))
-                    },
+                    Some(redecl_scope) => {
+                        redecl_scope.replace_member(name.clone(), ScopeMember::Decl(decl));
+                        Ok(())
+                    }
                 }
             }
 
