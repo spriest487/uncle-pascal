@@ -247,12 +247,12 @@ end;
 
 function StringFromBytes(bytes: ^Byte; len: Integer): String;
 begin
-    if len = 0 then
-        String(chars: nil; len: 0)
+    if len = 0 then String(chars: nil; len: 0)
     else begin
         var strBytes: ^Byte := GetMem(len);
 
-        for var i: Integer := 0 to len - 1 do begin
+        for var i: Integer := 0 to len - 1 do
+        begin
             strBytes[i] := bytes[i];
         end;
 
@@ -284,7 +284,8 @@ begin
         exit '';
 
     var buf := GetMem(len);
-    for var i := 0 to len - 1 do begin
+    for var i := 0 to len - 1 do 
+    begin
         buf[i] := s.chars[from + i];
     end;
 
@@ -301,13 +302,10 @@ end;
 
 function StringToBytes(s: String; bytes: ^Byte; len: Integer);
 begin
-    if len = 0 or bytes = nil then
-        exit;
+    if len = 0 or bytes = nil then exit;
 
-    var max := if len < s.len then
-        len
-    else
-        s.len;
+    var max := if len < s.len then len
+        else s.len;
 
     // need to make a mutable copy of this pointer since we're going to modify its contents
     var outBytes := bytes;
@@ -319,7 +317,8 @@ end;
 
 function CompareStr(a, b: String): Integer;
 begin
-    if a.len = 0 and b.len = 0 then begin
+    if a.len = 0 and b.len = 0 then 
+    begin
         exit 0;
     end;
 
@@ -328,7 +327,8 @@ begin
 
     var cmp: Integer := 0;
     while true do begin
-        if aPos < a.len and bPos < b.len then begin
+        if aPos < a.len and bPos < b.len then 
+        begin
             var aChar := a.chars[aPos];
             var bChar := b.chars[bPos];
             cmp := if aChar > bChar then 1
@@ -338,11 +338,13 @@ begin
             aPos += 1;
             bPos += 1;
         end
-        else if aPos < a.len and aPos >= b.len then begin
+        else if aPos < a.len and aPos >= b.len then 
+        begin
             // a is longer than b
             cmp := 1;
         end
-        else if bPos < b.len and bPos >= a.len then begin
+        else if bPos < b.len and bPos >= a.len then 
+        begin
             // b is longer than a
             cmp := -1;
         end

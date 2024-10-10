@@ -3,12 +3,15 @@ mod test;
 mod overload;
 mod args;
 
+use crate::ast;
+use crate::ast::Ident;
+use crate::ast::TypeList;
 use crate::typ::ast::cast::implicit_conversion;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::Expr;
 use crate::typ::ast::ObjectCtor;
-use crate::typ::{typecheck_type, Symbol};
+use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::FunctionParamSig;
 use crate::typ::FunctionSig;
@@ -21,6 +24,7 @@ use crate::typ::NameContainer;
 use crate::typ::NameError;
 use crate::typ::OverloadTyped;
 use crate::typ::Specializable;
+use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
@@ -29,12 +33,9 @@ use crate::typ::TypedValue;
 use crate::typ::UfcsTyped;
 use crate::typ::ValueKind;
 pub use args::*;
-pub use overload::*;
 use common::span::Span;
 use common::span::Spanned as _;
-use crate::ast;
-use crate::ast::TypeList;
-use crate::ast::Ident;
+pub use overload::*;
 use std::borrow::Cow;
 use std::iter;
 use std::rc::Rc;
@@ -256,16 +257,24 @@ pub fn typecheck_call(
             }
         },
 
-        Typed::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
-            &variant.variant_name,
-            &variant.case,
-            &func_call.args,
-            call.span().clone(),
-            expect_ty,
-            ctx,
-        )
-        .map(Box::new)
-        .map(Invocation::Call)?,
+        Typed::VariantCtor(variant, ..) => {
+            if let Some(args_list) = &func_call.type_args {
+                return Err(TypeError::InvalidExplicitVariantCtorTypeArgs {
+                    span: args_list.span.clone(),
+                });
+            }
+            
+            let ctor_call = typecheck_variant_ctor_call(
+                &variant.variant_name,
+                &variant.case,
+                &func_call.args,
+                call.span().clone(),
+                expect_ty,
+                ctx,
+            )?;
+            
+            Invocation::Call(Box::new(ctor_call))
+        }
 
         _ => {
             return Err(TypeError::NotCallable(Box::new(target)))

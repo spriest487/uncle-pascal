@@ -12,7 +12,9 @@ use crate::typ::ast::Call;
 use crate::typ::ast::Expr;
 use crate::typ::ast::MethodCall;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::{Context, STRING_CONCAT_FUNC_NAME, SYSTEM_UNIT_NAME};
+use crate::typ::builtin_displayable_name;
+use crate::typ::string_type;
+use crate::typ::Context;
 use crate::typ::FunctionSig;
 use crate::typ::FunctionTyped;
 use crate::typ::InstanceMember;
@@ -23,15 +25,16 @@ use crate::typ::OverloadTyped;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
-use crate::typ::TypeMember;
 use crate::typ::TypeError;
+use crate::typ::TypeMember;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::UfcsTyped;
 use crate::typ::ValueKind;
 use crate::typ::DISPLAYABLE_TOSTRING_METHOD;
-use crate::typ::{builtin_displayable_name, string_type};
+use crate::typ::STRING_CONCAT_FUNC_NAME;
+use crate::typ::SYSTEM_UNIT_NAME;
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
@@ -690,6 +693,11 @@ pub fn typecheck_variant_ctor(
     span: &Span,
     ctx: &mut Context,
 ) -> TypeResult<Typed> {
+    if let Some(args_list) = &variant_name.type_args {
+        return Err(TypeError::InvalidExplicitVariantCtorTypeArgs {
+            span: args_list.span.clone(),
+        });
+    }
     assert!(
         variant_name.type_args.is_none(),
         "shouldn't be possible to have explicit type args for a variant constructor expr"

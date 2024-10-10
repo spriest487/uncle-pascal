@@ -1,7 +1,7 @@
 use crate::ast;
-use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
+use crate::ast::Ident;
 use crate::parse::InvalidStatement;
 use crate::typ::annotation::Typed;
 use crate::typ::ast::Call;
@@ -164,12 +164,18 @@ pub enum TypeError {
         expr: Box<Expr>,
     },
     InvalidStatement(InvalidStatement<Typed>),
+
     EmptyVariant(Box<ast::VariantDef<Span>>),
     EmptyVariantCaseBinding {
         variant: Box<VariantDef>,
         case_index: usize,
         span: Span,
     },
+
+    InvalidExplicitVariantCtorTypeArgs { 
+        span: Span,
+    },
+
     NoLoopContext {
         stmt: Box<ast::Stmt<Span>>,
     },
@@ -332,8 +338,11 @@ impl Spanned for TypeError {
             TypeError::NotInitialized { usage, .. } => usage.span(),
             TypeError::InvalidRefExpression { expr } => expr.annotation().span(),
             TypeError::InvalidStatement(expr) => expr.0.annotation().span(),
+            
             TypeError::EmptyVariant(variant) => variant.span(),
             TypeError::EmptyVariantCaseBinding { span, .. } => span,
+            TypeError::InvalidExplicitVariantCtorTypeArgs { span, .. } => span,
+            
             TypeError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
             TypeError::NoFunctionContext { stmt, .. } => stmt.annotation().span(),
             TypeError::InvalidUnsizedType { at, .. } => at,
@@ -438,6 +447,9 @@ impl DiagnosticOutput for TypeError {
             TypeError::EmptyVariant(..) => "Empty variant",
             TypeError::EmptyVariantCaseBinding { .. } => {
                 "Empty variant case binding"
+            }
+            TypeError::InvalidExplicitVariantCtorTypeArgs { .. } => {
+                "Invalid variant constructor type arguments"
             }
 
             TypeError::NoLoopContext { .. } => "Statement requires loop context",
@@ -851,6 +863,10 @@ impl fmt::Display for TypeError {
 
             TypeError::EmptyVariant(variant) => {
                 write!(f, "variant `{}` has no cases", variant.name)
+            }
+
+            TypeError::InvalidExplicitVariantCtorTypeArgs { .. } => {
+                write!(f, "variant constructor cannot have explicit type arguments")
             }
 
             TypeError::EmptyVariantCaseBinding { variant, case_index, .. } => {
