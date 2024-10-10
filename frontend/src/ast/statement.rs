@@ -291,11 +291,12 @@ impl Parse for Stmt<Span> {
                     // statement is a valid expression, but we're expecting a statement here,
                     // so it must be convertible to one
                     Ok(expr) => {
-                        Self::try_from_expr(expr.clone()).map_err(|invalid_expr| {
-                            let invalid_stmt = InvalidStatement::from(invalid_expr);
-                            let err = ParseError::InvalidStatement(invalid_stmt);
-                            TracedError::trace(err)
-                        })?
+                        Self::try_from_expr(expr.clone())
+                            .map_err(|invalid_expr| {
+                                let invalid_stmt = InvalidStatement::from(invalid_expr);
+                                let err = ParseError::InvalidStatement(invalid_stmt);
+                                TracedError::trace(err)
+                            })?
                     }
                     
                     Err(err) => return Err(err),

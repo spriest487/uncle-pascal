@@ -430,3 +430,25 @@ fn can_infer_ty_arg_from_lambda() {
 
     assert_eq!(type_args[0], Type::Primitive(Primitive::Int32));
 }
+
+#[test]
+fn can_infer_func_ty_from_lambda_with_generic_return() {
+    let module = module_from_src(
+        "can_infer_func_ty_from_lambda_with_generic_return",
+        r"   
+            implementation
+            uses System;
+
+            type MyBox[T] = class
+                val: T;
+            end;
+
+            initialization
+                var f := lambda: begin
+                    var box: MyBox[Integer] := MyBox(val: 123);
+                    box
+                end;
+            end
+        "
+    );
+}

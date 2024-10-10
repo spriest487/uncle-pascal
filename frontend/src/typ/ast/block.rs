@@ -61,9 +61,24 @@ pub fn typecheck_block(
                 continue;
             }
 
-            let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
-            expect_stmt_initialized(&stmt, ctx)?;
-            statements.push(stmt);
+            // even if we *weren't* expecting output, the block might still output a value,
+            // and that value might be an expression that's syntactically valid as a statement,
+            // but not semantically. in that case, we'll get InvalidStatement, and can set the
+            // output now
+            let allow_output_expr = output.is_none() && is_last_stmt;
+
+            match typecheck_stmt(stmt, &Type::Nothing, ctx) {
+                Ok(stmt) => {
+                    expect_stmt_initialized(&stmt, ctx)?;
+                    statements.push(stmt);
+                },
+
+                Err(TypeError::InvalidStatement(invalid)) if allow_output_expr => {
+                    output = Some(*invalid.0);
+                }
+                
+                Err(err) => return Err(err),
+            }
         }
 
         // process the parsed output expr (this is mutually exclusive with converting the final

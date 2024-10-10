@@ -152,14 +152,15 @@ fn parse_block_stmts(
                 statements.push(stmt);
             },
 
-            Err(traced_err) => match &traced_err.err {
+            Err(traced_err) => match traced_err.err {
                 // if the final stmt is invalid as a stmt but still a valid
                 // expr, assume it's the block output. some expressions (eg calls) are
                 // always valid as statements regardless of type, so in some cases the block
                 // output can't be determined until typechecking
-                ParseError::InvalidStatement(InvalidStatement(_invalid)) => {
+                ParseError::InvalidStatement(InvalidStatement(..)) => {
                     tokens.seek(stmt_start_pos);
                     output_expr = Some(Expr::parse(tokens)?);
+                    break;
                 },
 
                 // failed for other reasons, this is an actual error
