@@ -12,17 +12,17 @@ initialization
     WriteLn('Enter an expression e.g. ''2*3'', ''4/2'' or ''exit''.');
     
     while true do begin
-        var command := ReadLn().StringTrim();
+        var command := ReadLn().Trim();
     
-        if command.CompareStr('exit') = 0 then 
+        if command.Compare('exit') = 0 then 
             break;
     
-        if command.StringLen() = 0 then
+        if command.Length() = 0 then
             continue;
     
         var opIndex := -1;
-        for var i := 0 to command.StringLen() - 1 do begin
-            var c := command.StringCharAt(i);
+        for var i := 0 to command.Length() - 1 do begin
+            var c := command.CharAt(i);
     
             if c = mulCommand or c = divCommand or c = addCommand or c = subCommand then begin
                 opIndex := i;
@@ -35,12 +35,12 @@ initialization
             continue;
         end;
     
-        var op := command.StringCharAt(opIndex);
+        var op := command.CharAt(opIndex);
         var lhs := command.SubString(0, opIndex)
-            .StringTrim()
+            .Trim()
             .StrToInt();
-        var rhs := command.SubString(opIndex + 1, command.StringLen() - (opIndex + 1))
-            .StringTrim()
+        var rhs := command.SubString(opIndex + 1, command.Length() - (opIndex + 1))
+            .Trim()
             .StrToInt();
     
         var result := case op of
@@ -54,6 +54,6 @@ initialization
             end;
         end;
     
-        WriteLn(' => ' + result.IntToStr());
+        WriteLn(' => ' + result);
     end;
 end.
