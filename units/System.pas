@@ -17,8 +17,17 @@ type
         chars: ^Byte;
         len: Int32;
         
+        function Length: Integer;
+        
         function Compare(other: String): Integer;
         function ToString: String;
+        
+        function SubString(at, len: Integer): String;
+        function CharAt(at: Integer): Byte;
+        function Concat(other: String): String;
+        function Trim: String;
+        
+        function ToBytes(bytes: ^Byte; bytesLen: Integer);
     end;
 
     Disposable = interface
@@ -97,11 +106,7 @@ function StringLen(s: String): Integer;
 function StringConcat(a, b: String): String;
 function StringFromBytes(bytes: ^Byte; len: Integer): String;
 function StringLenNullTerminated(chars: ^Byte): Integer;
-function SubString(s: String; from: Integer; len: Integer): String;
-function StringCharAt(s: String; at: Integer): Byte;
-function StringToBytes(s: String; bytes: ^Byte; len: Integer);
 function CompareStr(a, b: String): Integer;
-function StringTrim(s: String): String;
 
 function Max[T](a, b: T): T where T is Comparable;
 function Min[T](a, b: T): T where T is Comparable;
@@ -273,48 +278,6 @@ begin
     len
 end;
 
-function SubString(s: String; from: Integer; len: Integer): String;
-begin
-    if from < 0 then raise 'substring start index must be 0 or greater';
-    if len < 0 then raise 'substring length must be 0 or greater';
-    if from > s.len then raise 'substring start index must not exceed original string length';
-    if (from + len) > s.len then raise 'substring length must not exceed original string length';
-
-    if len = 0 then
-        exit '';
-
-    var buf := GetMem(len);
-    for var i := 0 to len - 1 do 
-    begin
-        buf[i] := s.chars[from + i];
-    end;
-
-    String(chars: buf; len: len)
-end;
-
-function StringCharAt(s: String; at: Integer): Byte;
-begin
-    if at < 0 or at >= s.len then
-        raise 'invalid index ' + IntToStr(at) + ' in string of length ' + IntToStr(s.len);
-
-    s.chars[at]
-end;
-
-function StringToBytes(s: String; bytes: ^Byte; len: Integer);
-begin
-    if len = 0 or bytes = nil then exit;
-
-    var max := if len < s.len then len
-        else s.len;
-
-    // need to make a mutable copy of this pointer since we're going to modify its contents
-    var outBytes := bytes;
-    for var i := 0 to max - 1 do
-    begin
-        outBytes[i] := s.chars[i];
-    end;
-end;
-
 function CompareStr(a, b: String): Integer;
 begin
     if a.len = 0 and b.len = 0 then 
@@ -359,27 +322,26 @@ begin
     cmp
 end;
 
-function StringTrim(s: String): String;
+function String.Trim: String;
 begin
-    if s.len = 0 then begin
-        exit s;
-    end;
+    if self.len = 0 then
+        exit self;
 
     var startAt := 0;
-    var endAt := s.len - 1;
+    var endAt := self.len - 1;
 
-    while startAt < endAt and s.StringCharAt(startAt).IsWhiteSpace() do
+    while startAt < endAt and self.CharAt(startAt).IsWhiteSpace() do
     begin
         startAt += 1;
     end;
 
-    while endAt >= startAt and s.StringCharAt(endAt).IsWhiteSpace() do
+    while endAt >= startAt and self.CharAt(endAt).IsWhiteSpace() do
     begin
         endAt -= 1;
     end;
 
     var len := (endAt + 1) - startAt;
-    SubString(s, startAt, len)
+    self.SubString(startAt, len)
 end;
 
 function Length[T](arr: array of T): Integer;
@@ -486,9 +448,73 @@ begin
     else 0
 end;
 
+function String.ToBytes(bytes: ^Byte; bytesLen: Integer);
+begin
+    if bytesLen = 0 or bytes = nil then exit;
+    
+    var max := if bytesLen < self.len then 
+        bytesLen
+    else 
+        self.len;
+
+    // need to make a mutable copy of this pointer since we're going to modify its contents
+    var outBytes := bytes;
+    for var i := 0 to max - 1 do
+    begin
+        outBytes[i] := self.chars[i];
+    end;
+end;
+
+function String.SubString(at, len: Integer): String;
+begin
+    if at < 0 then
+        raise 'substring start index must be 0 or greater';
+    
+    if len < 0 then
+        raise 'substring length must be 0 or greater';
+    
+    if at > self.len then
+        raise 'substring start index must not exceed original string length';
+    
+    if (at + len) > self.len then
+        raise 'substring length must not exceed original string length';
+
+    if len = 0 then
+        exit '';
+        
+    if at = 0 and len = self.len then
+        exit self;
+
+    var buf := GetMem(len);
+    for var i := 0 to len - 1 do 
+    begin
+        buf[i] := self.chars[at + i];
+    end;
+
+    String(chars: buf; len: len)
+end;
+
+function String.Length: Integer;
+begin
+    self.len;
+end;
+
+function String.Concat(other: String): String;
+begin
+    StringConcat(self, other);
+end;
+
 function String.Compare(other: String): Integer;
 begin
     CompareStr(self, other)
+end;
+
+function String.CharAt(at: Integer): Byte;
+begin
+    if at < 0 or at >= self.len then
+        raise 'invalid index ' + at + ' in string of length ' + self;
+
+    self.chars[at]
 end;
 
 function Int8.ToString(): String;
