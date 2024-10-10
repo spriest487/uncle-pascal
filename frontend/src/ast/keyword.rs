@@ -5,75 +5,99 @@ use std::fmt;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Keyword {
-    Program,
-    Library,
     Var,
+
     Function,
     Procedure,
     Lambda,
+
     Begin,
     End,
+    Unsafe,
+
     Uses,
+
     Type,
     Record,
     Packed,
     Class,
+    Variant,
+    Set,
+
     Case,
     Match,
     If,
     While,
     Then,
     Else,
-    Nil,
     For,
     To,
     DownTo,
     Do,
+    Break,
+    Continue,
+
+    Nil,
+
+    Program,
+    Library,
     Unit,
     Interface,
     Implementation,
     Initialization,
     Finalization,
+    
     Array,
     Of,
     Const,
+    
+    In,
     Out,
+    
     True,
     False,
-    Set,
+
     Try,
     Except,
     Finally,
     Raise,
+
     With,
     Exit,
-    Variant,
     Is,
-    Break,
-    Continue,
+    
     Where,
-    Unsafe,
+    
     SizeOf,
     Default,
-    In,
+
+    Public,
+    Private,
+    Published,
 }
 
 impl Keyword {
     fn try_parse_lowercase(from: &str) -> Option<Self> {
         match from {
-            "program" => Some(Keyword::Program),
-            "library" => Some(Keyword::Library),
             "var" => Some(Keyword::Var),
+            
             "function" => Some(Keyword::Function),
             "procedure" => Some(Keyword::Procedure),
             "lambda" => Some(Keyword::Lambda),
+            
             "begin" => Some(Keyword::Begin),
             "end" => Some(Keyword::End),
+            "unsafe" => Some(Keyword::Unsafe),
+            
             "uses" => Some(Keyword::Uses),
+            
             "type" => Some(Keyword::Type),
             "class" => Some(Keyword::Class),
             "record" => Some(Keyword::Record),
             "packed" => Some(Keyword::Packed),
+            "variant" => Some(Keyword::Variant),
+            "set" => Some(Keyword::Set),
+            
             "case" => Some(Keyword::Case),
             "match" => Some(Keyword::Match),
             "if" => Some(Keyword::If),
@@ -85,33 +109,44 @@ impl Keyword {
             "to" => Some(Keyword::To),
             "downto" => Some(Keyword::DownTo),
             "do" => Some(Keyword::Do),
+            "break" => Some(Keyword::Break),
+            "continue" => Some(Keyword::Continue),
+            
+            "program" => Some(Keyword::Program),
+            "library" => Some(Keyword::Library),
             "unit" => Some(Keyword::Unit),
             "interface" => Some(Keyword::Interface),
             "implementation" => Some(Keyword::Implementation),
             "initialization" => Some(Keyword::Initialization),
             "finalization" => Some(Keyword::Finalization),
+
             "array" => Some(Keyword::Array),
             "of" => Some(Keyword::Of),
             "const" => Some(Keyword::Const),
+
+            "in" => Some(Keyword::In),
             "out" => Some(Keyword::Out),
+
             "true" => Some(Keyword::True),
             "false" => Some(Keyword::False),
-            "set" => Some(Keyword::Set),
+
             "try" => Some(Keyword::Try),
             "except" => Some(Keyword::Except),
             "finally" => Some(Keyword::Finally),
             "raise" => Some(Keyword::Raise),
-            "with" => Some(Keyword::With),
             "exit" => Some(Keyword::Exit),
-            "variant" => Some(Keyword::Variant),
-            "is" => Some(Keyword::Is),
-            "break" => Some(Keyword::Break),
-            "continue" => Some(Keyword::Continue),
-            "where" => Some(Keyword::Where),
-            "unsafe" => Some(Keyword::Unsafe),
+            
             "sizeof" => Some(Keyword::SizeOf),
             "default" => Some(Keyword::Default),
-            "in" => Some(Keyword::In),
+            
+            "is" => Some(Keyword::Is),
+            "with" => Some(Keyword::With),
+            "where" => Some(Keyword::Where),
+            
+            "public" => Some(Keyword::Public),
+            "private" => Some(Keyword::Private),
+            "published" => Some(Keyword::Published),
+
             _ => None,
         }
     }
@@ -128,19 +163,25 @@ impl Keyword {
 impl fmt::Display for Keyword {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
-            Keyword::Program => "program",
-            Keyword::Library => "library",
             Keyword::Var => "var",
+            
             Keyword::Function => "function",
             Keyword::Procedure => "procedure",
             Keyword::Lambda => "lambda",
+            
             Keyword::Begin => "begin",
             Keyword::End => "end",
+            Keyword::Unsafe => "unsafe",
+            
             Keyword::Uses => "uses",
+            
             Keyword::Type => "type",
             Keyword::Class => "class",
             Keyword::Record => "record",
             Keyword::Packed => "packed",
+            Keyword::Variant => "variant",
+            Keyword::Set => "set",
+            
             Keyword::If => "if",
             Keyword::Case => "case",
             Keyword::Match => "match",
@@ -152,33 +193,44 @@ impl fmt::Display for Keyword {
             Keyword::To => "to",
             Keyword::DownTo => "downto",
             Keyword::Do => "do",
+            Keyword::Break => "break",
+            Keyword::Continue => "continue",
+
+            Keyword::Program => "program",
+            Keyword::Library => "library",
             Keyword::Unit => "unit",
+            
             Keyword::Interface => "interface",
             Keyword::Implementation => "implementation",
             Keyword::Initialization => "initialization",
             Keyword::Finalization => "finalization",
+
             Keyword::Array => "array",
             Keyword::Of => "of",
             Keyword::Const => "const",
+            
             Keyword::Out => "out",
+            Keyword::In => "in",
+            
             Keyword::True => "true",
             Keyword::False => "false",
-            Keyword::Set => "set",
+            
             Keyword::Try => "try",
             Keyword::Except => "except",
             Keyword::Finally => "finally",
             Keyword::Raise => "raise",
-            Keyword::With => "with",
             Keyword::Exit => "exit",
-            Keyword::Variant => "variant",
+
             Keyword::Is => "is",
-            Keyword::Break => "break",
-            Keyword::Continue => "continue",
             Keyword::Where => "where",
-            Keyword::Unsafe => "unsafe",
+            Keyword::With => "with",
+
             Keyword::SizeOf => "sizeof",
             Keyword::Default => "default",
-            Keyword::In => "in",
+            
+            Keyword::Public => "public",
+            Keyword::Private => "private",
+            Keyword::Published => "published",
         })
     }
 }
