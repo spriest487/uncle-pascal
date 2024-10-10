@@ -34,34 +34,6 @@ type
         function Dispose();
     end;
 
-function GetMem(count: Int32): ^Byte; external 'rt';
-function FreeMem(mem: ^Byte); external 'rt';
-
-function Write(line: String); external 'rt';
-function WriteLn(line: String); external 'rt';
-function ReadLn(): String; external 'rt';
-
-function Int8ToStr(i: Int8): String; external 'rt';
-function UInt8ToStr(i: UInt8): String; external 'rt';
-function Int16ToStr(i: Int16): String; external 'rt';
-function UInt16ToStr(i: UInt16): String; external 'rt';
-function Int32ToStr(i: Int32): String; external 'rt';
-function UInt32ToStr(i: UInt32): String; external 'rt';
-function Int64ToStr(i: Int64): String; external 'rt';
-function UInt64ToStr(i: UInt64): String; external 'rt';
-function NativeIntToStr(i: NativeInt): String; external 'rt';
-function NativeUIntToStr(i: NativeUInt): String; external 'rt';
-function RealToStr(value: Real32): String; external 'rt';
-function PointerToStr(value: Pointer): String; external 'rt';
-
-function StrToInt(s: String): Int32; external 'rt';
-
-function ArrayLengthInternal(arr: Pointer): Int32; external 'rt';
-
-function ByteToStr(i: Byte): String;
-function IntToStr(i: Integer): String;
-
-type
     Box[T] = class
         value: T;
         
@@ -96,6 +68,33 @@ type
     Displayable = interface
         function ToString: String;
     end;
+
+function GetMem(count: Int32): ^Byte; external 'rt';
+function FreeMem(mem: ^Byte); external 'rt';
+
+function Write(line: String); external 'rt';
+function WriteLn(line: String); external 'rt';
+function ReadLn(): String; external 'rt';
+
+function Int8ToStr(i: Int8): String; external 'rt';
+function UInt8ToStr(i: UInt8): String; external 'rt';
+function Int16ToStr(i: Int16): String; external 'rt';
+function UInt16ToStr(i: UInt16): String; external 'rt';
+function Int32ToStr(i: Int32): String; external 'rt';
+function UInt32ToStr(i: UInt32): String; external 'rt';
+function Int64ToStr(i: Int64): String; external 'rt';
+function UInt64ToStr(i: UInt64): String; external 'rt';
+function NativeIntToStr(i: NativeInt): String; external 'rt';
+function NativeUIntToStr(i: NativeUInt): String; external 'rt';
+function RealToStr(value: Real32): String; external 'rt';
+function PointerToStr(value: Pointer): String; external 'rt';
+
+function StrToInt(s: String): Int32; external 'rt';
+
+function ArrayLengthInternal(arr: Pointer): Int32; external 'rt';
+
+function ByteToStr(i: Byte): String;
+function IntToStr(i: Integer): String;
 
 function Unbox[T](b: Box[T]): T;
 function NewBox[T](value: T): Box[T];
