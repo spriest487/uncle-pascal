@@ -119,46 +119,45 @@ pub fn specialize_struct_def<'a>(
         ty_args
     );
 
-    let members: Vec<_> = generic_def
-        .members
-        .iter()
-        .map(|member| {
-            match member {
-                ast::StructMember::Field(field) => {
-                    let ty = field.ty
-                        .clone()
-                        .apply_type_args_by_name(struct_ty_params, ty_args);
+    let fields: Vec<_> = generic_def
+        .fields()
+        .map(|generic_field| {
+            let ty = generic_field.ty
+                .clone()
+                .apply_type_args_by_name(struct_ty_params, ty_args);
 
-                    Ok(ast::StructMember::Field(ast::Field {
-                        ty,
-                        ..field.clone()
-                    }))
-                }
+            Ok(ast::Field {
+                ty,
+                ..generic_field.clone()
+            })
+        })
+        .collect::<GenericResult<_>>()?;
 
-                ast::StructMember::MethodDecl(generic_method) => {
-                    let self_ty = Type::struct_type(
-                        specialized_name.clone(),
-                        generic_def.kind
-                    );
+    let methods: Vec<_> = generic_def
+        .methods()
+        .map(|generic_method| {
+            let self_ty = Type::struct_type(
+                specialized_name.clone(),
+                generic_def.kind
+            );
 
-                    let specialized = specialize_method_decl(
-                        &generic_def.name.full_path,
-                        self_ty,
-                        generic_method,
-                        struct_ty_params,
-                        ty_args,
-                    )?;
-                    
-                    Ok(ast::StructMember::MethodDecl(Rc::new(specialized)))
-                }
-            }
+            let specialized = specialize_method_decl(
+                &generic_def.name.full_path,
+                self_ty,
+                generic_method,
+                struct_ty_params,
+                ty_args,
+            )?;
+            
+            Ok(Rc::new(specialized))
         })
         .collect::<GenericResult<_>>()?;
 
     Ok(Rc::new(StructDef {
         name: specialized_name,
         implements,
-        members,
+        fields,
+        methods,
         span: generic_def.span.clone(),
         kind: generic_def.kind,
         forward: generic_def.forward,

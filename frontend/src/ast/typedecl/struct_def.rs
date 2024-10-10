@@ -43,7 +43,8 @@ pub struct StructDef<A: Annotation = Span> {
     
     pub forward: bool,
 
-    pub members: Vec<StructMember<A>>,
+    pub fields: Vec<Field<A>>,
+    pub methods: Vec<Rc<FunctionDecl<A>>>,
     
     pub implements: Vec<A::Type>,
 
@@ -53,41 +54,21 @@ pub struct StructDef<A: Annotation = Span> {
     pub span: Span,
 }
 
-impl<A: Annotation> StructDef<A> {
-    pub fn find_member(&self, by_ident: &Ident) -> Option<&StructMember<A>> {
-        self.members.iter().find(|m| m.ident() == by_ident)
-    }
-    
+impl<A: Annotation> StructDef<A> {    
     pub fn find_field(&self, by_ident: &Ident) -> Option<&Field<A>> {
-        self.members.iter().find_map(|m| match m {
-            StructMember::Field(field) if field.ident == *by_ident => Some(field),
-            _ => None,
-        })
+        self.fields.iter().find(|field| field.ident == *by_ident)
     }
 
     pub fn find_method(&self, by_ident: &Ident) -> Option<&Rc<FunctionDecl<A>>> {
-        self.members.iter().find_map(|m| match m {
-            StructMember::MethodDecl(decl) if decl.name.ident() == by_ident => Some(decl),
-            _ => None,
-        })
+        self.methods.iter().find(|decl| decl.name.ident() == by_ident)
     }
     
     pub fn fields(&self) -> impl Iterator<Item=&Field<A>> {
-        self.members
-            .iter()
-            .filter_map(|m| match m {
-                StructMember::Field(field) => Some(field),
-                _ => None,
-            })
+        self.fields.iter()
     }
 
     pub fn methods(&self) -> impl Iterator<Item=&Rc<FunctionDecl<A>>> {
-        self.members
-            .iter()
-            .filter_map(|m| match m {
-                StructMember::MethodDecl(method) => Some(method),
-                _ => None,
-            })
+        self.methods.iter()
     }
 }
 
@@ -118,13 +99,24 @@ impl StructDef<Span> {
                 name,
                 forward: true,
                 implements: Vec::new(),
-                members: Vec::new(),
+                
+                methods: Vec::new(),
+                fields: Vec::new(),
                 span,
             })
         } else {
             let implements = parse_implements_clause(tokens)?;
             
             let members = parse_struct_members(tokens)?;
+            
+            let mut methods = Vec::new();
+            let mut fields = Vec::new();
+            for member in members {
+                match member {
+                    StructMember::Field(field) => fields.push(field),
+                    StructMember::MethodDecl(method) => methods.push(method),
+                }
+            }
 
             let end_token = tokens.match_one(Keyword::End)?;
 
@@ -133,7 +125,8 @@ impl StructDef<Span> {
                 name,
                 forward: false,
                 implements,
-                members,
+                fields,
+                methods,
                 span: span.to(end_token.span()),
             })
         }
@@ -155,12 +148,14 @@ impl<A: Annotation> fmt::Display for StructDef<A> {
         };
         writeln!(f, "{}", kind)?;
         
-        for member in &self.members {
-            match member {
-                StructMember::Field(field) => writeln!(f, "  {};", field)?,
-                StructMember::MethodDecl(decl) => writeln!(f, "  {};", decl)?,
-            }
+        for field in &self.fields {
+            writeln!(f, "  {};", field)?
         }
+
+        for method in &self.methods {
+            writeln!(f, "  {};", method)?
+        }
+
         write!(f, "end")
     }
 }

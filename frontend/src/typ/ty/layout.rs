@@ -145,7 +145,7 @@ impl StructLayout {
         def: &'a StructDef,
         ctx: &Context,
     ) -> NameResult<Vec<StructLayoutMember<'a>>> {
-        let mut members = Vec::with_capacity(def.members.len());
+        let mut members = Vec::with_capacity(def.fields.len());
 
         let (mut offset, mut max_align) = match def.kind {
             StructKind::Class => {

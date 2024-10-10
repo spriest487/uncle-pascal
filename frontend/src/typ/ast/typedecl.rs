@@ -63,20 +63,17 @@ pub fn typecheck_struct_decl(
         true,
     )?;
 
-    let mut members = Vec::new();
-    for member in &struct_def.members {
-        match member {
-            ast::StructMember::Field(field) => {
-                let field = typecheck_field(&field, ctx)?; 
-                members.push(field.into());
-            }
-            
-            ast::StructMember::MethodDecl(decl) => {
-                let decl = typecheck_method(decl, ctx)?;
-                members.push(decl.into());
-            }
-        }
+    let mut fields = Vec::new();
+    for src_field in &struct_def.fields {
+        let field = typecheck_field(src_field, ctx)?;
+        fields.push(field);
     }
+
+    let mut methods = Vec::new();
+    for src_method in &struct_def.methods {
+        let method = typecheck_method(src_method, ctx)?;
+        methods.push(Rc::new(method));
+    } 
     
     for iface_ty in implements.iter() {
         if let Type::Interface(iface_name) = &iface_ty {
@@ -90,12 +87,8 @@ pub fn typecheck_struct_decl(
                 let expect_sig = FunctionSig::of_decl(&iface_method.decl)
                     .with_self(&self_ty);
                 
-                let actual_method = members
+                let actual_method = methods
                     .iter()
-                    .filter_map(|m| match m {
-                        ast::StructMember::MethodDecl(method) => Some(method),
-                        _ => None,
-                    })
                     .find(|decl| {
                         decl.name.ident() == iface_method.ident()
                     });
@@ -139,7 +132,8 @@ pub fn typecheck_struct_decl(
         name,
         span: struct_def.span.clone(),
         implements,
-        members,
+        fields,
+        methods,
         forward: struct_def.forward,
     })
 }

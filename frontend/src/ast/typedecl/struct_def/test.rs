@@ -37,7 +37,7 @@ pub fn empty_struct_is_valid() {
     for item in &type_decls.items {
         match item { 
             TypeDeclItem::Struct(struct_def) => {
-                assert_eq!(0, struct_def.members.len());    
+                assert_eq!(0, struct_def.fields.len());    
             }
             
             other => panic!("expected a struct def, found: {}", other),
@@ -176,10 +176,4 @@ pub fn mixed_method_and_fields_is_valid() {
     let class_def = get_single_struct_def(&unit);
     assert_eq!(3, class_def.methods().count());
     assert_eq!(2, class_def.fields().count());
-
-    assert!(class_def.members[0].as_method().is_some());
-    assert!(class_def.members[1].as_field().is_some());
-    assert!(class_def.members[2].as_field().is_some());
-    assert!(class_def.members[3].as_method().is_some());
-    assert!(class_def.members[4].as_method().is_some());
 }
