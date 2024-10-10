@@ -705,12 +705,19 @@ pub fn typecheck_func_expr(
     let expect_sig = expect_ty.as_func().ok();
 
     let mut params = Vec::new();
+
     for (i, param) in src_def.params.iter().enumerate() {
         let ty = if param.ty.is_known() {
             typecheck_type(&param.ty, ctx)?
         } else {
-            match expect_sig.and_then(|sig| sig.params.get(i)) {
-                Some(expect_param) if expect_param.modifier.is_none() => expect_param.ty.clone(),
+            let sig_param = expect_sig
+                .and_then(|sig| sig.params.get(i));
+            
+            match sig_param {
+                Some(expect_param) if expect_param.modifier.is_none() => {
+                    expect_param.ty.clone()
+                },
+
                 _ => {
                     return Err(TypeError::UnableToInferFunctionExprType {
                         func: Box::new(src_def.clone()),
