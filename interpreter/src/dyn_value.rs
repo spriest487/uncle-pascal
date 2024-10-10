@@ -149,6 +149,12 @@ impl DynValue {
             (DynValue::Pointer(a), DynValue::Pointer(b)) => {
                 Some(DynValue::Pointer(a.addr_add(b.addr)))
             },
+            (DynValue::Pointer(ptr), DynValue::ISize(offset)) => {
+                Some(DynValue::Pointer(ptr.addr_add(*offset as usize)))
+            },
+            (DynValue::Pointer(ptr), DynValue::USize(offset)) => {
+                Some(DynValue::Pointer(ptr.addr_add(*offset)))
+            },
 
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a + b)),
 
@@ -170,6 +176,12 @@ impl DynValue {
             (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a - b)),
             (DynValue::Pointer(a), DynValue::Pointer(b)) => {
                 Some(DynValue::Pointer(a.addr_sub(b.addr)))
+            },
+            (DynValue::Pointer(ptr), DynValue::ISize(offset)) => {
+                Some(DynValue::Pointer(ptr.addr_sub(*offset as usize)))
+            },
+            (DynValue::Pointer(ptr), DynValue::USize(offset)) => {
+                Some(DynValue::Pointer(ptr.addr_sub(*offset)))
             },
 
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a - b)),
