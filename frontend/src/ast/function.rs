@@ -688,21 +688,48 @@ impl<A: Annotation> Spanned for AnonymousFunctionDef<A> {
 
 impl Parse for AnonymousFunctionDef<Span> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let func_kw = tokens.match_one(Keyword::Function.or(Keyword::Procedure).or(Keyword::Lambda))?;
+        let func_kw = tokens.match_one(Keyword::Function | Keyword::Procedure | Keyword::Lambda)?;
 
+        // the two forms are parsed differently:
+        //  * using the short form (`lambda`), expect an argument list with optional types 
+        //    and a single expression as the body. the type of the result can't be explicitly
+        //    specified and depends on the type of the body expression.
+        //    examples:
+        //    `lambda: 123`: function that takes no params
+        //    `lambda(x): x + 1`: lambda with a single argument type, which must be inferrable
+        //    `lambda(x: Integer): x + 1`: lambda with explicit argument type
+        //  * using the full form (`function`), expect a standard function with mandatory
+        //    type arguments and explicit return type. the body must be enclosed in a begin/end
+        //    block as usual.
         let function_def = if func_kw.is_keyword(Keyword::Lambda) {
             let mut params = Vec::new();
-            while let Some(TokenTree::Ident(ident)) = tokens.match_one_maybe(Matcher::AnyIdent) {
-                params.push(FunctionParam {
-                    span: ident.span().clone(),
-                    ty: TypeName::Unspecified(ident.span.clone()),
-                    modifier: None,
-                    ident,
-                });
 
-                if tokens.match_one_maybe(Separator::Comma).is_none() {
-                    break;
+            if let Some(params_group) = tokens.match_one_maybe(DelimiterPair::Bracket) {
+                let mut params_tokens = params_group
+                    .into_delimited_group()
+                    .unwrap()
+                    .to_inner_tokens();
+                
+                while let Some(TokenTree::Ident(ident)) = params_tokens.match_one_maybe(Matcher::AnyIdent) {                    
+                    let ty = if params_tokens.match_one_maybe(Separator::Colon).is_some() {
+                        TypeName::parse(&mut params_tokens)?
+                    } else {
+                        TypeName::Unspecified(ident.span.clone())
+                    };
+
+                    params.push(FunctionParam {
+                        span: ident.span().clone(),
+                        ty,
+                        modifier: None,
+                        ident,
+                    });
+
+                    if params_tokens.match_one_maybe(Separator::Semicolon).is_none() {
+                        break;
+                    }
                 }
+
+                params_tokens.finish()?;
             }
 
             tokens.match_one(Separator::Colon)?;
