@@ -28,7 +28,10 @@ type
 
 procedure WriteOffset(name: String; base, member: Pointer);
 begin
-    var diff := (member - base) as NativeInt;
+    var baseBytes := base as ^Byte;
+    var memberBytes := member as ^Byte;
+    var diff := (memberBytes - baseBytes) as NativeInt;
+
     WriteLn('offset of ' + name + ': ' + diff);
 end;
 
