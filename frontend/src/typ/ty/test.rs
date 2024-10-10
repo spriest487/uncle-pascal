@@ -1,9 +1,8 @@
-use crate::typ::ast::{FunctionCall, StructDef};
+use crate::typ::ast::{Call, FunctionCall, Stmt, StructDef};
 use crate::typ::context::*;
 use crate::typ::ty::*;
 use crate::{ast, typ};
 use std::rc::Rc;
-use crate::ast::{Call, Stmt};
 use crate::typ::ModuleUnit;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
@@ -328,16 +327,23 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     assert_eq!(expect_sig, b_int_sig);
 }
 
-fn get_func_call(module_unit: &ModuleUnit, init_pos: usize) -> &FunctionCall {
+fn get_stmt(module_unit: &ModuleUnit, init_pos: usize) -> &Stmt {
     module_unit
         .unit
         .init
         .as_ref()
         .and_then(|block| block.body.get(init_pos))
-        .and_then(Stmt::as_call)
+        .unwrap_or_else(|| {
+            panic!("expected unit to have a statement at position {} in its init block", init_pos)
+        })
+}
+
+fn get_func_call(module_unit: &ModuleUnit, init_pos: usize) -> &FunctionCall {
+    get_stmt(module_unit, init_pos)
+        .as_call()
         .and_then(Call::as_func_call)
         .unwrap_or_else(|| {
-            panic!("expected unit to have a single function call at positions {} in its init block", init_pos)
+            panic!("expected unit to have a function call at position {} in its init block", init_pos)
         })
 }
 
@@ -434,7 +440,7 @@ fn can_infer_ty_arg_from_lambda() {
 #[test]
 fn can_infer_func_ty_from_lambda_with_generic_return() {
     let module = module_from_src(
-        "can_infer_func_ty_from_lambda_with_generic_return",
+        "Test",
         r"   
             implementation
             uses System;
@@ -451,4 +457,22 @@ fn can_infer_func_ty_from_lambda_with_generic_return() {
             end
         "
     );
+    
+    match get_stmt(&module, 0) {
+        ast::Stmt::LocalBinding(binding) => {
+            let f_val = binding.val
+                .as_ref()
+                .expect("expected f to have a value");
+            let f_type = f_val
+                .annotation()
+                .ty()
+                .as_func()
+                .cloned()
+                .expect("expected f to have a function type");
+            
+            assert_eq!("Test.MyBox[System.Int32]", f_type.return_ty.to_string());
+        }
+        
+        other => panic!("expected binding, got: {}", other),
+    }
 }

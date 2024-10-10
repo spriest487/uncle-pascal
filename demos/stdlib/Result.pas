@@ -13,7 +13,7 @@ initialization
                 Result.Ok(val + 1)
             end
         )
-        .Then[Integer](lambda val: Result.Ok(val * multiplier));
+        .Then[Integer](lambda(val): Result.Ok(val * multiplier));
     
     match finalResult of
         Result.Ok val: WriteLn('OK: ' + val);
