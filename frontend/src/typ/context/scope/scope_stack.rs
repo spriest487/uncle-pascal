@@ -1,4 +1,4 @@
-use crate::ast::Ident;
+use crate::ast::{Access, Ident};
 use crate::ast::IdentPath;
 use crate::ast::Visibility;
 use crate::typ::scope::*;
@@ -200,13 +200,32 @@ impl ScopeStack {
     {
         self.visit_members(
             |member_path, _member| {
-                self.is_accessible(&member_path)
+                self.is_visible(&member_path)
             },
             visitor,
         );
     }
+    
+    pub fn get_access(&self, name: &IdentPath) -> Access {
+        let current_path = self.current_path();
 
-    pub fn is_accessible(&self, name: &IdentPath) -> bool {
+        match self.resolve_path(name) {
+            Some(ScopeMemberRef::Decl { parent_path, .. }) => {
+                let current_ns = current_path.to_namespace();
+                
+                let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
+                if current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns) {
+                    Access::Private
+                } else {
+                    Access::Public
+                }
+            }
+            
+            _ => Access::Public,
+        }
+    }
+
+    pub fn is_visible(&self, name: &IdentPath) -> bool {
         let current_path = self.current_path();
 
         match self.resolve_path(name) {

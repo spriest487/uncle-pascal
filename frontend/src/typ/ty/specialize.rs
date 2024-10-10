@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::ast::IdentPath;
-use crate::typ::ast::StructDef;
+use crate::typ::ast::{Method, StructDef};
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::apply_func_decl_named_ty_args;
@@ -141,15 +141,18 @@ pub fn specialize_struct_def<'a>(
                 generic_def.kind
             );
 
-            let specialized = specialize_method_decl(
+            let specialized_decl = specialize_method_decl(
                 &generic_def.name.full_path,
                 self_ty,
-                generic_method,
+                &generic_method.decl,
                 struct_ty_params,
                 ty_args,
             )?;
             
-            Ok(Rc::new(specialized))
+            Ok(Method {
+                access: generic_method.access,
+                decl: Rc::new(specialized_decl),
+            })
         })
         .collect::<GenericResult<_>>()?;
 
@@ -206,14 +209,18 @@ pub fn specialize_variant_def(
 
     let self_ty = Type::variant(parameterized_name.clone());
     for method in &variant.methods{ 
-        let specialized_method = specialize_method_decl(
+        let specialized_decl = specialize_method_decl(
             &parameterized_name.full_path,
             self_ty.clone(),
-            method,
+            &method.decl,
             variant_ty_params,
             args
         )?;
-        methods.push(Rc::new(specialized_method));
+        
+        methods.push(Method {
+            decl: Rc::new(specialized_decl),
+            access: method.access,
+        });
     }
 
     Ok(VariantDef {

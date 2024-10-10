@@ -15,11 +15,11 @@ pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
 use crate::ast as syn;
-use crate::ast::Ident;
+use crate::ast::{Access, Ident};
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::Visibility;
-use crate::typ::ast::EnumDecl;
+use crate::typ::ast::{EnumDecl, Method};
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
@@ -70,7 +70,15 @@ pub enum InstanceMember {
 
 #[derive(Clone, Debug)]
 pub enum TypeMember {
-    Method { decl: Rc<FunctionDecl> },
+    Method { decl: Rc<FunctionDecl>, access: Access },
+}
+
+impl TypeMember {
+    pub fn access(&self) -> Access {
+        match self {
+            TypeMember::Method { access, .. } => *access,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -160,7 +168,7 @@ pub struct Context {
     method_defs: HashMap<Type, MethodCollection>,
 
     // builtin methods declarations for primitive types that can't be declared normally in code
-    primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, Rc<FunctionDecl>>>,
+    primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, Method>>,
     
     // all primitives currently implement the same set of non-generic interfaces, so we can
     // just use this same list for all of them
@@ -1275,7 +1283,7 @@ impl Context {
     pub fn get_primitive_methods(
         &self, 
         primitive: Primitive
-    ) -> &LinkedHashMap<Ident, Rc<FunctionDecl>> {
+    ) -> &LinkedHashMap<Ident, Method> {
         &self.primitive_methods[&primitive]
     }
 
@@ -1302,10 +1310,10 @@ impl Context {
 
             // unambiguous method
             (None, 1) => match matching_methods.last().unwrap() {
-                ufcs::InstanceMethod::Method { owning_ty: iface_ty, decl } => {
+                ufcs::InstanceMethod::Method { owning_ty: iface_ty, method, .. } => {
                     Ok(InstanceMember::Method {
                         iface_ty: iface_ty.clone(),
-                        method: decl.name.ident.clone(),
+                        method: method.decl.name.ident.clone(),
                     })
                 },
 
@@ -1395,6 +1403,7 @@ impl Context {
 
                 Ok(TypeMember::Method {
                     decl: method_decl.decl.clone(),
+                    access: Access::Published,
                 })
             }
 
@@ -1478,13 +1487,13 @@ impl Context {
                 .and_then(|method_defs| {
                     method_defs
                         .methods
-                        .get(&method.name.ident)
+                        .get(&method.decl.name.ident)
                         .map(|def| def.is_some())
                 })
                 .unwrap_or(false);
                 
             if !has_def {
-                missing.push(ty_name.clone().into_owned().child(method.name.ident.clone()));
+                missing.push(ty_name.clone().into_owned().child(method.decl.name.ident.clone()));
             }
         }
         
@@ -1610,8 +1619,12 @@ impl Context {
         }
     }
 
-    pub fn is_accessible(&self, name: &IdentPath) -> bool {
-        self.scopes.is_accessible(name)
+    pub fn is_visible(&self, name: &IdentPath) -> bool {
+        self.scopes.is_visible(name)
+    }
+    
+    pub fn get_access(&self, name: &IdentPath) -> Access {
+        self.scopes.get_access(name)
     }
 
     pub fn is_constructor_accessible(&self, ty: &Type) -> bool {
@@ -1636,8 +1649,8 @@ fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident
     methods
         .iter()
         .map(|im| match im {
-            ufcs::InstanceMethod::Method { owning_ty: iface_ty, decl } => {
-                (iface_ty.clone(), decl.name.ident.clone())
+            ufcs::InstanceMethod::Method { owning_ty: iface_ty, method } => {
+                (iface_ty.clone(), method.decl.name.ident.clone())
             }
 
             ufcs::InstanceMethod::FreeFunction { sig, func_name, .. } => {

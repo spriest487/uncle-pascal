@@ -1,5 +1,5 @@
-use crate::ast::{parse_implements_clause, FunctionDecl, FunctionName, Ident};
-use crate::parse::LookAheadTokenStream;
+use crate::ast::{parse_implements_clause, Access, FunctionDecl, FunctionName, Ident, Method};
+use crate::parse::{LookAheadTokenStream, TryParse};
 use crate::parse::Matcher;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
@@ -26,7 +26,7 @@ pub struct VariantDef<A: Annotation> {
 
     pub implements: Vec<A::Type>,
     
-    pub methods: Vec<Rc<FunctionDecl<A>>>,
+    pub methods: Vec<Method<A>>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -92,10 +92,10 @@ impl<A: Annotation> VariantDef<A> {
 }
 
 impl<A: Annotation> VariantDef<A> {
-    pub fn find_method(&self, ident: &Ident) -> Option<&Rc<FunctionDecl<A>>> {
+    pub fn find_method(&self, ident: &Ident) -> Option<&Method<A>> {
         self.methods
             .iter()
-            .find(|m| m.name.ident() == ident)
+            .find(|m| m.decl.name.ident() == ident)
     }
 }
 
@@ -123,19 +123,28 @@ impl VariantDef<Span> {
             let cases = VariantCase::parse_seq(tokens)?;
             tokens.match_one_maybe(Separator::Semicolon);
             
-            let mut methods = Vec::new();
+            let mut access = Access::Public;
             
+            let mut methods = Vec::new();
+
             loop {
+                if let Some(new_access) = Access::try_parse(tokens)? {
+                    access = new_access;
+                }
+
                 let func_ahead = tokens
                     .look_ahead()
                     .match_one(Keyword::Function | Keyword::Procedure);
-                
+
                 if func_ahead.is_none() {
                     break;
                 }
 
                 let method_decl= FunctionDecl::parse(tokens)?;
-                methods.push(Rc::new(method_decl));
+                methods.push(Method { 
+                    decl: Rc::new(method_decl),
+                    access: access,
+                });
 
                 if tokens.match_one_maybe(Separator::Semicolon).is_none() {
                     break;

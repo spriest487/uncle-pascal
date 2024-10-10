@@ -311,6 +311,7 @@ fn typecheck_func_overload(
             iface_ty,
             ident,
             sig,
+            method,
             ..
         } => {
             // we resolved the overload using the local type args earlier, but we only get an
@@ -348,9 +349,18 @@ fn typecheck_func_overload(
                 },
             };
 
+            // final access check
+            if self_type.get_current_access(ctx) < method.access {
+                return Err(TypeError::TypeMemberInaccessible {
+                    ty: self_type,
+                    access: method.access,
+                    member: ident.clone(),
+                    span: func_call.span().clone(),
+                })
+            }
+
             let sig = Rc::new(sig.with_self(&self_type));
             
-
             let return_annotation = TypedValue {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),

@@ -17,14 +17,15 @@ pub use self::sig::*;
 pub use self::specialize::*;
 pub use self::ty_param::*;
 use crate::ast;
+use crate::ast::Access;
 use crate::ast::ArrayTypeName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
-use crate::typ::ast::Field;
-use crate::typ::ast::FunctionDecl;
+use crate::ast::INTERFACE_METHOD_ACCESS;
+use crate::typ::ast::{Field, Method};
 use crate::typ::builtin_span;
 use crate::typ::builtin_unit_path;
 use crate::typ::context;
@@ -573,14 +574,17 @@ impl Type {
         }
     }
     
-    pub fn methods(&self, ctx: &Context) -> NameResult<Vec<Rc<FunctionDecl>>> {
+    pub fn methods(&self, ctx: &Context) -> NameResult<Vec<Method>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
                 let methods = iface_def
                     .methods
                     .iter()
-                    .map(|m| m.decl.clone())
+                    .map(|m| Method { 
+                        decl: m.decl.clone(),
+                        access: Access::Published,
+                    })
                     .collect();
                 
                 Ok(methods)
@@ -633,7 +637,7 @@ impl Type {
     pub fn methods_at(&self,
         ctx: &Context,
         at: &Span
-    ) -> TypeResult<Vec<Rc<FunctionDecl>>> {
+    ) -> TypeResult<Vec<Method>> {
         self
             .methods(ctx)
             .map_err(|err| {
@@ -644,7 +648,7 @@ impl Type {
     pub fn get_method(&self,
         method: &Ident,
         ctx: &Context
-    ) -> NameResult<Option<Rc<FunctionDecl>>> {
+    ) -> NameResult<Option<Method>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
@@ -654,7 +658,14 @@ impl Type {
                     .find(|m| *m.ident() == *method)
                     .map(|m| m.decl.clone());
 
-                Ok(method_decl)
+                match method_decl {
+                    Some(decl) => Ok(Some(Method {
+                        decl: decl.clone(),
+                        access: INTERFACE_METHOD_ACCESS,
+                    })),
+                    
+                    None => Ok(None)
+                }
             },
 
             Type::Record(name) | Type::Class(name) => {
@@ -692,6 +703,14 @@ impl Type {
             }
 
             _ => Ok(None),
+        }
+    }
+    
+    pub fn get_current_access(&self, ctx: &Context) -> Access {
+        match self.full_path() {
+            Some(name) => ctx.get_access(name.as_ref()),
+            
+            None => Access::Public,
         }
     }
 

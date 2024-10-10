@@ -5,10 +5,12 @@ pub use symbol::*;
 use crate::ast::Annotation;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
+use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
+use crate::typ::ast::Method;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::ast::{Expr, TypedFunctionName};
+use crate::typ::ast::TypedFunctionName;
 use crate::typ::result::*;
 use crate::typ::ty::*;
 use crate::typ::ValueKind;
@@ -50,16 +52,21 @@ pub struct OverloadTyped {
 }
 
 impl OverloadTyped {
-    pub fn method(iface_ty: Type, self_arg: Expr, decl: Rc<FunctionDecl>, span: Span) -> Self {
-        let sig = Rc::new(FunctionSig::of_decl(&decl));
+    pub fn method(
+        iface_ty: Type,
+        self_arg: Expr,
+        method: Method,
+        span: Span
+    ) -> Self {
+        let sig = Rc::new(FunctionSig::of_decl(&method.decl));
 
         Self {
             span,
             self_arg: Some(Box::new(self_arg)),
             sig: Some(sig.clone()),
             candidates: vec![OverloadCandidate::Method {
-                ident: decl.name.ident.clone(),
-                decl,
+                ident: method.decl.name.ident.clone(),
+                method,
                 sig,
                 iface_ty,
             }],

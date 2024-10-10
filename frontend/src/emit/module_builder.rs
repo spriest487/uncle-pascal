@@ -544,7 +544,7 @@ impl ModuleBuilder {
                         .collect();
 
                     for method in iface_methods {
-                        if method.type_params.is_some() {
+                        if method.decl.type_params.is_some() {
                             // generic methods can't be instantiated here
                             continue;
                         }
@@ -552,7 +552,7 @@ impl ModuleBuilder {
                         let virtual_key = FunctionDeclKey::VirtualMethod(VirtualMethodKey {
                             iface_ty: iface_ty.clone(),
                             impl_method: MethodDeclKey {
-                                method: method.name.ident.clone(),
+                                method: method.decl.name.ident.clone(),
                                 owning_ty: real_ty.clone(),
                             },
                         });

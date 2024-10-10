@@ -48,12 +48,16 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
             match &func.decl.name.owning_ty {
                 Some(explicit_impl) => {
                     let ident = func.decl.name.ident.clone();
+                    let method = explicit_impl
+                        .get_method(&ident, &unit.context)
+                        .unwrap()
+                        .expect("method defs in unit must have a corresponding decl in the type");
 
                     OverloadCandidate::Method {
                         ident,
                         iface_ty: explicit_impl.clone(),
                         sig: Rc::new(sig),
-                        decl: func.decl.clone(),
+                        method,
                     }
                 },
 

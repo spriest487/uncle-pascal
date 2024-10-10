@@ -400,24 +400,28 @@ fn typecheck_member_of(
             let member_ident = member_ident.clone();
 
             let annotation = match lhs.annotation() {
-                // x is the name of a variant type - we are constucting that variant
+                // x is the name of a variant type - we are constructing that variant
                 Typed::Type(Type::Variant(variant_name), ..) => {
                     typecheck_variant_ctor(variant_name, &member_ident, &span, ctx)?
                 },
 
                 // x is a non-variant typename - we are accessing a member of that type
                 // e.g. calling an interface method by its type-qualified name
-                Typed::Type(ty, _) => typecheck_type_member(ty, &member_ident, span.clone(), ctx)?,
+                Typed::Type(ty, _) => {
+                    typecheck_type_member(ty, &member_ident, span.clone(), ctx)?
+                },
 
                 // x is a value - we are accessing a member of that value
-                Typed::TypedValue(base_val) => typecheck_member_value(
-                    &lhs,
-                    &base_val.ty,
-                    base_val.value_kind,
-                    &member_ident,
-                    span.clone(),
-                    ctx,
-                )?,
+                Typed::TypedValue(base_val) => {
+                    typecheck_member_value(
+                        &lhs,
+                        &base_val.ty,
+                        base_val.value_kind,
+                        &member_ident,
+                        span.clone(),
+                        ctx,
+                    )?
+                },
 
                 Typed::Namespace(path, _) => {
                     let mut full_path = path.clone();
@@ -611,9 +615,19 @@ fn typecheck_type_member(
     let type_member = ctx
         .find_type_member(ty, member_ident)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
+    
+    let member_access = type_member.access(); 
+    if ty.get_current_access(ctx) < member_access {
+        return Err(TypeError::TypeMemberInaccessible {
+            member: member_ident.clone(),
+            ty: ty.clone(),
+            access:member_access,
+            span,
+        });
+    }
 
     let annotation = match type_member {
-        TypeMember::Method { decl } => {
+        TypeMember::Method { decl, .. } => {
             MethodTyped::new(&decl, ty.clone(), span).into()
         },
     };
@@ -635,7 +649,7 @@ pub fn typecheck_member_value(
 
     let annotation = match member {
         InstanceMember::Method { iface_ty, method } => {
-            let method_decl = iface_ty
+            let iface_method = iface_ty
                 .get_method(&method, ctx)
                 .ok()
                 .flatten()
@@ -644,7 +658,7 @@ pub fn typecheck_member_value(
             let method = OverloadTyped::method(
                 iface_ty,
                 lhs.clone(),
-                method_decl.clone(),
+                iface_method.clone(),
                 span.clone(),
             );
 

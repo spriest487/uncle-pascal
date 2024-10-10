@@ -63,7 +63,7 @@ pub fn typecheck_object_ctor(
         });
     }
 
-    if !ctx.is_accessible(&ty_name) {
+    if !ctx.is_visible(&ty_name) {
         return Err(TypeError::Private {
             name: ty_name,
             span,

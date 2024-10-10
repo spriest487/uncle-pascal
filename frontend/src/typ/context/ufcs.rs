@@ -1,17 +1,17 @@
 #[cfg(test)]
 mod test;
 
-use std::fmt;
-use std::fmt::Formatter;
-use std::rc::Rc;
-
 use crate::ast::Ident;
-use crate::typ::ast::FunctionDecl;
+use crate::typ::ast::Method;
+use crate::typ::Context;
 use crate::typ::Decl;
 use crate::typ::FunctionSig;
 use crate::typ::NameResult;
+use crate::typ::Symbol;
 use crate::typ::Type;
-use crate::typ::{Context, Symbol};
+use std::fmt;
+use std::fmt::Formatter;
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub enum InstanceMethod {
@@ -22,7 +22,7 @@ pub enum InstanceMethod {
     },
     Method {
         owning_ty: Type,
-        decl: Rc<FunctionDecl>,
+        method: Method,
     },
 }
 
@@ -30,7 +30,7 @@ impl InstanceMethod {
     pub fn ident(&self) -> &Ident {
         match self {
             InstanceMethod::FreeFunction { func_name, .. } => func_name.ident(),
-            InstanceMethod::Method { decl, .. } => &decl.name.ident,
+            InstanceMethod::Method { method, .. } => &method.decl.name.ident,
         }
     }
 }
@@ -38,8 +38,13 @@ impl InstanceMethod {
 impl fmt::Display for InstanceMethod {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            InstanceMethod::FreeFunction { func_name, .. } => write!(f, "function {}", func_name),
-            InstanceMethod::Method { owning_ty, decl, .. } => write!(f, "method {}.{}", owning_ty, decl.name.ident ),
+            InstanceMethod::FreeFunction { func_name, .. } => {
+                write!(f, "function {}", func_name)
+            },
+
+            InstanceMethod::Method { owning_ty, method, .. } => {
+                write!(f, "method {}.{}", owning_ty, method.decl.name.ident )
+            },
         }
         
     }
@@ -107,12 +112,12 @@ fn find_ufcs_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>
     // eprintln!("{} has methods:", ty);
     let instance_methods = ty_methods
         .into_iter()
-        .map(|method| {
+        .filter_map(|method| {
             // eprintln!(" - {}", method.name);
-            InstanceMethod::Method {
+            Some(InstanceMethod::Method {
                 owning_ty: ty.clone(),
-                decl: method,
-            }
+                method: method.clone(),
+            })
         })
         .collect();
     

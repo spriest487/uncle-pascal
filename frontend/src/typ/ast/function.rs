@@ -338,8 +338,9 @@ impl FunctionDecl {
 
         let methods = iface_ty.methods_at(ctx, &self.span)?;
         for impl_method in methods {
-            if impl_method.name.ident == self.name.ident {
-                let iface_sig = FunctionSig::of_decl(&impl_method).with_self(owning_ty);
+            if impl_method.decl.name.ident == self.name.ident {
+                let iface_sig = FunctionSig::of_decl(&impl_method.decl)
+                    .with_self(owning_ty);
 
                 if iface_sig == sig {
                     return Ok(true);
@@ -411,16 +412,16 @@ fn validate_method(
             member: method_ident.clone(),
         }),
 
-        Some(method_decl) => {
-            let method_decl_sig = FunctionSig::of_decl(&method_decl);
+        Some(method) => {
+            let method_decl_sig = FunctionSig::of_decl(&method.decl);
 
             if *method_sig != method_decl_sig {
-                eprintln!("expect: {:#?}", method_decl_sig);
-                eprintln!("actual: {:#?}", method_sig);
+                // eprintln!("expect: {:#?}", method_decl_sig);
+                // eprintln!("actual: {:#?}", method_sig);
                 
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
-                    decl: method_decl.span.clone(),
+                    decl: method.decl.span.clone(),
                     ident: owning_ty_name.clone().child(method_ident.clone()),
                 })
             } else {

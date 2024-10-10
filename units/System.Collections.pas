@@ -4,47 +4,52 @@ interface
 uses System;
 
 type LinkedListNode[T] = class
-    next: Option[LinkedListNode[T]];
-    val: T;
-    
-    function Next: Option[LinkedListNode[T]];
-    function Value: T;
+    private
+        next: Option[LinkedListNode[T]];
+        val: T;
+    public
+        function Next: Option[LinkedListNode[T]];
+        function Value: T;
 end;
 
 type LinkedList[T] = class
-    head: Option[LinkedListNode[T]];
+    private
+        head: Option[LinkedListNode[T]];
     
-    function Length: Integer;
+    public
+        function Length: Integer;
+        
+        function Get(n: Integer): T;
+        function TryGet(n: Integer): Option[T];
+        
+        function Set(n: Integer; value: T);
+        
+        function Head: Option[LinkedListNode[T]];
+        
+        function Add(item: T);
+        function Remove(n: Integer);
     
-    function Get(n: Integer): T;
-    function TryGet(n: Integer): Option[T];
-    
-    function Set(n: Integer; value: T);
-    
-    function Head: Option[LinkedListNode[T]];
-    
-    function Add(item: T);
-    function Remove(n: Integer);
-    
-    function Clear;
+        function Clear;
 end;
 
 type ArrayList[T] = class
-    items: array of T;
-    len: Integer;
-    
-    function Length: Integer;
-    function Capacity: Integer;
-    
-    function Get(n: Integer): T;
-    function TryGet(n: Integer): Option[T];
-    
-    function Set(n: Integer; value: T);
-    
-    function Add(item: T);
-    function Remove(n: Integer);
-    
-    function Clear;
+    private
+        items: array of T;
+        len: Integer;
+        
+    public
+        function Length: Integer;
+        function Capacity: Integer;
+        
+        function Get(n: Integer): T;
+        function TryGet(n: Integer): Option[T];
+        
+        function Set(n: Integer; value: T);
+        
+        function Add(item: T);
+        function Remove(n: Integer);
+        
+        function Clear;
 end;
 
 function NewLinkedList[T](): LinkedList[T];

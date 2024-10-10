@@ -6,7 +6,7 @@ use crate::typ::ast::check_implicit_conversion;
 use crate::typ::ast::specialize_call_args;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
-use crate::typ::ast::FunctionDecl;
+use crate::typ::ast::Method;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
 use crate::typ::InstanceMethod;
@@ -36,7 +36,7 @@ pub enum OverloadCandidate {
     Method {
         iface_ty: Type,
         ident: Ident,
-        decl: Rc<FunctionDecl>,
+        method: Method,
         sig: Rc<FunctionSig>,
     },
 }
@@ -44,15 +44,15 @@ pub enum OverloadCandidate {
 impl OverloadCandidate {
     pub fn from_instance_method(im: InstanceMethod) -> Self {
         match im {
-            InstanceMethod::Method { owning_ty: iface_ty, decl } => {
-                let ident = decl.name.ident().clone();
-                let sig = FunctionSig::of_decl(&decl);
+            InstanceMethod::Method { owning_ty: iface_ty, method } => {
+                let ident = method.decl.name.ident().clone();
+                let sig = FunctionSig::of_decl(&method.decl);
                 
                 OverloadCandidate::Method {
                     iface_ty,
                     ident,
                     sig: Rc::new(sig),
-                    decl,
+                    method,
                 }
             },
 
@@ -75,7 +75,7 @@ impl OverloadCandidate {
     pub fn span(&self) -> &Span {
         match self {
             OverloadCandidate::Function { decl_name, .. } => decl_name.span(),
-            OverloadCandidate::Method { decl, .. } => decl.span(),
+            OverloadCandidate::Method { method, .. } => method.decl.span(),
         }
     }
 }

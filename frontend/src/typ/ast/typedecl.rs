@@ -31,6 +31,7 @@ use std::rc::Rc;
 pub type StructDef = ast::StructDef<Typed>;
 pub type StructMember = ast::StructMember<Typed>;
 pub type Field = ast::Field<Typed>;
+pub type Method = ast::Method<Typed>;
 pub type InterfaceDecl = ast::InterfaceDecl<Typed>;
 pub type VariantDef = ast::VariantDef<Typed>;
 pub type AliasDecl = ast::AliasDecl<Typed>;
@@ -70,9 +71,13 @@ pub fn typecheck_struct_decl(
     }
 
     let mut methods = Vec::new();
-    for src_method in &struct_def.methods {
-        let method = typecheck_method(src_method, ctx)?;
-        methods.push(Rc::new(method));
+    for method in &struct_def.methods {
+        let decl = typecheck_method(&method.decl, ctx)?;
+
+        methods.push(Method {
+            access: method.access,
+            decl: Rc::new(decl),
+        });
     } 
     
     for iface_ty in implements.iter() {
@@ -89,8 +94,8 @@ pub fn typecheck_struct_decl(
                 
                 let actual_method = methods
                     .iter()
-                    .find(|decl| {
-                        decl.name.ident() == iface_method.ident()
+                    .find(|method| {
+                        method.decl.name.ident() == iface_method.ident()
                     });
                 
                 match actual_method {
@@ -102,11 +107,11 @@ pub fn typecheck_struct_decl(
                     }
                     
                     Some(impl_method) => {
-                        let actual_sig = FunctionSig::of_decl(impl_method.as_ref());
+                        let actual_sig = FunctionSig::of_decl(&impl_method.decl);
 
                         if actual_sig != expect_sig {                            
                             mismatched_methods.push(MismatchedImplementation {
-                                impl_method_name: impl_method.name.clone(),
+                                impl_method_name: impl_method.decl.name.clone(),
                                 iface_method_name: iface_method.decl.name.clone(),
                                 expect_sig,
                                 actual_sig,
@@ -167,6 +172,7 @@ fn typecheck_field(
         ty,
         span: field.span.clone(),
         ident: field.ident.clone(),
+        access: field.access,
     };
     
     Ok(field)
@@ -261,9 +267,12 @@ pub fn typecheck_variant(
     }
 
     let mut methods = Vec::new();
-    for src_method in &variant_def.methods {
-        let method = typecheck_method(src_method, ctx)?;
-        methods.push(Rc::new(method));
+    for method in &variant_def.methods {
+        let decl = typecheck_method(&method.decl, ctx)?;
+        methods.push(Method {
+            decl: Rc::new(decl),
+            access: method.access,
+        });
     }
 
     Ok(VariantDef {

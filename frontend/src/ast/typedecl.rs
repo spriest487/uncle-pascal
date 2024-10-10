@@ -2,11 +2,14 @@ mod enum_decl;
 mod iface_decl;
 mod struct_def;
 mod variant_def;
+mod access;
 
 pub use self::enum_decl::*;
 pub use self::iface_decl::*;
 pub use self::struct_def::*;
 pub use self::variant_def::*;
+pub use self::access::Access;
+pub use self::access::INTERFACE_METHOD_ACCESS;
 use crate::ast::unit::AliasDecl;
 use crate::ast::Ident;
 use crate::ast::Keyword;

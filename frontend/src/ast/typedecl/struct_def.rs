@@ -1,14 +1,13 @@
 mod member;
 
-use crate::ast::parse_implements_clause;
 use crate::ast::Annotation;
-use crate::ast::FunctionDecl;
 use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::TypeDeclName;
+use crate::ast::{parse_implements_clause, Access};
+pub use crate::parse::Matcher;
 use crate::parse::ParseResult;
 use crate::parse::TokenStream;
-pub use crate::parse::Matcher;
 use crate::Keyword;
 use crate::Separator;
 use common::span::Span;
@@ -16,7 +15,6 @@ use common::span::Spanned;
 use derivative::*;
 pub use member::*;
 use std::fmt;
-use std::rc::Rc;
 
 #[cfg(test)]
 mod test;
@@ -44,7 +42,7 @@ pub struct StructDef<A: Annotation = Span> {
     pub forward: bool,
 
     pub fields: Vec<Field<A>>,
-    pub methods: Vec<Rc<FunctionDecl<A>>>,
+    pub methods: Vec<Method<A>>,
     
     pub implements: Vec<A::Type>,
 
@@ -59,15 +57,15 @@ impl<A: Annotation> StructDef<A> {
         self.fields.iter().find(|field| field.ident == *by_ident)
     }
 
-    pub fn find_method(&self, by_ident: &Ident) -> Option<&Rc<FunctionDecl<A>>> {
-        self.methods.iter().find(|decl| decl.name.ident() == by_ident)
+    pub fn find_method(&self, by_ident: &Ident) -> Option<&Method<A>> {
+        self.methods.iter().find(|method| method.decl.name.ident() == by_ident)
     }
     
     pub fn fields(&self) -> impl Iterator<Item=&Field<A>> {
         self.fields.iter()
     }
 
-    pub fn methods(&self) -> impl Iterator<Item=&Rc<FunctionDecl<A>>> {
+    pub fn methods(&self) -> impl Iterator<Item=&Method<A>> {
         self.methods.iter()
     }
 }
@@ -107,7 +105,12 @@ impl StructDef<Span> {
         } else {
             let implements = parse_implements_clause(tokens)?;
             
-            let members = parse_struct_members(tokens)?;
+            let default_access = match kind {
+                StructKind::Class => Access::Private,
+                StructKind::Record | StructKind::PackedRecord => Access::Public,
+            };
+
+            let members = parse_struct_members(tokens, default_access)?;
             
             let mut methods = Vec::new();
             let mut fields = Vec::new();
@@ -148,12 +151,16 @@ impl<A: Annotation> fmt::Display for StructDef<A> {
         };
         writeln!(f, "{}", kind)?;
         
+        let mut access = Access::Public;
+        
         for field in &self.fields {
+            write_access_if_changed(f, &mut access, field.access)?;
             writeln!(f, "  {};", field)?
         }
 
         for method in &self.methods {
-            writeln!(f, "  {};", method)?
+            write_access_if_changed(f, &mut access, method.access)?;
+            writeln!(f, "  {};", method.decl)?
         }
 
         write!(f, "end")
