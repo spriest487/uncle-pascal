@@ -38,8 +38,8 @@ use std::rc::Rc;
 
 pub type Unit = ast::Unit<Typed>;
 pub type UnitDecl = ast::UnitDecl<Typed>;
-pub type GlobalBinding = ast::GlobalBinding<Typed>;
-pub type GlobalBindingItem = ast::GlobalBindingItem<Typed>;
+pub type GlobalBinding = ast::UnitBinding<Typed>;
+pub type GlobalBindingItem = ast::UnitBindingItem<Typed>;
 pub type TypeDecl = ast::TypeDecl<Typed>;
 pub type TypeDeclItem = ast::TypeDeclItem<Typed>;
 pub type InitBlock = ast::InitBlock<Typed>;
@@ -70,10 +70,10 @@ fn typecheck_unit_decl(
             typecheck_unit_type_decl(type_decl, visibility, ctx)
         },
 
-        ast::UnitDecl::GlobalBinding { decl } => {
+        ast::UnitDecl::Binding { decl } => {
             let decl = typecheck_global_binding(decl, visibility, ctx)?;
 
-            Ok(ast::UnitDecl::GlobalBinding { decl })
+            Ok(ast::UnitDecl::Binding { decl })
         }
     }
 }
@@ -313,7 +313,7 @@ fn typecheck_type_decl_body(
 }
 
 fn typecheck_global_binding(
-    binding: &ast::GlobalBinding<Span>,
+    binding: &ast::UnitBinding<Span>,
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<GlobalBinding> {
@@ -333,7 +333,7 @@ fn typecheck_global_binding(
 
 fn typecheck_global_binding_item(
     kind: BindingDeclKind,
-    item: &ast::GlobalBindingItem<Span>,
+    item: &ast::UnitBindingItem<Span>,
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<GlobalBindingItem> {

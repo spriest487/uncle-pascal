@@ -904,6 +904,7 @@ impl Context {
         method: &Ident,
     ) -> Option<&FunctionDef> {
         let method_defs = self.method_defs.get(ty)?;
+        
         let method = method_defs.methods.get(method)?.as_ref()?;
         
         Some(&method)
@@ -1006,6 +1007,7 @@ impl Context {
         def: Rc<FunctionDef>,
     ) -> TypeResult<()> {
         let sig = FunctionSig::of_decl(&def.decl);
+        let kind = def.decl.kind;
 
         // defining a function - only the sig needs to match, the visibility of the definition doesn't matter
         // since the implementation of an interface func can be in the implementation section, but the implementation
@@ -1013,7 +1015,7 @@ impl Context {
         let is_func_decl = |decl: &Decl| match decl {
             Decl::Function { decl: existing_decl, .. } => {
                 let existing_sig = FunctionSig::of_decl(existing_decl);
-                if sig != existing_sig {
+                if sig != existing_sig || existing_decl.kind != kind {
                     DefDeclMatch::Mismatch
                 } else {
                     DefDeclMatch::Match
@@ -1393,29 +1395,33 @@ impl Context {
     }
 
     pub fn find_type_member(&self, ty: &Type, member_ident: &Ident) -> NameResult<TypeMember> {
-        match ty {
-            Type::Interface(iface) => {
-                let iface_def = self.find_iface_def(iface)?;
-                let method_decl = iface_def
-                    .get_method(member_ident)
-                    .ok_or_else(|| {
-                        NameError::MemberNotFound {
-                            member: member_ident.clone(),
-                            base: NameContainer::Type(ty.clone()),
-                        }
-                    })?;
+        let member = match ty {
+            Type::Interface(iface) => self
+                .find_iface_def(iface)?
+                .get_method(member_ident)
+                .map(|method_decl| {
+                    TypeMember::Method(Method {
+                        decl: method_decl.decl.clone(),
+                        access: INTERFACE_METHOD_ACCESS,
+                    })   
+                }),
 
-                Ok(TypeMember::Method(Method {
-                    decl: method_decl.decl.clone(),
-                    access: INTERFACE_METHOD_ACCESS,
-                }))
-            }
+            Type::Class(name) | Type::Record(name) => self
+                .instantiate_struct_def(name)?
+                .find_method(member_ident)
+                .map(|method| {
+                    TypeMember::Method(method.clone())
+                }),
 
-            _ => Err(NameError::MemberNotFound {
-                base: NameContainer::Type(ty.clone()),
+            _ => None,
+        };
+        
+        member.ok_or_else(|| {
+            NameError::MemberNotFound {
                 member: member_ident.clone(),
-            }),
-        }
+                base: NameContainer::Type(ty.clone()),
+            }
+        })
     }
 
     pub fn undefined_syms(&self) -> Vec<IdentPath> {

@@ -314,7 +314,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
 
     // make a call
     let displayable_call = Call::Method(MethodCall {
-        iface_type: displayable_ty.clone(),
+        owning_type: displayable_ty.clone(),
         ident: to_string_ident.clone(),
         args: vec![expr.clone()],
         type_args: None,
@@ -322,7 +322,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         self_type: src_ty.into_owned(),
         func_type: Type::Function(to_string_sig.clone()),
         annotation: MethodTyped {
-            iface_ty: displayable_ty,
+            owning_ty: displayable_ty,
             method_ident: to_string_ident,
             method_access: INTERFACE_METHOD_ACCESS,
             span: span.clone(),
@@ -489,9 +489,24 @@ fn typecheck_member_of(
 
                 Typed::Method(method) if method.should_call_noargs_in_expr(expect_ty, &lhs_ty) => {
                     let sig = method.method_sig.clone();
-                    let self_arg = member_op.lhs.clone();
 
-                    let call = Call::MethodNoArgs(sig.new_no_args_method_call(Expr::from(member_op), self_arg));
+                    // if the LHS is an untyped item (eg the type part of a class method call),
+                    // don't pass it as a self-arg
+                    let self_arg = match lhs_ty {
+                        Type::Nothing => None,
+                        _ => Some(member_op.lhs.clone()),
+                    };
+    
+                    let owning_ty = method.owning_ty.clone();
+
+                    let target = Expr::from(member_op);
+
+                    let no_args_call = sig.new_no_args_method_call(
+                        target,
+                        owning_ty,
+                        self_arg
+                    );
+                    let call = Call::MethodNoArgs(no_args_call);
 
                     Ok(Expr::from(call))
                 }
@@ -512,19 +527,28 @@ fn typecheck_member_of(
                             Ok(Expr::from(call))
                         }
 
-                        Some(OverloadCandidate::Method { sig, ident, iface_ty, method, .. }) => {
+                        Some(OverloadCandidate::Method { sig, ident, owning_ty, method, .. }) => {
                             let sig = sig.clone();
+                            
+                            let self_arg = member_op.lhs.clone();
+                            let owning_ty = owning_ty.clone();
+                            
                             member_op.annotation = Typed::from(MethodTyped {
-                                iface_ty: iface_ty.clone(),
+                                owning_ty: owning_ty.clone(),
                                 method_ident: ident.clone(),
                                 method_access: method.access,
                                 method_sig: sig.clone(),
                                 span: member_op.span().clone(),
                             });
+                            
+                            let target = Expr::from(member_op);
 
-                            let self_arg = member_op.lhs.clone();
-
-                            let call = Call::MethodNoArgs(sig.new_no_args_method_call(Expr::from(member_op), self_arg));
+                            let no_args_call = sig.new_no_args_method_call(
+                                target,
+                                owning_ty,
+                                Some(self_arg)
+                            );
+                            let call = Call::MethodNoArgs(no_args_call);
                             Ok(Expr::from(call))
                         }
 
@@ -636,6 +660,16 @@ fn typecheck_type_member(
 
     let annotation = match type_member {
         TypeMember::Method(method) => {
+            if ty.get_current_access(ctx) < method.access {
+                return Err(TypeError::TypeMemberInaccessible {
+                    member: member_ident.clone(),
+                    ty: ty.clone(),
+                    access: method.access,
+                    span,
+                });
+            }
+
+            // this is a reference to the method itself, args list to follow presumably
             MethodTyped::new(&method, ty.clone(), span).into()
         },
     };

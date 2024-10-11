@@ -275,14 +275,25 @@ impl ModuleBuilder {
         &mut self,
         method_key: &MethodDeclKey,
         type_args: Option<&typ::TypeArgList>,
-    ) -> FunctionInstance {        
-        let owning_ty = method_key.owning_ty.clone();
+    ) -> FunctionInstance {
+        // eprintln!("instantiate_method: {:#?}", method_key);
+        
+        // the self-type determines which actual class implements the method:
+        // * for direct type method calls, both types are the same, so it doesn't matter which
+        //   one we instantiate
+        // * for virtual calls, instantiate this implementor's impl method
+        // * if the self-type is null, this is a static call, so instantiate the method from
+        //   the owning type
+        let self_ty = match &method_key.self_ty {
+            typ::Type::Nothing => method_key.owning_ty.clone(),
+            ty => ty.clone(),
+        };
         
         let mut generic_ctx = GenericContext::empty();
         
-        // if the owning type is a parameterized generic, we'll need to instantiate the specialized
+        // if the self type is a parameterized generic, we'll need to instantiate the specialized
         // def here, since only the type's generic version will be in the definition map
-        let generic_owning_ty = match &owning_ty {
+        let generic_self_ty = match &self_ty {
             typ::Type::Class(sym) if sym.type_args.is_some() => {
                 generic_ctx.push(sym.type_params.as_ref().unwrap(), sym.type_args.as_ref().unwrap());
                 typ::Type::class(sym.as_ref().clone().with_ty_args(None))
@@ -298,20 +309,20 @@ impl ModuleBuilder {
         
             // nothing to do if the type isn't parameterized
             _ => {
-                assert_eq!(TypeArgsResult::NotGeneric, owning_ty.type_args());
-                owning_ty.clone()
+                assert_eq!(TypeArgsResult::NotGeneric, self_ty.type_args());
+                self_ty.clone()
             }
         };
         
         let generic_method_def = self
             .src_metadata
             .find_method(
-                &generic_owning_ty,
+                &generic_self_ty,
                 &method_key.method,
             )
             .cloned()
             .unwrap_or_else(|| {
-                panic!("instantiate_method: missing method def: {}.{}", method_key.owning_ty, method_key.method)
+                panic!("instantiate_method: missing method def: {}.{}", generic_self_ty, method_key.method)
             });
         let generic_method_decl = generic_method_def.decl.as_ref();
 
@@ -331,10 +342,10 @@ impl ModuleBuilder {
             generic_method_decl.clone(),
             &generic_ctx,
             &generic_ctx);
-        specialized_decl.name.owning_ty = Some(owning_ty);
+        specialized_decl.name.owning_ty = Some(self_ty);
 
         let ns = method_key
-            .owning_ty
+            .self_ty
             .full_path()
             .expect("instantiate_method: methods should only be generated for named types")
             .into_owned();
@@ -401,7 +412,7 @@ impl ModuleBuilder {
         // virtual methods can't be generic
         let generic_ctx = GenericContext::empty();
 
-        let self_ty = self.translate_type(&virtual_key.impl_method.owning_ty.clone(), &generic_ctx);
+        let self_ty = self.translate_type(&virtual_key.impl_method.self_ty.clone(), &generic_ctx);
         let method_name = (*virtual_key.impl_method.method.name).clone();
 
         self.module.metadata.impl_method(iface_id, self_ty, method_name, instance.id);
@@ -422,12 +433,14 @@ impl ModuleBuilder {
     pub fn translate_method_impl(
         &mut self,
         owning_ty: typ::Type,
+        self_ty: typ::Type,
         method: Ident,
         type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         let mut key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 owning_ty,
+                self_ty,
                 method,
             }),
 
@@ -548,12 +561,13 @@ impl ModuleBuilder {
                             // generic methods can't be instantiated here
                             continue;
                         }
-                        
+
                         let virtual_key = FunctionDeclKey::VirtualMethod(VirtualMethodKey {
                             iface_ty: iface_ty.clone(),
                             impl_method: MethodDeclKey {
                                 method: method.decl.name.ident.clone(),
-                                owning_ty: real_ty.clone(),
+                                owning_ty: iface_ty.clone(),
+                                self_ty: real_ty.clone(),
                             },
                         });
 
@@ -1136,6 +1150,8 @@ impl FunctionDeclKey {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct MethodDeclKey {
     pub owning_ty: typ::Type,
+    pub self_ty: typ::Type,
+
     pub method: Ident,
 }
 

@@ -2,10 +2,10 @@ use crate::emit::builder::Builder;
 use crate::emit::expr;
 use crate::emit::syn;
 use crate::emit::typ;
+use crate::typ::Specializable;
 use ir_lang::*;
 use syn::Ident;
 use typ::Typed;
-use crate::typ::Specializable;
 
 fn translate_call_with_args(
     call_target: CallTarget,
@@ -105,22 +105,36 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
             build_func_call(&func_call.target, &[], None, builder)
         },
 
-        syn::Call::MethodNoArgs(method_call) => match method_call.target.annotation() {
-            Typed::Method(method) => {
-                let self_arg = method_call.self_arg.clone();
-                let self_ty = self_arg.annotation().ty().into_owned();
-                let args = vec![self_arg];
+        syn::Call::MethodNoArgs(method_call) => {
+            match method_call.target.annotation() {
+                Typed::Method(method) => {
+                    let mut args = Vec::new();
+                    let self_ty;
 
-                build_method_call(
-                    &method.method_ident,
-                    &method.method_sig,
-                    &self_ty,
-                    &args,
-                    None,
-                    builder,
-                )
-            },
-            _ => panic!("target of no-args method call was not a method"),
+                    match &method_call.self_arg {
+                        Some(self_arg) => {
+                            self_ty = self_arg.annotation().ty().into_owned();
+                            args.push(self_arg.clone());
+                        }
+                        
+                        None => {
+                            self_ty = method.owning_ty.clone();
+                        }
+                    }
+
+                    build_method_call(
+                        &method.method_ident,
+                        &method.method_sig,
+                        method.owning_ty.clone(),
+                        self_ty,
+                        &args,
+                        None,
+                        builder,
+                    )
+                },
+
+                _ => panic!("target of no-args method call was not a method"),
+            }
         },
 
         syn::Call::Function(func_call) => build_func_call(
@@ -132,11 +146,12 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
 
         syn::Call::Method(method_call) => {
             let method_sig = method_call.func_type.as_func().unwrap();
-
+            
             build_method_call(
                 &method_call.ident,
                 &method_sig,
-                &method_call.self_type,
+                method_call.owning_type.clone(),
+                method_call.self_type.clone(),
                 &method_call.args,
                 method_call.type_args.as_ref(),
                 builder,
@@ -228,14 +243,20 @@ fn build_func_call(
 fn build_method_call(
     method_ident: &Ident,
     method_sig: &typ::FunctionSig,
-    self_ty: &typ::Type,
+    owning_ty: typ::Type,
+    self_ty: typ::Type,
     args: &[typ::ast::Expr],
     ty_args: Option<&typ::TypeArgList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let self_ty = self_ty
-        .clone()
-        .apply_type_args_by_name(builder.generic_context(), builder.generic_context());
+    let owning_ty = owning_ty.apply_type_args_by_name(
+        builder.generic_context(),
+        builder.generic_context(),
+    );
+    let self_ty = self_ty.apply_type_args_by_name(
+        builder.generic_context(),
+        builder.generic_context(),
+    );
 
     let self_ir_ty = builder.translate_type(&self_ty);
 
@@ -253,7 +274,8 @@ fn build_method_call(
 
         _ => {
             let method_decl = builder.translate_method(
-                self_ty.clone(),
+                owning_ty,
+                self_ty,
                 method_ident.clone(),
                 ty_args.cloned(),
             );

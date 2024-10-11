@@ -23,10 +23,10 @@ use std::fmt;
 /// var or const binding (depending on the keyword)
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Hash, Debug)]
-pub struct GlobalBinding<A: Annotation> {
+pub struct UnitBinding<A: Annotation> {
     pub kind: BindingDeclKind,
 
-    pub items: Vec<GlobalBindingItem<A>>,
+    pub items: Vec<UnitBindingItem<A>>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -34,13 +34,13 @@ pub struct GlobalBinding<A: Annotation> {
     pub span: Span,
 }
 
-impl<A: Annotation> Spanned for GlobalBinding<A> {
+impl<A: Annotation> Spanned for UnitBinding<A> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl Parse for GlobalBinding<Span> {
+impl Parse for UnitBinding<Span> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let kw_token = tokens.match_one(Keyword::Const.or(Keyword::Var))?;
 
@@ -50,7 +50,7 @@ impl Parse for GlobalBinding<Span> {
             _ => unreachable!(),
         };
 
-        let items = GlobalBindingItem::parse_seq(tokens)?;
+        let items = UnitBindingItem::parse_seq(tokens)?;
         let last_item = items.last().ok_or_else(|| {
             TracedError::trace(ParseError::EmptyConstDecl {
                 span: kw_token.clone().into_span(),
@@ -59,7 +59,7 @@ impl Parse for GlobalBinding<Span> {
 
         let span = kw_token.span().to(last_item.span());
 
-        Ok(GlobalBinding {
+        Ok(UnitBinding {
             kind,
             span,
             items,
@@ -67,7 +67,7 @@ impl Parse for GlobalBinding<Span> {
     }
 }
 
-impl<A: Annotation> fmt::Display for GlobalBinding<A> {
+impl<A: Annotation> fmt::Display for UnitBinding<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "const")?;
         for (i, item) in self.items.iter().enumerate() {
@@ -83,7 +83,7 @@ impl<A: Annotation> fmt::Display for GlobalBinding<A> {
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(PartialEq, Hash, Debug)]
-pub struct GlobalBindingItem<A: Annotation> {
+pub struct UnitBindingItem<A: Annotation> {
     pub ident: Ident,
     pub ty: Option<A::Type>,
 
@@ -95,13 +95,13 @@ pub struct GlobalBindingItem<A: Annotation> {
     pub span: Span,
 }
 
-impl<A: Annotation> Spanned for GlobalBindingItem<A> {
+impl<A: Annotation> Spanned for UnitBindingItem<A> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl<A: Annotation> fmt::Display for GlobalBindingItem<A> {
+impl<A: Annotation> fmt::Display for UnitBindingItem<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.ident)?;
         if let Some(ty) = &self.ty {
@@ -116,7 +116,7 @@ impl<A: Annotation> fmt::Display for GlobalBindingItem<A> {
     }
 }
 
-impl ParseSeq for GlobalBindingItem<Span> {
+impl ParseSeq for UnitBindingItem<Span> {
     fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
         if !prev.is_empty() {
             tokens.match_one(Separator::Semicolon)?;
@@ -142,7 +142,7 @@ impl ParseSeq for GlobalBindingItem<Span> {
             None
         };
 
-        Ok(GlobalBindingItem {
+        Ok(UnitBindingItem {
             ty,
             span,
             val,

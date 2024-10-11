@@ -4,26 +4,27 @@ mod struct_def;
 mod variant_def;
 mod access;
 
+pub use self::access::Access;
+pub use self::access::INTERFACE_METHOD_ACCESS;
 pub use self::enum_decl::*;
 pub use self::iface_decl::*;
 pub use self::struct_def::*;
 pub use self::variant_def::*;
-pub use self::access::Access;
-pub use self::access::INTERFACE_METHOD_ACCESS;
 use crate::ast::unit::AliasDecl;
+use crate::ast::Annotation;
 use crate::ast::Ident;
 use crate::ast::Keyword;
 use crate::ast::Operator;
 use crate::ast::TypeList;
-use crate::ast::TypeParam;
-use crate::ast::Annotation;
 use crate::ast::TypeName;
+use crate::ast::TypeParam;
+use crate::parse::LookAheadTokenStream;
+use crate::parse::Matcher;
 use crate::parse::Parse;
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
-use crate::parse::LookAheadTokenStream;
 use crate::DelimiterPair;
 use crate::Separator;
 use common::span::Span;
@@ -121,6 +122,10 @@ impl ParseSeq for TypeDeclItem<Span> {
 
         tokens.match_one(Matcher::AnyIdent).is_some()
     }
+}
+
+pub fn type_method_start() -> Matcher {
+    Keyword::Function | Keyword::Procedure | Keyword::Class | Keyword::Constructor
 }
 
 /// the common part of a typedecl before the `=`, eg in `type X[Y] = class...`, `X<Y>` is the decl

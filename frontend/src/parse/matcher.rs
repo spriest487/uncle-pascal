@@ -1,9 +1,12 @@
-use crate::token_tree::*;
-use std::fmt;
-use std::ops::{Add, BitOr};
 use crate::ast::keyword::*;
 use crate::ast::operators::*;
-use crate::parse::{LookAheadTokenStream, ParseResult, TokenStream};
+use crate::parse::LookAheadTokenStream;
+use crate::parse::ParseResult;
+use crate::parse::TokenStream;
+use crate::token_tree::*;
+use std::fmt;
+use std::ops::Add;
+use std::ops::BitOr;
 
 #[derive(Clone, Debug)]
 pub enum Matcher {
@@ -118,18 +121,13 @@ impl fmt::Display for Matcher {
             Matcher::AnyLiteralBoolean => write!(f, "boolean literal"),
             Matcher::Exact(exact_token) => write!(f, "{}", exact_token),
             Matcher::OneOf(matchers) => {
-                write!(f, "one of:")?;
+                write!(f, "one of: ")?;
                 
                 for i in 0..matchers.len() {
-                    if self.is_multiline_display() {
-                        writeln!(f)?;
-                        write!(f, "or {}", matchers[i])?
-                    } else {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
-                        write!(f, "{}", matchers[i])?;
+                    if i > 0 {
+                        write!(f, " or ")?;
                     }
+                    write!(f, "{}", matchers[i])?;
                 }
                 
                 Ok(())
@@ -249,13 +247,6 @@ impl Matcher {
     pub fn and_then(self, next_matcher: impl Into<Matcher>) -> SequenceMatcher {
         SequenceMatcher {
             sequence: vec![self, next_matcher.into()],
-        }
-    }
-
-    pub fn is_multiline_display(&self) -> bool {
-        match self {
-            Matcher::OneOf(matchers) => matchers.len() > 2,
-            _ => false,
         }
     }
 }

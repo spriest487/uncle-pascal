@@ -1,4 +1,4 @@
-use crate::ast::Path;
+use crate::ast::{FunctionDeclKind, Path};
 use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::ast::{Access, IdentPath};
@@ -130,6 +130,7 @@ pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
         methods: vec![ast::InterfaceMethodDecl {
             decl: Rc::new(ast::FunctionDecl {
                 name: builtin_disposable_dispose_name(None),
+                kind: FunctionDeclKind::Function,
                 return_ty: Type::Nothing,
                 mods: Vec::new(),
                 type_params: None,
@@ -175,6 +176,12 @@ pub fn builtin_comparable_compare_method(owning_ty: Type, self_ty: Type) -> ast:
     let builtin_span = builtin_span();
 
     ast::FunctionDecl {
+        name: ast::TypedFunctionName::new_method(
+            builtin_ident(COMPARABLE_COMPARE_NAME),
+            owning_ty.clone(),
+            builtin_span.clone(),
+        ),
+        kind: FunctionDeclKind::Function,
         params: vec![
             ast::FunctionParam {
                 ident: builtin_ident(SELF_PARAM_NAME),
@@ -189,11 +196,6 @@ pub fn builtin_comparable_compare_method(owning_ty: Type, self_ty: Type) -> ast:
                 span: builtin_span.clone(),
             }
         ],
-        name: ast::TypedFunctionName::new_method(
-            builtin_ident(COMPARABLE_COMPARE_NAME),
-            owning_ty.clone(),
-            builtin_span.clone(),
-        ),
         return_ty: Type::from(Primitive::Int32),
         type_params: None,
         mods: Vec::new(),
@@ -229,6 +231,12 @@ pub fn builtin_displayable_display_method(owning_ty: Type, self_ty: Type) -> ast
     let builtin_span = builtin_span();
 
     ast::FunctionDecl {
+        name: ast::TypedFunctionName::new_method(
+            builtin_ident(DISPLAYABLE_TOSTRING_METHOD),
+            owning_ty.clone(),
+            builtin_span.clone(),
+        ),
+        kind: FunctionDeclKind::Function,
         params: vec![
             ast::FunctionParam {
                 ident: builtin_ident(SELF_PARAM_NAME),
@@ -237,11 +245,6 @@ pub fn builtin_displayable_display_method(owning_ty: Type, self_ty: Type) -> ast
                 span: builtin_span.clone(),
             }
         ],
-        name: ast::TypedFunctionName::new_method(
-            builtin_ident(DISPLAYABLE_TOSTRING_METHOD),
-            owning_ty.clone(),
-            builtin_span.clone(),
-        ),
         return_ty: Type::class(IdentPath::from_vec(vec![
             Ident::new(SYSTEM_UNIT_NAME, builtin_span.clone()),
             Ident::new(STRING_TYPE_NAME, builtin_span.clone()),

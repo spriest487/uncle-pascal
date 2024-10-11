@@ -188,11 +188,14 @@ pub fn typecheck_call(
                     (noargs_func_call.target, None)
                 }
                 Call::MethodNoArgs(noargs_method_call) => {
-                    (noargs_method_call.target, Some(noargs_method_call.self_arg))
+                    (noargs_method_call.target, noargs_method_call.self_arg)
                 }
                 other_call => (Expr::from(other_call), None),
             },
-            other => (other, None)
+
+            other => {
+                (other, None)
+            }
         }
     } else {
         (target, None)
@@ -245,11 +248,11 @@ pub fn typecheck_call(
                 .map(Invocation::Call)?
         },
 
-        Typed::Method(iface_method) => {            
-            typecheck_method_call(iface_method, func_call, self_arg, ctx)
+        Typed::Method(method) => {
+            typecheck_method_call(method, func_call, self_arg, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
-        },
+        }
 
         Typed::Type(..) => {
             if let Some(ctor) = func_call.clone().try_into_empty_object_ctor() {
@@ -312,7 +315,7 @@ fn typecheck_func_overload(
 
     let call = match &overloaded.candidates[overload.selected_sig] {
         OverloadCandidate::Method {
-            iface_ty,
+            owning_ty: iface_ty,
             ident,
             sig,
             method,
@@ -379,7 +382,7 @@ fn typecheck_func_overload(
                 type_args: overload.type_args,
                 self_type,
                 func_type: Type::Function(sig.clone()),
-                iface_type: iface_ty.clone(),
+                owning_type: iface_ty.clone(),
                 args_span,
             };
 
@@ -434,16 +437,16 @@ fn typecheck_func_overload(
 ///     call expression, so needs to be provided separately
 /// * `ctx` - current typechecking context
 fn typecheck_method_call(
-    iface_method: &MethodTyped,
+    method: &MethodTyped,
     func_call: &ast::FunctionCall<Span>,
     with_self_arg: Option<Expr>,
     ctx: &mut Context,
 ) -> TypeResult<Call> {
-    if iface_method.iface_ty.get_current_access(ctx) < iface_method.method_access {
+    if method.owning_ty.get_current_access(ctx) < method.method_access {
         return Err(TypeError::TypeMemberInaccessible {
-            ty: iface_method.iface_ty.clone(),
-            access: iface_method.method_access,
-            member: iface_method.method_ident.clone(),
+            ty: method.owning_ty.clone(),
+            access: method.method_access,
+            member: method.method_ident.clone(),
             span: func_call.span().clone(),
         })
     }
@@ -454,7 +457,7 @@ fn typecheck_method_call(
             GenericError::ArgsLenMismatch {
                 expected: 0,
                 actual: call_type_args.len(),
-                target: GenericTarget::FunctionSig((*iface_method.method_sig).clone()),
+                target: GenericTarget::FunctionSig((*method.method_sig).clone()),
             },
             call_type_args.span().clone(),
         ));
@@ -466,38 +469,53 @@ fn typecheck_method_call(
 
         None => {
             let mut ctx = ctx.clone();
-            let first_self_pos = iface_method
+            let first_self_pos = method
                 .method_sig
                 .params
                 .iter()
-                .position(|param| param.ty == Type::MethodSelf)
-                .expect("method function must have at least one argument with Self type");
+                .position(|param| param.ty == Type::MethodSelf);
+            
+            match first_self_pos {
+                Some(index) => {
+                    // note that this isn't the "self arg" used for typecheck_args, because we're not passing
+                    // it implicitly as a separate arg (like the self-arg `x` of `x.Y()` in a UFCS call).
+                    // it's just the first arg from which we can infer the self-type
+                    let first_self_arg = typecheck_expr(
+                        &func_call.args[index],
+                        &Type::Nothing,
+                        &mut ctx
+                    )?;
 
-            // note that this isn't the "self arg" used for typecheck_args, because we're not passing
-            // it implicitly as a separate arg (like the self-arg `x` of `x.Y()` in a UFCS call).
-            // it's just the first arg from which we can infer the self-type
-            let first_self_arg = typecheck_expr(
-                &func_call.args[first_self_pos], 
-                &Type::Nothing, 
-                &mut ctx
-            )?;
-
-            Cow::Owned(first_self_arg.annotation().ty().into_owned())
+                    Cow::Owned(first_self_arg.annotation().ty().into_owned())
+                }
+                
+                None => Cow::Owned(Type::Nothing),
+            }
         }
     };
+    
+    if let Type::Interface(..) = method.owning_ty {
+        let is_impl = ctx
+            .is_implementation(self_type.as_ref(), &method.owning_ty)
+            .map_err(|err| TypeError::from_name_err(err, func_call.span().clone()))?;
 
-    let is_impl = ctx
-        .is_implementation(self_type.as_ref(), &iface_method.iface_ty)
-        .map_err(|err| TypeError::from_name_err(err, func_call.span().clone()))?;
-
-    if !is_impl {
-        return Err(TypeError::from_name_err(NameError::NoImplementationFound {
-            owning_ty: iface_method.iface_ty.clone(),
-            impl_ty: self_type.into_owned(),
-        }, func_call.span().clone()));
+        if !is_impl {
+            return Err(TypeError::from_name_err(NameError::NoImplementationFound {
+                owning_ty: method.owning_ty.clone(),
+                impl_ty: self_type.into_owned(),
+            }, func_call.span().clone()));
+        }
+    } else if let Some(..) = &with_self_arg {
+        if method.owning_ty != *self_type {
+            return Err(TypeError::TypeMismatch {
+                span: func_call.span().clone(),
+                expected: method.owning_ty.clone(),
+                actual: self_type.into_owned(),
+            });
+        }
     }
 
-    let sig = iface_method.method_sig.with_self(&self_type);
+    let sig = method.method_sig.with_self(&self_type);
 
     let typechecked_args = build_args_for_params(
         &sig.params, 
@@ -517,8 +535,8 @@ fn typecheck_method_call(
         args_span: func_call.args_span.clone(),
         func_type: Type::Function(Rc::new(sig)),
         self_type: self_type.into_owned(),
-        iface_type: iface_method.iface_ty.clone(),
-        ident: iface_method.method_ident.clone(),
+        owning_type: method.owning_ty.clone(),
+        ident: method.method_ident.clone(),
         type_args: None,
         args: typechecked_args,
     }))

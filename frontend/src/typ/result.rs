@@ -117,6 +117,10 @@ pub enum TypeError {
         members: Vec<Ident>,
         span: Span,
     },
+    CtorMethodDefMissingType {
+        ident: Ident,
+        span: Span,
+    },
     DuplicateParamName {
         name: Ident,
         previous: Span,
@@ -192,7 +196,7 @@ pub enum TypeError {
         mods: Vec<DeclMod>,
         span: Span
     },
-    InvalidMethodExplicitInterface {
+    InvalidMethodOwningType {
         method_ident: Ident,
         span: Span,
     },
@@ -331,8 +335,10 @@ impl Spanned for TypeError {
             TypeError::AmbiguousMethod { span, .. } => span,
             TypeError::ExternalGenericFunction { func, .. } => func.span(),
             TypeError::AmbiguousSelfType { span, .. } => span,
+            
             TypeError::InvalidCtorType { span, .. } => span,
             TypeError::CtorMissingMembers { span, .. } => span,
+            TypeError::CtorMethodDefMissingType { span, .. } => span,
             
             TypeError::DuplicateNamedArg { span, .. } => span,
             TypeError::DuplicateParamName { span, .. } => span,
@@ -357,7 +363,7 @@ impl Spanned for TypeError {
             TypeError::InvalidUnsizedType { at, .. } => at,
             
             TypeError::InvalidMethodModifiers { span, .. } => span,
-            TypeError::InvalidMethodExplicitInterface { span, .. } => span,
+            TypeError::InvalidMethodOwningType { span, .. } => span,
             TypeError::InvalidMethodInstanceType { span, .. } => span,
             TypeError::NoMethodContext { span, .. } => span,
             TypeError::InvalidImplementation { span, .. } => span,
@@ -430,6 +436,9 @@ impl DiagnosticOutput for TypeError {
             TypeError::CtorMissingMembers { .. } => {
                 "Constructor is missing one or more named members"
             }
+            TypeError::CtorMethodDefMissingType { .. } => {
+                "Constructor definition missing type specification"
+            }
             TypeError::UndefinedSymbols { .. } => "Undefined symbol(s)",
             TypeError::UnableToInferType { .. } => {
                 "Unable to infer type of expr"
@@ -467,7 +476,7 @@ impl DiagnosticOutput for TypeError {
 
             TypeError::InvalidUnsizedType { .. } => "Size of type is unknown",
             
-            TypeError::InvalidMethodExplicitInterface { .. } => "Explicit interface implementation for method is invalid",
+            TypeError::InvalidMethodOwningType { .. } => "Explicit interface implementation for method is invalid",
             TypeError::InvalidMethodModifiers { .. } => "Invalid method modifier(s)",
 
             TypeError::InvalidMethodInstanceType { .. } => {
@@ -836,6 +845,10 @@ impl fmt::Display for TypeError {
                 Ok(())
             }
 
+            TypeError::CtorMethodDefMissingType { ident, .. } => {
+                write!(f, "constructor definition `{}` has no type specification", ident)
+            }
+
             TypeError::UndefinedSymbols { unit, .. } => {
                 write!(f, "unit `{}` contains undefined symbols", unit)
             }
@@ -913,7 +926,7 @@ impl fmt::Display for TypeError {
                 }
             }
 
-            TypeError::InvalidMethodExplicitInterface { method_ident, .. } => {
+            TypeError::InvalidMethodOwningType { method_ident, .. } => {
                 write!(f, "method `{}` declared in this scope cannot explicitly implement an interface", method_ident)
             }
             

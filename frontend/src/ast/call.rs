@@ -21,7 +21,8 @@ use std::fmt;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {
-    pub iface_type: A::Type,
+    // for virtual calls, the owning type is the interface and the self type is the implementor
+    pub owning_type: A::Type,
     pub self_type: A::Type,
 
     pub func_type: A::Type,
@@ -44,7 +45,7 @@ impl<A: Annotation> Spanned for MethodCall<A> {
 
 impl<A: Annotation> fmt::Display for MethodCall<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}.{}(", self.iface_type, self.ident)?;
+        write!(f, "{}.{}(", self.owning_type, self.ident)?;
         for (i, arg) in self.args.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
@@ -153,7 +154,14 @@ impl<A: Annotation> Spanned for FunctionCallNoArgs<A> {
 pub struct MethodCallNoArgs<A: Annotation> {
     pub target: Expr<A>,
 
-    pub self_arg: Expr<A>,
+    // for virtual calls, the owning type is the interface and the self type is the implementor
+    // here the self-type is the type of the argument expression - if there is none, it must be
+    // a call to a static method, so we only need to know the owning type
+    pub owning_type: A::Type,
+    
+    // a no-args call to a non-class method should have an implied target
+    // e.g. the `a` in the call `a.B`
+    pub self_arg: Option<Expr<A>>,
 
     pub annotation: A,
 }

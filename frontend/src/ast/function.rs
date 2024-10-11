@@ -2,13 +2,15 @@
 mod test;
 
 use crate::ast::type_name::TypeName;
-use crate::ast::{Annotation, IdentPath, TypeAnnotation};
+use crate::ast::Annotation;
 use crate::ast::BindingDeclKind;
 use crate::ast::Block;
 use crate::ast::DeclMod;
 use crate::ast::Expr;
 use crate::ast::FunctionName;
 use crate::ast::Ident;
+use crate::ast::IdentPath;
+use crate::ast::TypeAnnotation;
 use crate::ast::TypeList;
 use crate::ast::TypeParam;
 use crate::ast::TypePath;
@@ -33,6 +35,27 @@ use derivative::*;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
 use std::rc::Rc;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FunctionDeclKind {
+    // function or procedure
+    Function,
+    
+    // declared with a preceding `class` keyword, must be within a type decl
+    ClassMethod,
+    
+    // declared with the `constructor` keyword, must not specify a return type
+    Constructor,
+}
+
+impl FunctionDeclKind {
+    pub fn is_static_method(&self) -> bool {
+        match self {
+            FunctionDeclKind::Function => false,
+            FunctionDeclKind::ClassMethod | FunctionDeclKind::Constructor => true,
+        }
+    }
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {
@@ -85,6 +108,8 @@ impl<A: Annotation> Spanned for FunctionParam<A> {
 #[derivative(PartialEq, Hash, Debug)]
 pub struct FunctionDecl<A: Annotation = Span> {
     pub name: A::FunctionName,
+    
+    pub kind: FunctionDeclKind,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -101,8 +126,31 @@ pub struct FunctionDecl<A: Annotation = Span> {
 
 impl FunctionDecl<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let func_kw = tokens.match_one(Keyword::Function | Keyword::Procedure)?;
+        let func_kw = tokens.match_one(Keyword::Function 
+            | Keyword::Procedure 
+            | Keyword::Class 
+            | Keyword::Constructor)?;
+        
+        let (kind, expect_return) = if func_kw.is_keyword(Keyword::Class) {
+            let class_func_kw = tokens.match_one(Keyword::Function | Keyword::Procedure)?;
 
+            let kind = FunctionDeclKind::ClassMethod;
+            let expect_return = match class_func_kw.as_keyword() {
+                Some(Keyword::Function) => true,
+                Some(Keyword::Procedure) => false,
+                _ => unreachable!(),
+            };
+
+            (kind, expect_return)
+        } else {
+            match func_kw.as_keyword() {
+                Some(Keyword::Function) => (FunctionDeclKind::Function, true),
+                Some(Keyword::Procedure) => (FunctionDeclKind::Function, false),
+                Some(Keyword::Constructor) => (FunctionDeclKind::Constructor, false),
+                _ => unreachable!(),
+            }
+        };
+        
         let (ident, type_params_list) = Self::parse_name(tokens)?;
 
         let mut span = match &type_params_list {
@@ -127,15 +175,19 @@ impl FunctionDecl<Span> {
             Vec::new()
         };
 
-        let return_ty = match tokens.match_one_maybe(Separator::Colon) {
-            Some(_) => {
-                // look for a return type
-                let ty = TypeName::parse(tokens)?;
-                span = span.to(ty.span());
-                ty
-            },
+        let return_ty = if expect_return {
+            match tokens.match_one_maybe(Separator::Colon) {
+                Some(_) => {
+                    // look for a return type
+                    let ty = TypeName::parse(tokens)?;
+                    span = span.to(ty.span());
+                    ty
+                },
 
-            None => TypeName::Unspecified(ident.span().clone()),
+                None => TypeName::Unspecified(func_kw.into_span()),
+            }
+        } else {
+            TypeName::Unspecified(func_kw.into_span())
         };
 
         let mods = DeclMod::parse_seq(tokens)?;
@@ -215,6 +267,7 @@ impl FunctionDecl<Span> {
 
         Ok(FunctionDecl {
             name: ident,
+            kind,
             span,
             return_ty,
             params,
@@ -384,7 +437,11 @@ impl<A: Annotation> Spanned for FunctionDecl<A> {
 
 impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function ")?;
+        write!(f, "{}", match self.kind {
+            FunctionDeclKind::Function => "function",
+            FunctionDeclKind::ClassMethod => "class function",
+            FunctionDeclKind::Constructor => "constructor",
+        })?;
 
         write!(f, "{}", self.name)?;
         if let Some(ty_list) = &self.type_params {

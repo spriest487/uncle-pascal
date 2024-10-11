@@ -446,7 +446,11 @@ impl FunctionSig {
         }
     }
 
-    pub fn new_no_args_method_call(&self, target: Expr, self_arg: Expr) -> MethodCallNoArgs {
+    pub fn new_no_args_method_call(&self,
+        target: Expr,
+        owning_type: Type,
+        self_arg: Option<Expr>
+    ) -> MethodCallNoArgs {
         let span = target.span().clone();
         let func_val_annotation = match &self.return_ty {
             Type::Nothing => Typed::Untyped(span),
@@ -456,6 +460,7 @@ impl FunctionSig {
         MethodCallNoArgs {
             annotation: func_val_annotation,
             self_arg,
+            owning_type,
             target,
         }
     }

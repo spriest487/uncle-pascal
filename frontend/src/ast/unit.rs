@@ -18,7 +18,7 @@ use crate::ast::Stmt;
 use crate::ast::TypeDecl;
 use crate::ast::TypeDeclItem;
 pub use crate::parse::MatchOneOf;
-use crate::parse::Parse;
+use crate::parse::{Matcher, Parse};
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
@@ -161,9 +161,9 @@ impl Unit<Span> {
             if !(has_interface || has_implementation || init_kw.is_some()) {
                 // empty units are invalid! use this to throw an error
                 tokens.match_one(unit_kind_kw_match
-                    .or(Keyword::Interface)
-                    .or(Keyword::Implementation)
-                    .or(Keyword::Initialization))?;
+                    | Keyword::Interface
+                    | Keyword::Implementation
+                    | Keyword::Initialization)?;
             }
         }
 
@@ -202,11 +202,19 @@ fn parse_decls_section(
     Ok(true)
 }
 
+fn unit_binding_start_matcher() -> Matcher {
+    Keyword::Const | Keyword::Var
+}
+
+fn unit_func_start_matcher() -> Matcher {
+    Keyword::Function | Keyword::Class | Keyword::Procedure | Keyword::Constructor
+}
+
 fn parse_unit_decl(tokens: &mut TokenStream, part_kw: Keyword) -> ParseResult<UnitDecl<Span>> {
     let decl_start = UnitDecl::start_matcher();
 
     let decl = match tokens.look_ahead().match_one(decl_start) {
-        Some(tt) if tt.is_keyword(Keyword::Function) || tt.is_keyword(Keyword::Procedure) => {
+        Some(tt) if unit_func_start_matcher().is_match(&tt) => {
             parse_unit_func_decl(part_kw, tokens)?
         },
 
@@ -218,8 +226,8 @@ fn parse_unit_decl(tokens: &mut TokenStream, part_kw: Keyword) -> ParseResult<Un
             decl: UseDecl::parse(tokens)?,
         },
 
-        Some(tt) if tt.is_keyword(Keyword::Const) || tt.is_keyword(Keyword::Var) => UnitDecl::GlobalBinding {
-            decl: GlobalBinding::parse(tokens)?,
+        Some(tt) if unit_binding_start_matcher().is_match(&tt) => UnitDecl::Binding {
+            decl: UnitBinding::parse(tokens)?,
         },
 
         Some(unexpected_tt) => {
@@ -231,8 +239,8 @@ fn parse_unit_decl(tokens: &mut TokenStream, part_kw: Keyword) -> ParseResult<Un
         },
 
         None => {
-            let err =
-                ParseError::UnexpectedEOF(UnitDecl::start_matcher(), tokens.context().clone());
+            let expected = UnitDecl::start_matcher();
+            let err = ParseError::UnexpectedEOF(expected, tokens.context().clone());
             return Err(TracedError::trace(err));
         },
     };

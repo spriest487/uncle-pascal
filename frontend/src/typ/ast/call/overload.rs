@@ -35,7 +35,7 @@ pub enum OverloadCandidate {
         sig: Rc<FunctionSig>,
     },
     Method {
-        iface_ty: Type,
+        owning_ty: Type,
         ident: Ident,
         method: Method,
         sig: Rc<FunctionSig>,
@@ -50,7 +50,7 @@ impl OverloadCandidate {
                 let sig = FunctionSig::of_decl(&method.decl);
                 
                 OverloadCandidate::Method {
-                    iface_ty,
+                    owning_ty: iface_ty,
                     ident,
                     sig: Rc::new(sig),
                     method,
@@ -87,7 +87,7 @@ impl fmt::Display for OverloadCandidate {
             OverloadCandidate::Function { decl_name, .. } => {
                 write!(f, "function {}", decl_name)
             },
-            OverloadCandidate::Method { iface_ty, ident, .. } => {
+            OverloadCandidate::Method { owning_ty: iface_ty, ident, .. } => {
                 write!(f, "method {}.{}", iface_ty, ident)
             },
         }
@@ -141,7 +141,7 @@ pub fn resolve_overload(
         // we don't actually know at this point whether that implementation exists!
         if self_arg.is_none() {
             if let OverloadCandidate::Method {
-                iface_ty,
+                owning_ty: iface_ty,
                 ident: method_ident,
                 ..
             } = &candidates[0] {
@@ -239,7 +239,7 @@ pub fn resolve_overload(
                 let candidate = &candidates[*i];
                 match candidate {
                     OverloadCandidate::Function { .. } => true,
-                    OverloadCandidate::Method { method, iface_ty, .. } => {
+                    OverloadCandidate::Method { method, owning_ty: iface_ty, .. } => {
                         iface_ty.get_current_access(ctx) >= method.access
                     }
                 }

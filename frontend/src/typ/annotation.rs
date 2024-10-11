@@ -72,7 +72,7 @@ impl OverloadTyped {
                 ident: method.decl.name.ident.clone(),
                 method,
                 sig,
-                iface_ty,
+                owning_ty: iface_ty,
             }],
         }
     }
@@ -113,11 +113,11 @@ impl From<OverloadTyped> for Typed {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodTyped {
-    pub iface_ty: Type,
+    pub owning_ty: Type,
 
     pub method_ident: Ident,
     pub method_access: Access,
-    
+
     pub span: Span,
 
     pub method_sig: Rc<FunctionSig>,
@@ -128,7 +128,7 @@ impl MethodTyped {
         let sig = FunctionSig::of_decl(&method.decl);
 
         Self {
-            iface_ty,
+            owning_ty: iface_ty,
             method_ident: method.decl.name.ident.clone(),
             method_access: method.access,
             span,

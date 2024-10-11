@@ -131,6 +131,7 @@ impl<'m> Builder<'m> {
     pub fn translate_method(
         &mut self,
         owning_ty: typ::Type,
+        self_ty: typ::Type,
         method: Ident,
         mut call_ty_args: Option<typ::TypeArgList>
     ) -> FunctionInstance {
@@ -140,7 +141,7 @@ impl<'m> Builder<'m> {
                 .apply_type_args_by_name(&self.generic_context, &self.generic_context);
         }
         
-        self.module.translate_method_impl(owning_ty, method, call_ty_args)
+        self.module.translate_method_impl(owning_ty, self_ty, method, call_ty_args)
     }
 
     pub fn translate_func(

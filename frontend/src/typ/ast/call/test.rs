@@ -55,7 +55,7 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
 
                     OverloadCandidate::Method {
                         ident,
-                        iface_ty: explicit_impl.clone(),
+                        owning_ty: explicit_impl.clone(),
                         sig: Rc::new(sig),
                         method,
                     }
@@ -288,7 +288,7 @@ fn specializes_method_call_by_arg_ty() {
             assert_eq!("Test.B", method_call.args[1].annotation().ty().to_string());
             
             assert_eq!("A", method_call.ident.to_string());
-            assert_eq!("Test.C", method_call.iface_type.to_string());
+            assert_eq!("Test.C", method_call.owning_type.to_string());
             
             assert_eq!("Test.B", method_call.type_args.as_ref().unwrap().items[0].to_string());
         }
@@ -331,7 +331,7 @@ fn specializes_method_call_by_lambda_arg_ty() {
             assert_eq!("function: Test.B", method_call.args[1].annotation().ty().to_string());
 
             assert_eq!("A", method_call.ident.to_string());
-            assert_eq!("Test.C", method_call.iface_type.to_string());
+            assert_eq!("Test.C", method_call.owning_type.to_string());
 
             assert_eq!("Test.B", method_call.type_args.as_ref().unwrap().items[0].to_string());
         }
@@ -390,7 +390,7 @@ fn overload_with_accessible_method_is_ambiguous() {
             candidates
                 .iter()
                 .find(|candidate| match candidate {
-                    OverloadCandidate::Method { iface_ty, ident, .. } => {
+                    OverloadCandidate::Method { owning_ty: iface_ty, ident, .. } => {
                         iface_ty.to_string() == "UnitA.MyClass" && ident.name.as_str() == "A"
                     }
                     _ => false,

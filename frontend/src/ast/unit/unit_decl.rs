@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        Annotation, GlobalBinding, FunctionDecl, FunctionDef, TypeDecl, UseDecl, unit::parse_unit_decl,
+        Annotation, UnitBinding, FunctionDecl, FunctionDef, TypeDecl, UseDecl, unit::parse_unit_decl,
     },
     Keyword,
     parse::{
@@ -26,7 +26,7 @@ pub enum UnitDecl<A: Annotation> {
     FunctionDef { def: Rc<FunctionDef<A>> },
     Type { decl: TypeDecl<A> },
     Uses { decl: UseDecl },
-    GlobalBinding { decl: GlobalBinding<A> },
+    Binding { decl: UnitBinding<A> },
 }
 
 impl<A: Annotation> Spanned for UnitDecl<A> {
@@ -40,7 +40,7 @@ impl<A: Annotation> Spanned for UnitDecl<A> {
                 decl: type_decl, ..
             } => type_decl.span(),
             UnitDecl::Uses { decl: use_decl } => use_decl.span(),
-            UnitDecl::GlobalBinding { decl, .. } => decl.span(),
+            UnitDecl::Binding { decl, .. } => decl.span(),
         }
     }
 }
@@ -54,7 +54,7 @@ impl<A: Annotation> fmt::Display for UnitDecl<A> {
             UnitDecl::FunctionDef { def: func_def, .. } => write!(f, "{}", func_def),
             UnitDecl::Type { decl: ty_decl, .. } => write!(f, "{}", ty_decl),
             UnitDecl::Uses { decl: uses } => write!(f, "{}", uses),
-            UnitDecl::GlobalBinding { decl, .. } => write!(f, "{}", decl),
+            UnitDecl::Binding { decl, .. } => write!(f, "{}", decl),
         }
     }
 }
@@ -63,6 +63,8 @@ impl UnitDecl<Span> {
     pub fn start_matcher() -> Matcher {
         Keyword::Function
             .or(Keyword::Procedure)
+            .or(Keyword::Constructor)
+            .or(Keyword::Class)
             .or(Keyword::Uses)
             .or(Keyword::Type)
             .or(Keyword::Const)

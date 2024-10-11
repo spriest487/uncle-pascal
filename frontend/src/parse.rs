@@ -139,11 +139,7 @@ impl DiagnosticOutput for ParseError {
             ParseError::InvalidUnitFilename(..) => None,
             
             ParseError::UnexpectedToken(tt, Some(expected)) => {
-                if expected.is_multiline_display() {
-                    Some(format!("expected {}\nfound {}", expected, tt))
-                } else {
-                    Some(format!("expected {}, found {}", expected, tt))
-                }
+                Some(format!("found {}, expected {}", tt, expected))
             }
 
             ParseError::UnexpectedToken(tt, None) => Some(format!("unexpected {}", tt)),

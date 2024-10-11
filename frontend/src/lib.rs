@@ -8,31 +8,38 @@ pub mod typ;
 pub mod pp;
 pub mod emit;
 
-use std::path::PathBuf;
-use std::rc::Rc;
-pub use ast::Ident;
-pub use ast::keyword::Keyword;
-pub use ast::operators::CompoundAssignmentOperator;
-pub use ast::operators::Operator;
-pub use ast::operators::Position;
-use common::{BuildOptions, TracedError};
-use common::span::{Location, Span};
-use crate::ast::{IdentPath, Unit};
-use crate::emit::{ir, IROptions};
-use crate::parse::{ParseError, ParseResult};
-use crate::pp::error::PreprocessorError;
-use crate::pp::PreprocessedUnit;
-use crate::typ::{Module, TypeResult};
 pub use self::consts::EnumConstant;
 pub use self::consts::IntConstant;
 pub use self::consts::RealConstant;
 pub use self::consts::SetConstant;
 pub use self::token_tree::DelimiterPair;
 pub use self::token_tree::Separator;
-pub use self::token_tree::TokenTree;
 pub use self::token_tree::TokenStream;
+pub use self::token_tree::TokenTree;
 pub use self::token_tree::TokenizeError;
 pub use self::token_tree::TokenizeResult;
+pub use ast::keyword::Keyword;
+pub use ast::operators::CompoundAssignmentOperator;
+pub use ast::operators::Operator;
+pub use ast::operators::Position;
+pub use ast::Ident;
+
+use crate::ast::IdentPath;
+use crate::ast::Unit;
+use crate::emit::ir;
+use crate::emit::IROptions;
+use crate::parse::ParseError;
+use crate::parse::ParseResult;
+use crate::pp::error::PreprocessorError;
+use crate::pp::PreprocessedUnit;
+use crate::typ::Module;
+use crate::typ::TypeResult;
+use common::span::Location;
+use common::span::Span;
+use common::BuildOptions;
+use common::TracedError;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 pub fn preprocess(
     filename: impl Into<PathBuf>,

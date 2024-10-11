@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use crate::ast::TypeConstraint;
+use crate::ast::{FunctionDeclKind, TypeConstraint};
 use crate::ast::TypeParam;
 use crate::typ::ast::specialize_func_decl;
 use crate::typ::ast::FunctionDecl;
@@ -79,6 +79,7 @@ fn make_decl(
             owning_ty,
             span: test_span.clone(),
         },
+        kind: FunctionDeclKind::Function,
         params: params
             .into_iter()
             .enumerate()

@@ -2,7 +2,7 @@
 mod test;
 
 use crate::ast;
-use crate::ast::FunctionName;
+use crate::ast::{FunctionDeclKind, FunctionName};
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
@@ -122,13 +122,20 @@ pub fn typecheck_func_decl(
         },
 
         (Some(type_qual), Some(..)) => {
-            return Err(TypeError::InvalidMethodExplicitInterface {
+            return Err(TypeError::InvalidMethodOwningType {
                 method_ident: decl.name.ident.clone(),
                 span: type_qual.span().clone()
             });
         }
 
         (None, Some(enclosing_ty)) => Some(enclosing_ty.clone()),
+
+        (None, None) if is_def && decl.kind == FunctionDeclKind::Constructor => {
+            return Err(TypeError::CtorMethodDefMissingType { 
+                span: decl.name.span().clone(),
+                ident: decl.name.ident.clone(),
+            })
+        }
 
         _ => None,
     };
@@ -152,14 +159,14 @@ pub fn typecheck_func_decl(
         
         let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
 
-        if is_def {
-            if decl.name.owning_ty_qual.is_some() && !decl.mods.is_empty() {
-                return Err(TypeError::InvalidMethodModifiers {
-                    mods: decl_mods,
-                    span: decl.span.clone(),
-                })
-            }
-        } else if let Some(extern_mod) = decl.get_mod(DeclMod::EXTERNAL_WORD) {
+        if owning_ty.is_some() && !decl.mods.is_empty() {
+            return Err(TypeError::InvalidMethodModifiers {
+                mods: decl_mods,
+                span: decl.span.clone(),
+            })
+        }
+
+        if let Some(extern_mod) = decl.get_mod(DeclMod::EXTERNAL_WORD) {
             if let Some(decl_type_params) = &decl.type_params {
                 let ty_args_span = decl_type_params.items[0].name.span().to(decl_type_params
                     .items
@@ -183,21 +190,33 @@ pub fn typecheck_func_decl(
             },
             None => None,
         };
+        
+        let return_ty = match decl.kind {
+            FunctionDeclKind::Function | FunctionDeclKind::ClassMethod =>  match &decl.return_ty {
+                ast::TypeName::Unspecified(..) => Type::Nothing,
+                ty_name => typecheck_type(ty_name, ctx)?,
+            },
 
-        let return_ty = match &decl.return_ty {
-            ast::TypeName::Unspecified(..) => Type::Nothing,
-            ty_name => typecheck_type(ty_name, ctx)?,
+            FunctionDeclKind::Constructor => {
+                assert!(
+                    !decl.return_ty.is_known(), 
+                    "parser must not produce constructors with explicit return types"
+                );
+                owning_ty
+                    .clone()
+                    .expect("owning type must not be null for constructors")
+            }
         };
 
         let params: Vec<FunctionParam>;
-        
+
         match (&owning_ty, &enclosing_ty) {
             // free function with no owning type
             (None, None) => {
                 params = typecheck_params(decl, None, ctx)?;
             },
             
-            // method definition or free interface implementation decl
+            // method definition
             (Some(explicit_owning_ty), None) => {
                 let explicit_ty_span = decl
                     .name
@@ -206,17 +225,19 @@ pub fn typecheck_func_decl(
                     .unwrap()
                     .span();
 
-                // if this is an interface, it's the *implementation* of one, so it has the 
-                // real types substituted into for any `Self` occurrences. if it's a method
-                // definition, Self is a known type and should already be translated as the
-                // actual type itself, parameterized by its own type params.
-                let self_arg_ty = specialize_self_ty(
-                    explicit_owning_ty.clone(),
-                    explicit_ty_span,
-                    ctx
-                )?;
+                // in a method definition, Self is a known type and should already be translated 
+                // as the actual type itself, parameterized by its own type params.
+                let self_arg_ty = if !decl.kind.is_static_method() {
+                    Some(specialize_self_ty(
+                        explicit_owning_ty.clone(),
+                        explicit_ty_span,
+                        ctx
+                    )?)
+                } else {
+                    None
+                };
 
-                params = typecheck_params(decl, Some(self_arg_ty), ctx)?;
+                params = typecheck_params(decl, self_arg_ty, ctx)?;
 
                 let param_sigs = params.iter()
                     .cloned()
@@ -228,7 +249,7 @@ pub fn typecheck_func_decl(
                     type_params.clone());
 
                 match &explicit_owning_ty {
-                    // free interface implementation decl
+                    // can't define interface methods
                     Type::Interface(..) => {
                         return Err(TypeError::AbstractMethodDefinition {
                             span: decl.span.clone(),
@@ -240,10 +261,11 @@ pub fn typecheck_func_decl(
                     // method definition
                     _ => match explicit_owning_ty.full_path() {
                         Some(ty_name) => {
-                            validate_method(
+                            validate_method_def_matches_decl(
                                 &ty_name,
                                 &decl.name.ident,
                                 &method_sig,
+                                decl.kind,
                                 ctx,
                                 decl.span(),
                             ).map_err(|err| {
@@ -261,7 +283,7 @@ pub fn typecheck_func_decl(
                 }
             }
 
-            // method decl
+            // method decl within a type
             (_, Some(enclosing_ty)) => {
                 // it may be possible later to specify an explicit implemented interface within the
                 // body of another type, in which case this assertion would no longer be valid
@@ -275,15 +297,16 @@ pub fn typecheck_func_decl(
                 // and the type of `self` is the generic `Self` (to stand in for implementing
                 // types in static interfaces). if it's NOT an interface, it must be a concrete
                 // type, in which case the type of self is just that type parameterized by itself
-                let self_param_ty = match &enclosing_ty {
-                    Type::Interface(..) => Type::MethodSelf,
-                    _ => {
-                        let at = decl.name.ident.span();
-                        specialize_self_ty(enclosing_ty.clone(), at, ctx)?
-                    }
+                let self_param_ty = if let Type::Interface(..) = &enclosing_ty {
+                    Some(Type::MethodSelf)
+                } else if !decl.kind.is_static_method() {
+                    let at = decl.name.ident.span();
+                    Some(specialize_self_ty(enclosing_ty.clone(), at, ctx)?)
+                } else {
+                    None
                 };
 
-                params = typecheck_params(decl, Some(self_param_ty), ctx)?;
+                params = typecheck_params(decl, self_param_ty, ctx)?;
             }
         };
 
@@ -293,6 +316,7 @@ pub fn typecheck_func_decl(
                 owning_ty,
                 span: decl.name.span(),
             },
+            kind: decl.kind,
             params,
             type_params: type_params.clone(),
             return_ty,
@@ -397,10 +421,11 @@ fn typecheck_params(
     Ok(params)
 }
 
-fn validate_method(
+fn validate_method_def_matches_decl(
     owning_ty_name: &IdentPath,
     method_ident: &Ident,
     method_sig: &FunctionSig,
+    method_kind: FunctionDeclKind,
     ctx: &Context,
     def_span: &Span,
 ) -> NameResult<()> {
@@ -412,16 +437,16 @@ fn validate_method(
             member: method_ident.clone(),
         }),
 
-        Some(method) => {
-            let method_decl_sig = FunctionSig::of_decl(&method.decl);
+        Some(declared_method) => {
+            let declared_sig = FunctionSig::of_decl(&declared_method.decl);
 
-            if *method_sig != method_decl_sig {
-                // eprintln!("expect: {:#?}", method_decl_sig);
-                // eprintln!("actual: {:#?}", method_sig);
+            if *method_sig != declared_sig || declared_method.decl.kind != method_kind {
+                // eprintln!("expect: {:?} {:#?}",  declared_method.decl.kind, declared_sig);
+                // eprintln!("actual: {:?} {:#?}", method_kind, method_sig);
                 
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
-                    decl: method.decl.span.clone(),
+                    decl: declared_method.decl.span.clone(),
                     ident: owning_ty_name.clone().child(method_ident.clone()),
                 })
             } else {

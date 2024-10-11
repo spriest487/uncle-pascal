@@ -184,7 +184,9 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypeResult<()> {
 
         ast::Call::MethodNoArgs(call) => {
             expect_expr_initialized(&call.target, ctx)?;
-            expect_expr_initialized(&call.self_arg, ctx)?;
+            if let Some(self_arg) = &call.self_arg {
+                expect_expr_initialized(self_arg, ctx)?;
+            }
         }
 
         ast::Call::Function(func_call) => {
