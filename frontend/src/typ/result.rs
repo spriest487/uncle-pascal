@@ -213,6 +213,12 @@ pub enum TypeError {
         span: Span,
     },
 
+    InvalidBaseType { 
+        ty: Type,
+        invalid_base_ty: Type,
+        span: Span,
+    },
+
     AbstractMethodDefinition {
         owning_ty: Type,
         method: Ident,
@@ -360,7 +366,7 @@ impl Spanned for TypeError {
             TypeError::NoMethodContext { span, .. } => span,
             TypeError::InvalidImplementation { span, .. } => span,
             TypeError::AbstractMethodDefinition { span, .. } => span,
-
+            TypeError::InvalidBaseType { span, .. } => span,
             TypeError::Private { span, .. } => span,
             TypeError::PrivateConstructor { span, .. } => span,
             TypeError::TypeMemberInaccessible { span, .. } => span,
@@ -475,6 +481,10 @@ impl DiagnosticOutput for TypeError {
             
             TypeError::InvalidImplementation { .. } => {
                 "Incomplete interface implementation"
+            }
+
+            TypeError::InvalidBaseType { .. } => {
+                "Invalid base type"
             }
             
             TypeError::AbstractMethodDefinition { .. } => "Cannot define abstract method",
@@ -939,8 +949,12 @@ impl fmt::Display for TypeError {
                 Ok(())
             }
             
+            TypeError::InvalidBaseType { ty, invalid_base_ty, .. } => {
+                write!(f, "`{}` is not valid as a base type for `{}`", invalid_base_ty, ty)
+            }
+            
             TypeError::AbstractMethodDefinition { owning_ty, method, .. } => {
-                writeln!(f, "method {}.{} is abstract and cannot be defined", owning_ty, method)
+                writeln!(f, "method `{}.{}` is abstract and cannot be defined", owning_ty, method)
             }
 
             TypeError::Private { name, .. } => {

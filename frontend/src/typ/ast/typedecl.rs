@@ -51,10 +51,19 @@ pub fn typecheck_struct_decl(
         StructKind::Class => Type::class(name.clone()),
     };
 
-    let implements: Vec<Type> = struct_def.implements
-        .iter()
-        .map(|implements_ty| typecheck_type(implements_ty, ctx))
-        .collect::<TypeResult<_>>()?;
+    let mut implements = Vec::new();
+    for implements_name in &struct_def.implements {
+        let implements_ty = typecheck_type(implements_name, ctx)?;
+        match implements_ty {
+            iface_ty @ Type::Interface(..) => implements.push(iface_ty),
+
+            invalid_base_ty => return Err(TypeError::InvalidBaseType {
+                invalid_base_ty,
+                span: implements_name.span().clone(),
+                ty: self_ty.clone(),
+            }),
+        }
+    }
 
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(
@@ -129,6 +138,8 @@ pub fn typecheck_struct_decl(
                     mismatched: mismatched_methods,
                 });
             }
+        } else {
+            unreachable!("already checked that only valid types are accepted")
         }
     }
 

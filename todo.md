@@ -3,6 +3,7 @@
 * weak refs
 * access modifiers for fields
 * static (class) methods
+* single-char string literals convert to Byte
 
 # big features
 
