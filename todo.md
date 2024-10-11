@@ -1,13 +1,11 @@
 # critical
 
-* decl names shadowing unit names
 * weak refs
 * access modifiers for fields
 * static (class) methods
 
 # big features
 
-* member access modifiers
 * explicit overloads
 * enums/sets/range types
 * generic interfaces
