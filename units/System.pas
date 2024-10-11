@@ -14,22 +14,21 @@ type
     Single = Real32;
 
     String = class of Displayable, Comparable
-        private
-            chars: ^Byte;
-            len: Int32;
+        chars: ^Byte;
+        len: Int32;
 
-        public
-            function Length: Integer;
-            
-            function Compare(other: String): Integer;
-            function ToString: String;
-            
-            function SubString(at, len: Integer): String;
-            function CharAt(at: Integer): Byte;
-            function Concat(other: String): String;
-            function Trim: String;
-            
-            function ToBytes(bytes: ^Byte; bytesLen: Integer);
+    public
+        function Length: Integer;
+        
+        function Compare(other: String): Integer;
+        function ToString: String;
+        
+        function SubString(at, len: Integer): String;
+        function CharAt(at: Integer): Byte;
+        function Concat(other: String): String;
+        function Trim: String;
+        
+        function ToBytes(bytes: ^Byte; bytesLen: Integer);
     end;
 
     Disposable = interface
@@ -38,32 +37,30 @@ type
 
     Box[T] = class
         value: T;
-        
-        public
-            function Get: T;
+    public
+        function Get: T;
     end;
 
     Option[T] = variant
         Some: T;
-        None;
-        
-        public
-            function Get: T;
-            function IsSome: Boolean;
+        None;        
+    public
+        function Get: T;
+        function IsSome: Boolean;
     end;
 
     Result[T, E] = variant
         Ok: T;
         Error: E;
         
-        public
-            function Get: T;
-            function GetError: E;
-            
-            function IsOk: Boolean;
-            function IsError: Boolean;
-    
-            function Then[TNext](f: function(T): Result[TNext, E]): Result[TNext, E];
+    public
+        function Get: T;
+        function GetError: E;
+        
+        function IsOk: Boolean;
+        function IsError: Boolean;
+
+        function Then[TNext](f: function(T): Result[TNext, E]): Result[TNext, E];
     end;
 
     Comparable = interface
