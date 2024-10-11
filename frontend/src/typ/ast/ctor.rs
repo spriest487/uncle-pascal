@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use crate::ast;
 use crate::typ::ast::cast::implicit_conversion;
 use crate::typ::ast::create_default_literal;
@@ -64,35 +67,31 @@ pub fn typecheck_object_ctor(
     }
 
     if !ctx.is_visible(&ty_name) {
-        return Err(TypeError::Private {
+        return Err(TypeError::NameNotVisible {
             name: ty_name,
             span,
         });
     }
 
-    if !ctx.is_constructor_accessible(&ctor_ty) {
-        return Err(TypeError::PrivateConstructor { ty: ctor_ty, span });
-    }
-
-    let mut expect_members: LinkedHashMap<_, _> = ctor_ty
+    let mut expect_fields: LinkedHashMap<_, _> = ctor_ty
         .fields(ctx)
         .map_err(|err| TypeError::NameError {
             err,
             span: span.clone(),
         })?
         .into_iter()
-        .map(|member| (member.ident, (member.ty, member.span)))
+        .map(|member| (member.ident, (member.ty, member.span, member.access)))
         .collect();
 
-    let mut members: Vec<ObjectCtorMember> = Vec::new();
+    let mut fields: Vec<ObjectCtorMember> = Vec::new();
 
     for arg in &ctor.args.members {
-        let find_prev = members
+        // check for duplicate items for the same field
+        let find_prev = fields
             .iter()
             .find(|a| a.ident == arg.ident);
 
         if let Some(prev) = find_prev {
-            // ctor has duplicate named arguments
             return Err(TypeError::DuplicateNamedArg {
                 name: arg.ident.clone(),
                 span: arg.span().clone(),
@@ -100,7 +99,7 @@ pub fn typecheck_object_ctor(
             });
         }
 
-        let (member_ty, _member_span) = match expect_members.remove(&arg.ident) {
+        let (member_ty, _member_span, member_access) = match expect_fields.remove(&arg.ident) {
             Some(member) => member,
             None => {
                 // ctor has a named argument which doesn't exist in the type
@@ -114,6 +113,15 @@ pub fn typecheck_object_ctor(
                 });
             },
         };
+        
+        if ctor_ty.get_current_access(ctx) < member_access {
+            return Err(TypeError::TypeMemberInaccessible {
+                span: arg.span.clone(),
+                access: member_access,
+                ty: ctor_ty,
+                member: arg.ident.clone(),
+            });
+        }
 
         let value = implicit_conversion(
             typecheck_expr(&arg.value, &member_ty, ctx)?,
@@ -121,7 +129,7 @@ pub fn typecheck_object_ctor(
             ctx,
         )?;
 
-        members.push(ObjectCtorMember {
+        fields.push(ObjectCtorMember {
             ident: arg.ident.clone(),
             value,
             span: arg.span.clone(),
@@ -130,13 +138,13 @@ pub fn typecheck_object_ctor(
 
     // any remaining members must have valid default values
     let mut missing_members = Vec::new();
-    for (member_ident, (member_ty, member_span)) in expect_members {
+    for (member_ident, (member_ty, member_span, _)) in expect_fields {
         let has_default = member_ty
             .has_default(ctx)
             .map_err(|e| TypeError::from_name_err(e, member_span.clone()))?;
 
         if has_default {
-            members.push(ObjectCtorMember {
+            fields.push(ObjectCtorMember {
                 ident: member_ident,
                 span: member_span.clone(),
                 value: create_default_literal(member_ty, ctor.annotation.clone()),
@@ -156,7 +164,7 @@ pub fn typecheck_object_ctor(
 
     let args = ObjectCtorArgs {
         span: ctor.args.span.clone(),
-        members,
+        members: fields,
     };
 
     let annotation = TypedValue {

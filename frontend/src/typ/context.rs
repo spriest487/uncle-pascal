@@ -1626,13 +1626,6 @@ impl Context {
     pub fn get_access(&self, name: &IdentPath) -> Access {
         self.scopes.get_access(name)
     }
-
-    pub fn is_constructor_accessible(&self, ty: &Type) -> bool {
-        match ty {
-            Type::Class(class) => self.namespace().is_parent_of(&class.full_path),
-            _ => true,
-        }
-    }
 }
 
 fn ambig_paths<'a>(options: impl IntoIterator<Item = (Type, Ident)>) -> Vec<IdentPath> {

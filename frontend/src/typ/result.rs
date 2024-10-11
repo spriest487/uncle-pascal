@@ -225,12 +225,8 @@ pub enum TypeError {
         span: Span,
     },
 
-    Private {
+    NameNotVisible {
         name: IdentPath,
-        span: Span,
-    },
-    PrivateConstructor {
-        ty: Type,
         span: Span,
     },
 
@@ -367,8 +363,7 @@ impl Spanned for TypeError {
             TypeError::InvalidImplementation { span, .. } => span,
             TypeError::AbstractMethodDefinition { span, .. } => span,
             TypeError::InvalidBaseType { span, .. } => span,
-            TypeError::Private { span, .. } => span,
-            TypeError::PrivateConstructor { span, .. } => span,
+            TypeError::NameNotVisible { span, .. } => span,
             TypeError::TypeMemberInaccessible { span, .. } => span,
             
             TypeError::UnsafeConversionNotAllowed { span, .. } => span,
@@ -491,11 +486,10 @@ impl DiagnosticOutput for TypeError {
 
             TypeError::NoMethodContext { .. } => "Method requires enclosing type",
 
-            TypeError::Private { .. } => "Name not exported",
+            TypeError::NameNotVisible { .. } => "Name is not visible",
             
             TypeError::TypeMemberInaccessible { .. } => "Member is inaccessible",
 
-            TypeError::PrivateConstructor { .. } => "Type has private constructor",
             TypeError::DuplicateParamName { .. } => "Duplicate parameter name",
             TypeError::DuplicateNamedArg { .. } => "Duplicate named argument",
             TypeError::UnsafeConversionNotAllowed { .. } => "Conversion not allowed in a safe context",
@@ -957,12 +951,8 @@ impl fmt::Display for TypeError {
                 writeln!(f, "method `{}.{}` is abstract and cannot be defined", owning_ty, method)
             }
 
-            TypeError::Private { name, .. } => {
-                write!(f, "`{}` is not exported and can only be referenced in the unit where it is declared", name)
-            }
-
-            TypeError::PrivateConstructor { ty, .. } => {
-                write!(f, "`{}` is a private type constructor and can only be constructed in the unit where it is declared", ty)
+            TypeError::NameNotVisible { name, .. } => {
+                write!(f, "`{}` is not is not visible in the current context", name)
             }
             
             TypeError::TypeMemberInaccessible { ty, member, access, .. } => {
