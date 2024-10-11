@@ -52,8 +52,9 @@ pub struct Binding {
 
 #[derive(Clone, Debug)]
 pub enum InstanceMember {
-    Data {
+    Field {
         ty: Type,
+        access: Access,
     },
     Method {
         iface_ty: Type,
@@ -1306,7 +1307,10 @@ impl Context {
             .collect();
 
         match (data_member, matching_methods.len()) {
-            (Some(data_member), 0) => Ok(InstanceMember::Data { ty: data_member.ty }),
+            (Some(field), 0) => Ok(InstanceMember::Field { 
+                ty: field.ty,
+                access: field.access,
+            }),
 
             // unambiguous method
             (None, 1) => match matching_methods.last().unwrap() {

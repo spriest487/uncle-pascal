@@ -1,7 +1,11 @@
+#[cfg(test)]
+mod test;
+
 use crate::ast;
-use crate::ast::{Ident, INTERFACE_METHOD_ACCESS};
+use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
+use crate::ast::INTERFACE_METHOD_ACCESS;
 use crate::typ::annotation::VariantCtorTyped;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::implicit_conversion;
@@ -625,7 +629,7 @@ fn typecheck_type_member(
         return Err(TypeError::TypeMemberInaccessible {
             member: member_ident.clone(),
             ty: ty.clone(),
-            access:member_access,
+            access: member_access,
             span,
         });
     }
@@ -684,7 +688,16 @@ pub fn typecheck_member_value(
         )
         .into(),
 
-        InstanceMember::Data { ty: member_ty } => {
+        InstanceMember::Field { ty: member_ty, access: field_access } => {
+            if base_ty.get_current_access(ctx) < field_access {
+                return Err(TypeError::TypeMemberInaccessible {
+                    member: member_ident.clone(),
+                    ty: base_ty.clone(),
+                    access: field_access,
+                    span,
+                });
+            }
+            
             /* class members are always mutable because a mutable class ref is only
             a mutable *reference*. record and variant members are accessed by readonly value */
             let value_kind = match base_ty {
