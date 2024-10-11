@@ -2,11 +2,11 @@ mod symbol;
 
 pub use symbol::*;
 
+use crate::ast::Access;
 use crate::ast::Annotation;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::typ::ast::Expr;
-use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
 use crate::typ::ast::Method;
 use crate::typ::ast::OverloadCandidate;
@@ -114,19 +114,23 @@ impl From<OverloadTyped> for Typed {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodTyped {
     pub iface_ty: Type,
+
     pub method_ident: Ident,
+    pub method_access: Access,
+    
     pub span: Span,
 
     pub method_sig: Rc<FunctionSig>,
 }
 
 impl MethodTyped {
-    pub fn new(decl: &FunctionDecl, iface_ty: Type, span: Span) -> Self {
-        let sig = FunctionSig::of_decl(decl);
+    pub fn new(method: &Method, iface_ty: Type, span: Span) -> Self {
+        let sig = FunctionSig::of_decl(&method.decl);
 
         Self {
             iface_ty,
-            method_ident: decl.name.ident.clone(),
+            method_ident: method.decl.name.ident.clone(),
+            method_access: method.access,
             span,
             method_sig: Rc::new(sig),
         }

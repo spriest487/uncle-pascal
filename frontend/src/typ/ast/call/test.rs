@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::ast::IdentPath;
+use crate::ast::{Access, IdentPath};
 use crate::parse::TokenStream;
 use crate::pp::Preprocessor;
 use crate::typ::ast::call::overload::resolve_overload;
@@ -459,4 +459,61 @@ fn overload_with_inaccessible_method_is_not_ambiguous() {
     ]);
     
     result.expect("call to A should not be ambiguous");
+}
+
+/// if an inaccessible method and a function have the same name, but only the method matches, 
+/// it should resolve the method and report an access error instead of being ambiguous
+#[test]
+fn overload_resolves_inaccessible_method_if_only_match() {
+    let a_src = r"
+        interface
+        type MyClass = class 
+            private
+                function A;
+        end;
+        
+        function NewMyClass: MyClass;
+        function A(my, extra: MyClass);
+
+        implementation
+        
+        function NewMyClass: MyClass;
+        begin
+            MyClass()
+        end;
+        
+        function MyClass.A;
+        begin
+        end;
+        
+        function A(my, extra: MyClass);
+        begin
+        end;
+
+        end
+    ";
+    let b_src = r"
+        implementation
+        uses UnitA;
+
+        initialization
+            var i := NewMyClass();
+            i.A();
+        end
+    ";
+
+    let result = try_module_from_srcs([
+        ("UnitA", a_src),
+        ("UnitB", b_src),
+    ]);
+
+    match result {
+        Ok(..) => panic!("call to A should be inaccessible"),
+        Err(TypeError::TypeMemberInaccessible { member, access, .. }) => {
+            assert_eq!("A", member.name.as_str());
+            assert_eq!(Access::Private, access);
+        }
+
+        Err(other) => panic!("expected access error, got: {}", other)
+    }
 }

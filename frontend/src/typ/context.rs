@@ -15,7 +15,7 @@ pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
 use crate::ast as syn;
-use crate::ast::{Access, Ident};
+use crate::ast::{Access, Ident, INTERFACE_METHOD_ACCESS};
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::Visibility;
@@ -70,13 +70,13 @@ pub enum InstanceMember {
 
 #[derive(Clone, Debug)]
 pub enum TypeMember {
-    Method { decl: Rc<FunctionDecl>, access: Access },
+    Method(Method),
 }
 
 impl TypeMember {
     pub fn access(&self) -> Access {
         match self {
-            TypeMember::Method { access, .. } => *access,
+            TypeMember::Method(method) => method.access,
         }
     }
 }
@@ -1401,10 +1401,10 @@ impl Context {
                         }
                     })?;
 
-                Ok(TypeMember::Method {
+                Ok(TypeMember::Method(Method {
                     decl: method_decl.decl.clone(),
-                    access: Access::Published,
-                })
+                    access: INTERFACE_METHOD_ACCESS,
+                }))
             }
 
             _ => Err(NameError::MemberNotFound {

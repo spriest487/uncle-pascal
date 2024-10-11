@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::ast::Ident;
+use crate::ast::{Ident, INTERFACE_METHOD_ACCESS};
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::typ::annotation::VariantCtorTyped;
@@ -320,6 +320,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         annotation: MethodTyped {
             iface_ty: displayable_ty,
             method_ident: to_string_ident,
+            method_access: INTERFACE_METHOD_ACCESS,
             span: span.clone(),
             method_sig: to_string_sig,
         }
@@ -507,11 +508,12 @@ fn typecheck_member_of(
                             Ok(Expr::from(call))
                         }
 
-                        Some(OverloadCandidate::Method { sig, ident, iface_ty, .. }) => {
+                        Some(OverloadCandidate::Method { sig, ident, iface_ty, method, .. }) => {
                             let sig = sig.clone();
                             member_op.annotation = Typed::from(MethodTyped {
                                 iface_ty: iface_ty.clone(),
                                 method_ident: ident.clone(),
+                                method_access: method.access,
                                 method_sig: sig.clone(),
                                 span: member_op.span().clone(),
                             });
@@ -629,8 +631,8 @@ fn typecheck_type_member(
     }
 
     let annotation = match type_member {
-        TypeMember::Method { decl, .. } => {
-            MethodTyped::new(&decl, ty.clone(), span).into()
+        TypeMember::Method(method) => {
+            MethodTyped::new(&method, ty.clone(), span).into()
         },
     };
 

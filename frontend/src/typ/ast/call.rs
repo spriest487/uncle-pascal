@@ -353,7 +353,6 @@ fn typecheck_func_overload(
                 },
             };
 
-            // final access check
             if self_type.get_current_access(ctx) < method.access {
                 return Err(TypeError::TypeMemberInaccessible {
                     ty: self_type,
@@ -440,6 +439,15 @@ fn typecheck_method_call(
     with_self_arg: Option<Expr>,
     ctx: &mut Context,
 ) -> TypeResult<Call> {
+    if iface_method.iface_ty.get_current_access(ctx) < iface_method.method_access {
+        return Err(TypeError::TypeMemberInaccessible {
+            ty: iface_method.iface_ty.clone(),
+            access: iface_method.method_access,
+            member: iface_method.method_ident.clone(),
+            span: func_call.span().clone(),
+        })
+    }
+
     // not yet supported
     if let Some(call_type_args) = &func_call.type_args {
         return Err(TypeError::from_generic_err(
