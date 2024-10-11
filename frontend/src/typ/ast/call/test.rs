@@ -6,8 +6,10 @@ use crate::typ::ast::call::overload::resolve_overload;
 use crate::typ::ast::call::overload::OverloadCandidate;
 use crate::typ::test::module_from_src;
 use crate::typ::test::try_module_from_src;
+use crate::typ::test::try_module_from_srcs;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
+use crate::typ::Module;
 use crate::typ::Symbol;
 use crate::typ::TypeError;
 use crate::typ::Typed;
@@ -16,7 +18,7 @@ use common::span::Span;
 use common::BuildOptions;
 use std::rc::Rc;
 
-fn parse_expr(src: &str) -> ast::Expr<Span> {
+fn expr_from_str(src: &str) -> ast::Expr<Span> {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
         .preprocess(src)
         .unwrap();
@@ -32,19 +34,17 @@ fn parse_expr(src: &str) -> ast::Expr<Span> {
         .unwrap()
 }
 
-fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
-    let module = module_from_src("overload", src);
-
+fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandidate> {
     let unit = module.units
-        .into_iter()
-        .find(|unit| unit.unit.ident.as_slice()[0].name.as_str() == "overload")
+        .iter()
+        .find(|unit| unit.unit.ident.last().name.as_str() == unit_name)
         .unwrap();
 
     let candidates = unit.unit
         .func_defs()
         .map(|(_vis, func)| {
             let sig = FunctionSig::of_decl(&func.decl);
-    
+
             match &func.decl.name.owning_ty {
                 Some(explicit_impl) => {
                     let ident = func.decl.name.ident.clone();
@@ -72,7 +72,23 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
             }
         });
 
-    (candidates.collect(), unit.context)
+    candidates.collect()
+}
+
+fn candidates_from_src(src: &'static str, unit_name: &str) -> (Vec<OverloadCandidate>, Context) {
+    let module = module_from_src(unit_name, src);
+
+    let candidates = candidates_from_module(&module, unit_name);
+
+    (candidates, module.units
+        .into_iter()
+        .filter_map(|unit| if unit.unit.ident.last().name.as_str() == unit_name {
+            Some(unit.context)
+        } else {
+            None
+        })
+        .next()
+        .unwrap())
 }
 
 #[test]
@@ -91,9 +107,9 @@ fn resolves_overload_single() {
             i := 1;
         end
     ";
-    let (candidates, mut ctx) = candidates_from_src(src);
+    let (candidates, mut ctx) = candidates_from_src(src, "overload");
 
-    let expr = parse_expr("i");
+    let expr = expr_from_str("i");
     let span = expr.annotation().clone();
 
     let overload = resolve_overload(&candidates, &[expr], None, None, &span, &mut ctx).unwrap();
@@ -122,9 +138,9 @@ fn resolves_overload_by_arg_ty() {
             var i: Int32 := 1;
         end
     ";
-    let (candidates, mut ctx) = candidates_from_src(src);
+    let (candidates, mut ctx) = candidates_from_src(src, "overload");
 
-    let expr = parse_expr("i");
+    let expr = expr_from_str("i");
     let span = expr.annotation().clone();
 
     let overload = resolve_overload(&candidates, &[expr], None, None, &span, &mut ctx).unwrap();
@@ -322,4 +338,125 @@ fn specializes_method_call_by_lambda_arg_ty() {
 
         other => panic!("expected call to A, got {:?}", other),
     }
+}
+
+#[test]
+fn overload_with_accessible_method_is_ambiguous() {
+    let a_src = r"
+        interface
+        type MyClass = class 
+            public
+                function A;
+        end;
+        
+        function NewMyClass: MyClass;
+        function A(my: MyClass);
+        
+        implementation
+        
+        function NewMyClass: MyClass;
+        begin
+            MyClass()
+        end;
+        
+        function MyClass.A;
+        begin
+        end;
+        
+        function A(my: MyClass);
+        begin
+        end;
+
+        end
+    ";
+    let b_src = r"
+        implementation
+        uses UnitA;
+
+        initialization
+            var i := NewMyClass();
+            i.A();
+        end
+    ";
+
+    let result = try_module_from_srcs([
+        ("UnitA", a_src),
+        ("UnitB", b_src),
+    ]);
+
+    match result {
+        Ok(..) => panic!("call to A should be ambiguous"),
+        Err(TypeError::AmbiguousFunction { candidates, .. }) => {
+            candidates
+                .iter()
+                .find(|candidate| match candidate {
+                    OverloadCandidate::Method { iface_ty, ident, .. } => {
+                        iface_ty.to_string() == "UnitA.MyClass" && ident.name.as_str() == "A"
+                    }
+                    _ => false,
+                })
+                .expect("must have a candidate for the public method");
+
+            candidates
+                .iter()
+                .find(|candidate| match candidate {
+                    OverloadCandidate::Function { decl_name, .. } => {
+                        decl_name.to_string() == "UnitA.A"
+                    }
+                    _ => false,
+                })
+                .expect("must have a candidate for the free function");
+        }
+        
+        Err(other) => panic!("expected ambiguous function error, got: {}", other)
+    }
+}
+
+/// if a method and a free function both match a call, but the method is inaccessible from the
+/// call's context, it should resolve to the function instead of being ambiguous 
+#[test]
+fn overload_with_inaccessible_method_is_not_ambiguous() {
+    let a_src = r"
+        interface
+        type MyClass = class 
+            private
+                function A;
+        end;
+        
+        function NewMyClass: MyClass;
+        function A(my: MyClass);
+
+        implementation
+        
+        function NewMyClass: MyClass;
+        begin
+            MyClass()
+        end;
+        
+        function MyClass.A;
+        begin
+        end;
+        
+        function A(my: MyClass);
+        begin
+        end;
+
+        end
+    ";
+    let b_src = r"
+        implementation
+        uses UnitA;
+
+        initialization
+            var i := NewMyClass();
+            i.A();
+        end
+    ";
+    
+    let result = try_module_from_srcs([
+        ("UnitA", a_src),
+        ("UnitB", b_src),
+    ]);
+    
+    result.expect("call to A should not be ambiguous");
 }

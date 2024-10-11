@@ -184,10 +184,14 @@ pub fn typecheck_call(
     let (target, self_arg) = if call.args().len() == 0 {
         match target {
             Expr::Call(call) => match *call {
-                Call::FunctionNoArgs(call) => (call.target, None),
-                Call::MethodNoArgs(call) => (call.target, Some(call.self_arg)),
+                Call::FunctionNoArgs(noargs_func_call) => {
+                    (noargs_func_call.target, None)
+                }
+                Call::MethodNoArgs(noargs_method_call) => {
+                    (noargs_method_call.target, Some(noargs_method_call.self_arg))
+                }
                 other_call => (Expr::from(other_call), None),
-            }
+            },
             other => (other, None)
         }
     } else {
@@ -391,6 +395,21 @@ fn typecheck_func_overload(
                 value_kind: ValueKind::Temporary,
             }
             .into();
+            
+            // the original target expr must have overload type, but we now know the function type
+            // of the expression and should update it accordingly
+            let mut target = target.clone();
+            match target.annotation_mut() {
+                annotation @ Typed::Overload(..) => {
+                    *annotation = Typed::Function(Rc::new(FunctionTyped {
+                        name: decl_name.clone(),
+                        sig: sig.clone(),
+                        span: annotation.span().clone(),
+                    })) 
+                },
+
+                _ => panic!("typecheck_func_overload: target expr must be annotated as an overload"),
+            }
 
             let func_call = FunctionCall {
                 annotation: return_annotation,

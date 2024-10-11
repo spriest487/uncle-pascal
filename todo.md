@@ -2,6 +2,8 @@
 
 * decl names shadowing unit names
 * weak refs
+* access modifiers for fields
+* static (class) methods
 
 # big features
 
@@ -21,3 +23,5 @@
 * stop outputting empty releaser funcs where there's nothing ot be released
 * parser: newlines/escape chars in string literals
 * numeric compiler error codes
+* reflection for published members
+* property syntax

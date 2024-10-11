@@ -485,6 +485,7 @@ fn typecheck_member_of(
                 Typed::Method(method) if method.should_call_noargs_in_expr(expect_ty, &lhs_ty) => {
                     let sig = method.method_sig.clone();
                     let self_arg = member_op.lhs.clone();
+
                     let call = Call::MethodNoArgs(sig.new_no_args_method_call(Expr::from(member_op), self_arg));
 
                     Ok(Expr::from(call))
@@ -581,14 +582,15 @@ fn typecheck_member_of(
 fn resolve_no_args_overload<'a>(overloaded: &'a OverloadTyped, expect_ty: &Type, self_arg: &Expr) -> Option<&'a OverloadCandidate> {
     let mut result = None;
 
+    let self_arg_ty = self_arg.annotation().ty();
+
     for candidate in &overloaded.candidates {
         let should_call_no_args = match candidate {
             OverloadCandidate::Function { sig, .. } => {
-                sig.should_call_noargs_in_expr(expect_ty, &Type::Nothing)
+                sig.should_call_noargs_in_expr(expect_ty, &self_arg_ty)
             }
 
             OverloadCandidate::Method { sig, .. } => {
-                let self_arg_ty = self_arg.annotation().ty();
                 sig.should_call_noargs_in_expr(expect_ty, &self_arg_ty)
             }
         };

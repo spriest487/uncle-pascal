@@ -21,6 +21,7 @@ use common::span::Spanned;
 use std::fmt;
 use std::rc::Rc;
 
+#[derive(Debug)]
 pub struct Overload {
     pub selected_sig: usize,
     pub args: Vec<Expr>,
@@ -207,7 +208,7 @@ pub fn resolve_overload(
     let mut arg_index = 0;
 
     loop {
-        // did we find a best match? try to typ args as if this is the sig to be called
+        // did we find a best match? try to typecheck args as if this is the sig to be called
         if valid_candidates.len() == 1 {
             let selected_sig = valid_candidates[0];
             //            println!("selected {} as candidate for {}", candidates[selected_sig].sig(), span);
@@ -215,19 +216,47 @@ pub fn resolve_overload(
             break Ok(Overload {
                 selected_sig,
                 args: actual_args,
-                type_args: None, //todo
+                type_args: None, // TODO: can we resolve overloads for generic methods?
             });
         }
 
-        // ran out of candidates or arguments, couldn't resolve a single sig
-        if arg_index >= arg_count || valid_candidates.len() == 0 {
-            // println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
-            // dbg!(&candidates);
-
+        if valid_candidates.len() == 0 {
+            // couldn't resolve a single sig
             break Err(TypeError::AmbiguousFunction {
                 candidates: candidates.to_vec(),
                 span: span.clone(),
             });
+        }
+
+        // checked all arguments and more than one candidate is still valid
+        if arg_index >= arg_count {
+            // println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
+            
+            // now discard any that are inaccessible methods - we don't do this until the very 
+            // last minute so that at any earlier stage we can still match an inaccessible method 
+            // and show an accessibility error, rather than acting like it doesn't exist
+            valid_candidates.retain(|i| {
+                let candidate = &candidates[*i];
+                match candidate {
+                    OverloadCandidate::Function { .. } => true,
+                    OverloadCandidate::Method { method, iface_ty, .. } => {
+                        iface_ty.get_current_access(ctx) >= method.access
+                    }
+                }
+            });
+
+            if valid_candidates.len() == 1 {
+                break Ok(Overload {
+                    selected_sig: valid_candidates[0],
+                    args: actual_args,
+                    type_args: None,
+                });
+            } else {
+                break Err(TypeError::AmbiguousFunction {
+                    candidates: candidates.to_vec(),
+                    span: span.clone(),
+                });
+            }
         }
 
         // println!("matching {} (arg {}/{}), {} candidates remain)", args[arg_index], arg_index + 1, arg_count, valid_candidates.len());

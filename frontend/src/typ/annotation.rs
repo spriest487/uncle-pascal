@@ -21,8 +21,12 @@ use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct VariantCtorTyped {
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
 
     // variant ctors don't know the type args of their variant, it must be inferred from context
@@ -143,10 +147,15 @@ impl From<MethodTyped> for Typed {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Hash, Debug, PartialEq)]
 pub struct FunctionTyped {
     pub name: Symbol,
     pub sig: Rc<FunctionSig>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
 }
 
@@ -236,9 +245,15 @@ impl From<UfcsTyped> for Typed {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, Hash, PartialEq)]
 pub enum Typed {
-    Untyped(Span),
+    Untyped(
+        #[derivative(Debug = "ignore")]
+        #[derivative(PartialEq = "ignore")]
+        #[derivative(Hash = "ignore")]
+        Span
+    ),
     TypedValue(Rc<TypedValue>),
 
     Function(Rc<FunctionTyped>),
@@ -246,8 +261,20 @@ pub enum Typed {
 
     // direct method reference e.g. `Interface.Method`
     Method(Rc<MethodTyped>),
-    Type(Type, Span),
-    Namespace(IdentPath, Span),
+    Type(
+        Type,
+        #[derivative(Debug = "ignore")]
+        #[derivative(PartialEq = "ignore")]
+        #[derivative(Hash = "ignore")]
+        Span
+    ),
+    Namespace(
+        IdentPath,
+        #[derivative(Debug = "ignore")]
+        #[derivative(PartialEq = "ignore")]
+        #[derivative(Hash = "ignore")]
+        Span
+    ),
     VariantCtor(Rc<VariantCtorTyped>),
 
     // as-yet unresolved function that may refer to 1+ functions (interface methods, ufcs functions,
