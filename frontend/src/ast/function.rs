@@ -437,7 +437,7 @@ impl<A: Annotation> Spanned for FunctionDecl<A> {
 
 impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self.kind {
+        write!(f, "{} ", match self.kind {
             FunctionDeclKind::Function => "function",
             FunctionDeclKind::ClassMethod => "class function",
             FunctionDeclKind::Constructor => "constructor",
