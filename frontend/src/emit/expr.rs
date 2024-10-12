@@ -42,6 +42,7 @@ pub fn translate_expr(expr: &typ::ast::Expr, builder: &mut Builder) -> ir::Ref {
         syn::Expr::Ident(ident, annotation) => translate_ident(ident, annotation, builder),
 
         syn::Expr::Call(call) => {
+            // eprintln!("translating call @ {}", call.span());
             call::build_call(call, builder).expect("call used in expr must have a return value")
         },
 

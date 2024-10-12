@@ -311,7 +311,12 @@ impl ModuleBuilder {
         
             // nothing to do if the type isn't parameterized
             _ => {
-                assert_eq!(TypeArgsResult::NotGeneric, self_ty.type_args());
+                assert_eq!(
+                    TypeArgsResult::NotGeneric, 
+                    self_ty.type_args(), "expected non-generic self type for instantiation of {}.{} without type args", 
+                    method_key.owning_ty, 
+                    method_key.method
+                );
                 self_ty.clone()
             }
         };

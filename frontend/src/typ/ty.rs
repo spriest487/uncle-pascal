@@ -127,7 +127,7 @@ impl Type {
         Type::GenericParam(Rc::new(ty_param_ty))
     }
     
-    pub fn struct_type(sym: impl Into<Symbol>, kind: StructKind) -> Self {
+    pub fn from_struct_type(sym: impl Into<Symbol>, kind: StructKind) -> Self {
         let sym = Rc::new(sym.into());
         
         match kind {

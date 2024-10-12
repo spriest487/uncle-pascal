@@ -178,7 +178,7 @@ pub fn typecheck_call(
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
     };
 
-    let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
+    let target = typecheck_expr(&func_call.target, expect_ty, ctx)?;
 
     // if the call target is a no-args call itself and this is also a no-args call, we are just
     // applying an empty argument list to the same call, so just unwrap it here
@@ -740,6 +740,7 @@ fn typecheck_variant_ctor_call(
 ) -> TypeResult<Call> {
     let unspecialized_def = ctx
         .find_variant_def(&variant.full_path)
+        .cloned()
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     // infer the specialized generic type if the written one is generic and the hint is a specialized

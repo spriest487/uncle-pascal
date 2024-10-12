@@ -22,7 +22,7 @@ begin
 end;
 
 initialization
-    var ints := NewArrayList[Integer]();
+    var ints: ArrayList[Integer] := ArrayList.Create();
     
     ints.Add(1);
     ints.Add(2);
@@ -34,7 +34,7 @@ initialization
     
     PrintIntegers(ints);
 
-    var words := NewArrayList[WordObject]();
+    var words: ArrayList[WordObject] := ArrayList.Create();
     words.Add(WordObject(word: 'Hello, '));
     words.Add(WordObject(word: 'world!'));
     

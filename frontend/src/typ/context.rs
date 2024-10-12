@@ -15,28 +15,33 @@ pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
 use crate::ast as syn;
-use crate::ast::{Access, Ident, INTERFACE_METHOD_ACCESS};
+use crate::ast::Access;
+use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::Visibility;
-use crate::typ::ast::{EnumDecl, Method};
+use crate::ast::INTERFACE_METHOD_ACCESS;
+use crate::typ::ast::EnumDecl;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
 use crate::typ::ast::Literal;
+use crate::typ::ast::Method;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::SELF_TY_NAME;
+use crate::typ::specialize_by_return_ty;
 use crate::typ::specialize_struct_def;
+use crate::typ::specialize_variant_def;
 use crate::typ::FunctionSig;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
+use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
 use crate::typ::TypeResult;
-use crate::typ::{specialize_variant_def, TypeParamList};
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
 use std::collections::hash_map::Entry;
@@ -71,13 +76,13 @@ pub enum InstanceMember {
 
 #[derive(Clone, Debug)]
 pub enum TypeMember {
-    Method(Method),
+    Method(Type, Method),
 }
 
 impl TypeMember {
     pub fn access(&self) -> Access {
         match self {
-            TypeMember::Method(method) => method.access,
+            TypeMember::Method(_, method) => method.access,
         }
     }
 }
@@ -809,7 +814,7 @@ impl Context {
 
             Type::Record(sym) | Type::Class(sym) => {
                 let struct_def = self.find_struct_def(&sym.full_path)?;
-                let struct_ty = Type::struct_type((*sym).clone(), struct_def.kind);
+                let struct_ty = Type::from_struct_type((*sym).clone(), struct_def.kind);
 
                 struct_def
                     .find_method(&method)
@@ -1110,9 +1115,9 @@ impl Context {
         Ok(specialized_def)
     }
 
-    pub fn find_variant_def(&self, name: &IdentPath) -> NameResult<Rc<VariantDef>> {
+    pub fn find_variant_def(&self, name: &IdentPath) -> NameResult<&Rc<VariantDef>> {
         match self.defs.get(name) {
-            Some(Def::Variant(variant_def)) => Ok(variant_def.clone()),
+            Some(Def::Variant(variant_def)) => Ok(variant_def),
 
             Some(..) => {
                 let decl = self.find_path(&name);
@@ -1150,7 +1155,7 @@ impl Context {
                 Rc::new(instance_def)
             }
 
-            None => base_def,
+            None => base_def.clone(),
         };
 
         Ok(instance_def)
@@ -1394,34 +1399,100 @@ impl Context {
         }
     }
 
-    pub fn find_type_member(&self, ty: &Type, member_ident: &Ident) -> NameResult<TypeMember> {
-        let member = match ty {
+    // for a given base type, find the member (currently always a method) that matches a name.
+    // if the method or type is generic, we might infer a specialized type for the base type
+    // depending on the return type, e.g. in the following case:
+    //   `var x: Integer := MyType.Value`
+    // where the method found is `MyType[T].Value: T`, we can infer from the return type that 
+    // in this call, the type is `MyType[Integer]`
+    pub fn find_type_member(&self,
+        ty: &Type,
+        member_ident: &Ident,
+        expect_return_ty: &Type,
+        span: &Span,
+        ctx: &Context
+    ) -> TypeResult<TypeMember> {
+        let result = match ty {
             Type::Interface(iface) => self
-                .find_iface_def(iface)?
+                .find_iface_def(iface)
+                .map_err(|e| TypeError::from_name_err(e, span.clone()))?
                 .get_method(member_ident)
                 .map(|method_decl| {
-                    TypeMember::Method(Method {
+                    TypeMember::Method(ty.clone(), Method {
                         decl: method_decl.decl.clone(),
                         access: INTERFACE_METHOD_ACCESS,
-                    })   
+                    })
                 }),
 
-            Type::Class(name) | Type::Record(name) => self
-                .instantiate_struct_def(name)?
-                .find_method(member_ident)
-                .map(|method| {
-                    TypeMember::Method(method.clone())
-                }),
+            Type::Class(name) | Type::Record(name) => {
+                let generic_method = self
+                    .find_struct_def(&name.full_path)
+                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?
+                    .find_method(member_ident);
+
+                match generic_method {
+                    Some(method) => {
+                        let generic_sig = FunctionSig::of_decl(&method.decl);
+                        let name = specialize_by_return_ty(
+                            name,
+                            &generic_sig,
+                            expect_return_ty,
+                            span,
+                            ctx
+                        ).map_err(|e| TypeError::from_generic_err(e, span.clone()))?;
+                        
+                        let def = self
+                            .instantiate_struct_def(&name)
+                            .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
+
+                        let method = def.find_method(member_ident).unwrap();
+
+                        let specialized_ty = Type::from_struct_type(name.into_owned(), def.kind);
+                        
+                        Some(TypeMember::Method(specialized_ty, method.clone()))
+                    }
+                    
+                    None => None,
+                }
+            },
+            
+            Type::Variant(name) => {
+                let generic_method = self
+                    .find_variant_def(&name.full_path)
+                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?
+                    .find_method(member_ident);
+
+                match generic_method {
+                    Some(method) => {
+                        let generic_sig = FunctionSig::of_decl(&method.decl);
+                        let name = specialize_by_return_ty(
+                            name,
+                            &generic_sig,
+                            expect_return_ty,
+                            span,
+                            ctx
+                        ).map_err(|e| TypeError::from_generic_err(e, span.clone()))?;
+
+                        let def = self.instantiate_variant_def(&name)
+                            .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
+
+                        let method = def.find_method(member_ident).unwrap();
+                        let specialized_ty = Type::variant(name.into_owned());
+
+                        Some(TypeMember::Method(specialized_ty, method.clone()))
+                    }
+
+                    None => None,
+                }
+            }
 
             _ => None,
         };
         
-        member.ok_or_else(|| {
-            NameError::MemberNotFound {
-                member: member_ident.clone(),
-                base: NameContainer::Type(ty.clone()),
-            }
-        })
+        result.ok_or_else(|| TypeError::from_name_err(NameError::MemberNotFound {
+            member: member_ident.clone(),
+            base: NameContainer::Type(ty.clone()),
+        }, span.clone()))
     }
 
     pub fn undefined_syms(&self) -> Vec<IdentPath> {

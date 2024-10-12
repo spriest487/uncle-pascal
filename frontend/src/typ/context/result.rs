@@ -28,6 +28,7 @@ impl fmt::Display for GenericTarget {
 pub enum GenericTypeHint {
     Unknown,
     ExpectedValueType(Type),
+    ExpectedReturnType(Type),
     ArgTypes(Vec<Type>),
 }
 
@@ -38,6 +39,10 @@ impl fmt::Display for GenericTypeHint {
 
             GenericTypeHint::ExpectedValueType(ty) => {
                 write!(f, "expected type {}", ty)
+            },
+
+            GenericTypeHint::ExpectedReturnType(ty) => {
+                write!(f, "expected return type {}", ty)
             },
 
             GenericTypeHint::ArgTypes(tys) => {

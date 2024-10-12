@@ -415,7 +415,7 @@ fn typecheck_member_of(
                 // x is a non-variant typename - we are accessing a member of that type
                 // e.g. calling an interface method by its type-qualified name
                 Typed::Type(ty, _) => {
-                    typecheck_type_member(ty, &member_ident, span.clone(), ctx)?
+                    typecheck_type_member(ty, &member_ident, expect_ty, span.clone(), ctx)?
                 },
 
                 // x is a value - we are accessing a member of that value
@@ -642,12 +642,12 @@ fn op_to_no_args_call(
 fn typecheck_type_member(
     ty: &Type,
     member_ident: &Ident,
+    expect_return_ty: &Type,
     span: Span,
     ctx: &mut Context,
 ) -> TypeResult<Typed> {
     let type_member = ctx
-        .find_type_member(ty, member_ident)
-        .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
+        .find_type_member(ty, member_ident, expect_return_ty, &span, ctx)?;
     
     let member_access = type_member.access(); 
     if ty.get_current_access(ctx) < member_access {
@@ -660,7 +660,7 @@ fn typecheck_type_member(
     }
 
     let annotation = match type_member {
-        TypeMember::Method(method) => {
+        TypeMember::Method(ty, method) => {            
             if ty.get_current_access(ctx) < method.access {
                 return Err(TypeError::TypeMemberInaccessible {
                     member: member_ident.clone(),

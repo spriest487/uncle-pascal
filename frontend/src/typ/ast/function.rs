@@ -2,16 +2,20 @@
 mod test;
 
 use crate::ast;
-use crate::ast::{FunctionDeclKind, FunctionName};
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
+use crate::ast::{FunctionDeclKind, FunctionName};
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
+use crate::typ::string_type;
+use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
+use crate::typ::typecheck_type_path;
+use crate::typ::validate_ty_args;
 use crate::typ::Binding;
 use crate::typ::ClosureBodyEnvironment;
 use crate::typ::Context;
@@ -19,27 +23,23 @@ use crate::typ::Environment;
 use crate::typ::FunctionBodyEnvironment;
 use crate::typ::FunctionParamSig;
 use crate::typ::FunctionSig;
+use crate::typ::GenericError;
 use crate::typ::GenericResult;
+use crate::typ::GenericTarget;
 use crate::typ::NameContainer;
 use crate::typ::NameError;
 use crate::typ::NameResult;
+use crate::typ::Specializable;
 use crate::typ::Type;
+use crate::typ::TypeArgList;
+use crate::typ::TypeArgResolver;
 use crate::typ::TypeError;
+use crate::typ::TypeParam;
+use crate::typ::TypeParamContainer;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::typ::string_type;
-use crate::typ::GenericTarget;
-use crate::typ::GenericError;
-use crate::typ::typecheck_type;
-use crate::typ::TypeArgList;
-use crate::typ::typecheck_type_path;
-use crate::typ::validate_ty_args;
-use crate::typ::Specializable;
-use crate::typ::TypeArgResolver;
-use crate::typ::TypeParam;
-use crate::typ::TypeParamContainer;
 use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
@@ -145,14 +145,16 @@ pub fn typecheck_func_decl(
             .and_then(|ty| ty.type_params().cloned()),
     };
     
-    ctx.scope(env, |ctx| {
+    ctx.scope(env, |ctx| {        
         // declare type params from the declaring type, if any
         // e.g. for method `MyClass[T].A()`, `T` is declared here for the function scope
         // if this decl is inside an enclosing type, they should already be declared in the body
         // scope of the type, and can't be redeclared
         if enclosing_ty.is_none() {
-            if let Some(params) = owning_ty.as_ref().and_then(Type::type_params) {
-                ctx.declare_type_params(params)?;
+            if let Some(owning_ty) = &owning_ty {
+                if let Some(params) = owning_ty.type_params() {
+                    ctx.declare_type_params(params)?;
+                }
             }
         }
         
@@ -201,9 +203,26 @@ pub fn typecheck_func_decl(
                     !decl.return_ty.is_known(), 
                     "parser must not produce constructors with explicit return types"
                 );
-                owning_ty
-                    .clone()
-                    .expect("owning type must not be null for constructors")
+
+                let ctor_owning_ty = owning_ty
+                    .as_ref()
+                    .expect("owning type must not be null for constructors");
+                
+                // the return type of methods in generic types has to be specialized 
+                // with the type's own params - this normally happens automatically because we
+                // declare the params before typechecking the return type, but for constructors
+                // the return type is implied so we have to grab the non-specialized version from
+                // earlier and specialize it manually
+                let mut ctor_return_ty = ctor_owning_ty.clone();
+                if let Some(owning_ty_params) = ctor_owning_ty.type_params() {
+                    let own_ty_args = owning_ty_params.clone().to_type_args();
+
+                    ctor_return_ty = ctor_return_ty
+                        .specialize_generic(&own_ty_args, ctx)
+                        .map_err(|e| TypeError::from_generic_err(e, decl.span.clone()))?
+                        .into_owned();
+                }
+                ctor_return_ty
             }
         };
 
