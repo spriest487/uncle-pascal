@@ -1,9 +1,10 @@
 # critical
 
+* seems like statements with just a no-args call aren't parsing properly?
 * weak refs
-* access modifiers for fields
-* static (class) methods
 * single-char string literals convert to Byte
+* forward time in type's own method is incompatible with itself?
+  * type mismatch: expected System.Collections.LinkedList[T], found System.Collections.LinkedList[T]
 
 # big features
 
