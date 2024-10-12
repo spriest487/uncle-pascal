@@ -299,7 +299,7 @@ fn elements_for_inferred_ty(
     ctor: &ast::CollectionCtor<Span>,
     ctx: &mut Context,
 ) -> TypeResult<Vec<CollectionCtorElement>> {
-    // must have at at least one element to infer types
+    // must have at least one element to infer types
     if ctor.elements.is_empty() {
         return Err(TypeError::UnableToInferType {
             expr: Box::new(ast::Expr::from(ctor.clone())),

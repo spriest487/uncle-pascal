@@ -476,3 +476,78 @@ fn can_infer_func_ty_from_lambda_with_generic_return() {
         other => panic!("expected binding, got: {}", other),
     }
 }
+
+#[test]
+fn can_infer_from_enclosing_ty_param_in_method() {
+    let module = module_from_src(
+        "Test",
+        r"   
+            implementation
+            uses System;
+
+            type Wrapper[T] = class
+                vals: array of T;
+                function A;
+            end;
+            
+            function Wrapper[T].A;
+            begin
+                // infer type of pointer here
+                self.vals := [];
+            end;
+
+            end.
+        ",
+    );
+
+    let (_, func_def) = module.unit.func_defs().next().unwrap();
+
+    match &func_def.body.stmts[0] {
+        ast::Stmt::Assignment(assignment) => {
+            assert_eq!("self.vals", assignment.lhs.to_string());
+            assert_eq!("array of T", assignment.rhs.annotation().ty().to_string());
+        }
+        
+        other => panic!("expected assignment, got {other:?}")
+    }
+}
+
+
+#[test]
+fn can_infer_from_enclosing_ty_param_in_class_method() {
+    let module = module_from_src(
+        "Test",
+        r"   
+            implementation
+            uses System;
+
+            type Wrapper[T] = class
+                class function A;
+            end;
+            
+            class function Wrapper[T].A;
+            begin
+                // infer type of pointer here
+                var vals: array of T := [];
+            end;
+
+            end.
+        ",
+    );
+
+    let (_, func_def) = module.unit.func_defs().next().unwrap();
+
+    match &func_def.body.stmts[0] {
+        ast::Stmt::LocalBinding(binding) => {
+            assert_eq!("vals", binding.name.to_string());
+            assert_eq!("array of T", binding.val
+                .as_ref()
+                .expect("expected binding to have a value")
+                .annotation()
+                .ty()
+                .to_string());
+        }
+
+        other => panic!("expected assignment, got {other:?}")
+    }
+}

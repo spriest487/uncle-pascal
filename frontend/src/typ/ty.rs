@@ -225,7 +225,7 @@ impl Type {
             
             Type::MethodSelf => {
                 let current_self_ty = ctx
-                    .current_function_env()
+                    .current_function_body_env()
                     .and_then(|env| env.self_ty.as_ref());
                 
                 if let Some(self_ty) = current_self_ty {
@@ -320,20 +320,25 @@ impl Type {
     /// params, we ignore those types since they'll be real types when actually used
     pub fn contains_unresolved_params(&self, ctx: &Context) -> bool {
         if let Type::GenericParam(ty_param_ty) = self {
-            let func_ty_params = ctx
-                .current_function_env()
+            let mut func_ty_params = ctx
+                .current_function_body_env()
                 .into_iter()
-                .flat_map(|env| env.ty_params.iter()
-                    .flat_map(|params| params.iter()));
+                .flat_map(|env| {
+                    let func_ty_params = env.ty_params
+                        .iter()
+                        .flat_map(|params| params.iter());
+                    
+                    let enclosing_ty_params = env.self_ty
+                        .iter()
+                        .flat_map(|self_ty| self_ty
+                            .type_params()
+                            .into_iter()
+                            .flat_map(|params| params.iter()));
+                    
+                    func_ty_params.chain(enclosing_ty_params)
+                });
 
-            let enclosing_ty_params = ctx.current_enclosing_ty()
-                .into_iter()
-                .flat_map(|env| env.type_params().into_iter()
-                    .flat_map(|params| params.iter()));
-
-            return !func_ty_params
-                .chain(enclosing_ty_params)
-                .any(|param| param.name == ty_param_ty.name);
+            return !func_ty_params.any(|param| param.name == ty_param_ty.name);
         }
 
         if let TypeArgsResult::Specialized(_, type_args) = &self.type_args() {

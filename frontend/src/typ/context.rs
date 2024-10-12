@@ -154,7 +154,7 @@ impl From<ClosureBodyEnvironment> for Environment {
 pub struct FunctionBodyEnvironment {
     pub result_ty: Type, 
     pub self_ty: Option<Type>,
-    pub ty_params: Option<TypeParamList>
+    pub ty_params: Option<TypeParamList>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -444,7 +444,7 @@ impl Context {
         None
     }
     
-    pub fn current_function_env(&self) -> Option<&FunctionBodyEnvironment> {
+    pub fn current_function_body_env(&self) -> Option<&FunctionBodyEnvironment> {
         for scope in self.scopes.iter().rev() {
             match scope.env() {
                 Environment::FunctionBody(body_env) => return Some(body_env),
@@ -459,7 +459,7 @@ impl Context {
     // been inferred yet, returns the Nothing type. returns None if we're not currently in
     // a function body scope
     pub fn current_func_return_ty(&self) -> Option<&Type> {
-        self.current_function_env()
+        self.current_function_body_env()
             .map(|env| &env.result_ty)
             .or_else(|| self.current_closure_env()
                 .and_then(|env| env.result_ty

@@ -3,7 +3,7 @@ implementation
 uses System, System.Collections;
 
 initialization
-    var x := NewLinkedList[Integer]();
+    var x: LinkedList[Integer] := LinkedList.Create();
 
     WriteLn('len of x: ' + x.Length());
 
