@@ -220,6 +220,8 @@ fn find_ctor_ty(
                     generic_ty
                         .infer_specialized_from_hint(expect_ty)
                         .ok_or_else(|| {
+                            eprintln!("specialization failed:\n{:#?}\ninto:\n{:#?}", generic_ty, expect_ty);
+                            
                             TypeError::from_generic_err(GenericError::CannotInferArgs {
                                 target: GenericTarget::Name(raw_ty_name.into_owned()),
                                 hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
@@ -244,7 +246,7 @@ pub fn typecheck_collection_ctor(
     ctx: &mut Context,
 ) -> TypeResult<CollectionCtor> {
     let (mut elements, element_ty) = match expect_ty.element_ty() {
-        Some(elem_ty) if !elem_ty.contains_generic_params(ctx) => {
+        Some(elem_ty) if !elem_ty.contains_unresolved_params(ctx) => {
             let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
             (elements, elem_ty.clone())
         },

@@ -318,31 +318,32 @@ impl Type {
     /// if this type appears in a context where the params already refer to specific types, 
     /// for example in the body of a function where this type refers to one of the function's type
     /// params, we ignore those types since they'll be real types when actually used
-    pub fn contains_generic_params(&self, ctx: &Context) -> bool {
+    pub fn contains_unresolved_params(&self, ctx: &Context) -> bool {
         if let Type::GenericParam(ty_param_ty) = self {
-            let current_func_ty_params = ctx
+            let func_ty_params = ctx
                 .current_function_env()
-                .and_then(|env| env.ty_params.as_ref());
+                .into_iter()
+                .flat_map(|env| env.ty_params.iter()
+                    .flat_map(|params| params.iter()));
 
-            return if let Some(ctx_ty_params) = current_func_ty_params {
-                let is_param_defined_in_scope = ctx_ty_params
-                    .iter()
-                    .any(|p| ty_param_ty.name == p.name);
+            let enclosing_ty_params = ctx.current_enclosing_ty()
+                .into_iter()
+                .flat_map(|env| env.type_params().into_iter()
+                    .flat_map(|params| params.iter()));
 
-                !is_param_defined_in_scope
-            } else {
-                true
-            }
+            return func_ty_params
+                .chain(enclosing_ty_params)
+                .any(|param| param.name == ty_param_ty.name);
         }
 
         if let TypeArgsResult::Specialized(_, type_args) = &self.type_args() {
-            return type_args.items.iter().any(|a| a.contains_generic_params(ctx));
+            return type_args.items.iter().any(|a| a.contains_unresolved_params(ctx));
         }
 
         match self {
-            Type::Array(array_ty) => array_ty.element_ty.contains_generic_params(ctx),
+            Type::Array(array_ty) => array_ty.element_ty.contains_unresolved_params(ctx),
             
-            Type::DynArray { element, .. } => element.contains_generic_params(ctx),
+            Type::DynArray { element, .. } => element.contains_unresolved_params(ctx),
             
             Type::Function(sig) => {
                 sig.contains_generic_params(ctx)

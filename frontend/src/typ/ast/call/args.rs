@@ -68,7 +68,7 @@ where
 
     if expect_ty.is_generic_param()
         || expect_ty.is_unspecialized_generic()
-        || expect_ty.contains_generic_params(ctx) {
+        || expect_ty.contains_unresolved_params(ctx) {
         // not enough info to resolve this generic type fully yet: arg expr type drives param type
         expect_ty = Type::Nothing;
     }

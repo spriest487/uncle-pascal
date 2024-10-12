@@ -91,7 +91,7 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
         let self_param = &func_decl.params[0];
 
         if self_param.ty == *ty
-            || (self_param.ty.contains_generic_params(ctx) && self_param.ty.same_decl_type(ty))
+            || (self_param.ty.contains_unresolved_params(ctx) && self_param.ty.same_decl_type(ty))
         {
             let func_name = Symbol::from(decl_path.clone())
                 .with_ty_params(func_decl.type_params.clone());

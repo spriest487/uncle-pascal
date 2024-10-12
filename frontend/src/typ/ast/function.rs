@@ -30,7 +30,6 @@ use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::typ::string_type;
-use crate::typ::TypeParamType;
 use crate::typ::GenericTarget;
 use crate::typ::GenericError;
 use crate::typ::typecheck_type;
