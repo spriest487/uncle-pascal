@@ -524,7 +524,7 @@ fn typecheck_member_of(
                                 sig: method.method_sig.clone(),
                             }
                         ];
-
+                        
                         op_to_no_args_call(overload_candidate, &member_op, &span, ctx)?
                     };
 

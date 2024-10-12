@@ -167,7 +167,7 @@ pub fn resolve_overload(
         // we don't actually know at this point whether that implementation exists!
         if self_arg.is_none() {
             if let OverloadCandidate::Method {
-                owning_ty: iface_ty,
+                owning_ty: iface_ty @ Type::Interface(..),
                 ident: method_ident,
                 ..
             } = &candidates[0] {
