@@ -51,6 +51,16 @@ impl TypeParamList {
                 }
             })
     }
+    
+    pub fn to_type_args(self) -> TypeArgList {
+        self.map(|item, pos| Type::GenericParam(Rc::new(TypeParamType {
+            name: item.name,
+            pos,
+            is_iface: item
+                .constraint
+                .map(|constraint| Rc::new(constraint.is_ty))
+        })))
+    }
 }
 
 pub fn typecheck_type_params(

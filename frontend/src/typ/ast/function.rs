@@ -507,13 +507,7 @@ pub fn typecheck_func_def(
     if let Some(outer_ty_params) = owning_ty.and_then(|ty| ty.type_params()) {
         let implicit_ty_args = outer_ty_params
             .clone()
-            .map(|item, pos| Type::GenericParam(Rc::new(TypeParamType {
-                name: item.name,
-                pos,
-                is_iface: item
-                    .constraint
-                    .map(|constraint| Rc::new(constraint.is_ty))
-            })));
+            .to_type_args();
         
         decl = apply_func_decl_ty_args(&decl, &implicit_ty_args);
     }
