@@ -57,7 +57,7 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
                         ident,
                         owning_ty: explicit_impl.clone(),
                         sig: Rc::new(sig),
-                        method,
+                        access: method.access,
                     }
                 },
 
