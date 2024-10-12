@@ -539,7 +539,7 @@ pub fn typecheck_func_def(
         ty_params: decl.type_params.clone(),
         self_ty: decl.name.owning_ty.clone(),
     };
-    
+
     ctx.scope(body_env, |ctx| {
         match &decl.name.owning_ty {
             // free functions are always declared within their own bodies (allowing recursive calls)

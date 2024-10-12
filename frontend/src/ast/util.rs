@@ -1,5 +1,5 @@
 use crate::ast::Unit;
-use crate::parse::ParseResult;
+use crate::parse::{Parse, ParseResult};
 use crate::parse::TokenStream;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
@@ -8,17 +8,34 @@ use common::span::Span;
 use common::BuildOptions;
 use crate::pp::Preprocessor;
 
-pub fn try_unit_from_string(unit_name: &str, src: &str) -> ParseResult<Unit<Span>> {
+pub fn tokens_from_string(unit_name: &str, src: &str) -> TokenStream {
     let pp = Preprocessor::new(format!("{}.pas", unit_name), BuildOptions::default());
     let pp_unit = pp.preprocess(src).unwrap();
 
     let tokens = TokenTree::tokenize(pp_unit).unwrap();
-    let mut stream = TokenStream::new(tokens, Span::zero(unit_name));
+    let context = tokens
+        .get(0)
+        .map(|tt| tt.span().clone())
+        .unwrap_or_else(|| Span::zero(unit_name));
+    
+    TokenStream::new(tokens, context)
+}
+
+pub fn try_parse_from_string<T: Parse>(unit_name: &str, src: &str) -> ParseResult<T> {
+    let mut tokens = tokens_from_string(unit_name, src);
+    let result = T::parse(&mut tokens)?;
+    tokens.finish()?;
+    
+    Ok(result)
+}
+
+pub fn try_unit_from_string(unit_name: &str, src: &str) -> ParseResult<Unit<Span>> {
+    let mut tokens = tokens_from_string(unit_name, src);
 
     let unit_ident = Ident::new(unit_name, Span::zero(unit_name));
 
-    let unit = Unit::parse(&mut stream, IdentPath::from_parts(vec![unit_ident]))?;
-    stream.finish()?;
+    let unit = Unit::parse(&mut tokens, IdentPath::from_parts(vec![unit_ident]))?;
+    tokens.finish()?;
 
     Ok(unit)
 }

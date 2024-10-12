@@ -173,11 +173,34 @@ pub fn typecheck_call(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypeResult<Invocation> {
-    let func_call = match call {
-        ast::Call::Function(func_call) => func_call,
-        _ => unreachable!("parsing cannot result in anything except FunctionCall"),
-    };
+    match call {
+        ast::Call::Function(func_call) => {
+            typecheck_func_call(&func_call, expect_ty, ctx)
+        },
 
+        ast::Call::FunctionNoArgs(no_args_call) => {
+            // this will be determined from the target expression
+            assert!(no_args_call.self_arg.is_none(), "parser should not provide a self-arg");
+            
+            let as_func_call = ast::FunctionCall {
+                target: no_args_call.target.clone(),
+                type_args: no_args_call.type_args.clone(),
+                args: no_args_call.self_arg.iter().cloned().collect(),
+                annotation: no_args_call.annotation.clone(),
+                args_span: no_args_call.target.span().clone(),
+            };
+            
+            typecheck_func_call(&as_func_call, expect_ty, ctx)
+        }
+        other => unreachable!("parsing should not produce this call expression: {:?}", other),
+    }
+}
+
+fn typecheck_func_call(
+    func_call: &ast::FunctionCall,
+    expect_ty: &Type,
+    ctx: &mut Context
+) -> TypeResult<Invocation> {
     let target = typecheck_expr(&func_call.target, expect_ty, ctx)?;
 
     // if the call target is a no-args call itself and this is also a no-args call, we are just
@@ -185,16 +208,18 @@ pub fn typecheck_call(
     // e.g. if we call `procedure X;` with `X()`, `X` is already a valid call on its own
     // there are edge cases here like functions that return callable types themselves, but
     // they can be disambiguated by various means in the code
-    let (target, self_arg) = if call.args().len() == 0 {
+    let (target, self_arg) = if func_call.args.len() == 0 {
         match target {
             Expr::Call(call) => match *call {
                 Call::FunctionNoArgs(noargs_func_call) => {
-                    (noargs_func_call.target, None)
+                    (noargs_func_call.target, noargs_func_call.self_arg)
                 }
                 Call::MethodNoArgs(noargs_method_call) => {
                     (noargs_method_call.target, noargs_method_call.self_arg)
                 }
-                other_call => (Expr::from(other_call), None),
+                other_call => {
+                    (Expr::from(other_call), None)
+                },
             },
 
             other => {
@@ -209,7 +234,7 @@ pub fn typecheck_call(
         Typed::TypedValue(val) => match &val.ty {
             Type::Function(sig) => {
                 let sig = sig.clone();
-                typecheck_func_call(target, &func_call, &sig, ctx)
+                typecheck_free_func_call(target, &func_call, self_arg.as_ref(), &sig, ctx)
                     .map(Box::new)
                     .map(Invocation::Call)?
             },
@@ -218,18 +243,20 @@ pub fn typecheck_call(
                 // when making a function call with an empty args list, and the target is a
                 // call to a no-args function, this "inner" call replaces the outer call entirely
                 // since the extra arg list is redundant
-                Expr::Call(inner_call) 
-                    if func_call.args.len() == 0 && inner_call.args().len() == 0 => {
+                Expr::Call(inner_call)
+                if func_call.args.len() == 0 && inner_call.args().len() == 0 => {
                     Invocation::Call(inner_call)
                 }
-                
-                _ => return Err(TypeError::NotCallable(Box::new(target))),
+
+                _ => {
+                    return Err(TypeError::NotCallable(Box::new(target)))
+                },
             },
         },
 
         Typed::Function(func) => {
             let sig = func.sig.clone();
-            typecheck_func_call(target, &func_call, &sig, ctx)
+            typecheck_free_func_call(target, &func_call, self_arg.as_ref(), &sig, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
@@ -274,16 +301,16 @@ pub fn typecheck_call(
                     span: args_list.span.clone(),
                 });
             }
-            
+
             let ctor_call = typecheck_variant_ctor_call(
                 &variant.variant_name,
                 &variant.case,
                 &func_call.args,
-                call.span().clone(),
+                func_call.span().clone(),
                 expect_ty,
                 ctx,
             )?;
-            
+
             Invocation::Call(Box::new(ctor_call))
         }
 
@@ -664,9 +691,10 @@ fn typecheck_ufcs_call(
     }))
 }
 
-fn typecheck_func_call(
+fn typecheck_free_func_call(
     mut target: Expr,
     func_call: &ast::FunctionCall<Span>,
+    self_arg: Option<&Expr>,
     sig: &FunctionSig,
     ctx: &mut Context,
 ) -> TypeResult<Call> {
@@ -680,7 +708,7 @@ fn typecheck_func_call(
     let mut specialized_call_args = specialize_call_args(
         sig,
         &func_call.args,
-        None,
+        self_arg,
         type_args,
         &span,
         ctx

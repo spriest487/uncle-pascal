@@ -344,9 +344,9 @@ fn specializes_method_call_by_lambda_arg_ty() {
 fn overload_with_accessible_method_is_ambiguous() {
     let a_src = r"
         interface
-        type MyClass = class 
-            public
-                function A;
+        type MyClass = class
+        public
+            function A;
         end;
         
         function NewMyClass: MyClass;
@@ -374,7 +374,7 @@ fn overload_with_accessible_method_is_ambiguous() {
         uses UnitA;
 
         initialization
-            var i := NewMyClass();
+            var i := NewMyClass;
             i.A();
         end
     ";
@@ -419,8 +419,8 @@ fn overload_with_inaccessible_method_is_not_ambiguous() {
     let a_src = r"
         interface
         type MyClass = class 
-            private
-                function A;
+        private
+            function A;
         end;
         
         function NewMyClass: MyClass;
@@ -468,8 +468,8 @@ fn overload_resolves_inaccessible_method_if_only_match() {
     let a_src = r"
         interface
         type MyClass = class 
-            private
-                function A;
+        private
+            function A;
         end;
         
         function NewMyClass: MyClass;
@@ -509,6 +509,7 @@ fn overload_resolves_inaccessible_method_if_only_match() {
 
     match result {
         Ok(..) => panic!("call to A should be inaccessible"),
+
         Err(TypeError::TypeMemberInaccessible { member, access, .. }) => {
             assert_eq!("A", member.name.as_str());
             assert_eq!(Access::Private, access);

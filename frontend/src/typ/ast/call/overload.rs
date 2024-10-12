@@ -199,7 +199,7 @@ pub fn resolve_overload(
         });
     }
 
-    // full overload resolution: while > 1 candidates remain, typ an additional arg
+    // full overload resolution: while > 1 candidates remain, process an additional arg
     // left-to-right, without a type hint, and look at the type of the resulting expr to eliminate
     // candidates. as soon as 1 candidate remains, process the rest of the arguments using that
     // sig. if 0 candidates remain after an arg is processed, the call is ambiguous
@@ -229,20 +229,30 @@ pub fn resolve_overload(
 
         param_index += 1;
     }
+    
+    // disqualify any sigs that don't match the argument count
+    valid_candidates.retain(|index| {
+        let sig = &candidate_sigs[*index];
+
+        sig.params.len() == args.len() + self_arg.iter().len()
+    });
 
     let arg_count = args.len();
     let mut arg_index = 0;
 
     loop {
+        // eprintln!("resolve_overload: {} candidates remaining @ {span}", valid_candidates.len());
+        
         // did we find a best match? try to typecheck args as if this is the sig to be called
         if valid_candidates.len() == 1 {
             let selected_sig = valid_candidates[0];
-            //            println!("selected {} as candidate for {}", candidates[selected_sig].sig(), span);
+            // println!("selected {} as candidate for {}", candidates[selected_sig].sig(), span);
 
             break Ok(Overload {
                 selected_sig,
                 args: actual_args,
-                type_args: None, // TODO: can we resolve overloads for generic methods?
+                // TODO: can we resolve overloads for generic methods?
+                type_args: None, 
             });
         }
 
@@ -258,15 +268,22 @@ pub fn resolve_overload(
         if arg_index >= arg_count {
             // println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
             
-            // now discard any that are inaccessible methods - we don't do this until the very 
-            // last minute so that at any earlier stage we can still match an inaccessible method 
-            // and show an accessibility error, rather than acting like it doesn't exist
             valid_candidates.retain(|i| {
                 let candidate = &candidates[*i];
+
+                // discard any that are inaccessible methods - we don't do this until the very 
+                // last minute so that at any earlier stage we can still match an inaccessible method 
+                // and show an accessibility error, rather than acting like it doesn't exist
                 match candidate {
                     OverloadCandidate::Function { .. } => true,
                     OverloadCandidate::Method { access, owning_ty: iface_ty, .. } => {
-                        iface_ty.get_current_access(ctx) >= *access
+                        let accessible = iface_ty.get_current_access(ctx) >= *access;
+                        
+                        if !accessible {
+                            // eprintln!("disqualifying {}: inaccessible from this context", candidate.sig());
+                        }
+
+                        accessible
                     }
                 }
             });
@@ -287,6 +304,8 @@ pub fn resolve_overload(
 
         // println!("matching {} (arg {}/{}), {} candidates remain)", args[arg_index], arg_index + 1, arg_count, valid_candidates.len());
 
+        // we still don't know the sig to use, so evaluate another argument and use its type
+        // to disqualify any sigs that wouldn't be compatible with that type
         let arg = typecheck_expr(&args[arg_index], &Type::Nothing, ctx)?;
         let arg_span = args[arg_index].span();
         let arg_ty = arg.annotation().ty().into_owned();
@@ -294,14 +313,9 @@ pub fn resolve_overload(
 
         valid_candidates.retain(|i| {
             let sig = &candidate_sigs[*i];
-
-            if param_index > sig.params.len() {
-                //                println!("discarding {} as candidate for {}: not enough params", sig, span);
-                false
-            } else {
-                let sig_param = &sig.params[param_index];
-                check_implicit_conversion(&arg_ty, &sig_param.ty, arg_span, ctx).is_ok()
-            }
+            
+            let sig_param = &sig.params[param_index];
+            check_implicit_conversion(&arg_ty, &sig_param.ty, arg_span, ctx).is_ok()
         });
 
         param_index += 1;

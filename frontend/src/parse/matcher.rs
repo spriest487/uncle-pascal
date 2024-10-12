@@ -10,6 +10,8 @@ use std::ops::BitOr;
 
 #[derive(Clone, Debug)]
 pub enum Matcher {
+    AnyToken,
+    
     Keyword(Keyword),
     Operator(Operator),
     Separator(Separator),
@@ -107,6 +109,7 @@ where
 impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Matcher::AnyToken => write!(f, "any token"),
             Matcher::Keyword(kw) => write!(f, "keyword `{}`", kw),
             Matcher::Operator(op) => write!(f, "{}", op),
             Matcher::Separator(sep) => write!(f, "{}", sep),
@@ -151,6 +154,8 @@ impl Matcher {
 
     pub fn is_match(&self, token: &TokenTree) -> bool {
         match self {
+            Matcher::AnyToken => true,
+
             Matcher::Separator(sep) => token.is_separator(*sep),
             Matcher::Delimited(delim) => token.is_delimited(*delim),
             Matcher::Keyword(kw) => token.is_keyword(*kw),

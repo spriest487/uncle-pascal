@@ -220,7 +220,7 @@ fn find_ctor_ty(
                     generic_ty
                         .infer_specialized_from_hint(expect_ty)
                         .ok_or_else(|| {
-                            eprintln!("specialization failed:\n{:#?}\ninto:\n{:#?}", generic_ty, expect_ty);
+                            // eprintln!("specialization failed:\n{:#?}\ninto:\n{:#?}", generic_ty, expect_ty);
                             
                             TypeError::from_generic_err(GenericError::CannotInferArgs {
                                 target: GenericTarget::Name(raw_ty_name.into_owned()),

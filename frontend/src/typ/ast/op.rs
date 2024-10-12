@@ -540,6 +540,8 @@ fn typecheck_member_of(
                     let self_arg = overloaded.self_arg
                         .as_ref()
                         .map(|arg_box| arg_box.as_ref());
+                    
+                    // eprintln!("resolving overload for {member_op} @ {span}, self arg={}", self_arg.is_some());
 
                     match try_resolve_overload(&overloaded.candidates, &[], None, self_arg, &span, ctx) {
                         Some(overload) => {

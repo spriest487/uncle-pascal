@@ -24,7 +24,7 @@ pub fn typecheck_block(
     let block_env = Environment::Block {
         allow_unsafe: block.unsafe_kw.is_some(),
     };
-    
+
     ctx.scope(block_env, |ctx| {
         let mut statements = Vec::new();
         let mut output = None;

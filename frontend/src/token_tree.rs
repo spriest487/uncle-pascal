@@ -3,15 +3,25 @@ mod lex;
 #[cfg(test)]
 mod test;
 
-pub use crate::parse::TokenStream;
-use crate::consts::{IntConstant, RealConstant};
-use common::{span::*, DiagnosticLabel, DiagnosticOutput, TracedError};
-use std::rc::Rc;
-use std::fmt::{self, Write as _};
-use crate::pp::PreprocessedUnit;
 use crate::ast::Ident;
 use crate::ast::Keyword;
 use crate::ast::Operator;
+use crate::consts::IntConstant;
+use crate::consts::RealConstant;
+use crate::parse::Matchable;
+use crate::parse::Matcher;
+use crate::parse::SequenceMatcher;
+pub use crate::parse::TokenStream;
+use crate::pp::PreprocessedUnit;
+use common::span::*;
+use common::DiagnosticLabel;
+use common::DiagnosticOutput;
+use common::TracedError;
+use std::fmt;
+use std::fmt::Write as _;
+use std::ops::Add;
+use std::ops::BitOr;
+use std::rc::Rc;
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum DelimiterPair {
@@ -50,6 +60,34 @@ impl fmt::Display for DelimiterPair {
     }
 }
 
+impl Matchable for DelimiterPair {
+    fn as_matcher(&self) -> Matcher {
+        Matcher::Delimited(*self)
+    }
+}
+
+impl<Rhs> BitOr<Rhs> for DelimiterPair
+where
+    Rhs: Into<Matcher>
+{
+    type Output = Matcher;
+
+    fn bitor(self, rhs: Rhs) -> Self::Output {
+        self.as_matcher() | rhs.into()
+    }
+}
+
+impl<Rhs> Add<Rhs> for DelimiterPair
+where
+    Rhs: Into<Matcher>
+{
+    type Output = SequenceMatcher;
+
+    fn add(self, rhs: Rhs) -> Self::Output {
+        self.as_matcher() + rhs.into()
+    }
+}
+
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum Separator {
     Semicolon,
@@ -68,6 +106,34 @@ impl fmt::Display for Separator {
                 Separator::Semicolon => ';',
             }
         )
+    }
+}
+
+impl Matchable for Separator {
+    fn as_matcher(&self) -> Matcher {
+        Matcher::Separator(*self)
+    }
+}
+
+impl<Rhs> BitOr<Rhs> for Separator
+where
+    Rhs: Into<Matcher>
+{
+    type Output = Matcher;
+
+    fn bitor(self, rhs: Rhs) -> Self::Output {
+        self.as_matcher() | rhs.into()
+    }
+}
+
+impl<Rhs> Add<Rhs> for Separator
+where
+    Rhs: Into<Matcher>
+{
+    type Output = SequenceMatcher;
+
+    fn add(self, rhs: Rhs) -> Self::Output {
+        self.as_matcher() + rhs.into()
     }
 }
 
