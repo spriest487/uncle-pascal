@@ -331,7 +331,7 @@ impl Type {
                 .flat_map(|env| env.type_params().into_iter()
                     .flat_map(|params| params.iter()));
 
-            return func_ty_params
+            return !func_ty_params
                 .chain(enclosing_ty_params)
                 .any(|param| param.name == ty_param_ty.name);
         }
