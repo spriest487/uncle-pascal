@@ -30,6 +30,8 @@ type LinkedList[T] = class
         function Remove(n: Integer);
     
         function Clear;
+        
+        constructor Create;
 end;
 
 type ArrayList[T] = class
@@ -50,10 +52,9 @@ type ArrayList[T] = class
         function Remove(n: Integer);
         
         function Clear;
+        
+        constructor Create;
 end;
-
-function NewLinkedList[T](): LinkedList[T];
-function NewArrayList[T](): ArrayList[T];
 
 implementation
 
@@ -91,11 +92,11 @@ begin
     end
 end;
 
-function NewLinkedList[T](): LinkedList[T];
+constructor LinkedList[T].Create;
 begin
     LinkedList(
         head: Option.None();
-    )
+    );
 end;
 
 function LinkedListNode[T].Next: Option[LinkedListNode[T]];
@@ -141,7 +142,7 @@ function LinkedList[T].Get(n: Integer): T;
 begin
     match self.TryGet(n) of
         Option.Some item: item;
-        Option.None: raise 'index out of range: ' + n.ToString();
+        Option.None: raise 'index out of range: ' + n;
     end;
 end;
 
@@ -164,7 +165,7 @@ begin
     if nth is Option.Some node then
         node.val := value
     else
-        raise 'index out of range: ' + n.ToString();
+        raise 'index out of range: ' + n;
 end;
 
 function LinkedList[T].Remove(n: Integer);
@@ -187,10 +188,10 @@ begin
                         parent.next := removed.next;
                     
                     Option.None:
-                        raise 'index out of range: ' + n.ToString();    
+                        raise 'index out of range: ' + n;    
                 
             Option.None:
-                raise 'index out of range: ' + n.ToString();
+                raise 'index out of range: ' + n;
         end;
     end;
 end;
@@ -225,12 +226,12 @@ begin
     end;
 end;
 
-function NewArrayList[T]: ArrayList[T];
+constructor ArrayList[T].Create;
 begin
     ArrayList(
         items: [];
         len: 0;
-    );
+    )
 end;
 
 function ArrayList[T].Length: Integer;
@@ -265,7 +266,7 @@ function ArrayList[T].Set(n: Integer; value: T);
 begin
     if n < 0 or n >= self.len then
     begin
-        raise 'index out of range: ' + n.ToString();
+        raise 'index out of range: ' + n;
     end
     else
         self.items[n] := value;
