@@ -1,5 +1,5 @@
 use std::fmt;
-
+use std::rc::Rc;
 use crate::ast;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
@@ -20,13 +20,13 @@ use common::span::*;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TypePattern {
     VariantCase {
-        variant: Symbol,
+        variant: Rc<Symbol>,
         case: Ident,
         data_binding: Option<Ident>,
         span: Span,
     },
     NegatedVariantCase {
-        variant: Symbol,
+        variant: Rc<Symbol>,
         case: Ident,
         span: Span,
     },
@@ -135,7 +135,7 @@ impl TypePattern {
         span: &Span,
         expect_ty: &Type,
         ctx: &mut Context,
-    ) -> TypeResult<Symbol> {
+    ) -> TypeResult<Rc<Symbol>> {
         match expect_ty {
             expect_var @ Type::Variant(..) => {
                 let variant_def = ctx.find_variant_def(variant)
@@ -143,10 +143,11 @@ impl TypePattern {
 
                 let var_ty = Type::variant(variant_def.name.clone());
 
-                var_ty.infer_specialized_from_hint(expect_var)
+                var_ty
+                    .infer_specialized_from_hint(expect_var)
                     .map(|ty| match ty {
                         Type::Variant(v) => {
-                            (**v).clone()
+                            v.clone()
                         },
                         _ => unreachable!("should never infer a non-variant specialized type for a generic variant"),
                     })

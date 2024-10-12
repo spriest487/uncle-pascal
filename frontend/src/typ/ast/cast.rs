@@ -28,6 +28,8 @@ pub fn implicit_conversion(
 ) -> TypeResult<Expr> {
     assert_ne!(Type::Nothing, *to, "bad usage of implicit_conversion: can't convert to nothing");
 
+    expr.annotation().expect_any_value()?;
+
     let expr_ty = expr.annotation().ty();
     if *expr_ty == *to {
         return Ok(expr);

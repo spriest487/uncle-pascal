@@ -192,6 +192,17 @@ pub struct TypedValue {
     pub span: Span,
 }
 
+impl TypedValue {
+    pub fn temp(ty: Type, span: Span) -> Self {
+        TypedValue {
+            ty,
+            span,
+            value_kind: ValueKind::Temporary,
+            decl: None,
+        }
+    }
+}
+
 impl From<TypedValue> for Typed {
     fn from(a: TypedValue) -> Self {
         Typed::TypedValue(Rc::new(a))
@@ -289,6 +300,10 @@ pub enum Typed {
 }
 
 impl Typed {
+    pub fn expect_any_value(&self) -> TypeResult<()> {
+        self.expect_value(&Type::Nothing)
+    }
+    
     pub fn expect_value(&self, expect_ty: &Type) -> TypeResult<()> {
         let (actual_ty, span) = match self {
             Typed::Method(method) => (method.func_ty(), &method.span),

@@ -84,8 +84,8 @@ impl Type {
         Type::Class(Rc::new(sym.into()))
     }
 
-    pub fn variant(sym: impl Into<Symbol>) -> Self {
-        Type::Variant(Rc::new(sym.into()))
+    pub fn variant(sym: impl Into<Rc<Symbol>>) -> Self {
+        Type::Variant(sym.into())
     }
 
     pub fn enumeration(sym: impl Into<Symbol>) -> Self {
@@ -247,7 +247,7 @@ impl Type {
 
             ast::TypeDeclItem::Struct(class) => Type::Class(Rc::new(class.name.clone())),
 
-            ast::TypeDeclItem::Variant(variant) => Type::Variant(Rc::new(variant.name.clone())),
+            ast::TypeDeclItem::Variant(variant) => Type::Variant(variant.name.clone()),
 
             ast::TypeDeclItem::Interface(iface) => {
                 Type::Interface(Rc::new(iface.name.full_path.clone()))

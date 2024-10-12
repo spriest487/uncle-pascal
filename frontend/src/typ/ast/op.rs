@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod test;
 
+mod variant_case;
+
 use crate::ast;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::annotation::VariantCaseTyped;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
@@ -45,6 +46,8 @@ use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
+use variant_case::try_expr_into_noargs_variant_ctor;
+use variant_case::typecheck_variant_case;
 
 pub type BinOp = ast::BinOp<Typed>;
 
@@ -189,7 +192,10 @@ fn typecheck_equality(
     ctx: &mut Context,
 ) -> TypeResult<BinOp> {
     let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
+    lhs.annotation().expect_any_value()?;
+
     let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
+    rhs.annotation().expect_any_value()?;
 
     if !lhs.annotation().ty().equatable(&rhs.annotation().ty()) {
         return Err(invalid_bin_op(bin_op, &lhs, &rhs));
@@ -217,8 +223,9 @@ fn typecheck_comparison(
     ctx: &mut Context,
 ) -> TypeResult<BinOp> {
     let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
+    lhs.annotation().expect_any_value()?;
+    
     let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
-
     rhs.annotation().expect_value(&lhs.annotation().ty())?;
 
     if !lhs.annotation().ty().self_orderable() {
@@ -253,6 +260,7 @@ fn typecheck_bitwise_op(
     };
 
     let lhs = typecheck_expr(&bin_op.lhs, expect_ty, ctx)?;
+    lhs.annotation().expect_any_value()?;
 
     // for bitwise operations to make sense the lhs and rhs must be the exact same type so insert a
     // conversion here as necessary
@@ -261,6 +269,7 @@ fn typecheck_bitwise_op(
         &lhs.annotation().ty(),
         ctx,
     )?;
+    rhs.annotation().expect_any_value()?;
 
     let lhs_ty = lhs.annotation().ty();
     let rhs_ty = rhs.annotation().ty();
@@ -409,7 +418,12 @@ fn typecheck_member_of(
             let annotation = match lhs.annotation() {
                 // x is the name of a variant type - we are constructing that variant
                 Typed::Type(Type::Variant(variant_name), ..) => {
-                    typecheck_variant_case(variant_name, &member_ident, &span, ctx)?
+                    let case = typecheck_variant_case(variant_name, &member_ident, &span, ctx)?;
+                    if let Some(ctor) = try_expr_into_noargs_variant_ctor(&case, expect_ty, &span, ctx)? {
+                        return Ok(ctor);
+                    }
+                    
+                    Typed::from(case)
                 },
 
                 // x is a non-variant typename - we are accessing a member of that type
@@ -756,53 +770,6 @@ pub fn typecheck_member_value(
     };
 
     Ok(annotation)
-}
-
-pub fn typecheck_variant_case(
-    variant_name: &Symbol,
-    member_ident: &Ident,
-    span: &Span,
-    ctx: &mut Context,
-) -> TypeResult<Typed> {
-    if let Some(args_list) = &variant_name.type_args {
-        return Err(TypeError::InvalidExplicitVariantCtorTypeArgs {
-            span: args_list.span.clone(),
-        });
-    }
-    assert!(
-        variant_name.type_args.is_none(),
-        "shouldn't be possible to have explicit type args for a variant constructor expr"
-    );
-
-    // we check the named case exists in the unspecialized definition here, but
-    // we don't want to try instantiating the actual variant type because we have
-    // no information about its type args.
-    let variant_def = ctx
-        .find_variant_def(&variant_name.full_path)
-        .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
-
-    let case_exists = variant_def
-        .cases
-        .iter()
-        .any(|case| case.ident == *member_ident);
-
-    if !case_exists {
-        return Err(TypeError::from_name_err(
-            NameError::MemberNotFound {
-                base: NameContainer::Type(Type::variant(variant_name.clone())),
-                member: member_ident.clone(),
-            },
-            span.clone(),
-        ));
-    }
-
-    let ctor_annotation = VariantCaseTyped {
-        variant_name: Rc::new(variant_name.clone()),
-        case: member_ident.clone(),
-        span: member_ident.span().clone(),
-    };
-
-    Ok(ctor_annotation.into())
 }
 
 pub type UnaryOp = ast::UnaryOp<Typed>;

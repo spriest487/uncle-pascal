@@ -287,7 +287,7 @@ pub fn typecheck_variant(
     }
 
     Ok(VariantDef {
-        name,
+        name: Rc::new(name),
         forward: variant_def.forward,
         cases,
         implements,

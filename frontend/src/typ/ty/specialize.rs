@@ -229,7 +229,7 @@ pub fn specialize_variant_def(
     }
 
     Ok(VariantDef {
-        name: parameterized_name,
+        name: Rc::new(parameterized_name),
         span: variant.span().clone(),
         forward: variant.forward,
         cases,
