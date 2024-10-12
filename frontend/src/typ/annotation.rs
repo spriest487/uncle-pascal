@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
-pub struct VariantCtorTyped {
+pub struct VariantCaseTyped {
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -35,9 +35,9 @@ pub struct VariantCtorTyped {
     pub case: Ident,
 }
 
-impl From<VariantCtorTyped> for Typed {
-    fn from(a: VariantCtorTyped) -> Self {
-        Typed::VariantCtor(Rc::new(a))
+impl From<VariantCaseTyped> for Typed {
+    fn from(a: VariantCaseTyped) -> Self {
+        Typed::VariantCase(Rc::new(a))
     }
 }
 
@@ -279,7 +279,7 @@ pub enum Typed {
         #[derivative(Hash = "ignore")]
         Span
     ),
-    VariantCtor(Rc<VariantCtorTyped>),
+    VariantCase(Rc<VariantCaseTyped>),
 
     // as-yet unresolved function that may refer to 1+ functions (interface methods, ufcs functions,
     // or free functions)
@@ -290,37 +290,41 @@ pub enum Typed {
 
 impl Typed {
     pub fn expect_value(&self, expect_ty: &Type) -> TypeResult<()> {
-        assert_ne!(Type::Nothing, *expect_ty);
-
         let (actual_ty, span) = match self {
             Typed::Method(method) => (method.func_ty(), &method.span),
-            Typed::Overload(overload) => (overload.func_ty(), &overload.span),
-            Typed::Function(func) => (func.func_ty(), &func.span),
             Typed::TypedValue(val) => (val.ty.clone(), &val.span),
             Typed::Const(const_val) => (const_val.ty.clone(), &const_val.span),
+            Typed::Function(func) => (func.func_ty(), &func.span),
 
-            Typed::UfcsFunction(call) => (call.func_ty(), &call.span),
-
-            Typed::Untyped(span)
-            | Typed::Namespace(_, span)
-            | Typed::Type(_, span) => (Type::Nothing, span),
-
-            Typed::VariantCtor(ctor) => {
-                let variant_ty = Type::variant((*ctor.variant_name).clone());
-
-                (variant_ty, &ctor.span)
-            },
+            Typed::Overload(..)
+            | Typed::UfcsFunction(..)
+            | Typed::Untyped(..)
+            | Typed::Namespace(..)
+            | Typed::Type(..)
+            | Typed::VariantCase(..) => {
+                return Err(TypeError::NotValueExpr { 
+                    expected: expect_ty.clone(),
+                    actual: self.clone(),
+                });
+            }
         };
 
-        if actual_ty == *expect_ty {
-            Ok(())
-        } else {
-            Err(TypeError::TypeMismatch {
+        if actual_ty == Type::Nothing {
+            return Err(TypeError::NotValueExpr {
+                expected: expect_ty.clone(),
+                actual: self.clone(),
+            });
+        }
+        
+        if actual_ty != *expect_ty && *expect_ty != Type::Nothing {
+            return Err(TypeError::TypeMismatch {
                 span: span.clone(),
                 expected: expect_ty.clone(),
                 actual: actual_ty,
-            })
+            });
         }
+        
+        Ok(())
     }
 
     pub fn new_temp_val(ty: Type, span: Span) -> Self {
@@ -338,7 +342,7 @@ impl Typed {
             Typed::Namespace(_, _)
             | Typed::Untyped(_)
             | Typed::Type(_, _)
-            | Typed::VariantCtor(..) => Cow::Owned(Type::Nothing),
+            | Typed::VariantCase(..) => Cow::Owned(Type::Nothing),
 
             Typed::Function(func) => Cow::Owned(func.func_ty()),
             Typed::UfcsFunction(call) => Cow::Owned(call.func_ty()),
@@ -364,7 +368,7 @@ impl Typed {
 
             Typed::Const(const_val) => const_val.decl.as_ref(),
 
-            Typed::VariantCtor(ctor) => Some(ctor.variant_name.ident()),
+            Typed::VariantCase(ctor) => Some(ctor.variant_name.ident()),
         }
     }
 
@@ -386,7 +390,46 @@ impl Typed {
 
 impl fmt::Display for Typed {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.span())
+        match self {
+            Typed::Untyped(_) => { 
+                write!(f, "untyped value") 
+            },
+            Typed::TypedValue(val) => { 
+                write!(f, "{} of type {}", val.value_kind, val.ty) 
+            },
+            Typed::Function(func) => { 
+                write!(f, "function {}", func.name) 
+            },
+            Typed::UfcsFunction(func) => { 
+                write!(f, "function {}", func.function_name) 
+            },
+            Typed::Method(method) => { 
+                write!(f, "method {}.{}", method.owning_ty, method.method_ident) 
+            },
+            Typed::Type(ty, ..) => { 
+                write!(f, "type {}", ty) 
+            },
+            Typed::Namespace(ns, ..) => { 
+                write!(f, "namespace {}", ns) 
+            },
+            Typed::VariantCase(case) => { 
+                write!(f, "variant case {}.{}", case.variant_name, case.case) 
+            },
+            Typed::Overload(overload) => { 
+                write!(f, "overloaded function")?;
+                if let Some(sig) = &overload.sig {
+                    write!(f, " with signature {}", sig)?;
+                }
+                Ok(())
+            },
+            Typed::Const(const_val) => { 
+                write!(f, "constant")?;
+                if let Some(decl) = &const_val.decl {
+                    write!(f, " {}", decl)?;
+                }
+                write!(f, "({})", const_val.value)
+            },
+        }
     }
 }
 
@@ -394,7 +437,7 @@ impl Spanned for Typed {
     fn span(&self) -> &Span {
         match self {
             Typed::Method(method) => &method.span,
-            Typed::VariantCtor(ctor) => &ctor.span,
+            Typed::VariantCase(ctor) => &ctor.span,
             Typed::Overload(overload) => &overload.span,
             Typed::TypedValue(val) => &val.span,
             Typed::Const(const_val) => &const_val.span,

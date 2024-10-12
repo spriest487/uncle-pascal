@@ -53,6 +53,10 @@ pub enum TypeError {
         actual: Type,
         span: Span,
     },
+    NotValueExpr {
+        expected: Type,
+        actual: Typed,
+    },
     NotMutable {
         expr: Box<Expr>,
         decl: Option<Ident>,
@@ -327,6 +331,7 @@ impl Spanned for TypeError {
             TypeError::NotDerefable { span, .. } => span,
             TypeError::NotMatchable { span, .. } => span,
             TypeError::NotDefaultable { span, .. } => span,
+            TypeError::NotValueExpr { actual, .. } => actual.span(),
             TypeError::InvalidBinOp { span, .. } => span,
             TypeError::InvalidUnaryOp { span, .. } => span,
             TypeError::BlockOutputIsNotExpression { stmt, .. } => stmt.annotation().span(),
@@ -413,8 +418,8 @@ impl DiagnosticOutput for TypeError {
             }
             TypeError::NotCallable(_) => "Not callable",
             TypeError::InvalidArgs { .. } => "Invalid arguments",
-            TypeError::InvalidCallInExpression(_) => "Invalid call in expr",
-            TypeError::InvalidIndexer { .. } => "Invalid indexer expr",
+            TypeError::InvalidCallInExpression(_) => "Invalid call in expression",
+            TypeError::InvalidIndexer { .. } => "Invalid indexer expression",
             TypeError::IndexOutOfBounds { .. } => "Index out of bounds",
             TypeError::TypeMismatch { .. } => "Type mismatch",
             TypeError::NotMutable { .. } => "Value not mutable",
@@ -422,16 +427,17 @@ impl DiagnosticOutput for TypeError {
             TypeError::NotDerefable { .. } => "Value cannot be dereferenced",
             TypeError::NotMatchable { .. } => "Type is not matchable",
             TypeError::NotDefaultable { .. } => "Type has no default value",
+            TypeError::NotValueExpr { .. } => "Expected value expression",
             TypeError::InvalidBinOp { .. } => "Invalid binary operation",
             TypeError::InvalidUnaryOp { .. } => "Invalid unary operation",
-            TypeError::BlockOutputIsNotExpression { .. } => "Expected block output expr",
-            TypeError::InvalidBlockOutput(_) => "Invalid block output expr",
+            TypeError::BlockOutputIsNotExpression { .. } => "Expected block output expression",
+            TypeError::InvalidBlockOutput(_) => "Invalid block output expression",
             TypeError::AmbiguousFunction { .. } => "Function reference is ambiguous",
             TypeError::AmbiguousMethod { .. } => "Method reference is ambiguous",
             TypeError::AmbiguousSelfType { .. } => "Self type of method is ambiguous",
             TypeError::ExternalGenericFunction { .. } => "Function imported from external module may not have type parameters",
             TypeError::InvalidCtorType { .. } => {
-                "Invalid constructor expr type"
+                "Invalid constructor expression type"
             }
             TypeError::CtorMissingMembers { .. } => {
                 "Constructor is missing one or more named members"
@@ -441,7 +447,7 @@ impl DiagnosticOutput for TypeError {
             }
             TypeError::UndefinedSymbols { .. } => "Undefined symbol(s)",
             TypeError::UnableToInferType { .. } => {
-                "Unable to infer type of expr"
+                "Unable to infer type of expression"
             }
             TypeError::UnableToInferFunctionExprType { .. } => {
                 "Unable to infer function type of function expression"
@@ -460,7 +466,7 @@ impl DiagnosticOutput for TypeError {
             }
             TypeError::NotInitialized { .. } => "Use of uninitialized value",
             TypeError::InvalidRefExpression { .. } => {
-                "Invalid reference expr"
+                "Invalid reference expression"
             }
             TypeError::InvalidStatement(invalid_stmt) => return invalid_stmt.title(),
             TypeError::EmptyVariant(..) => "Empty variant",
@@ -504,13 +510,13 @@ impl DiagnosticOutput for TypeError {
             TypeError::UnsafeConversionNotAllowed { .. } => "Conversion not allowed in a safe context",
             TypeError::UnsafeAddressoOfNotAllowed { .. } => "Address operator not allowed on this type in a safe context",
 
-            TypeError::InvalidConstExpr { .. } => "Invalid constant expr",
+            TypeError::InvalidConstExpr { .. } => "Invalid constant expression",
 
-            TypeError::InvalidCaseExprBlock { .. } => "Case block invalid as expr",
+            TypeError::InvalidCaseExprBlock { .. } => "Case block invalid as expression",
 
             TypeError::InvalidCast { .. } => "Invalid cast",
             TypeError::EmptyMatchBlock { .. } => "Empty match block",
-            TypeError::MatchExprNotExhaustive { .. } => "Match expr is not exhaustive",
+            TypeError::MatchExprNotExhaustive { .. } => "Match expression is not exhaustive",
             TypeError::InvalidExitWithValue { .. } => "Invalid exit with value",
             TypeError::ConstDeclWithNoValue { .. } => "Constant declaration without a value",
             TypeError::InvalidLoopCounterType { .. } => "Invalid loop counter type",
@@ -780,30 +786,34 @@ impl fmt::Display for TypeError {
             }
 
             TypeError::NotDerefable { ty, .. } => {
-                write!(f, "value of type {} cannot be dereferenced", ty)
+                write!(f, "value of type `{}` cannot be dereferenced", ty)
             }
 
             TypeError::NotMatchable { ty, .. } => {
-                write!(f, "type {} cannot be used in matching constructs", ty)
+                write!(f, "type `{}` cannot be used in matching constructs", ty)
             }
             
             TypeError::NotDefaultable { ty, .. } => {
-                write!(f, "type {} does not have a default value in this context", ty)
+                write!(f, "type `{}` does not have a default value in this context", ty)
+            }
+            
+            TypeError::NotValueExpr { expected, actual, .. } => {
+                write!(f, "expected value of type `{}`, found `{}`", expected, actual)
             }
 
             TypeError::InvalidBinOp { lhs, rhs, op, .. } => {
                 match op {
                     Operator::Assignment => {
-                        write!(f, "{} is not assignable to {}", rhs, lhs)
+                        write!(f, "`{}` is not assignable to `{}`", rhs, lhs)
                     },
                     _ => {
-                        write!(f, "operator {} cannot be applied to the operand types {} and {}", op, lhs, rhs)
+                        write!(f, "operator {} cannot be applied to the operand types `{}` and `{}`", op, lhs, rhs)
                     }
                 }
             }
 
             TypeError::InvalidUnaryOp { operand, op, .. } => {
-                write!(f, "operator {} cannot be applied to an operand of type {}", op, operand)
+                write!(f, "operator {} cannot be applied to an operand of type `{}`", op, operand)
             }
 
             TypeError::BlockOutputIsNotExpression { stmt, expected_expr_ty } => {

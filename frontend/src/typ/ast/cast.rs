@@ -142,6 +142,8 @@ pub fn typecheck_cast_expr(cast: &ast::Cast<Span>, ctx: &mut Context) -> TypeRes
     let cast_ty = typecheck_type(&cast.ty, ctx)?;
     let expr = typecheck_expr(&cast.expr, &cast_ty, ctx)?;
 
+    expr.annotation().expect_value(&Type::Nothing)?;
+
     check_explicit_cast(&expr.annotation().ty(), &cast_ty, &cast.annotation, ctx)?;
 
     Ok(create_cast(expr, cast_ty, cast.span().clone()))

@@ -19,10 +19,10 @@ pub enum ValueKind {
 impl fmt::Display for ValueKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ValueKind::Uninitialized => write!(f, "Uninitialized binding"),
-            ValueKind::Immutable => write!(f, "Immutable binding"),
-            ValueKind::Mutable => write!(f, "Mutable binding"),
-            ValueKind::Temporary => write!(f, "Temporary value"),
+            ValueKind::Uninitialized => write!(f, "uninitialized binding"),
+            ValueKind::Immutable => write!(f, "immutable binding"),
+            ValueKind::Mutable => write!(f, "mutable binding"),
+            ValueKind::Temporary => write!(f, "temporary value"),
         }
     }
 }

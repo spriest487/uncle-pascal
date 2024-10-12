@@ -147,7 +147,12 @@ pub fn typecheck_if_cond_expr(
             let else_expr = typecheck_expr(else_expr, &then_ty, &mut else_ctx)?;
             let else_expr = match then_ty.as_ref() {
                 Type::Nothing => else_expr,
-                then_ty => implicit_conversion(else_expr, &then_ty, ctx)?,
+                then_ty => {
+                    then_branch.annotation().expect_value(&Type::Nothing)?;
+                    else_expr.annotation().expect_value(&Type::Nothing)?;
+
+                    implicit_conversion(else_expr, &then_ty, ctx)?
+                },
             };
 
             ctx.consolidate_branches(&[then_ctx, else_ctx]);

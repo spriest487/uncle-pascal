@@ -6,7 +6,7 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::annotation::VariantCtorTyped;
+use crate::typ::annotation::VariantCaseTyped;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
@@ -409,7 +409,7 @@ fn typecheck_member_of(
             let annotation = match lhs.annotation() {
                 // x is the name of a variant type - we are constructing that variant
                 Typed::Type(Type::Variant(variant_name), ..) => {
-                    typecheck_variant_ctor(variant_name, &member_ident, &span, ctx)?
+                    typecheck_variant_case(variant_name, &member_ident, &span, ctx)?
                 },
 
                 // x is a non-variant typename - we are accessing a member of that type
@@ -758,7 +758,7 @@ pub fn typecheck_member_value(
     Ok(annotation)
 }
 
-pub fn typecheck_variant_ctor(
+pub fn typecheck_variant_case(
     variant_name: &Symbol,
     member_ident: &Ident,
     span: &Span,
@@ -796,7 +796,7 @@ pub fn typecheck_variant_ctor(
         ));
     }
 
-    let ctor_annotation = VariantCtorTyped {
+    let ctor_annotation = VariantCaseTyped {
         variant_name: Rc::new(variant_name.clone()),
         case: member_ident.clone(),
         span: member_ident.span().clone(),

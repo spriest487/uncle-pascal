@@ -295,7 +295,7 @@ fn typecheck_func_call(
             }
         },
 
-        Typed::VariantCtor(variant, ..) => {
+        Typed::VariantCase(variant, ..) => {
             if let Some(args_list) = &func_call.type_args {
                 return Err(TypeError::InvalidExplicitVariantCtorTypeArgs {
                     span: args_list.span.clone(),
