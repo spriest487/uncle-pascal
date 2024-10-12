@@ -612,16 +612,29 @@ fn op_to_no_args_call(
     span: &Span,
     ctx: &mut Context
 ) -> TypeResult<Option<Expr>> {
-    let overload_result = try_resolve_overload(candidates, &[], None, Some(&target.lhs), span, ctx);
+    // if the LHS is an untyped item (eg the type part of a class method call),
+    // don't pass it as a self-arg
+    let self_arg = match target.lhs.annotation().ty().as_ref() {
+        Type::Nothing => None,
+        _ => Some(target.lhs.clone()),
+    };
+
+    let overload_result = try_resolve_overload(
+        candidates,
+        &[],
+        None,
+        self_arg.as_ref(),
+        span,
+        ctx
+    );
     
     let overload = match overload_result {
         Some(overload) => overload,
         None => return Ok(None),
     };
-
-    let self_arg = target.lhs.clone();
+    
     let target = Expr::from(target.clone());
-    let call = overload_to_no_args_call(candidates, overload, target, Some(self_arg), span);
+    let call = overload_to_no_args_call(candidates, overload, target, self_arg, span);
     
     Ok(Some(call))
 }

@@ -86,6 +86,10 @@ fn build_args_for_params(
     let mut checked_args = Vec::new();
 
     let rest_params = if let Some(self_arg) = self_arg {
+        if self_arg.annotation().value_kind().is_none() {
+            panic!("build_args_for_params: self arg {} is not a value (at {})", self_arg, span)
+        }
+
         let self_ty = &params[0].ty;
 
         let self_arg = implicit_conversion(self_arg.clone(), self_ty, ctx)?;
