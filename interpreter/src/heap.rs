@@ -80,7 +80,7 @@ impl NativeHeap {
         self.allocs.insert(addr, alloc_mem.into_boxed_slice());
 
         if self.trace_allocs {
-            eprintln!("NativeHeap: alloc {} bytes @ {}", total_len, addr);
+            eprintln!("[heap] alloc {} bytes @ {}", total_len, addr);
             self.stats.alloc_count += 1;
             
             self.stats.peak_alloc = usize::max(self.stats.peak_alloc, self.allocs.iter()
@@ -94,7 +94,7 @@ impl NativeHeap {
 
     pub fn free(&mut self, ptr: &Pointer) -> NativeHeapResult<()> {
         if self.trace_allocs {
-            eprintln!("NativeHeap: free @ {}", ptr);
+            eprintln!("[heap] free @ {}", ptr);
             self.stats.free_count += 1;
         }
 
@@ -126,9 +126,9 @@ impl NativeHeap {
     }
     
     pub fn print_trace_stats(&self) {
-        eprintln!("NativeHeap: alloc count = {}", self.stats.alloc_count);
-        eprintln!("NativeHeap: free count = {}", self.stats.free_count);
-        eprintln!("NativeHeap: peak alloc size = {}", self.stats.peak_alloc);
+        eprintln!("[heap] alloc count = {}", self.stats.alloc_count);
+        eprintln!("[heap] free count = {}", self.stats.free_count);
+        eprintln!("[heap] peak alloc size = {}", self.stats.peak_alloc);
     }
     
     pub fn stats(&self) -> HeapStats {
