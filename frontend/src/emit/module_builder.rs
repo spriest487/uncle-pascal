@@ -168,6 +168,8 @@ impl ModuleBuilder {
         func_def: &typ::ast::FunctionDef,
         key: FunctionDefKey,
     ) -> FunctionInstance {
+        // eprintln!("instantiate_func_def: {}", func_def.decl.name);
+        
         let generic_ctx = match key.type_args.as_ref() {
             Some(type_args) => {
                 let type_params = func_def
@@ -677,9 +679,8 @@ impl ModuleBuilder {
             typ::Type::MethodSelf => panic!("Self is not a real type in this context"),
 
             typ::Type::GenericParam(param) => panic!(
-                "{} is not a real type in this context: {:?}",
+                "{} is not a real type in this context",
                 param,
-                common::Backtrace::new()
             ),
 
             typ::Type::Function(sig) => match self.find_func_ty(sig) {

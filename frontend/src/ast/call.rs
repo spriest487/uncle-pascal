@@ -19,7 +19,8 @@ use common::span::Spanned;
 use derivative::*;
 use std::fmt;
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, Clone, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct MethodCall<A: Annotation> {
     // for virtual calls, the owning type is the interface and the self type is the implementor
     pub owning_type: A::Type,
@@ -34,6 +35,9 @@ pub struct MethodCall<A: Annotation> {
 
     pub annotation: A,
 
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub args_span: Span,
 }
 
@@ -132,6 +136,11 @@ impl<A: Annotation> Spanned for FunctionCall<A> {
 #[derivative(Hash, Debug, PartialEq)]
 pub struct FunctionCallNoArgs<A: Annotation> {
     pub target: Expr<A>,
+    
+    // for free functions called via method syntax, the implicit self argument
+    pub self_arg: Option<Expr<A>>,
+    
+    pub type_args: Option<TypeList<A::Type>>,
 
     pub annotation: A,
 }
@@ -153,6 +162,8 @@ impl<A: Annotation> Spanned for FunctionCallNoArgs<A> {
 #[derivative(Hash, Debug, PartialEq)]
 pub struct MethodCallNoArgs<A: Annotation> {
     pub target: Expr<A>,
+
+    pub type_args: Option<TypeList<A::Type>>,
 
     // for virtual calls, the owning type is the interface and the self type is the implementor
     // here the self-type is the type of the argument expression - if there is none, it must be
@@ -355,3 +366,4 @@ impl ArgList<Span> {
         self.open.to(&self.close)
     }
 }
+

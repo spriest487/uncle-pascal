@@ -317,8 +317,8 @@ fn typecheck_func_overload(
         OverloadCandidate::Method {
             owning_ty: iface_ty,
             ident,
+            access,
             sig,
-            method,
             ..
         } => {
             // we resolved the overload using the local type args earlier, but we only get an
@@ -328,7 +328,7 @@ fn typecheck_func_overload(
                     sig.specialize_generic(args, ctx)
                         .map_err(|e| {
                             TypeError::from_generic_err(e, func_call.span().clone())
-                            })?
+                        })?
                 },
                 None => (**sig).clone(),
             };
@@ -356,17 +356,17 @@ fn typecheck_func_overload(
                 },
             };
 
-            if self_type.get_current_access(ctx) < method.access {
+            if self_type.get_current_access(ctx) < *access {
                 return Err(TypeError::TypeMemberInaccessible {
                     ty: self_type,
-                    access: method.access,
+                    access: *access,
                     member: ident.clone(),
                     span: func_call.span().clone(),
                 })
             }
 
             let sig = Rc::new(sig.with_self(&self_type));
-            
+
             let return_annotation = TypedValue {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
@@ -426,6 +426,71 @@ fn typecheck_func_overload(
     };
 
     Ok(call)
+}
+
+pub fn overload_to_no_args_call(
+    candidates: &[OverloadCandidate],
+    overload: Overload,
+    mut target: Expr,
+    self_arg: Option<Expr>,
+    span: &Span
+) -> Expr {
+    assert_eq!(self_arg.iter().len(), overload.args.len());
+
+    let call = match &candidates[overload.selected_sig] {
+        OverloadCandidate::Function { sig, decl_name } => {
+            assert_eq!(sig.type_params_len(), overload.type_args_len());
+            
+            let return_value = TypedValue {
+                ty: sig.return_ty.clone(),
+                span: span.clone(),
+                decl: None,
+                value_kind: ValueKind::Temporary,
+            };
+
+            *target.annotation_mut() = Typed::from(FunctionTyped {
+                name: decl_name.clone(),
+                sig: sig.clone(),
+                span: target.span().clone(),
+            });
+
+            Call::FunctionNoArgs(FunctionCallNoArgs {
+                target: Expr::from(target),
+                self_arg,
+                type_args: overload.type_args,
+                annotation: return_value.into(),
+            })
+        }
+
+        OverloadCandidate::Method { owning_ty, sig, ident, access, .. } => {
+            assert_eq!(sig.type_params_len(), overload.type_args_len());
+
+            let return_value = TypedValue {
+                ty: sig.return_ty.clone(),
+                span: span.clone(),
+                decl: None,
+                value_kind: ValueKind::Temporary,
+            };
+
+            *target.annotation_mut() = Typed::from(MethodTyped {
+                owning_ty: owning_ty.clone(),
+                method_ident: ident.clone(),
+                method_access: *access,
+                method_sig: sig.clone(),
+                span: target.span().clone(),
+            });
+
+            Call::MethodNoArgs(MethodCallNoArgs {
+                target: Expr::from(target),
+                self_arg,
+                type_args: overload.type_args,
+                annotation: return_value.into(),
+                owning_type: owning_ty.clone(),
+            })
+        }
+    };
+
+    Expr::Call(Box::new(call))
 }
 
 /// * `iface_method` - Method to be called

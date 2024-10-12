@@ -1,14 +1,16 @@
 mod init;
 mod literal;
 
-use std::rc::Rc;
 use crate::ast;
-use crate::ast::FunctionCallNoArgs;
+use crate::ast::Ident;
+use crate::ast::IdentPath;
 pub use crate::typ::ast::call::typecheck_call;
 pub use crate::typ::ast::call::Invocation;
 use crate::typ::ast::cast::typecheck_cast_expr;
 use crate::typ::ast::const_eval::ConstEval;
-use crate::typ::ast::{typecheck_bin_op, FunctionDecl};
+use crate::typ::ast::overload_to_no_args_call;
+use crate::typ::ast::try_resolve_overload;
+use crate::typ::ast::typecheck_bin_op;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_case_expr;
 use crate::typ::ast::typecheck_collection_ctor;
@@ -19,23 +21,26 @@ use crate::typ::ast::typecheck_match_expr;
 use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::typecheck_raise;
 use crate::typ::ast::typecheck_unary_op;
-use crate::typ::{Context, FunctionSig, Symbol};
+use crate::typ::ast::FunctionDecl;
+use crate::typ::ast::OverloadCandidate;
+use crate::typ::Context;
 use crate::typ::Decl;
+use crate::typ::FunctionSig;
 use crate::typ::FunctionTyped;
 use crate::typ::NameError;
 use crate::typ::ScopeMemberRef;
+use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::ast::Ident;
-use crate::ast::IdentPath;
 use crate::IntConstant;
+use common::span::*;
 pub use init::*;
 pub use literal::*;
-use common::span::*;
+use std::rc::Rc;
 
 pub type Expr = ast::Expr<Typed>;
 
@@ -156,7 +161,7 @@ fn typecheck_ident(
         },
     };
 
-    match decl {
+    match &decl {
         // const values from any scope can be transformed directly into literals
         ScopeMemberRef::Decl {
             value: Decl::Const { ty, val, .. },
@@ -165,10 +170,11 @@ fn typecheck_ident(
         } => {
             let annotation = TypedValue {
                 ty: ty.clone(),
-                decl: Some(key.clone()),
+                decl: Some((*key).clone()),
                 span: span.clone(),
                 value_kind: ValueKind::Temporary,
             };
+            
             Ok(ast::Expr::Literal(val.clone(), annotation.into()))
         },
 
@@ -176,51 +182,88 @@ fn typecheck_ident(
         // that function, but we wrap it in the NoArgs type so it can be unwrapped if this
         // expression appears in an actual call node
         ScopeMemberRef::Decl {
-            value: Decl::Function { decl, .. },
+            value: Decl::Function { decl: func_decl, .. },
             parent_path,
             ..
-        } if should_call_noargs_in_expr(decl, expect_ty, &Type::Nothing) => {
-            let annotation = TypedValue {
-                decl: None,
-                span: span.clone(),
-                ty: decl.return_ty.clone(),
-                value_kind: ValueKind::Temporary,
+        } => {
+            let decl_annotation = member_annotation(&decl, span.clone(), ctx);
+            
+            let call_expr = if should_call_noargs_in_expr(func_decl, expect_ty, &Type::Nothing) {
+                let func_path = parent_path.to_namespace().child(ident.clone());
+                let func_sym = Symbol::from(func_path)
+                    .with_ty_params(func_decl.type_params.clone());
+                let func_sig = Rc::new(FunctionSig::of_decl(func_decl));
+    
+                let candidates = &[OverloadCandidate::Function {
+                    decl_name: func_sym.clone(),
+                    sig: func_sig.clone(),
+                }];
+
+                let overload_result = try_resolve_overload(
+                    candidates,
+                    &[],
+                    None,
+                    None,
+                    span,
+                    ctx
+                );
+
+                match overload_result {
+                    Some(overload) => {
+                        let func_annotation = FunctionTyped {
+                            name: func_sym,
+                            sig: func_sig,
+                            span: span.clone(),
+                        };
+                        
+                        let func_expr = Expr::Ident(ident.clone(), func_annotation.into());
+                        
+                        let call = overload_to_no_args_call(
+                            candidates,
+                            overload,
+                            func_expr,
+                            None,
+                            span
+                        );
+                        Some(call)
+                    },
+
+                    None => None,
+                }
+            } else {
+                None
             };
             
-            let func_sym = Symbol::from(parent_path.to_namespace().child(ident.clone()))
-                .with_ty_params(decl.type_params.clone());
-
-            let func_annotation = FunctionTyped {
-                name: func_sym,
-                sig: Rc::new(FunctionSig::of_decl(decl)),
-                span: span.clone(),
-            };
-
-            let call = ast::Call::FunctionNoArgs(FunctionCallNoArgs {
-                target: ast::Expr::Ident(ident.clone(), func_annotation.into()),
-                annotation: annotation.into(),
-            });
-
-            Ok(Expr::from(call))
+            match call_expr {
+                Some(expr) => Ok(expr),
+                None => member_ident_expr(decl_annotation, ident, ctx)
+            }
         },
 
-        member => {
-            let annotation = member_annotation(member, span.clone(), ctx);
-
-            if let Some(decl_name) = annotation.decl() {
-                if let Some(decl_scope) = ctx.get_decl_scope(decl_name) {
-                    let decl_scope_id = decl_scope.id();
-                    if let Some(closure_scope_id) = ctx.get_closure_scope().map(|s| s.id()) {
-                        if decl_scope_id < closure_scope_id {
-                            ctx.add_closure_capture(decl_name, &annotation.ty());
-                        }
-                    }
-                }
-            }
-
-            Ok(ast::Expr::Ident(ident.clone(), annotation))
+        _ => {
+            let decl_annotation = member_annotation(&decl, span.clone(), ctx);
+            member_ident_expr(decl_annotation, ident, ctx)
         },
     }
+}
+
+fn member_ident_expr(
+    member_val: Typed,
+    ident: &Ident,
+    ctx: &mut Context
+) -> Result<Expr, TypeError> {
+    if let Some(decl_name) = member_val.decl() {
+        if let Some(decl_scope) = ctx.get_decl_scope(decl_name) {
+            let decl_scope_id = decl_scope.id();
+            if let Some(closure_scope_id) = ctx.get_closure_scope().map(|s| s.id()) {
+                if decl_scope_id < closure_scope_id {
+                    ctx.add_closure_capture(decl_name, &member_val.ty());
+                }
+            }
+        }
+    }
+
+    Ok(ast::Expr::Ident(ident.clone(), member_val))
 }
 
 fn should_call_noargs_in_expr(decl: &FunctionDecl, expect_ty: &Type, self_arg_ty: &Type) -> bool {
@@ -228,7 +271,7 @@ fn should_call_noargs_in_expr(decl: &FunctionDecl, expect_ty: &Type, self_arg_ty
     sig.should_call_noargs_in_expr(expect_ty, self_arg_ty)
 }
 
-pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> Typed {
+pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> Typed {
     match member {
         ScopeMemberRef::Decl {
             value: Decl::Alias(aliased),
@@ -238,13 +281,10 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
                 .find_path(aliased)
                 .unwrap_or_else(|| panic!("invalid alias to {}", aliased));
 
-            member_annotation(alias_ref, span, ctx)
+            member_annotation(&alias_ref, span, ctx)
         },
 
-        ScopeMemberRef::Decl {
-            value: Decl::BoundValue(binding),
-            ..
-        } => TypedValue {
+        ScopeMemberRef::Decl { value: Decl::BoundValue(binding), .. } => TypedValue {
             span,
             ty: binding.ty.clone(),
             value_kind: binding.kind,
@@ -263,38 +303,33 @@ pub fn member_annotation(member: ScopeMemberRef, span: Span, ctx: &Context) -> T
 
             // the named version of the function never has type args, the caller will have
             // to specialize the expr to add some
-            let func_sym = Symbol::from(parent_path.to_namespace().child(key.clone()))
+            let func_sym = Symbol::from(parent_path.to_namespace().child((*key).clone()))
                 .with_ty_params(decl.type_params.clone());
 
             FunctionTyped {
                 span,
                 name: func_sym,
                 sig: Rc::new(FunctionSig::of_decl(decl)),
-            }
-            .into()
+            }.into()
         },
 
-        ScopeMemberRef::Decl {
-            value: Decl::Const { ty, .. },
-            key,
-            ..
-        } => TypedValue {
-            ty: ty.clone(),
-            decl: Some(key.clone()),
-            span,
-            value_kind: ValueKind::Immutable,
-        }
-        .into(),
+        ScopeMemberRef::Decl { value: Decl::Const { ty, .. }, key, .. } => {
+            TypedValue {
+                ty: ty.clone(),
+                decl: Some((*key).clone()),
+                span,
+                value_kind: ValueKind::Immutable,
+            }.into()
+        },
 
-        ScopeMemberRef::Decl {
-            value: Decl::Type { ty, .. },
-            ..
-        } => Typed::Type(ty.clone(), span),
+        ScopeMemberRef::Decl { value: Decl::Type { ty, .. }, .. } => {
+            Typed::Type(ty.clone(), span)
+        },
 
-        ScopeMemberRef::Decl {
-            value: Decl::Namespace(path),
-            ..
-        } => Typed::Namespace(path.clone(), span),
+        ScopeMemberRef::Decl { value: Decl::Namespace(path), .. } => {
+            Typed::Namespace(path.clone(), span)
+        },
+
         ScopeMemberRef::Scope { path } => {
             Typed::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
         },

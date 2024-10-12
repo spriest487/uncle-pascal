@@ -100,9 +100,13 @@ enum CallTarget {
 }
 
 pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
+    // eprintln!("build_call: {} @ {}", call, call.span());
+
     match call {
         syn::Call::FunctionNoArgs(func_call) => {
-            build_func_call(&func_call.target, &[], None, builder)
+            let args: Vec<_> = func_call.self_arg.iter().cloned().collect();
+
+            build_func_call(&func_call.target, &args, func_call.type_args.clone(), builder)
         },
 
         syn::Call::MethodNoArgs(method_call) => {
@@ -128,7 +132,7 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
                         method.owning_ty.clone(),
                         self_ty,
                         &args,
-                        None,
+                        method_call.type_args.clone(),
                         builder,
                     )
                 },
@@ -153,7 +157,7 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
                 method_call.owning_type.clone(),
                 method_call.self_type.clone(),
                 &method_call.args,
-                method_call.type_args.as_ref(),
+                method_call.type_args.clone(),
                 builder,
             )
         },
@@ -246,7 +250,7 @@ fn build_method_call(
     owning_ty: typ::Type,
     self_ty: typ::Type,
     args: &[typ::ast::Expr],
-    ty_args: Option<&typ::TypeArgList>,
+    ty_args: Option<typ::TypeArgList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
     let owning_ty = owning_ty.apply_type_args_by_name(
@@ -277,7 +281,7 @@ fn build_method_call(
                 owning_ty,
                 self_ty,
                 method_ident.clone(),
-                ty_args.cloned(),
+                ty_args,
             );
 
             let func_val = Ref::Global(GlobalRef::Function(method_decl.id));

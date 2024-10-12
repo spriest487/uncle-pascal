@@ -10,6 +10,8 @@ use crate::typ::annotation::VariantCtorTyped;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
+use crate::typ::ast::overload_to_no_args_call;
+use crate::typ::ast::try_resolve_overload;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::Call;
@@ -433,7 +435,7 @@ fn typecheck_member_of(
                     full_path.push(member_ident.clone());
 
                     match ctx.find_path(&full_path) {
-                        Some(member) => member_annotation(member, span.clone(), ctx),
+                        Some(member) => member_annotation(&member, span.clone(), ctx),
                         None => {
                             let err = NameError::MemberNotFound {
                                 member: member_ident,
@@ -455,107 +457,102 @@ fn typecheck_member_of(
                 },
             };
 
-            let rhs = ast::Expr::Ident(member_ident, annotation.clone());
+            let rhs_value = Typed::Untyped(member_ident.span.clone());
+            let rhs = Expr::Ident(member_ident, rhs_value);
 
-            let lhs_ty = lhs.annotation().ty().into_owned();
-
-            let mut member_op = BinOp {
+            let member_op = BinOp {
                 lhs,
                 op: Operator::Period,
                 rhs,
                 annotation,
             };
+            
+            let lhs_ty = member_op.lhs.annotation().ty();
 
             // member operations that reference function values with no params automatically turn into a
             // no-args call to that function, except in contexts where we expect a matching function value
             match &member_op.annotation {
-                Typed::Function(func_annotation)
-                    if func_annotation.should_call_noargs_in_expr(expect_ty) =>
-                {
-                    let sig = func_annotation.sig.clone();
-                    let call = Call::FunctionNoArgs(sig.new_no_args_function_call(Expr::from(member_op)));
+                Typed::Function(func_val) => {
+                    let no_args_call = if !func_val.should_call_noargs_in_expr(expect_ty) {
+                        None 
+                    } else {
+                        let overload_candidate = &[
+                            OverloadCandidate::Function {
+                                sig: func_val.sig.clone(),
+                                decl_name: func_val.name.clone()
+                            }
+                        ];
 
-                    Ok(Expr::from(call))
-                },
-
-                Typed::UfcsFunction(ufcs_annotation)
-                    if ufcs_annotation.should_call_noargs_in_expr(expect_ty) =>
-                {
-                    let sig = ufcs_annotation.sig.clone();
-                    let call = Call::FunctionNoArgs(sig.new_no_args_function_call(Expr::from(member_op)));
-
-                    Ok(Expr::from(call))
-                },
-
-                Typed::Method(method) if method.should_call_noargs_in_expr(expect_ty, &lhs_ty) => {
-                    let sig = method.method_sig.clone();
-
-                    // if the LHS is an untyped item (eg the type part of a class method call),
-                    // don't pass it as a self-arg
-                    let self_arg = match lhs_ty {
-                        Type::Nothing => None,
-                        _ => Some(member_op.lhs.clone()),
+                        op_to_no_args_call(overload_candidate, &member_op, &span, ctx)?
                     };
-    
-                    let owning_ty = method.owning_ty.clone();
+                    
+                    match no_args_call {
+                        Some(call_expr) => Ok(call_expr),
+                        None => Ok(Expr::from(member_op)),
+                    }
+                }
 
-                    let target = Expr::from(member_op);
+                Typed::UfcsFunction(ufcs_val) => {
+                    let no_args_call = if !ufcs_val.should_call_noargs_in_expr(expect_ty) {
+                        None
+                    } else {
+                        let overload_candidate = &[
+                            OverloadCandidate::Function {
+                                sig: ufcs_val.sig.clone(),
+                                decl_name: ufcs_val.function_name.clone()
+                            }
+                        ];
 
-                    let no_args_call = sig.new_no_args_method_call(
-                        target,
-                        owning_ty,
-                        self_arg
-                    );
-                    let call = Call::MethodNoArgs(no_args_call);
+                        op_to_no_args_call(overload_candidate, &member_op, &span, ctx)?
+                    };
 
-                    Ok(Expr::from(call))
+                    match no_args_call {
+                        Some(call_expr) => Ok(call_expr),
+                        None => Ok(Expr::from(member_op)),
+                    }
+                }
+
+                Typed::Method(method) => {
+                    let no_args_call = if !method.should_call_noargs_in_expr(expect_ty, lhs_ty.as_ref()) {
+                        None
+                    } else {
+                        let overload_candidate = &[
+                            OverloadCandidate::Method {
+                                owning_ty: method.owning_ty.clone(),
+                                ident: method.method_ident.clone(),
+                                access: method.method_access,
+                                sig: method.method_sig.clone(),
+                            }
+                        ];
+
+                        op_to_no_args_call(overload_candidate, &member_op, &span, ctx)?
+                    };
+
+                    match no_args_call {
+                        Some(call_expr) => Ok(call_expr),
+                        None => Ok(Expr::from(member_op)),
+                    }
                 }
 
                 Typed::Overload(overloaded) => {
                     // if any of the possible overloads can be called with no args, assume this expression
                     // is a no-args call - if arguments are applied later we'll re-resolve the overload
-                    match resolve_no_args_overload(overloaded, expect_ty, &member_op.lhs) {
-                        Some(OverloadCandidate::Function { decl_name, sig }) => {
-                            let sig = sig.clone();
-                            
-                            member_op.annotation = Typed::from(FunctionTyped {
-                                name: decl_name.clone(),
-                                sig: sig.clone(),
-                                span: member_op.span().clone(),
-                            });
-                            let call = Call::FunctionNoArgs(sig.new_no_args_function_call(Expr::from(member_op)));
-                            Ok(Expr::from(call))
-                        }
+                    let self_arg = overloaded.self_arg
+                        .as_ref()
+                        .map(|arg_box| arg_box.as_ref());
 
-                        Some(OverloadCandidate::Method { sig, ident, owning_ty, method, .. }) => {
-                            let sig = sig.clone();
-                            
-                            let self_arg = member_op.lhs.clone();
-                            let owning_ty = owning_ty.clone();
-                            
-                            member_op.annotation = Typed::from(MethodTyped {
-                                owning_ty: owning_ty.clone(),
-                                method_ident: ident.clone(),
-                                method_access: method.access,
-                                method_sig: sig.clone(),
-                                span: member_op.span().clone(),
-                            });
-                            
-                            let target = Expr::from(member_op);
-
-                            let no_args_call = sig.new_no_args_method_call(
-                                target,
-                                owning_ty,
-                                Some(self_arg)
+                    match try_resolve_overload(&overloaded.candidates, &[], None, self_arg, &span, ctx) {
+                        Some(overload) => {
+                            let call = overload_to_no_args_call(
+                                &overloaded.candidates,
+                                overload,
+                                Expr::from(member_op.clone()),
+                                self_arg.cloned(),
+                                &span
                             );
-                            let call = Call::MethodNoArgs(no_args_call);
-                            Ok(Expr::from(call))
+                            Ok(call)
                         }
-
-                        None => {
-                            // no valid overloads, this must be resolved later by providing args
-                            Ok(Expr::from(member_op))
-                        }
+                        None => Ok(Expr::from(member_op)),
                     }
                 }
 
@@ -609,33 +606,24 @@ fn typecheck_member_of(
     }
 }
 
-fn resolve_no_args_overload<'a>(overloaded: &'a OverloadTyped, expect_ty: &Type, self_arg: &Expr) -> Option<&'a OverloadCandidate> {
-    let mut result = None;
+fn op_to_no_args_call(
+    candidates: &[OverloadCandidate],
+    target: &BinOp,
+    span: &Span,
+    ctx: &mut Context
+) -> TypeResult<Option<Expr>> {
+    let overload_result = try_resolve_overload(candidates, &[], None, Some(&target.lhs), span, ctx);
+    
+    let overload = match overload_result {
+        Some(overload) => overload,
+        None => return Ok(None),
+    };
 
-    let self_arg_ty = self_arg.annotation().ty();
-
-    for candidate in &overloaded.candidates {
-        let should_call_no_args = match candidate {
-            OverloadCandidate::Function { sig, .. } => {
-                sig.should_call_noargs_in_expr(expect_ty, &self_arg_ty)
-            }
-
-            OverloadCandidate::Method { sig, .. } => {
-                sig.should_call_noargs_in_expr(expect_ty, &self_arg_ty)
-            }
-        };
-
-        if should_call_no_args {
-            if result.is_some() {
-                // it's ambiguous
-                return None;
-            }
-
-            result = Some(candidate);
-        }
-    }
-
-    result
+    let self_arg = target.lhs.clone();
+    let target = Expr::from(target.clone());
+    let call = overload_to_no_args_call(candidates, overload, target, Some(self_arg), span);
+    
+    Ok(Some(call))
 }
 
 fn typecheck_type_member(
@@ -707,20 +695,23 @@ pub fn typecheck_member_value(
             Typed::from(method)
         },
 
-        InstanceMember::UFCSCall { func_name, sig } => UfcsTyped {
-            function_name: func_name,
-            sig,
-            span: span.clone(),
-            self_arg: Box::new(lhs.clone()),
-        }
-        .into(),
+        InstanceMember::UFCSCall { func_name, sig } => {
+            // to be resolved later, presumably in a subsequent call
+            UfcsTyped {
+                function_name: func_name,
+                sig,
+                span: span.clone(),
+                self_arg: Box::new(lhs.clone()),
+            }.into()
+        },
 
-        InstanceMember::Overloaded { candidates } => OverloadTyped::new(
-            candidates,
-            Some(Box::new(lhs.clone())),
-            span.clone(),
-        )
-        .into(),
+        InstanceMember::Overloaded { candidates } => {
+            OverloadTyped::new(
+                candidates,
+                Some(Box::new(lhs.clone())),
+                span.clone(),
+            ).into()
+        }
 
         InstanceMember::Field { ty: member_ty, access: field_access } => {
             if base_ty.get_current_access(ctx) < field_access {

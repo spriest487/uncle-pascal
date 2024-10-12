@@ -70,7 +70,7 @@ impl OverloadTyped {
             sig: Some(sig.clone()),
             candidates: vec![OverloadCandidate::Method {
                 ident: method.decl.name.ident.clone(),
-                method,
+                access: method.access,
                 sig,
                 owning_ty: iface_ty,
             }],

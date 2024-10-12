@@ -2,7 +2,6 @@ use crate::ast::FunctionParamMod;
 use crate::typ::ast::AnonymousFunctionDef;
 use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionCall;
-use crate::typ::ast::FunctionCallNoArgs;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
@@ -214,6 +213,10 @@ impl FunctionSig {
         
         let specialized_sig = self.substitute_type_args(type_args);
         Ok(specialized_sig)
+    }
+    
+    pub fn type_params_len(&self) -> usize {
+        self.type_params.as_ref().map(|list| list.len()).unwrap_or(0)
     }
     
     pub fn apply_ty_args(&self, ty_params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
@@ -428,23 +431,11 @@ impl FunctionSig {
         }
     }
 
-    pub fn new_no_args_function_call(&self, target: Expr) -> FunctionCallNoArgs {
-        let span = target.span().clone();
-        let func_val_annotation = match &self.return_ty {
-            Type::Nothing => Typed::Untyped(span),
-            return_ty => Typed::new_temp_val(return_ty.clone(), span),
-        };
-
-        FunctionCallNoArgs {
-            annotation: func_val_annotation,
-            target,
-        }
-    }
-
     pub fn new_no_args_method_call(&self,
         target: Expr,
         owning_type: Type,
-        self_arg: Option<Expr>
+        self_arg: Option<Expr>,
+        type_args: Option<TypeArgList>,
     ) -> MethodCallNoArgs {
         let span = target.span().clone();
         let func_val_annotation = match &self.return_ty {
@@ -457,6 +448,7 @@ impl FunctionSig {
             self_arg,
             owning_type,
             target,
+            type_args,
         }
     }
     

@@ -1,12 +1,9 @@
-use crate::ast;
-use crate::ast::FunctionName;
-use crate::ast::Ident;
-use crate::ast::TypeList;
+use crate::{ast, Ident};
+use crate::ast::{Access, TypeList};
 use crate::typ::ast::check_implicit_conversion;
 use crate::typ::ast::specialize_call_args;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
-use crate::typ::ast::Method;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
 use crate::typ::InstanceMethod;
@@ -28,6 +25,12 @@ pub struct Overload {
     pub type_args: Option<TypeList<Type>>,
 }
 
+impl Overload {
+    pub fn type_args_len(&self) -> usize {
+        self.type_args.as_ref().map(|list| list.len()).unwrap_or(0)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum OverloadCandidate {
     Function {
@@ -35,9 +38,9 @@ pub enum OverloadCandidate {
         sig: Rc<FunctionSig>,
     },
     Method {
-        owning_ty: Type,
         ident: Ident,
-        method: Method,
+        access: Access,
+        owning_ty: Type,
         sig: Rc<FunctionSig>,
     },
 }
@@ -46,14 +49,13 @@ impl OverloadCandidate {
     pub fn from_instance_method(im: InstanceMethod) -> Self {
         match im {
             InstanceMethod::Method { owning_ty: iface_ty, method } => {
-                let ident = method.decl.name.ident().clone();
                 let sig = FunctionSig::of_decl(&method.decl);
                 
                 OverloadCandidate::Method {
+                    ident: method.decl.name.ident.clone(),
+                    access: method.access,
                     owning_ty: iface_ty,
-                    ident,
                     sig: Rc::new(sig),
-                    method,
                 }
             },
 
@@ -76,7 +78,7 @@ impl OverloadCandidate {
     pub fn span(&self) -> &Span {
         match self {
             OverloadCandidate::Function { decl_name, .. } => decl_name.span(),
-            OverloadCandidate::Method { method, .. } => method.decl.span(),
+            OverloadCandidate::Method { ident, .. } => ident.span(),
         }
     }
 }
@@ -92,6 +94,30 @@ impl fmt::Display for OverloadCandidate {
             },
         }
     }
+}
+
+pub fn try_resolve_overload(
+    candidates: &[OverloadCandidate],
+    args: &[ast::Expr<Span>],
+    type_args: Option<&TypeArgList>,
+    self_arg: Option<&Expr>,
+    span: &Span,
+    ctx: &mut Context,
+) -> Option<Overload> {
+    let mut tmp_ctx = ctx.clone();
+
+    let overload = resolve_overload(
+        candidates,
+        args,
+        type_args,
+        self_arg,
+        span,
+        &mut tmp_ctx
+    ).ok()?;
+    
+    ctx.consolidate_branches(&[tmp_ctx]);
+    
+    Some(overload)
 }
 
 pub fn resolve_overload(
@@ -239,8 +265,8 @@ pub fn resolve_overload(
                 let candidate = &candidates[*i];
                 match candidate {
                     OverloadCandidate::Function { .. } => true,
-                    OverloadCandidate::Method { method, owning_ty: iface_ty, .. } => {
-                        iface_ty.get_current_access(ctx) >= method.access
+                    OverloadCandidate::Method { access, owning_ty: iface_ty, .. } => {
+                        iface_ty.get_current_access(ctx) >= *access
                     }
                 }
             });
