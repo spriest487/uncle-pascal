@@ -7,6 +7,7 @@ use crate::Keyword;
 use common::span::*;
 use derivative::Derivative;
 use std::fmt;
+use common::TracedError;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
@@ -157,7 +158,16 @@ fn parse_block_stmts(
                 // expr, assume it's the block output. some expressions (eg calls) are
                 // always valid as statements regardless of type, so in some cases the block
                 // output can't be determined until typechecking
-                ParseError::InvalidStatement(InvalidStatement(..)) => {
+                err @ ParseError::InvalidStatement(InvalidStatement(..)) => {
+                    // if there's more statements after this, we can't use it as the output
+                    let stmt_after_tokens = tokens
+                        .look_ahead()
+                        .match_sequence(Separator::Semicolon + Matcher::AnyToken);
+
+                    if stmt_after_tokens.is_some() {
+                        return Err(TracedError::trace(err));
+                    }
+                    
                     tokens.seek(stmt_start_pos);
                     output_expr = Some(Expr::parse(tokens)?);
                     break;
