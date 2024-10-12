@@ -378,11 +378,6 @@ impl FunctionSig {
     /// since it's impossible for a function to return a function with its own signature, which
     /// would be a recursive type
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg_ty: &Type) -> bool {
-        // functions with type params can't be called without arguments
-        if self.type_params.is_some() {
-            return false;
-        }
-        
         // if we expect a self-param (eg the `a` in the no-args call `a.B`), it can only be a
         // no-args call if there is exactly one param. 
         // if there's no self-param, there must be zero actual args

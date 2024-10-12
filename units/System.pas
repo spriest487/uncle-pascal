@@ -32,7 +32,7 @@ type
     end;
 
     Disposable = interface
-        function Dispose();
+        function Dispose;
     end;
 
     Box[T] = class
@@ -76,7 +76,7 @@ function FreeMem(mem: ^Byte); external 'rt';
 
 function Write(line: String); external 'rt';
 function WriteLn(line: String); external 'rt';
-function ReadLn(): String; external 'rt';
+function ReadLn: String; external 'rt';
 
 function Int8ToStr(i: Int8): String; external 'rt';
 function UInt8ToStr(i: UInt8): String; external 'rt';
@@ -331,12 +331,12 @@ begin
     var startAt := 0;
     var endAt := self.len - 1;
 
-    while startAt < endAt and self.CharAt(startAt).IsWhiteSpace() do
+    while startAt < endAt and self.CharAt(startAt).IsWhiteSpace do
     begin
         startAt += 1;
     end;
 
-    while endAt >= startAt and self.CharAt(endAt).IsWhiteSpace() do
+    while endAt >= startAt and self.CharAt(endAt).IsWhiteSpace do
     begin
         endAt -= 1;
     end;
@@ -518,72 +518,72 @@ begin
     self.chars[at]
 end;
 
-function Int8.ToString(): String;
+function Int8.ToString: String;
 begin
     Int8ToStr(self)
 end;
 
-function Byte.ToString(): String;
+function Byte.ToString: String;
 begin
     ByteToStr(self)
 end;
 
-function Int16.ToString(): String;
+function Int16.ToString: String;
 begin
     Int16ToStr(self)
 end;
 
-function UInt16.ToString(): String;
+function UInt16.ToString: String;
 begin
     UInt16ToStr(self)
 end;
 
-function Integer.ToString(): String;
+function Integer.ToString: String;
 begin
     IntToStr(self)
 end;
 
-function UInt32.ToString(): String;
+function UInt32.ToString: String;
 begin
     UInt32ToStr(self)
 end;
 
-function Int64.ToString(): String;
+function Int64.ToString: String;
 begin
     Int64ToStr(self)
 end;
 
-function UInt64.ToString(): String;
+function UInt64.ToString: String;
 begin
     UInt64ToStr(self)
 end;
 
-function NativeInt.ToString(): String;
+function NativeInt.ToString: String;
 begin
     NativeIntToStr(self)
 end;
 
-function NativeUInt.ToString(): String;
+function NativeUInt.ToString: String;
 begin
     NativeUIntToStr(self)
 end;
 
-function Boolean.ToString(): String;
+function Boolean.ToString: String;
 begin
     if self then 'true' else 'false'
 end;
 
-function Real32.ToString(): String;
+function Real32.ToString: String;
 begin
     RealToStr(self)
 end;
 
-function Pointer.ToString(): String;
+function Pointer.ToString: String;
 begin
     PointerToStr(self)
 end;
 
-function String.ToString(): String;
+function String.ToString: String;
 begin
     self
 end;
@@ -604,7 +604,8 @@ end;
 
 function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);
 begin
-    if arr.Length() = len then exit;
+    var oldLen: Integer := arr.Length;
+    if oldLen = len then exit;
 
     // must put this in a mutable local variable to take its address (can't address immutable vars)
     var defaultValVar := defaultVal;
