@@ -23,7 +23,7 @@ use crate::typ::ast::typecheck_raise;
 use crate::typ::ast::typecheck_unary_op;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::Context;
+use crate::typ::{Context, OverloadTyped};
 use crate::typ::Decl;
 use crate::typ::FunctionSig;
 use crate::typ::FunctionTyped;
@@ -178,17 +178,21 @@ fn typecheck_ident(
             Ok(ast::Expr::Literal(val.clone(), annotation.into()))
         },
 
-        // an ident referencing a function with no parameters is interpreted as a call to
-        // that function, but we wrap it in the NoArgs type so it can be unwrapped if this
-        // expression appears in an actual call node
         ScopeMemberRef::Decl {
-            value: Decl::Function { decl: func_decl, .. },
+            value: Decl::Function { overloads, .. },
             parent_path,
             ..
         } => {
             let decl_annotation = member_annotation(&decl, span.clone(), ctx);
+
+            // an ident referencing a function with no parameters is interpreted as a call to
+            // that function, but we wrap it in the NoArgs type so it can be unwrapped if this
+            // expression appears in an actual call node
+            let can_call_noargs = overloads.len() == 1
+                && should_call_noargs_in_expr(&overloads[0], expect_ty, &Type::Nothing);
             
-            let call_expr = if should_call_noargs_in_expr(func_decl, expect_ty, &Type::Nothing) {
+            let call_expr = if can_call_noargs {
+                let func_decl = &overloads[0];
                 let func_path = parent_path.to_namespace().child(ident.clone());
                 let func_sym = Symbol::from(func_path)
                     .with_ty_params(func_decl.type_params.clone());
@@ -293,24 +297,50 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
         .into(),
 
         ScopeMemberRef::Decl {
-            value: Decl::Function { decl, .. },
+            value: Decl::Function { overloads, .. },
             ref parent_path,
             key,
         } => {
-            if parent_path.as_slice().is_empty() {
-                panic!("empty path for decl {}", key);
+            let func_path = parent_path.to_namespace().child((*key).clone());
+            
+            if overloads.len() == 1 {
+                let decl = &overloads[0];
+                if parent_path.as_slice().is_empty() {
+                    panic!("empty path for decl {}", key);
+                }
+
+                // the named version of the function never has type args, the caller will have
+                // to specialize the expr to add some
+                let func_path = parent_path.to_namespace().child((*key).clone());
+                let func_sym = Symbol::from(func_path)
+                    .with_ty_params(decl.type_params.clone());
+
+                FunctionTyped {
+                    span,
+                    name: func_sym,
+                    sig: Rc::new(FunctionSig::of_decl(decl)),
+                }.into()
+            } else {
+                let candidates = overloads
+                    .iter()
+                    .map(|decl| {
+                        let func_sym = Symbol::from(func_path.clone())
+                            .with_ty_params(decl.type_params.clone());
+
+                        OverloadCandidate::Function {
+                            decl_name: func_sym,
+                            sig: Rc::new(FunctionSig::of_decl(decl)),
+                        }
+                    })
+                    .collect();
+
+                OverloadTyped {
+                    span,
+                    candidates,
+                    self_arg: None,
+                    sig: None,
+                }.into()
             }
-
-            // the named version of the function never has type args, the caller will have
-            // to specialize the expr to add some
-            let func_sym = Symbol::from(parent_path.to_namespace().child((*key).clone()))
-                .with_ty_params(decl.type_params.clone());
-
-            FunctionTyped {
-                span,
-                name: func_sym,
-                sig: Rc::new(FunctionSig::of_decl(decl)),
-            }.into()
         },
 
         ScopeMemberRef::Decl { value: Decl::Const { ty, .. }, key, .. } => {

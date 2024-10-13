@@ -16,7 +16,6 @@ use crate::typ::ast::typecheck_stmt;
 use crate::typ::ast::typecheck_struct_decl;
 use crate::typ::ast::typecheck_variant;
 use crate::typ::ast::Expr;
-use crate::typ::typecheck_type;
 use crate::typ::Binding;
 use crate::typ::ConstTyped;
 use crate::typ::Context;
@@ -32,6 +31,7 @@ use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::ValueKind;
+use crate::typ::typecheck_type;
 use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
@@ -125,10 +125,9 @@ fn typecheck_unit_func_def(
         }
 
         None => {
-            let func_name_path = IdentPath::from(func_name.ident.clone());
-            if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_name_path) {
-                let func_decl = &func_decl;
-                ctx.declare_function(func_name.ident().clone(), (**func_decl).clone(), visibility)?;
+            // functions may or may not be previously declared when we encounter a def
+            if !ctx.is_function_declared(&func_decl) {
+                ctx.declare_function(func_name.ident().clone(), func_decl.clone(), visibility)?;
             }
 
             ctx.define_function(func_name.ident().clone(), func_def.clone())?;

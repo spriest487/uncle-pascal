@@ -83,23 +83,30 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
             return;
         }
 
-        // ignore decls that can't possible be called via UFCS since they have 0 params
-        let func_decl = match decl {
-            Decl::Function { decl, .. } if decl.params.len() > 0 => decl,
+        let overloads = match decl {
+            Decl::Function { overloads, .. } => overloads,
             _ => return,
         };
-        let self_param = &func_decl.params[0];
-
-        if self_param.ty == *ty
-            || (self_param.ty.contains_unresolved_params(ctx) && self_param.ty.same_decl_type(ty))
-        {
-            let func_name = Symbol::from(decl_path.clone())
-                .with_ty_params(func_decl.type_params.clone());
+        
+        for func_decl in overloads {
+            // ignore decls that can't possibly be called via UFCS since they have 0 params
+            if func_decl.params.is_empty() {
+                continue;
+            }
             
-            methods.push(InstanceMethod::FreeFunction {
-                func_name,
-                sig: Rc::new(FunctionSig::of_decl(func_decl)),
-            })
+            let self_param = &func_decl.params[0];
+
+            if self_param.ty == *ty
+                || (self_param.ty.contains_unresolved_params(ctx) && self_param.ty.same_decl_type(ty))
+            {
+                let func_name = Symbol::from(decl_path.clone())
+                    .with_ty_params(func_decl.type_params.clone());
+
+                methods.push(InstanceMethod::FreeFunction {
+                    func_name,
+                    sig: Rc::new(FunctionSig::of_decl(func_decl)),
+                })
+            }
         }
     });
 

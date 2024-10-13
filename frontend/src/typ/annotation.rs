@@ -50,7 +50,7 @@ pub struct OverloadTyped {
     pub span: Span,
 
     pub candidates: Vec<OverloadCandidate>,
-    sig: Option<Rc<FunctionSig>>,
+    pub sig: Option<Rc<FunctionSig>>,
 
     pub self_arg: Option<Box<Expr>>,
 }

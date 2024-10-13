@@ -465,7 +465,7 @@ fn validate_method_def_matches_decl(
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
                     decl: declared_method.decl.span.clone(),
-                    ident: owning_ty_name.clone().child(method_ident.clone()),
+                    path: owning_ty_name.clone().child(method_ident.clone()),
                 })
             } else {
                 Ok(())
@@ -498,9 +498,7 @@ fn typecheck_decl_mods(
 
             ast::DeclMod::Forward(span) => DeclMod::Forward(span.clone()),
 
-            ast::DeclMod::Overload(span) => {
-                unimplemented!("function overload @ {}", span)
-            }
+            ast::DeclMod::Overload(span) => DeclMod::Overload(span.clone()),
         };
 
         results.push(result);

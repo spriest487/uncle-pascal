@@ -5,7 +5,8 @@ use crate::emit::build_closure_function_def;
 use crate::emit::build_func_def;
 use crate::emit::build_func_static_closure_def;
 use crate::emit::build_static_closure_impl;
-use crate::emit::builder::{Builder, GenericContext};
+use crate::emit::builder::Builder;
+use crate::emit::builder::GenericContext;
 use crate::emit::ir;
 use crate::emit::metadata::translate_closure_struct;
 use crate::emit::metadata::translate_iface;
@@ -20,15 +21,20 @@ use crate::emit::typ;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ::ast::apply_func_decl_named_ty_args;
+use crate::typ::builtin_ident;
+use crate::typ::free_mem_sig;
+use crate::typ::get_mem_sig;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
 use crate::typ::Specializable;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeArgsResult;
 use crate::typ::TypeParamContainer;
+use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
+use ir_lang::FunctionID;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -47,6 +53,10 @@ pub struct ModuleBuilder {
 
     function_types_by_sig: HashMap<typ::FunctionSig, ir::TypeDefID>,
 
+    // looked up on first use
+    free_mem_func: Option<FunctionID>,
+    get_mem_func: Option<FunctionID>,
+    
     module: ir::Module,
 }
 
@@ -63,6 +73,10 @@ impl ModuleBuilder {
             function_types_by_sig: HashMap::new(),
 
             module: ir::Module::new(metadata),
+            
+            // placeholders
+            free_mem_func: None,
+            get_mem_func: None,
         }
     }
 
@@ -139,8 +153,8 @@ impl ModuleBuilder {
         }
 
         match &key.decl_key {
-            FunctionDeclKey::Function { name } => {
-                match self.src_metadata.find_def(&name).cloned() {
+            FunctionDeclKey::Function { name, sig } => {
+                match self.src_metadata.find_func_def(&name, sig.clone()).cloned() {
                     Some(typ::Def::Function(func_def)) => {
                         self.instantiate_func_def(&func_def, key.clone())
                     },
@@ -159,6 +173,43 @@ impl ModuleBuilder {
 
             FunctionDeclKey::VirtualMethod(virtual_key) => {
                 self.instantiate_virtual_method(virtual_key)
+            }
+        }
+    }
+
+    fn instantiate_system_func(&mut self, name: &str, sig: Rc<typ::FunctionSig>) -> FunctionID {
+        let ident_path = IdentPath::new(builtin_ident(name), [
+            builtin_ident(SYSTEM_UNIT_NAME),
+        ]);
+
+        let instance = self.instantiate_func(&mut FunctionDefKey {
+            decl_key: FunctionDeclKey::Function {
+                name: ident_path,
+                sig,
+            },
+            type_args: None,
+        });
+        instance.id
+    }
+    
+    pub fn instantiate_get_mem_func(&mut self) -> FunctionID {
+        match self.get_mem_func {
+            Some(id) => id,
+            None => {
+                let id = self.instantiate_system_func("GetMem", Rc::new(get_mem_sig()));
+                self.get_mem_func = Some(id);
+                id
+            }
+        }
+    }
+
+    pub fn instantiate_free_mem_func(&mut self) -> FunctionID {
+        match self.free_mem_func {
+            Some(id) => id,
+            None => {
+                let id = self.instantiate_system_func("FreeMem", Rc::new(free_mem_sig()));
+                self.free_mem_func = Some(id);
+                id
             }
         }
     }
@@ -500,11 +551,12 @@ impl ModuleBuilder {
     pub fn translate_func(
         &mut self,
         func_name: IdentPath,
+        func_sig: Rc<typ::FunctionSig>,
         type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         let mut key = FunctionDefKey {
             type_args,
-            decl_key: FunctionDeclKey::Function { name: func_name },
+            decl_key: FunctionDeclKey::Function { name: func_name, sig: func_sig },
         };
 
         self.instantiate_func(&mut key)
@@ -1127,7 +1179,7 @@ impl ModuleBuilder {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum FunctionDeclKey {
-    Function { name: IdentPath },
+    Function { name: IdentPath, sig: Rc<typ::FunctionSig> },
     Method(MethodDeclKey),
     VirtualMethod(VirtualMethodKey),
 }
@@ -1135,7 +1187,7 @@ pub enum FunctionDeclKey {
 impl FunctionDeclKey {
     pub fn namespace(&self) -> Cow<IdentPath> {
         match self {
-            FunctionDeclKey::Function { name } => name
+            FunctionDeclKey::Function { name, .. } => name
                 .parent()
                 .map(Cow::Owned)
                 .expect("all functions must be declared within a namespace!"),

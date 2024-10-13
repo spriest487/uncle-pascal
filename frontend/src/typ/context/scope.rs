@@ -118,12 +118,18 @@ impl Scope {
         self.members.iter()
     }
 
-    pub fn get_decl(&self, ident: &Ident) -> Option<&ScopeMember> {
-        self.members.get(ident)
+    pub fn get_decl(&self, ident: &Ident) -> Option<&Decl> {
+        match self.members.get(ident) {
+            Some(ScopeMember::Decl(decl)) => Some(decl),
+            Some(ScopeMember::Scope(..)) | None => None,
+        }
     }
 
-    pub fn get_decl_mut(&mut self, ident: &Ident) -> Option<&mut ScopeMember> {
-        self.members.get_mut(ident)
+    pub fn get_decl_mut(&mut self, ident: &Ident) -> Option<&mut Decl> {
+        match self.members.get_mut(ident) {
+            Some(ScopeMember::Decl(decl)) => Some(decl),
+            Some(ScopeMember::Scope(..)) | None => None,
+        }
     }
 
     #[allow(unused)]

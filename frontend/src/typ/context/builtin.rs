@@ -2,7 +2,7 @@ use crate::ast::{FunctionDeclKind, Path};
 use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::ast::{Access, IdentPath};
-use crate::typ::ast;
+use crate::typ::{ast, FunctionParamSig, FunctionSig};
 use crate::typ::ast::Method;
 use crate::typ::ast::SELF_PARAM_NAME;
 use crate::typ::Context;
@@ -38,6 +38,28 @@ const STRING_LEN_FIELD: &str = "len";
 pub const STRING_CONCAT_FUNC_NAME: &str = "StringConcat";
 
 pub const BUILTIN_FILENAME: &str = "<builtin>";
+
+pub fn get_mem_sig() -> FunctionSig {
+    FunctionSig {
+        return_ty: Type::Primitive(Primitive::UInt8).ptr(),
+        params: vec![FunctionParamSig {
+            ty: Type::Primitive(Primitive::Int32),
+            modifier: None,
+        }],
+        type_params: None,
+    }
+}
+
+pub fn free_mem_sig() -> FunctionSig {
+    FunctionSig {
+        return_ty: Type::Nothing,
+        params: vec![FunctionParamSig {
+            ty: Type::Primitive(Primitive::UInt8).ptr(),
+            modifier: None,
+        }],
+        type_params: None,
+    }
+}
 
 pub fn builtin_span() -> Span {
     Span {

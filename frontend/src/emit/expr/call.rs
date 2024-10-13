@@ -175,7 +175,7 @@ fn build_func_call(
     match target.annotation() {
         // calling a function directly
         typ::Typed::Function(func) => {
-            let func = builder.translate_func(&func.name, call_ty_args);
+            let func = builder.translate_func(&func.name, &func.sig, call_ty_args);
 
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
             let func_sig = func.sig;
@@ -186,9 +186,9 @@ fn build_func_call(
         },
 
         typ::Typed::UfcsFunction(func) => {
-            let func_instance = builder.translate_func(&func.function_name, None);
+            let func_sig = func.sig.clone();
+            let func_instance = builder.translate_func(&func.function_name, &func_sig, None);
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func_instance.id)));
-            let func_sig = func_instance.sig;
 
             let call_target = CallTarget::Function(func_val);
 

@@ -14,12 +14,12 @@ use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ as typ;
-use crate::typ::SYSTEM_UNIT_NAME;
 use crate::typ::Symbol;
 use common::span::Span;
 use ir_lang::*;
 use std::borrow::Cow;
 use std::fmt;
+use std::rc::Rc;
 use syn::Ident;
 
 #[derive(Debug)]
@@ -147,6 +147,7 @@ impl<'m> Builder<'m> {
     pub fn translate_func(
         &mut self,
         func_name: &Symbol,
+        func_sig: &Rc<typ::FunctionSig>,
         mut call_ty_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         if let Some(args_list) = &mut call_ty_args {
@@ -154,11 +155,13 @@ impl<'m> Builder<'m> {
                 .clone()
                 .apply_type_args_by_name(&self.generic_context, &self.generic_context);
         }
-        
 
         let mut key = FunctionDefKey {
             type_args: call_ty_args,
-            decl_key: FunctionDeclKey::Function { name: func_name.full_path.clone() },
+            decl_key: FunctionDeclKey::Function { 
+                name: func_name.full_path.clone(),
+                sig: func_sig.clone(),
+            },
         };
 
         self.module.instantiate_func(&mut key)
@@ -594,30 +597,13 @@ impl<'m> Builder<'m> {
         })
     }
 
-    fn instantiate_system_func(&mut self, name: &str) -> FunctionID {
-        let zero_span = Span::zero("");
-        let ident_path = syn::IdentPath::new(Ident::new(name, zero_span.clone()), [
-            Ident::new(SYSTEM_UNIT_NAME, zero_span),
-        ]);
-
-        let instance = self.module.instantiate_func(&mut FunctionDefKey {
-            decl_key: FunctionDeclKey::Function {
-                name: ident_path,
-            },
-            type_args: None,
-        });
-        instance.id
-    }
-
     pub fn get_mem(&mut self, count: impl Into<Value>, out: Ref) {
-        let get_mem_func_id = self.instantiate_system_func("GetMem");
-        let function_ref = Ref::Global(GlobalRef::Function(get_mem_func_id));
+        let function_ref = Ref::Global(GlobalRef::Function(self.module.instantiate_get_mem_func()));
         self.call(function_ref, [count.into()], Some(out));
     }
 
     pub fn free_mem(&mut self, at: impl Into<Value>) {
-        let free_mem_func_id = self.instantiate_system_func("FreeMem");
-        let function_ref = Ref::Global(GlobalRef::Function(free_mem_func_id));
+        let function_ref = Ref::Global(GlobalRef::Function(self.module.instantiate_free_mem_func()));
         self.call(function_ref, [at.into()], None);
     }
 

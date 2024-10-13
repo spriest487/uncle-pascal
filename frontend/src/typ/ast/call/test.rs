@@ -133,9 +133,10 @@ fn resolves_overload_by_arg_ty() {
         function X(b: Boolean); overload;
         begin
         end;
-
-        initialization
-            var i: Int32 := 1;
+        
+        var
+            i: Int32 = 1;
+            b: Boolean = true;
         end
     ";
     let (candidates, mut ctx) = candidates_from_src(src, "overload");

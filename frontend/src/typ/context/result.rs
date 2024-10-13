@@ -228,7 +228,7 @@ pub enum NameError {
         member: Ident,
     },
     DefDeclMismatch {
-        ident: IdentPath,
+        path: IdentPath,
         decl: Span,
         def: Span,
     },
@@ -338,7 +338,7 @@ impl fmt::Display for NameError {
                 iface, method, for_ty
             ),
 
-            NameError::DefDeclMismatch { ident, .. } => write!(
+            NameError::DefDeclMismatch { path: ident, .. } => write!(
                 f,
                 "definition of `{}` does not match previous declaration",
                 ident

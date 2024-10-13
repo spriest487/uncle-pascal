@@ -16,7 +16,7 @@ pub enum Decl {
     },
     BoundValue(Binding),
     Function {
-        decl: Rc<FunctionDecl>,
+        overloads: Vec<Rc<FunctionDecl>>,
         visibility: Visibility,
     },
     Alias(IdentPath),
@@ -93,7 +93,9 @@ impl fmt::Display for Decl {
             Decl::Type { ty, .. } => write!(f, "type `{}`", ty),
             Decl::Const { ty, val, .. } => write!(f, "const {}: {}", ty, val),
             Decl::BoundValue(binding) => write!(f, "{} of `{}`", binding.kind, binding.ty),
-            Decl::Function { decl, .. } => write!(f, "{}", decl),
+            Decl::Function { overloads, .. } => {
+                write!(f, "function group of {} overloads", overloads.len())
+            },
             Decl::Alias(aliased) => write!(f, "{}", aliased),
             Decl::Namespace(namespace) => write!(f, "{}", namespace)
         }

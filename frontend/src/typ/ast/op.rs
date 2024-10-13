@@ -374,16 +374,18 @@ fn desugar_string_concat(
         _ => {
             let system_path = IdentPath::from(Ident::new(SYSTEM_UNIT_NAME, span.clone()));
             let concat_path = system_path.child(Ident::new(STRING_CONCAT_FUNC_NAME, span.clone()));
-            let (concat_path, concat_decl) = ctx
+            let (concat_path, concat_decls) = ctx
                 .find_function(&concat_path)
                 .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
             
+            assert_eq!(1, concat_decls.len());
+
             let concat_sym = Symbol::from(concat_path.clone());
 
             let concat_typed = FunctionTyped {
                 name: concat_sym.clone(),
                 span: span.clone(),
-                sig: Rc::new(FunctionSig::of_decl(&concat_decl)),
+                sig: Rc::new(FunctionSig::of_decl(&concat_decls[0])),
             };
 
             let concat_func = ast::Expr::Ident(concat_path.last().clone(), concat_typed.into());

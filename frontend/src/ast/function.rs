@@ -424,8 +424,13 @@ impl<A: Annotation> FunctionDecl<A> {
 
 
     pub fn get_mod(&self, keyword: &str) -> Option<&DeclMod<A>> {
-        self.mods.iter()
+        self.mods
+            .iter()
             .find(|decl_mod| decl_mod.keyword() == keyword)
+    }
+    
+    pub fn is_overload(&self) -> bool {
+        self.get_mod(DeclMod::<A>::OVERLOAD_WORD).is_some() && self.external_src().is_none()
     }
 }
 

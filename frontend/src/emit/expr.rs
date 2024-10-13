@@ -437,7 +437,7 @@ fn gen_fill_byte(at: ir::Ref, at_ty: ir::Type, count: ir::Value, byte_val: ir::V
 fn translate_ident(ident: &Ident, annotation: &typ::Typed, builder: &mut Builder) -> ir::Ref {
     match annotation {
         typ::Typed::Function(func) => {
-            let func = builder.translate_func(&func.name, None);
+            let func = builder.translate_func(&func.name, &func.sig, None);
             
             // references to functions by value are turned into references to the static
             // closure for that function

@@ -17,7 +17,7 @@ use std::fmt;
 
 #[derive(Eq, Clone, Derivative)]
 #[derivative(PartialEq, Hash, Debug)]
-pub enum DeclMod<A: Annotation> {
+pub enum DeclMod<A: Annotation = Span> {
     External {
         src: A::ConstStringExpr,
 
@@ -33,7 +33,6 @@ pub enum DeclMod<A: Annotation> {
         #[derivative(PartialEq = "ignore")]
         Span
     ),
-
 
     Forward(
         #[derivative(Hash = "ignore")]

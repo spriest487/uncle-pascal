@@ -5,6 +5,8 @@ use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
+use crate::typ::Decl;
+use crate::typ::FunctionSig;
 use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
@@ -45,6 +47,12 @@ impl Spanned for Def {
     }
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum DefKey {
+    Unique,
+    Sig(Rc<FunctionSig>),
+}
+
 // result of comparing a defined name with its previous decl
 pub enum DefDeclMatch {
     // the def matches the decl
@@ -56,3 +64,16 @@ pub enum DefDeclMatch {
     // the decl with the same name as this def is the wrong kind
     WrongKind,
 }
+
+impl DefDeclMatch {
+    pub fn always_match(_: &Decl) -> DefDeclMatch {
+        DefDeclMatch::Match
+    }
+}
+
+// 
+// #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+// pub struct FunctionDefKey {
+//     name: IdentPath,
+//     sig: Rc<FunctionSig>,
+// }

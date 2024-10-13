@@ -107,6 +107,11 @@ pub enum TypeError {
         candidates: Vec<OverloadCandidate>,
         span: Span,
     },
+    InvalidFunctionOverload {
+        ident: Ident,
+        prev_decls: Vec<Ident>,
+        kind: InvalidFunctionOverloadKind,
+    },
     ExternalGenericFunction {
         func: Ident,
         extern_modifier: Span,
@@ -340,6 +345,7 @@ impl Spanned for TypeError {
             TypeError::AmbiguousMethod { span, .. } => span,
             TypeError::ExternalGenericFunction { func, .. } => func.span(),
             TypeError::AmbiguousSelfType { span, .. } => span,
+            TypeError::InvalidFunctionOverload { ident, .. } => ident.span(),
             
             TypeError::InvalidCtorType { span, .. } => span,
             TypeError::CtorMissingMembers { span, .. } => span,
@@ -493,6 +499,8 @@ impl DiagnosticOutput for TypeError {
                 "Incomplete interface implementation"
             }
 
+            TypeError::InvalidFunctionOverload { .. } => "Invalid function overload",
+
             TypeError::InvalidBaseType { .. } => {
                 "Invalid base type"
             }
@@ -594,7 +602,7 @@ impl DiagnosticOutput for TypeError {
                     see_also
                 }
 
-                NameError::DefDeclMismatch { def, decl, ident } => vec![
+                NameError::DefDeclMismatch { def, decl, path: ident } => vec![
                     DiagnosticMessage {
                         title: format!("Previous declaration of `{}`", ident),
                         label: Some(DiagnosticLabel {
@@ -672,6 +680,22 @@ impl DiagnosticOutput for TypeError {
                             title: format!("may refer to {}", c),
                             notes: Vec::new(),
                         }
+                    })
+                    .collect()
+            }
+            
+            TypeError::InvalidFunctionOverload { prev_decls, .. } => {
+                prev_decls
+                    .iter()
+                    .map(|ident| {
+                        DiagnosticMessage {
+                            label: Some(DiagnosticLabel {
+                                text: None,
+                                span: ident.span.clone(),
+                            }),
+                            title: format!("{} previously declared here", ident),
+                            notes: Vec::new(),
+                        }  
                     })
                     .collect()
             }
@@ -832,8 +856,20 @@ impl fmt::Display for TypeError {
                 write!(f, "call to method `{}` was ambiguous", method)
             }
 
-            TypeError::AmbiguousSelfType{  method, iface, .. } => {
+            TypeError::AmbiguousSelfType { method, iface, .. } => {
                 write!(f, "the type implementing `{}` could not be deduced for `{}` in this context", iface, method)
+            }
+            
+            TypeError::InvalidFunctionOverload { ident, kind, .. } => {
+                write!(f, "the function `{}` cannot be overloaded: ", ident)?;
+                match kind {
+                    InvalidFunctionOverloadKind::MissingOverloadModifier => {
+                        write!(f, "the declaration is missing the `{}` modifier", DeclMod::OVERLOAD_WORD)
+                    }
+                    InvalidFunctionOverloadKind::VisibilityMismatch => {
+                        write!(f, "the visibility of the overloaded declaration does not match")
+                    }
+                }
             }
 
             TypeError::ExternalGenericFunction { func, .. } => {
@@ -1066,3 +1102,9 @@ pub struct MismatchedImplementation {
     pub impl_method_name: TypedFunctionName,
     pub actual_sig: FunctionSig,
 } 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InvalidFunctionOverloadKind {
+    MissingOverloadModifier,
+    VisibilityMismatch,
+}
