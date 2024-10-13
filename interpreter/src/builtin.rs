@@ -11,7 +11,7 @@ use std::io;
 use std::io::BufRead;
 use std::io::Write;
 use rand::Rng;
-use ir_lang::{LocalID, Ref, Type, TypeDefID, Value, RETURN_REF};
+use ir_lang::*;
 
 fn primitive_to_str<T, UnwrapFn>(state: &mut Interpreter, unwrap_fn: UnwrapFn) -> ExecResult<()>
 where
@@ -357,6 +357,20 @@ pub(super) fn arc_tan(state: &mut Interpreter) -> ExecResult<()> {
     state.store(&RETURN_REF, DynValue::F32(val.atan()))
 }
 
+pub(super) fn infinity(state: &mut Interpreter) -> ExecResult<()> {
+    state.store(&RETURN_REF, DynValue::F32(f32::INFINITY))
+}
 
+pub(super) fn is_infinite(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?; 
+    state.store(&RETURN_REF, DynValue::Bool(val.is_infinite()))
+}
 
+pub(super) fn nan(state: &mut Interpreter) -> ExecResult<()> {
+    state.store(&RETURN_REF, DynValue::F32(f32::NAN))
+}
 
+pub(super) fn is_nan(state: &mut Interpreter) -> ExecResult<()> {
+    let val = load_single(state, &Ref::Local(LocalID(1)))?;
+    state.store(&RETURN_REF, DynValue::Bool(val.is_nan()))
+}

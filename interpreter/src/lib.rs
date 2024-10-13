@@ -1804,6 +1804,30 @@ impl Interpreter {
                 ir::Type::F32,
                 vec![ir::Type::F32]
             ),
+            (
+                "Infinity",
+                builtin::infinity,
+                ir::Type::F32,
+                vec![]
+            ),
+            (
+                "IsInfinite",
+                builtin::is_infinite,
+                ir::Type::Bool,
+                vec![ir::Type::F32]
+            ),
+            (
+                "NaN",
+                builtin::nan,
+                ir::Type::F32,
+                vec![]
+            ),
+            (
+                "IsNaN",
+                builtin::is_nan,
+                ir::Type::Bool,
+                vec![ir::Type::F32]
+            ),
         ];
 
         for (ident, func, ret, params) in system_funcs {

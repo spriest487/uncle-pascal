@@ -1,18 +1,16 @@
 # critical
 
-* seems like statements with just a no-args call aren't parsing properly?
+* project files/don't auto load used units
+* why is the C backend generated packed decls for everything? 
 * weak refs
 * single-char string literals convert to Byte
-* forward time in type's own method is incompatible with itself?
-  * type mismatch: expected System.Collections.LinkedList[T], found System.Collections.LinkedList[T]
 
 # big features
 
-* explicit overloads
+* proper function overloads (one declared name, multiple signatures)
 * enums/sets/range types
 * generic interfaces
 * @-attributes - replace `external` etc with these (eventually make them available at runtime but not now)
-* proper function overloads (one declared name, multiple signatures)
 
 # todos
 
@@ -25,3 +23,4 @@
 * numeric compiler error codes
 * reflection for published members
 * property syntax
+~~~~

@@ -218,7 +218,31 @@ impl Module {
                 FunctionName::ArcTan,
                 vec![Type::Float],
                 Type::Float,
-            )
+            ),
+            (
+                "Infinity",
+                FunctionName::Infinity,
+                vec![],
+                Type::Float
+            ),
+            (
+                "NaN",
+                FunctionName::NaN,
+                vec![],
+                Type::Float
+            ),
+            (
+                "IsInfinite",
+                FunctionName::IsInfinite,
+                vec![Type::Float],
+                Type::Bool
+            ),
+            (
+                "IsNaN",
+                FunctionName::IsNaN,
+                vec![Type::Float],
+                Type::Bool
+            ),
         ];
 
         let mut builtin_funcs = HashMap::new();

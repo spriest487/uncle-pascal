@@ -65,6 +65,11 @@ pub enum FunctionName {
     ArcCos,
     Tan,
     ArcTan,
+    
+    Infinity,
+    IsInfinite,
+    NaN,
+    IsNaN,
 }
 
 impl fmt::Display for FunctionName {
@@ -120,6 +125,11 @@ impl fmt::Display for FunctionName {
             FunctionName::ArcCos => write!(f, "System_ArcCos"),
             FunctionName::Tan => write!(f, "System_Tan"),
             FunctionName::ArcTan => write!(f, "System_ArcTan"),
+            
+            FunctionName::Infinity => write!(f, "System_Infinity"),
+            FunctionName::IsInfinite => write!(f, "System_IsInfinite"),
+            FunctionName::NaN => write!(f, "System_NaN"),
+            FunctionName::IsNaN => write!(f, "System_IsNaN"),
         }
     }
 }

@@ -196,3 +196,19 @@ static float System_Tan(float val) {
 static float System_ArcTan(float val) {
     return atanf(val);
 }
+
+static float System_Infinity(void) {
+    return INFINITY;
+}
+
+static bool System_IsInfinite(float val) {
+    return isinf(val);
+}
+
+static float System_NaN(void) {
+    return NAN;
+}
+
+static bool System_IsNaN(float val) {
+    return isnan(val);
+}

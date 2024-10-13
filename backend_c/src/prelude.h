@@ -253,6 +253,11 @@ static float System_ArcCos(float val);
 static float System_Tan(float val);
 static float System_ArcTan(float val);
 
+static float System_Infinity(void);
+static bool System_IsInfinite(float val);
+static float System_NaN(void);
+static bool System_IsNaN(float val);
+
 // runtime start/stop
 
 // this needs to match what would ordinarily be generated for the System.String decl

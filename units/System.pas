@@ -130,6 +130,11 @@ function ArcCos(value: Single): Single; external 'rt';
 function Tan(value: Single): Single; external 'rt';
 function ArcTan(value: Single): Single; external 'rt';
 
+function Infinity: Single; external 'rt';
+function IsInfinite(value: Single): Boolean; external 'rt';
+function NaN: Single; external 'rt';
+function IsNaN(value: Single): Boolean; external 'rt';
+
 const
     PI = 3.1415926;
     RAD_TO_DEG = 180.0 / PI;
