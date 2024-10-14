@@ -37,7 +37,6 @@ use crate::typ::specialize_by_return_ty;
 use crate::typ::specialize_struct_def;
 use crate::typ::specialize_variant_def;
 use crate::typ::FunctionSig;
-use crate::typ::InvalidFunctionOverloadKind;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
@@ -70,6 +69,7 @@ pub enum InstanceMember {
     },
     UFCSCall {
         func_name: Symbol,
+        visibility: Visibility,
         sig: Rc<FunctionSig>,
     },
     Overloaded {
@@ -735,8 +735,7 @@ impl Context {
 
         match self.find_function(&func_name_path) {
             Ok((_, overloads)) => overloads.iter().any(|overload| {
-                let existing_sig = FunctionSig::of_decl(&overload);
-                existing_sig == new_sig
+                **overload.sig() == new_sig
             }),
 
             // probably a NotFound error, but the caller is presumably about to declare the
@@ -759,35 +758,35 @@ impl Context {
                 visibility: existing_visibility,
             }) => {
                 // eprintln!("found existing decl for {}", func_decl);
+                
+                // the visibility of the name as a whole is the visibility of its most visibile
+                // member, so function calls need to specifically check their targets are visible
+                *existing_visibility = Visibility::max(*existing_visibility, visibility);
 
-                let invalid_overload = if *existing_visibility != visibility {
-                    Some(InvalidFunctionOverloadKind::VisibilityMismatch)
-                } else if let Some(invalid) = func_decl.check_new_overload(overloads) {
-                    Some(InvalidFunctionOverloadKind::InvalidOverload(invalid))
-                } else {
-                    None
-                };
+                let overload_decls = overloads
+                    .iter()
+                    .map(|x| x.decl().clone());
 
-                if let Some(kind) = invalid_overload {
+                if let Some(kind) = func_decl.check_new_overload(overload_decls) {
                     return Err(TypeError::InvalidFunctionOverload {
                         ident: func_decl.name.ident.clone(),
                         prev_decls: overloads
                             .iter()
-                            .map(|decl| decl.name.ident.clone())
+                            .map(|decl| decl.decl().name.ident.clone())
                             .collect(),
                         kind,
                     });
                 }
 
                 // eprintln!("adding new overload! {}", new_sig);
-                overloads.push(func_decl.clone());
+                overloads.push(DeclFunctionOverload::new(func_decl.clone(), visibility));
             },
 
             _ => {
                 // eprintln!("{:?}: adding new decl for {}", current_scope.id(), func_decl);
 
                 let decl = Decl::Function {
-                    overloads: vec![func_decl.clone()],
+                    overloads: vec![DeclFunctionOverload::new(func_decl.clone(), visibility)],
                     visibility,
                 };
 
@@ -957,6 +956,32 @@ impl Context {
     pub fn namespace(&self) -> IdentPath {
         IdentPath::from_parts(self.scopes.current_path().keys().cloned())
     }
+    
+    pub fn is_current_namespace(&self, path: &IdentPath) -> bool {
+        for (i, key) in self.scopes.current_path().keys().enumerate() {
+            match path.as_slice().get(i) {
+                Some(part) if part == key => continue,
+                _ => return false,
+            }
+        }
+        
+        true
+    }
+
+    pub fn is_current_namespace_child(&self, path: &IdentPath) -> bool {
+        for (i, key) in self.scopes.current_path().keys().enumerate() {
+            if i == path.len() - 1 {
+                return false;
+            }
+            
+            match path.as_slice().get(i) {
+                Some(part) if part == key => continue,
+                _ => return false,
+            }
+        }
+
+        true
+    }
 
     pub fn qualify_name(&self, name: Ident) -> IdentPath {
         self.namespace().child(name)
@@ -1070,8 +1095,9 @@ impl Context {
         let is_func_decl = |decl: &Decl| match decl {
             Decl::Function { overloads, .. } => {
                 let decl_exists = overloads.iter().any(|overload| {
-                    let existing_sig = FunctionSig::of_decl(overload.as_ref());
-                    overload.kind == kind && existing_sig == *sig
+                    let existing_sig = overload.sig().as_ref();
+                    let existing_kind = overload.decl().kind;
+                    existing_kind == kind && *existing_sig == *sig
                 });
 
                 if !decl_exists {
@@ -1303,7 +1329,7 @@ impl Context {
         }
     }
 
-    pub fn find_function(&self, name: &IdentPath) -> NameResult<(IdentPath, &[Rc<FunctionDecl>])> {
+    pub fn find_function(&self, name: &IdentPath) -> NameResult<(IdentPath, &[DeclFunctionOverload])> {
         match self.find_path(name) {
             Some(ScopeMemberRef::Decl {
                 value: Decl::Function { overloads, .. },
@@ -1370,10 +1396,11 @@ impl Context {
                     method: method.decl.name.ident.clone(),
                 }),
 
-                ufcs::InstanceMethod::FreeFunction { func_name, sig } => {
+                ufcs::InstanceMethod::FreeFunction { func_name, sig, visibility } => {
                     Ok(InstanceMember::UFCSCall {
                         func_name: func_name.clone(),
                         sig: sig.clone(),
+                        visibility: *visibility,
                     })
                 },
             },
@@ -1574,9 +1601,7 @@ impl Context {
                         let decl_path = current_scope_ns.clone().child(ident.clone());
 
                         for overload in overloads {
-                            let decl_sig = Rc::new(FunctionSig::of_decl(&overload));
-
-                            if self.find_func_def(&decl_path, decl_sig).is_none() {
+                            if self.find_func_def(&decl_path, overload.sig().clone()).is_none() {
                                 // eprintln!("undefined: {}", decl_path);
                                 syms.push(decl_path.clone());
                             }

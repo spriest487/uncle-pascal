@@ -85,10 +85,21 @@ pub fn typecheck_struct_decl(
         let existing: Vec<_> = methods
             .iter()
             .filter(|m| m.decl.ident() == decl.ident())
+            .map(|m| m.decl.clone())
             .collect();
         
         if !existing.is_empty() {
-            
+            if let Some(invalid) = decl.check_new_overload(existing.clone()) {
+                return Err(TypeError::InvalidMethodOverload {
+                    owning_type: self_ty,
+                    prev_decls: existing
+                        .into_iter()
+                        .map(|decl| decl.ident().clone())
+                        .collect(),
+                    kind: invalid,
+                    method: name.ident().clone(),
+                });
+            }
         }
 
         methods.push(Method {

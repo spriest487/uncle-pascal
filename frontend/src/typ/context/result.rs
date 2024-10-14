@@ -280,7 +280,7 @@ impl fmt::Display for NameError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             NameError::NotFound { ident, .. } => {
-                write!(f, "`{}` was not found in this scope", ident)
+                write!(f, "`{}` is not found in this scope", ident)
             },
             NameError::MemberNotFound { base, member, .. } => {
                 write!(f, "{} does not have a member named `{}`", base, member)

@@ -1,7 +1,14 @@
 use crate::ast::IdentPath;
 use crate::ast::Visibility;
-use crate::typ::ast::{FunctionDecl, Literal};
-use crate::typ::{builtin_comparable_name, builtin_displayable_name, builtin_disposable_name, builtin_string_name, Binding, DeclConflict};
+use crate::typ::ast::FunctionDecl;
+use crate::typ::ast::Literal;
+use crate::typ::builtin_comparable_name;
+use crate::typ::builtin_displayable_name;
+use crate::typ::builtin_disposable_name;
+use crate::typ::builtin_string_name;
+use crate::typ::Binding;
+use crate::typ::DeclConflict;
+use crate::typ::FunctionSig;
 use crate::typ::Type;
 use common::span::Span;
 use std::fmt;
@@ -16,7 +23,7 @@ pub enum Decl {
     },
     BoundValue(Binding),
     Function {
-        overloads: Vec<Rc<FunctionDecl>>,
+        overloads: Vec<DeclFunctionOverload>,
         visibility: Visibility,
     },
     Alias(IdentPath),
@@ -99,5 +106,40 @@ impl fmt::Display for Decl {
             Decl::Alias(aliased) => write!(f, "{}", aliased),
             Decl::Namespace(namespace) => write!(f, "{}", namespace)
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeclFunctionOverload {
+    decl: Rc<FunctionDecl>,
+    
+    // cached sig since we access this a lot
+    sig: Rc<FunctionSig>,
+    
+    visibility: Visibility,
+}
+
+impl DeclFunctionOverload {
+    pub fn new(decl: impl Into<Rc<FunctionDecl>>, visibility: Visibility) -> Self {
+        let decl = decl.into();
+        let sig = Rc::new(FunctionSig::of_decl(decl.as_ref()));
+        
+        Self {
+            decl,
+            sig,
+            visibility
+        }
+    }
+    
+    pub fn sig(&self) -> &Rc<FunctionSig> {
+        &self.sig
+    }
+    
+    pub fn decl(&self) -> &Rc<FunctionDecl> {
+        &self.decl
+    }
+    
+    pub fn visiblity(&self) -> Visibility {
+        self.visibility
     }
 }

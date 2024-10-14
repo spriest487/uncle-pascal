@@ -1,5 +1,5 @@
 use crate::{ast, Ident};
-use crate::ast::{Access, TypeList};
+use crate::ast::{Access, TypeList, Visibility};
 use crate::typ::ast::check_implicit_conversion;
 use crate::typ::ast::specialize_call_args;
 use crate::typ::ast::typecheck_expr;
@@ -36,6 +36,7 @@ pub enum OverloadCandidate {
     Function {
         decl_name: Symbol,
         sig: Rc<FunctionSig>,
+        visibility: Visibility,
     },
     Method {
         ident: Ident,
@@ -59,9 +60,10 @@ impl OverloadCandidate {
                 }
             },
 
-            InstanceMethod::FreeFunction { func_name, sig } => {
+            InstanceMethod::FreeFunction { func_name, sig, visibility } => {
                 OverloadCandidate::Function {
                     decl_name: func_name,
+                    visibility,
                     sig,
                 }
             },
@@ -267,26 +269,12 @@ pub fn resolve_overload(
         // checked all arguments and more than one candidate is still valid
         if arg_index >= arg_count {
             // println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
-            
-            valid_candidates.retain(|i| {
-                let candidate = &candidates[*i];
 
-                // discard any that are inaccessible methods - we don't do this until the very 
-                // last minute so that at any earlier stage we can still match an inaccessible method 
-                // and show an accessibility error, rather than acting like it doesn't exist
-                match candidate {
-                    OverloadCandidate::Function { .. } => true,
-                    OverloadCandidate::Method { access, owning_ty: iface_ty, .. } => {
-                        let accessible = iface_ty.get_current_access(ctx) >= *access;
-                        
-                        if !accessible {
-                            // eprintln!("disqualifying {}: inaccessible from this context", candidate.sig());
-                        }
-
-                        accessible
-                    }
-                }
-            });
+            // discard any that are inaccessible methods or invisible functions
+            // we don't do this until the very last minute so that at any earlier stage we can 
+            // still match one of these and show an accessibility/visibility error, 
+            // rather than acting like it doesn't exist
+            disqualify_inaccessible(candidates, &mut valid_candidates, ctx);
 
             if valid_candidates.len() == 1 {
                 break Ok(Overload {
@@ -321,4 +309,30 @@ pub fn resolve_overload(
         param_index += 1;
         arg_index += 1;
     }
+}
+
+fn disqualify_inaccessible(
+    candidates: &[OverloadCandidate],
+    valid: &mut Vec<usize>,
+    ctx: &Context,
+) {
+    valid.retain(|i| {
+        let candidate = &candidates[*i];
+
+        match candidate {
+            OverloadCandidate::Function { visibility, decl_name, .. } => {
+                *visibility >= Visibility::Interface
+                    || ctx.is_current_namespace_child(&decl_name.full_path)
+            },
+            OverloadCandidate::Method { access, owning_ty: iface_ty, .. } => {
+                let accessible = iface_ty.get_current_access(ctx) >= *access;
+
+                if !accessible {
+                    // eprintln!("disqualifying {}: inaccessible from this context", candidate.sig());
+                }
+
+                accessible
+            }
+        }
+    });
 }

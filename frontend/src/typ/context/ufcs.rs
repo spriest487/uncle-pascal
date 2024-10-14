@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test;
 
-use crate::ast::Ident;
+use crate::ast::{Ident, Visibility};
 use crate::typ::ast::Method;
 use crate::typ::Context;
 use crate::typ::Decl;
@@ -18,6 +18,7 @@ pub enum InstanceMethod {
     FreeFunction {
         /// fully-qualified function name, starting with the namespace the function is declared in
         func_name: Symbol,
+        visibility: Visibility,
         sig: Rc<FunctionSig>,
     },
     Method {
@@ -88,23 +89,24 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
             _ => return,
         };
         
-        for func_decl in overloads {
+        for overload in overloads {
             // ignore decls that can't possibly be called via UFCS since they have 0 params
-            if func_decl.params.is_empty() {
+            if overload.decl().params.is_empty() {
                 continue;
             }
             
-            let self_param = &func_decl.params[0];
+            let self_param = &overload.decl().params[0];
 
             if self_param.ty == *ty
                 || (self_param.ty.contains_unresolved_params(ctx) && self_param.ty.same_decl_type(ty))
             {
                 let func_name = Symbol::from(decl_path.clone())
-                    .with_ty_params(func_decl.type_params.clone());
+                    .with_ty_params(overload.decl().type_params.clone());
 
                 methods.push(InstanceMethod::FreeFunction {
                     func_name,
-                    sig: Rc::new(FunctionSig::of_decl(func_decl)),
+                    sig: overload.sig().clone(),
+                    visibility: overload.visiblity(),
                 })
             }
         }

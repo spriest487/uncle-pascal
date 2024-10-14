@@ -14,10 +14,10 @@ use common::{
 use std::fmt;
 use std::rc::Rc;
 
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Visibility {
-    Interface,
     Implementation,
+    Interface,
 }
 
 #[derive(Clone, Debug)]

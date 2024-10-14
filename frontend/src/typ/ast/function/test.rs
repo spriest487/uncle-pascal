@@ -5,11 +5,12 @@ use crate::typ::ast::specialize_func_decl;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::TypedFunctionName;
-use crate::typ::{builtin_displayable_name, TypeResult};
+use crate::typ::builtin_displayable_name;
+use crate::typ::test::module_from_src;
+use crate::typ::test::try_module_from_srcs;
 use crate::typ::test::try_module_from_src;
 use crate::typ::Context;
 use crate::typ::GenericError;
-use crate::typ::InvalidFunctionOverloadKind;
 use crate::typ::InvalidOverloadKind;
 use crate::typ::Primitive;
 use crate::typ::Type;
@@ -17,6 +18,7 @@ use crate::typ::TypeArgList;
 use crate::typ::TypeError;
 use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
+use crate::typ::TypeResult;
 use crate::Ident;
 use common::span::Span;
 use std::rc::Rc;
@@ -179,7 +181,7 @@ fn duplicate_overload_is_error() {
         Err(TypeError::InvalidFunctionOverload { kind, ident, .. }) => {
             assert_eq!("A", ident.name.as_str());
             assert_eq!(
-                InvalidFunctionOverloadKind::InvalidOverload(InvalidOverloadKind::Duplicate(1)), 
+                InvalidOverloadKind::Duplicate(1), 
                 kind
             );
         }
@@ -224,7 +226,7 @@ fn expect_missing_overload<T>(result: TypeResult<T>) {
         Err(TypeError::InvalidFunctionOverload { kind, ident, .. }) => {
             assert_eq!("A", ident.name.as_str());
             assert_eq!(
-                InvalidFunctionOverloadKind::InvalidOverload(InvalidOverloadKind::MissingOverloadModifier),
+                InvalidOverloadKind::MissingOverloadModifier,
                 kind
             );
         }
@@ -232,5 +234,101 @@ fn expect_missing_overload<T>(result: TypeResult<T>) {
         Err(other) => panic!("expected invalid overload error, got:\n{}", other),
         
         Ok(..) => panic!("expected an error"),
+    }
+}
+
+#[test]
+fn mixed_visibility_overload_is_ok() {
+    module_from_src("Test", r"
+        interface
+        uses System;
+        
+        function A(x: Boolean); overload;
+        
+        implementation
+        
+        function A(x: Boolean); overload;
+        begin
+        end;
+    
+        function A(x: Integer); overload;
+        begin
+        end;
+        
+        end.
+    ");
+}
+
+#[test]
+fn calling_invisible_function_from_outside_unit_is_err() {
+    let srcs = [
+        ("UnitA", r"
+            interface
+            uses System;
+            
+            implementation
+        
+            function A(x: Integer); overload;
+            begin
+            end;
+            
+            end.
+        "),
+        ("UnitB", r"
+            implementation
+            uses UnitA;
+            
+            initialization
+                A(123);
+            end.
+        "),
+    ];
+
+    expect_not_visible_err(try_module_from_srcs(srcs));
+}
+
+#[test]
+fn calling_less_visible_overload_from_outside_unit_is_err() {
+    let srcs = [
+        ("UnitA", r"
+            interface
+            uses System;
+            
+            function A(x: Boolean); overload;
+            
+            implementation
+            
+            function A(x: Boolean); overload;
+            begin
+            end;
+        
+            function A(x: Integer); overload;
+            begin
+            end;
+            
+            end.
+        "),
+        ("UnitB", r"
+            implementation
+            uses UnitA;
+            
+            initialization
+                A(123);
+            end.
+        "),
+    ];
+    
+    expect_not_visible_err(try_module_from_srcs(srcs));
+}
+
+fn expect_not_visible_err<T>(result: TypeResult<T>) {
+    match result {
+        Err(TypeError::NameNotVisible { name, .. }) => {
+            assert_eq!("UnitA.A", name.to_string());
+        }
+
+        Err(other) => panic!("expected name not visible error, got: {}", other),
+
+        Ok(..) => panic!("expected name not visible error, got success"),
     }
 }

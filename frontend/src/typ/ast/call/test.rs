@@ -42,7 +42,7 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
 
     let candidates = unit.unit
         .func_defs()
-        .map(|(_vis, func)| {
+        .map(|(vis, func)| {
             let sig = FunctionSig::of_decl(&func.decl);
 
             match &func.decl.name.owning_ty {
@@ -66,6 +66,7 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
 
                     OverloadCandidate::Function {
                         decl_name: Symbol::from(decl_name),
+                        visibility: vis,
                         sig: Rc::new(sig),
                     }
                 },

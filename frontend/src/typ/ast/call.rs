@@ -4,7 +4,7 @@ mod overload;
 mod args;
 
 use crate::ast;
-use crate::ast::Ident;
+use crate::ast::{Ident, Visibility};
 use crate::ast::TypeList;
 use crate::typ::ast::cast::implicit_conversion;
 use crate::typ::ast::typecheck_expr;
@@ -256,7 +256,10 @@ fn typecheck_func_call(
         },
 
         Typed::Function(func) => {
+            func.check_visible(func_call.span(), ctx)?;
+            
             let sig = func.sig.clone();
+            
             typecheck_free_func_call(target, &func_call, self_arg.as_ref(), sig, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
@@ -421,7 +424,15 @@ fn typecheck_func_overload(
             ast::Call::Method(method_call)
         },
 
-        OverloadCandidate::Function { decl_name, sig } => {
+        OverloadCandidate::Function { decl_name, sig, visibility } => {
+            if *visibility < Visibility::Interface 
+                && !ctx.is_current_namespace_child(&decl_name.full_path) {
+                return Err(TypeError::NameNotVisible {
+                    name: decl_name.full_path.clone(),
+                    span: func_call.span().clone(),
+                });
+            }
+            
             let return_annotation = TypedValue {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
@@ -439,6 +450,7 @@ fn typecheck_func_overload(
                         name: decl_name.clone(),
                         sig: sig.clone(),
                         span: annotation.span().clone(),
+                        visibility: *visibility,
                     })) 
                 },
 
@@ -460,17 +472,39 @@ fn typecheck_func_overload(
     Ok(call)
 }
 
+pub fn check_overload_visibility(
+    overload: &Overload,
+    candidates: &[OverloadCandidate],
+    span: &Span,
+    ctx: &Context
+) -> TypeResult<()> {
+    match &candidates[overload.selected_sig] {
+        OverloadCandidate::Function { visibility, decl_name, .. } => {
+            if *visibility < Visibility::Interface
+                && !ctx.is_current_namespace_child(&decl_name.full_path) {
+                Err(TypeError::NameNotVisible {
+                    name: decl_name.full_path.clone(),
+                    span: span.clone(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+        OverloadCandidate::Method { .. } => Ok(())
+    }
+}
+
 pub fn overload_to_no_args_call(
     candidates: &[OverloadCandidate],
     overload: Overload,
     mut target: Expr,
     self_arg: Option<Expr>,
-    span: &Span
+    span: &Span,
 ) -> Expr {
     assert_eq!(self_arg.iter().len(), overload.args.len());
 
     let call = match &candidates[overload.selected_sig] {
-        OverloadCandidate::Function { sig, decl_name } => {
+        OverloadCandidate::Function { sig, decl_name, visibility } => {
             assert_eq!(sig.type_params_len(), overload.type_args_len());
 
             let return_value = TypedValue {
@@ -484,6 +518,7 @@ pub fn overload_to_no_args_call(
                 name: decl_name.clone(),
                 sig: sig.clone(),
                 span: target.span().clone(),
+                visibility: *visibility
             });
 
             Call::FunctionNoArgs(FunctionCallNoArgs {
@@ -646,6 +681,14 @@ fn typecheck_ufcs_call(
     args_span: &Span,
     ctx: &mut Context,
 ) -> TypeResult<Call> {
+    if ufcs_call.visibility < Visibility::Interface
+        && !ctx.is_current_namespace_child(&ufcs_call.function_name.full_path) {
+        return Err(TypeError::NameNotVisible {
+            name: ufcs_call.function_name.full_path.clone(),
+            span: span.clone(),
+        });
+    }
+    
     let mut specialized_call_args = args::specialize_call_args(
         &ufcs_call.sig,
         &rest_args,
@@ -669,6 +712,7 @@ fn typecheck_ufcs_call(
         name: func_sym,
         span: span.clone(),
         sig: Rc::new(specialized_call_args.sig.clone()),
+        visibility: ufcs_call.visibility,
     }
     .into();
 
@@ -698,7 +742,7 @@ fn typecheck_free_func_call(
     self_arg: Option<&Expr>,
     sig: Rc<FunctionSig>,
     ctx: &mut Context,
-) -> TypeResult<Call> {
+) -> TypeResult<Call> {    
     let span = func_call.span().clone();
 
     let type_args = match func_call.type_args.as_ref() {
@@ -738,10 +782,13 @@ fn typecheck_free_func_call(
     if let Some(ty_args) = &specialized_call_args.type_args {
         match target.annotation_mut() {
             Typed::Function(func_type) => {
+                func_type.check_visible(func_call.span(), ctx)?;
+                
                 let specialized_func_type = FunctionTyped {
                     name: (**func_type).clone().name.with_ty_args(Some(ty_args.clone())),
                     sig,
                     span: func_type.span.clone(),
+                    visibility: func_type.visibility,
                 };
                 
                 *func_type = Rc::new(specialized_func_type);
@@ -767,6 +814,13 @@ fn typecheck_variant_ctor_call(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypeResult<Call> {
+    if !ctx.is_visible(&variant.full_path) {
+        return Err(TypeError::NameNotVisible {
+            name: variant.full_path.clone(),
+            span: span.clone(),
+        });
+    }
+    
     let unspecialized_def = ctx
         .find_variant_def(&variant.full_path)
         .cloned()

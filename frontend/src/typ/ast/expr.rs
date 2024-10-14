@@ -2,13 +2,13 @@ mod init;
 mod literal;
 
 use crate::ast;
-use crate::ast::Ident;
+use crate::ast::{Ident, Visibility};
 use crate::ast::IdentPath;
 pub use crate::typ::ast::call::typecheck_call;
 pub use crate::typ::ast::call::Invocation;
 use crate::typ::ast::cast::typecheck_cast_expr;
 use crate::typ::ast::const_eval::ConstEval;
-use crate::typ::ast::overload_to_no_args_call;
+use crate::typ::ast::{check_overload_visibility, overload_to_no_args_call};
 use crate::typ::ast::try_resolve_overload;
 use crate::typ::ast::typecheck_bin_op;
 use crate::typ::ast::typecheck_block;
@@ -184,23 +184,29 @@ fn typecheck_ident(
             ..
         } => {
             let decl_annotation = member_annotation(&decl, span.clone(), ctx);
+            let decl_namespace = parent_path.to_namespace();
 
             // an ident referencing a function with no parameters is interpreted as a call to
             // that function, but we wrap it in the NoArgs type so it can be unwrapped if this
             // expression appears in an actual call node
             let can_call_noargs = overloads.len() == 1
-                && should_call_noargs_in_expr(&overloads[0], expect_ty, &Type::Nothing);
+                && should_call_noargs_in_expr(overloads[0].decl(), expect_ty, &Type::Nothing)
+                && (overloads[0].visiblity() >= Visibility::Interface 
+                    || ctx.is_current_namespace(&decl_namespace));
             
             let call_expr = if can_call_noargs {
-                let func_decl = &overloads[0];
-                let func_path = parent_path.to_namespace().child(ident.clone());
+                let func_decl = overloads[0].decl().clone();
+                let func_sig = overloads[0].sig().clone();
+                let func_vis = overloads[0].visiblity();
+
+                let func_path = decl_namespace.child(ident.clone());
                 let func_sym = Symbol::from(func_path)
                     .with_ty_params(func_decl.type_params.clone());
-                let func_sig = Rc::new(FunctionSig::of_decl(func_decl));
-    
+
                 let candidates = &[OverloadCandidate::Function {
                     decl_name: func_sym.clone(),
                     sig: func_sig.clone(),
+                    visibility: func_vis,
                 }];
 
                 let overload_result = try_resolve_overload(
@@ -214,10 +220,13 @@ fn typecheck_ident(
 
                 match overload_result {
                     Some(overload) => {
+                        check_overload_visibility(&overload, candidates, span, ctx)?;
+                        
                         let func_annotation = FunctionTyped {
                             name: func_sym,
                             sig: func_sig,
                             span: span.clone(),
+                            visibility: func_vis,
                         };
                         
                         let func_expr = Expr::Ident(ident.clone(), func_annotation.into());
@@ -297,14 +306,14 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
         .into(),
 
         ScopeMemberRef::Decl {
-            value: Decl::Function { overloads, .. },
+            value: Decl::Function { overloads, visibility, .. },
             ref parent_path,
             key,
         } => {
             let func_path = parent_path.to_namespace().child((*key).clone());
             
             if overloads.len() == 1 {
-                let decl = &overloads[0];
+                let decl = overloads[0].decl();
                 if parent_path.as_slice().is_empty() {
                     panic!("empty path for decl {}", key);
                 }
@@ -319,17 +328,19 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
                     span,
                     name: func_sym,
                     sig: Rc::new(FunctionSig::of_decl(decl)),
+                    visibility: *visibility,
                 }.into()
             } else {
                 let candidates = overloads
                     .iter()
-                    .map(|decl| {
+                    .map(|overload| {
                         let func_sym = Symbol::from(func_path.clone())
-                            .with_ty_params(decl.type_params.clone());
+                            .with_ty_params(overload.decl().type_params.clone());
 
                         OverloadCandidate::Function {
                             decl_name: func_sym,
-                            sig: Rc::new(FunctionSig::of_decl(decl)),
+                            sig: overload.sig().clone(),
+                            visibility: overload.visiblity(),
                         }
                     })
                     .collect();

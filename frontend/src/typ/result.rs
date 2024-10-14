@@ -110,7 +110,13 @@ pub enum TypeError {
     InvalidFunctionOverload {
         ident: Ident,
         prev_decls: Vec<Ident>,
-        kind: InvalidFunctionOverloadKind,
+        kind: InvalidOverloadKind,
+    },
+    InvalidMethodOverload {
+        owning_type: Type,
+        method: Ident,
+        prev_decls: Vec<Ident>,
+        kind: InvalidOverloadKind,
     },
     DuplicateDeclMod {
         keyword: String,
@@ -361,6 +367,7 @@ impl Spanned for TypeError {
             
             TypeError::AmbiguousSelfType { span, .. } => span,
             TypeError::InvalidFunctionOverload { ident, .. } => ident.span(),
+            TypeError::InvalidMethodOverload { method, .. } => method.span(),
             
             TypeError::InvalidCtorType { span, .. } => span,
             TypeError::CtorMissingMembers { span, .. } => span,
@@ -519,6 +526,7 @@ impl DiagnosticOutput for TypeError {
             }
 
             TypeError::InvalidFunctionOverload { .. } => "Invalid function overload",
+            TypeError::InvalidMethodOverload { .. } => "Invalid method overload",
 
             TypeError::InvalidBaseType { .. } => {
                 "Invalid base type"
@@ -720,8 +728,9 @@ impl DiagnosticOutput for TypeError {
                     })
                     .collect()
             }
-            
-            TypeError::InvalidFunctionOverload { prev_decls, .. } => {
+
+            TypeError::InvalidMethodOverload { prev_decls, .. }
+            | TypeError::InvalidFunctionOverload { prev_decls, .. } => {
                 prev_decls
                     .iter()
                     .map(|ident| {
@@ -898,15 +907,11 @@ impl fmt::Display for TypeError {
             }
             
             TypeError::InvalidFunctionOverload { ident, kind, .. } => {
-                write!(f, "the function `{}` cannot be overloaded: ", ident)?;
-                match kind {
-                    InvalidFunctionOverloadKind::InvalidOverload(invalid) => {
-                        write!(f, "{}", invalid)
-                    }
-                    InvalidFunctionOverloadKind::VisibilityMismatch => {
-                        write!(f, "the visibility of the overloaded declaration does not match")
-                    }
-                }
+                write!(f, "this overload of function `{}` is not valid: {}", ident, kind)
+            }
+
+            TypeError::InvalidMethodOverload { owning_type, method, kind, .. } => {
+                write!(f, "this overload of method `{}.{}` is not valid: {}", owning_type, method, kind)
             }
 
             TypeError::ExternalGenericFunction { func, .. } => {
@@ -1165,10 +1170,4 @@ impl fmt::Display for InvalidOverloadKind {
             }
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InvalidFunctionOverloadKind {
-    InvalidOverload(InvalidOverloadKind),
-    VisibilityMismatch,
 }

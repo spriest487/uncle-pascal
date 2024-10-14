@@ -8,7 +8,7 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::const_eval_integer;
+use crate::typ::ast::{check_overload_visibility, const_eval_integer};
 use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
 use crate::typ::ast::overload_to_no_args_call;
@@ -385,7 +385,8 @@ fn desugar_string_concat(
             let concat_typed = FunctionTyped {
                 name: concat_sym.clone(),
                 span: span.clone(),
-                sig: Rc::new(FunctionSig::of_decl(&concat_decls[0])),
+                sig: concat_decls[0].sig().clone(),
+                visibility: concat_decls[0].visiblity(),
             };
 
             let concat_func = ast::Expr::Ident(concat_path.last().clone(), concat_typed.into());
@@ -495,7 +496,8 @@ fn typecheck_member_of(
                         let overload_candidate = &[
                             OverloadCandidate::Function {
                                 sig: func_val.sig.clone(),
-                                decl_name: func_val.name.clone()
+                                decl_name: func_val.name.clone(),
+                                visibility: func_val.visibility,
                             }
                         ];
 
@@ -515,7 +517,8 @@ fn typecheck_member_of(
                         let overload_candidate = &[
                             OverloadCandidate::Function {
                                 sig: ufcs_val.sig.clone(),
-                                decl_name: ufcs_val.function_name.clone()
+                                decl_name: ufcs_val.function_name.clone(),
+                                visibility: ufcs_val.visibility,
                             }
                         ];
 
@@ -561,6 +564,8 @@ fn typecheck_member_of(
 
                     match try_resolve_overload(&overloaded.candidates, &[], None, self_arg, &span, ctx) {
                         Some(overload) => {
+                            check_overload_visibility(&overload, &overloaded.candidates, &span, ctx)?;
+                            
                             let call = overload_to_no_args_call(
                                 &overloaded.candidates,
                                 overload,
@@ -650,6 +655,8 @@ fn op_to_no_args_call(
         Some(overload) => overload,
         None => return Ok(None),
     };
+
+    check_overload_visibility(&overload, candidates, span, ctx)?;
     
     let target = Expr::from(target.clone());
     let call = overload_to_no_args_call(candidates, overload, target, self_arg, span);
@@ -726,10 +733,11 @@ pub fn typecheck_member_value(
             Typed::from(method)
         },
 
-        InstanceMember::UFCSCall { func_name, sig } => {
+        InstanceMember::UFCSCall { func_name, sig, visibility } => {
             // to be resolved later, presumably in a subsequent call
             UfcsTyped {
                 function_name: func_name,
+                visibility,
                 sig,
                 span: span.clone(),
                 self_arg: Box::new(lhs.clone()),

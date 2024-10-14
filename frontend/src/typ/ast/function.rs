@@ -47,6 +47,7 @@ use derivative::Derivative;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
 use std::fmt::Formatter;
+use std::ops::Deref;
 use std::rc::Rc;
 
 pub const SELF_PARAM_NAME: &str = "self";
@@ -320,30 +321,24 @@ impl FunctionDecl {
 
     pub fn check_new_overload<Overload>(
         &self, 
-        overloads: &[Overload]
+        overloads: impl IntoIterator<Item=Overload>
     ) -> Option<InvalidOverloadKind>
     where
-        Overload: AsRef<Self>,
+        Overload: Deref<Target=Self>,
     {
         if !self.is_overload() {
             return Some(InvalidOverloadKind::MissingOverloadModifier);
-        } else {
-            let missing_overload = overloads
-                .iter()
-                .any(|decl| {
-                    !decl.as_ref().is_overload()
-                });
-            
-            if missing_overload {
-                return Some(InvalidOverloadKind::MissingOverloadModifier);
-            }
-        };
+        }
 
         let new_sig = FunctionSig::of_decl(self);
 
         // check for duplicate overloads
-        for (index, overload) in overloads.iter().enumerate() {
-            let sig = FunctionSig::of_decl(overload.as_ref());
+        for (index, overload) in overloads.into_iter().enumerate() {
+            if !overload.deref().is_overload() {
+                return Some(InvalidOverloadKind::MissingOverloadModifier);
+            }
+
+            let sig = FunctionSig::of_decl(overload.deref());
             if sig == new_sig {
                 return Some(InvalidOverloadKind::Duplicate(index));
             }

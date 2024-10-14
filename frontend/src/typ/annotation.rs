@@ -2,7 +2,7 @@ mod symbol;
 
 pub use symbol::*;
 
-use crate::ast::Access;
+use crate::ast::{Access, Visibility};
 use crate::ast::Annotation;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
@@ -13,7 +13,7 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::result::*;
 use crate::typ::ty::*;
-use crate::typ::ValueKind;
+use crate::typ::{Context, ValueKind};
 use crate::IntConstant;
 use common::span::*;
 use derivative::*;
@@ -155,6 +155,8 @@ impl From<MethodTyped> for Typed {
 #[derivative(Hash, Debug, PartialEq)]
 pub struct FunctionTyped {
     pub name: Symbol,
+    pub visibility: Visibility,
+
     pub sig: Rc<FunctionSig>,
 
     #[derivative(Debug = "ignore")]
@@ -170,6 +172,18 @@ impl FunctionTyped {
 
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type) -> bool {
         self.sig.should_call_noargs_in_expr(expect_ty, &Type::Nothing)
+    }
+    
+    pub fn check_visible(&self, at: &Span, ctx: &Context) -> TypeResult<()> {
+        if self.visibility < Visibility::Interface
+            && !ctx.is_current_namespace_child(&self.name.full_path) {
+            return Err(TypeError::NameNotVisible {
+                name: self.name.full_path.clone(),
+                span: at.clone(),
+            });
+        }
+        
+        Ok(())
     }
 }
 
@@ -235,6 +249,7 @@ pub struct UfcsTyped {
     pub self_arg: Box<Expr>,
     pub function_name: Symbol,
     pub sig: Rc<FunctionSig>,
+    pub visibility: Visibility,
 
     #[derivative(Debug = "ignore")]
     #[derivative(Hash = "ignore")]
