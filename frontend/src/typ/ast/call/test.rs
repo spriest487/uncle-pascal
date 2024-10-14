@@ -1,5 +1,6 @@
 use crate::ast;
-use crate::ast::{Access, IdentPath};
+use crate::ast::Access;
+use crate::ast::IdentPath;
 use crate::parse::TokenStream;
 use crate::pp::Preprocessor;
 use crate::typ::ast::call::overload::resolve_overload;
@@ -8,7 +9,6 @@ use crate::typ::test::module_from_src;
 use crate::typ::test::try_module_from_src;
 use crate::typ::test::try_module_from_srcs;
 use crate::typ::Context;
-use crate::typ::FunctionSig;
 use crate::typ::Module;
 use crate::typ::Symbol;
 use crate::typ::TypeError;
@@ -43,7 +43,7 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
     let candidates = unit.unit
         .func_defs()
         .map(|(vis, func)| {
-            let sig = FunctionSig::of_decl(&func.decl);
+            let sig = func.decl.sig();
 
             match &func.decl.name.owning_ty {
                 Some(explicit_impl) => {

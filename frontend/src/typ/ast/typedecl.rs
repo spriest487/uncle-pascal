@@ -12,7 +12,6 @@ use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::InterfaceMethodDecl;
 use crate::typ::typecheck_type;
 use crate::typ::Context;
-use crate::typ::FunctionSig;
 use crate::typ::MismatchedImplementation;
 use crate::typ::MissingImplementation;
 use crate::typ::NameError;
@@ -117,8 +116,7 @@ pub fn typecheck_struct_decl(
             let mut mismatched_methods = Vec::new();
             
             for iface_method in &iface.methods {
-                let expect_sig = FunctionSig::of_decl(&iface_method.decl)
-                    .with_self(&self_ty);
+                let expect_sig = iface_method.decl.sig().with_self(&self_ty);
                 
                 let actual_method = methods
                     .iter()
@@ -135,9 +133,9 @@ pub fn typecheck_struct_decl(
                     }
                     
                     Some(impl_method) => {
-                        let actual_sig = FunctionSig::of_decl(&impl_method.decl);
+                        let actual_sig = impl_method.decl.sig();
 
-                        if actual_sig != expect_sig {                            
+                        if actual_sig != expect_sig {
                             mismatched_methods.push(MismatchedImplementation {
                                 impl_method_name: impl_method.decl.name.clone(),
                                 iface_method_name: iface_method.decl.name.clone(),

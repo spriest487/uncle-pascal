@@ -6,7 +6,6 @@ type Greeter = class
     function Greet(b: Boolean); overload;
 end;
 
-{
 function Greeter.Greet(a: Integer);
 begin
     WriteLn('hello from A: ' + a);
@@ -16,7 +15,6 @@ function Greeter.Greet(b: Boolean);
 begin
     WriteLn('hello from B: ' + b);
 end;
-}
 
 initialization
     var i := Greeter();

@@ -330,7 +330,7 @@ impl FunctionDecl {
             return Some(InvalidOverloadKind::MissingOverloadModifier);
         }
 
-        let new_sig = FunctionSig::of_decl(self);
+        let new_sig = self.sig();
 
         // check for duplicate overloads
         for (index, overload) in overloads.into_iter().enumerate() {
@@ -338,13 +338,17 @@ impl FunctionDecl {
                 return Some(InvalidOverloadKind::MissingOverloadModifier);
             }
 
-            let sig = FunctionSig::of_decl(overload.deref());
+            let sig = overload.deref().sig();
             if sig == new_sig {
                 return Some(InvalidOverloadKind::Duplicate(index));
             }
         }
         
         None
+    }
+    
+    pub fn sig(&self) -> FunctionSig {
+        FunctionSig::of_decl(self)
     }
 }
 
@@ -380,13 +384,12 @@ impl FunctionDecl {
             return Ok(false);
         }
         
-        let sig = FunctionSig::of_decl(self);
+        let sig = self.sig();
 
         let methods = iface_ty.methods_at(ctx, &self.span)?;
         for impl_method in methods {
             if impl_method.decl.name.ident == self.name.ident {
-                let iface_sig = FunctionSig::of_decl(&impl_method.decl)
-                    .with_self(owning_ty);
+                let iface_sig = impl_method.decl.sig().with_self(owning_ty);
 
                 if iface_sig == sig {
                     return Ok(true);
@@ -460,7 +463,7 @@ fn validate_method_def_matches_decl(
         }),
 
         Some(declared_method) => {
-            let declared_sig = FunctionSig::of_decl(&declared_method.decl);
+            let declared_sig = declared_method.decl.sig();
 
             if *method_sig != declared_sig || declared_method.decl.kind != method_kind {
                 // eprintln!("expect: {:?} {:#?}",  declared_method.decl.kind, declared_sig);
@@ -651,7 +654,7 @@ pub fn specialize_func_decl(
     
     if args.len() != ty_params.len() {
         return Err(GenericError::ArgsLenMismatch {
-            target: GenericTarget::FunctionSig(FunctionSig::of_decl(decl)),
+            target: GenericTarget::FunctionSig(decl.sig()),
             expected: ty_params.len(),
             actual: args.len(),
         });

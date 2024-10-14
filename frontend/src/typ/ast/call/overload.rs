@@ -50,7 +50,7 @@ impl OverloadCandidate {
     pub fn from_instance_method(im: InstanceMethod) -> Self {
         match im {
             InstanceMethod::Method { owning_ty: iface_ty, method } => {
-                let sig = FunctionSig::of_decl(&method.decl);
+                let sig = method.decl.sig();
                 
                 OverloadCandidate::Method {
                     ident: method.decl.name.ident.clone(),

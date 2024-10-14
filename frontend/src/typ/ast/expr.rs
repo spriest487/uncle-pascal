@@ -2,13 +2,14 @@ mod init;
 mod literal;
 
 use crate::ast;
-use crate::ast::{Ident, Visibility};
 use crate::ast::IdentPath;
+use crate::ast::{Ident, Visibility};
 pub use crate::typ::ast::call::typecheck_call;
 pub use crate::typ::ast::call::Invocation;
 use crate::typ::ast::cast::typecheck_cast_expr;
+use crate::typ::ast::check_overload_visibility;
 use crate::typ::ast::const_eval::ConstEval;
-use crate::typ::ast::{check_overload_visibility, overload_to_no_args_call};
+use crate::typ::ast::overload_to_no_args_call;
 use crate::typ::ast::try_resolve_overload;
 use crate::typ::ast::typecheck_bin_op;
 use crate::typ::ast::typecheck_block;
@@ -23,11 +24,11 @@ use crate::typ::ast::typecheck_raise;
 use crate::typ::ast::typecheck_unary_op;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::{Context, OverloadTyped};
+use crate::typ::Context;
 use crate::typ::Decl;
-use crate::typ::FunctionSig;
 use crate::typ::FunctionTyped;
 use crate::typ::NameError;
+use crate::typ::OverloadTyped;
 use crate::typ::ScopeMemberRef;
 use crate::typ::Symbol;
 use crate::typ::Type;
@@ -280,8 +281,7 @@ fn member_ident_expr(
 }
 
 fn should_call_noargs_in_expr(decl: &FunctionDecl, expect_ty: &Type, self_arg_ty: &Type) -> bool {
-    let sig = FunctionSig::of_decl(decl);
-    sig.should_call_noargs_in_expr(expect_ty, self_arg_ty)
+    decl.sig().should_call_noargs_in_expr(expect_ty, self_arg_ty)
 }
 
 pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> Typed {
@@ -327,7 +327,7 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
                 FunctionTyped {
                     span,
                     name: func_sym,
-                    sig: Rc::new(FunctionSig::of_decl(decl)),
+                    sig: Rc::new(decl.sig()),
                     visibility: *visibility,
                 }.into()
             } else {

@@ -159,7 +159,7 @@ pub enum TypeError {
     },
     UndefinedSymbols {
         unit: IdentPath,
-        syms: Vec<IdentPath>,
+        undefined: Vec<(IdentPath, Span)>,
     },
     UnableToInferType {
         expr: Box<ast::Expr<Span>>,
@@ -562,8 +562,6 @@ impl DiagnosticOutput for TypeError {
 
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
-            TypeError::UndefinedSymbols { .. } => None,
-
             _ => Some(DiagnosticLabel {
                 text: Some(self.to_string()),
                 span: self.span().clone(),
@@ -651,13 +649,13 @@ impl DiagnosticOutput for TypeError {
                 _ => Vec::new(),
             },
 
-            TypeError::UndefinedSymbols { syms, .. } => syms
+            TypeError::UndefinedSymbols { undefined: syms, .. } => syms
                 .iter()
-                .map(|sym| DiagnosticMessage {
-                    title: format!("`{}` is declared but not defined", sym),
+                .map(|(path, span)| DiagnosticMessage {
+                    title: format!("`{}` is declared but not defined", path),
                     label: Some(DiagnosticLabel {
                         text: Some("declared here".to_string()),
-                        span: sym.span().clone(),
+                        span: span.clone(),
                     }),
                     notes: Vec::new(),
                 })

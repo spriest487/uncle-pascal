@@ -377,6 +377,7 @@ impl ModuleBuilder {
             .find_method(
                 &generic_self_ty,
                 &method_key.method,
+                &method_key.sig,
             )
             .cloned()
             .unwrap_or_else(|| {
@@ -492,14 +493,16 @@ impl ModuleBuilder {
         &mut self,
         owning_ty: typ::Type,
         self_ty: typ::Type,
-        method: Ident,
+        method_name: Ident,
+        method_sig: Rc<typ::FunctionSig>,
         type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
         let mut key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 owning_ty,
                 self_ty,
-                method,
+                method: method_name,
+                sig: method_sig,
             }),
 
             // interface method calls can't pass type args
@@ -627,6 +630,7 @@ impl ModuleBuilder {
                                 method: method.decl.name.ident.clone(),
                                 owning_ty: iface_ty.clone(),
                                 self_ty: real_ty.clone(),
+                                sig: Rc::new(typ::FunctionSig::of_decl(&method.decl)),
                             },
                         });
 
@@ -1211,6 +1215,7 @@ pub struct MethodDeclKey {
     pub self_ty: typ::Type,
 
     pub method: Ident,
+    pub sig: Rc<typ::FunctionSig>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

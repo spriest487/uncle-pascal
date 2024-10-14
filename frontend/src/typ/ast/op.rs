@@ -22,7 +22,6 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::builtin_displayable_name;
 use crate::typ::string_type;
 use crate::typ::Context;
-use crate::typ::FunctionSig;
 use crate::typ::FunctionTyped;
 use crate::typ::InstanceMember;
 use crate::typ::MethodTyped;
@@ -321,7 +320,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         None => return None,
     };
 
-    let to_string_sig = Rc::new(FunctionSig::of_decl(&to_string_method.decl));
+    let to_string_sig = Rc::new(to_string_method.decl.sig());
 
     // make a call
     let displayable_call = Call::Method(MethodCall {

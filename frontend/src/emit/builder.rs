@@ -133,6 +133,7 @@ impl<'m> Builder<'m> {
         owning_ty: typ::Type,
         self_ty: typ::Type,
         method: Ident,
+        method_sig: Rc<typ::FunctionSig>,
         mut call_ty_args: Option<typ::TypeArgList>
     ) -> FunctionInstance {
         if let Some(args_list) = &mut call_ty_args {
@@ -141,7 +142,7 @@ impl<'m> Builder<'m> {
                 .apply_type_args_by_name(&self.generic_context, &self.generic_context);
         }
         
-        self.module.translate_method_impl(owning_ty, self_ty, method, call_ty_args)
+        self.module.translate_method_impl(owning_ty, self_ty, method, method_sig, call_ty_args)
     }
 
     pub fn translate_func(

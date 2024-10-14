@@ -4,6 +4,7 @@ use crate::emit::syn;
 use crate::emit::typ;
 use crate::typ::Specializable;
 use ir_lang::*;
+use std::rc::Rc;
 use syn::Ident;
 use typ::Typed;
 
@@ -246,7 +247,7 @@ fn build_func_call(
 
 fn build_method_call(
     method_ident: &Ident,
-    method_sig: &typ::FunctionSig,
+    method_sig: &Rc<typ::FunctionSig>,
     owning_ty: typ::Type,
     self_ty: typ::Type,
     args: &[typ::ast::Expr],
@@ -281,6 +282,7 @@ fn build_method_call(
                 owning_ty,
                 self_ty,
                 method_ident.clone(),
+                method_sig.clone(),
                 ty_args,
             );
 

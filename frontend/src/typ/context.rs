@@ -90,9 +90,15 @@ impl TypeMember {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+struct MethodKey {
+    pub name: Ident,
+    pub sig: Rc<FunctionSig>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct MethodCollection {
-    methods: HashMap<Ident, Option<Rc<FunctionDef>>>,
+    methods: HashMap<MethodKey, Option<Rc<FunctionDef>>>,
 }
 
 impl MethodCollection {
@@ -916,8 +922,13 @@ impl Context {
             .method_defs
             .entry(ty.clone())
             .or_insert_with(MethodCollection::new);
+        
+        let key = MethodKey {
+            name: def.decl.ident().clone(),
+            sig: Rc::new(FunctionSig::of_decl(&def.decl)),
+        };
 
-        match methods.methods.entry(def.decl.name.ident.clone()) {
+        match methods.methods.entry(key) {
             Entry::Vacant(vacant) => {
                 vacant.insert(Some(def));
                 Ok(())
@@ -945,10 +956,15 @@ impl Context {
         Ok(())
     }
 
-    pub fn find_method(&self, ty: &Type, method: &Ident) -> Option<&FunctionDef> {
+    pub fn find_method(&self, ty: &Type, method: &Ident, sig: &Rc<FunctionSig>) -> Option<&FunctionDef> {
         let method_defs = self.method_defs.get(ty)?;
+        
+        let key = MethodKey {
+            name: method.clone(),
+            sig: sig.clone(),
+        };
 
-        let method = method_defs.methods.get(method)?.as_ref()?;
+        let method = method_defs.methods.get(&key)?.as_ref()?;
 
         Some(&method)
     }
@@ -1572,7 +1588,7 @@ impl Context {
         })
     }
 
-    pub fn undefined_syms(&self) -> Vec<IdentPath> {
+    pub fn undefined_syms(&self) -> Vec<(IdentPath, Span)> {
         let mut syms = Vec::new();
 
         let current_path = self.scopes.current_path();
@@ -1587,12 +1603,22 @@ impl Context {
             // only functions and methods can possibly be undefined
             for (ident, decl) in scope.members() {
                 match decl {
-                    // all types except interfaces must define any methods they declare
                     ScopeMember::Decl(Decl::Type { ty, forward, .. }) => {
                         if *forward {
                             // all forward-declared types must be fully defined within the unit
-                            syms.push(current_scope_ns.clone().child(ident.clone()))
+                            let missing = match ty.full_path() {
+                                Some(name) => {
+                                    let name_span = name.span().clone();
+                                    (name.into_owned(), name_span)
+                                },
+                                None => {
+                                    let name = current_scope_ns.clone().child(ident.clone());
+                                    (name, ident.span.clone())
+                                },
+                            };
+                            syms.push(missing)
                         } else {
+                            // all types except interfaces must define any methods they declare
                             syms.append(&mut self.undefined_ty_members(ty));
                         }
                     },
@@ -1603,7 +1629,8 @@ impl Context {
                         for overload in overloads {
                             if self.find_func_def(&decl_path, overload.sig().clone()).is_none() {
                                 // eprintln!("undefined: {}", decl_path);
-                                syms.push(decl_path.clone());
+                                let decl_span = overload.decl().span().clone();
+                                syms.push((decl_path.clone(), decl_span));
                             }
                         }
                     },
@@ -1616,7 +1643,7 @@ impl Context {
         syms
     }
 
-    fn undefined_ty_members(self: &Context, ty: &Type) -> Vec<IdentPath> {
+    fn undefined_ty_members(self: &Context, ty: &Type) -> Vec<(IdentPath, Span)> {
         if ty.as_iface().is_some() {
             return Vec::new();
         }
@@ -1635,24 +1662,40 @@ impl Context {
         let mut missing = Vec::new();
 
         for method in ty_methods {
+            let def_key = MethodKey {
+                name: method.decl.ident().clone(),
+                sig: Rc::new(FunctionSig::of_decl(&method.decl)),
+            };
+            
             // don't need to check the sigs again, they wouldn't be added
             // if they didn't match
             let has_def = ty_method_defs
                 .and_then(|method_defs| {
                     method_defs
                         .methods
-                        .get(&method.decl.name.ident)
+                        .get(&def_key)
                         .map(|def| def.is_some())
                 })
                 .unwrap_or(false);
 
             if !has_def {
-                missing.push(
-                    ty_name
-                        .clone()
-                        .into_owned()
-                        .child(method.decl.name.ident.clone()),
-                );
+                // eprintln!("no def for {}: {}\ndefs are: {}", def_key.name, def_key.sig, ty_method_defs
+                //     .cloned()
+                //     .unwrap_or_else(|| MethodCollection::new())
+                //     .methods
+                //     .keys()
+                //     .filter(|k| k.name == *method.decl.ident())
+                //     .map(|k| format!("{}: {}", k.name, k.sig))
+                //     .collect::<Vec<_>>()
+                //     .join(",\n\t"));
+                
+                let decl_name = ty_name
+                    .clone()
+                    .into_owned()
+                .child(method.decl.ident().clone());
+
+                let decl_span = method.decl.span.clone();
+                missing.push((decl_name, decl_span));
             }
         }
 
