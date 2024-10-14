@@ -1,31 +1,25 @@
 implementation
 uses System;
 
-type A = interface
-    function Greet(a: Integer);
-end;
-
-type B = interface
-    function Greet(b: Boolean);
-end;
-
-type Impl = class of A, B
+type Greeter = class
     function Greet(a: Integer); overload;
     function Greet(b: Boolean); overload;
 end;
 
-function Impl.Greet(a: Integer);
+{
+function Greeter.Greet(a: Integer);
 begin
-    WriteLn('hello from A');
+    WriteLn('hello from A: ' + a);
 end;
 
-function Impl.Greet(b: Boolean);
+function Greeter.Greet(b: Boolean);
 begin
-    WriteLn('hello from B');
+    WriteLn('hello from B: ' + b);
 end;
+}
 
 initialization
-    var i := Impl();
+    var i := Greeter();
     i.Greet(1);
     i.Greet(true);
 end

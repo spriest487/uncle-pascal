@@ -1,7 +1,7 @@
 use crate::ast;
-use crate::ast::{Access, IdentPath};
-use crate::ast::Operator;
 use crate::ast::Ident;
+use crate::ast::Operator;
+use crate::ast::{Access, IdentPath};
 use crate::parse::InvalidStatement;
 use crate::typ::annotation::Typed;
 use crate::typ::ast::Call;
@@ -111,6 +111,17 @@ pub enum TypeError {
         ident: Ident,
         prev_decls: Vec<Ident>,
         kind: InvalidFunctionOverloadKind,
+    },
+    DuplicateDeclMod {
+        keyword: String,
+        span: Span,
+        existing: Span,
+    },
+    IncompatibleDeclMod {
+        first_keyword: String,
+        second_keyword: String,
+        first_span: Span,
+        second_span: Span,
     },
     ExternalGenericFunction {
         func: Ident,
@@ -344,6 +355,10 @@ impl Spanned for TypeError {
             TypeError::AmbiguousFunction { span, .. } => span,
             TypeError::AmbiguousMethod { span, .. } => span,
             TypeError::ExternalGenericFunction { func, .. } => func.span(),
+            
+            TypeError::DuplicateDeclMod { span, .. } => span,
+            TypeError::IncompatibleDeclMod { second_span, .. } => second_span,
+            
             TypeError::AmbiguousSelfType { span, .. } => span,
             TypeError::InvalidFunctionOverload { ident, .. } => ident.span(),
             
@@ -442,6 +457,10 @@ impl DiagnosticOutput for TypeError {
             TypeError::AmbiguousMethod { .. } => "Method reference is ambiguous",
             TypeError::AmbiguousSelfType { .. } => "Self type of method is ambiguous",
             TypeError::ExternalGenericFunction { .. } => "Function imported from external module may not have type parameters",
+            
+            TypeError::DuplicateDeclMod { .. } => "Duplicate modifier",
+            TypeError::IncompatibleDeclMod { .. } => "Incompatible modifiers",
+            
             TypeError::InvalidCtorType { .. } => {
                 "Invalid constructor expression type"
             }
@@ -656,6 +675,24 @@ impl DiagnosticOutput for TypeError {
                 }),
                 notes: Vec::new(),
             }],
+            
+            TypeError::DuplicateDeclMod { existing, .. } => vec![DiagnosticMessage {
+                title: "duplicate modifier".to_string(),
+                label: Some(DiagnosticLabel {
+                    text: Some("previously appeared here".to_string()),
+                    span: existing.clone(),
+                }),
+                notes: Vec::new(),
+            }],
+
+            TypeError::IncompatibleDeclMod { first_span, first_keyword, .. } => vec![DiagnosticMessage {
+                title: "incompatible modifier".to_string(),
+                label: Some(DiagnosticLabel {
+                    text: Some(format!("`{first_keyword}` previously appeared here")),
+                    span: first_span.clone(),
+                }),
+                notes: Vec::new(),
+            }],
 
             TypeError::DuplicateNamedArg { name, previous, .. } 
             | TypeError::DuplicateParamName { name, previous, .. } => 
@@ -863,8 +900,8 @@ impl fmt::Display for TypeError {
             TypeError::InvalidFunctionOverload { ident, kind, .. } => {
                 write!(f, "the function `{}` cannot be overloaded: ", ident)?;
                 match kind {
-                    InvalidFunctionOverloadKind::MissingOverloadModifier => {
-                        write!(f, "the declaration is missing the `{}` modifier", DeclMod::OVERLOAD_WORD)
+                    InvalidFunctionOverloadKind::InvalidOverload(invalid) => {
+                        write!(f, "{}", invalid)
                     }
                     InvalidFunctionOverloadKind::VisibilityMismatch => {
                         write!(f, "the visibility of the overloaded declaration does not match")
@@ -874,6 +911,14 @@ impl fmt::Display for TypeError {
 
             TypeError::ExternalGenericFunction { func, .. } => {
                 write!(f, "`{}` is generic but is declared with the `{}` modifier", func, DeclMod::EXTERNAL_WORD)
+            }
+            
+            TypeError::DuplicateDeclMod { keyword, .. } => {
+                write!(f, "the modifier `{keyword}` cannot appear multiple times on this declaration")
+            }
+            
+            TypeError::IncompatibleDeclMod { first_keyword, second_keyword, .. } => {
+                write!(f, "the modifiers `{first_keyword}` and `{second_keyword}` cannot appear on the same declaration")
             }
 
             TypeError::InvalidCtorType { ty, .. } => {
@@ -968,7 +1013,7 @@ impl fmt::Display for TypeError {
                         .collect::<Vec<_>>()
                         .join(", "))
                 } else {
-                    write!(f, "the modifier `{}` can not appear on a method declaration:", mods[0])
+                    write!(f, "the modifier `{}` can not appear on a method declaration", mods[0])
                 }
             }
 
@@ -1101,10 +1146,29 @@ pub struct MismatchedImplementation {
 
     pub impl_method_name: TypedFunctionName,
     pub actual_sig: FunctionSig,
-} 
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum InvalidFunctionOverloadKind {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InvalidOverloadKind {
     MissingOverloadModifier,
+    Duplicate(usize),
+}
+
+impl fmt::Display for InvalidOverloadKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InvalidOverloadKind::MissingOverloadModifier => {
+                write!(f, "the declaration is missing the `{}` modifier", DeclMod::OVERLOAD_WORD)
+            }
+            InvalidOverloadKind::Duplicate(..) => {
+                write!(f, "the declaration is a duplicate of a previous declaration")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InvalidFunctionOverloadKind {
+    InvalidOverload(InvalidOverloadKind),
     VisibilityMismatch,
 }

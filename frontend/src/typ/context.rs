@@ -762,19 +762,10 @@ impl Context {
 
                 let invalid_overload = if *existing_visibility != visibility {
                     Some(InvalidFunctionOverloadKind::VisibilityMismatch)
-                } else if !func_decl.is_overload() {
-                    Some(InvalidFunctionOverloadKind::MissingOverloadModifier)
+                } else if let Some(invalid) = func_decl.check_new_overload(overloads) {
+                    Some(InvalidFunctionOverloadKind::InvalidOverload(invalid))
                 } else {
-                    overloads
-                        .iter()
-                        .filter_map(|decl| {
-                            if !decl.is_overload() {
-                                Some(InvalidFunctionOverloadKind::MissingOverloadModifier)
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
+                    None
                 };
 
                 if let Some(kind) = invalid_overload {
@@ -786,29 +777,6 @@ impl Context {
                             .collect(),
                         kind,
                     });
-                }
-
-                let new_sig = FunctionSig::of_decl(&func_decl);
-
-                // check for duplicate overloads
-                for overload in overloads.iter() {
-                    let sig = FunctionSig::of_decl(overload);
-                    if sig == new_sig {
-                        let existing_ident = overload.name.ident.clone();
-                        let current_ns = IdentPath::from_vec(current_scope.keys());
-
-                        let already_declared = NameError::AlreadyDeclared {
-                            new: name.clone(),
-                            conflict: DeclConflict::Name,
-                            existing: current_ns.child(existing_ident),
-                            existing_kind: ScopeMemberKind::Decl,
-                        };
-
-                        return Err(TypeError::from_name_err(
-                            already_declared,
-                            name.span.clone(),
-                        ));
-                    }
                 }
 
                 // eprintln!("adding new overload! {}", new_sig);

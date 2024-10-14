@@ -412,6 +412,10 @@ impl FunctionDecl<Span> {
 }
 
 impl<A: Annotation> FunctionDecl<A> {
+    pub fn ident(&self) -> &Ident {
+        self.name.ident()
+    }
+    
     pub fn external_src(&self) -> Option<&A::ConstStringExpr> {
         self.mods
             .iter()

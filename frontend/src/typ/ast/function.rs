@@ -1,18 +1,19 @@
 #[cfg(test)]
 mod test;
+mod decl_mod;
 
+pub use self::decl_mod::*;
 use crate::ast;
+use crate::ast::FunctionDeclKind;
+use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::Visibility;
-use crate::ast::{FunctionDeclKind, FunctionName};
 use crate::typ::ast::const_eval::ConstEval;
-use crate::typ::ast::const_eval_string;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::string_type;
-use crate::typ::typecheck_type;
+use crate::typ::{typecheck_type, InvalidOverloadKind};
 use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
 use crate::typ::validate_ty_args;
@@ -52,7 +53,6 @@ pub const SELF_PARAM_NAME: &str = "self";
 pub const SELF_TY_NAME: &str = "Self";
 
 pub type FunctionDecl = ast::FunctionDecl<Typed>;
-pub type DeclMod = ast::DeclMod<Typed>;
 pub type FunctionDef = ast::FunctionDef<Typed>;
 pub type FunctionParam = ast::FunctionParam<Typed>;
 pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Typed>;
@@ -108,240 +108,249 @@ impl fmt::Display for TypedFunctionName {
     }
 }
 
-pub fn typecheck_func_decl(
-    decl: &ast::FunctionDecl<Span>,
-    is_def: bool,
-    ctx: &mut Context,
-) -> TypeResult<FunctionDecl> {
-    let enclosing_ty = ctx.current_enclosing_ty().cloned();
+impl FunctionDecl {
+    pub fn typecheck(decl: &ast::FunctionDecl, is_def: bool, ctx: &mut Context) -> TypeResult<Self> {
+        let enclosing_ty = ctx.current_enclosing_ty().cloned();
 
-    let owning_ty = match (&decl.name.owning_ty_qual, &enclosing_ty) {
-        (Some(owning_ty_name), None) => {
-            Some(typecheck_type_path(owning_ty_name, ctx)?)
-        },
+        let owning_ty = match (&decl.name.owning_ty_qual, &enclosing_ty) {
+            (Some(owning_ty_name), None) => {
+                Some(typecheck_type_path(owning_ty_name, ctx)?)
+            },
 
-        (Some(type_qual), Some(..)) => {
-            return Err(TypeError::InvalidMethodOwningType {
-                method_ident: decl.name.ident.clone(),
-                span: type_qual.span().clone()
-            });
-        }
-
-        (None, Some(enclosing_ty)) => Some(enclosing_ty.clone()),
-
-        (None, None) if is_def && decl.kind == FunctionDeclKind::Constructor => {
-            return Err(TypeError::CtorMethodDefMissingType { 
-                span: decl.name.span().clone(),
-                ident: decl.name.ident.clone(),
-            })
-        }
-
-        _ => None,
-    };
-
-    let env = Environment::FunctionDecl {
-        owning_ty_params: owning_ty
-            .as_ref()
-            .and_then(|ty| ty.type_params().cloned()),
-    };
-    
-    ctx.scope(env, |ctx| {        
-        // declare type params from the declaring type, if any
-        // e.g. for method `MyClass[T].A()`, `T` is declared here for the function scope
-        // if this decl is inside an enclosing type, they should already be declared in the body
-        // scope of the type, and can't be redeclared
-        if enclosing_ty.is_none() {
-            if let Some(owning_ty) = &owning_ty {
-                if let Some(params) = owning_ty.type_params() {
-                    ctx.declare_type_params(params)?;
-                }
-            }
-        }
-        
-        let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
-
-        if owning_ty.is_some() && !decl.mods.is_empty() {
-            return Err(TypeError::InvalidMethodModifiers {
-                mods: decl_mods,
-                span: decl.span.clone(),
-            })
-        }
-
-        if let Some(extern_mod) = decl.get_mod(DeclMod::EXTERNAL_WORD) {
-            if let Some(decl_type_params) = &decl.type_params {
-                let ty_args_span = decl_type_params.items[0].name.span().to(decl_type_params
-                    .items
-                    .last()
-                    .unwrap()
-                    .name
-                    .span());
-                return Err(TypeError::ExternalGenericFunction {
-                    func: decl.name.ident.clone(),
-                    extern_modifier: extern_mod.span().clone(),
-                    ty_args: ty_args_span,
+            (Some(type_qual), Some(..)) => {
+                return Err(TypeError::InvalidMethodOwningType {
+                    method_ident: decl.name.ident.clone(),
+                    span: type_qual.span().clone()
                 });
             }
-        }
 
-        let type_params = match decl.type_params.as_ref() {
-            Some(decl_type_params) => {
-                let type_params = typecheck_type_params(decl_type_params, ctx)?;
-                ctx.declare_type_params(&type_params)?;
-                Some(type_params)
-            },
-            None => None,
-        };
-        
-        let return_ty = match decl.kind {
-            FunctionDeclKind::Function | FunctionDeclKind::ClassMethod =>  match &decl.return_ty {
-                ast::TypeName::Unspecified(..) => Type::Nothing,
-                ty_name => typecheck_type(ty_name, ctx)?,
-            },
+            (None, Some(enclosing_ty)) => Some(enclosing_ty.clone()),
 
-            FunctionDeclKind::Constructor => {
-                assert!(
-                    !decl.return_ty.is_known(), 
-                    "parser must not produce constructors with explicit return types"
-                );
-
-                let ctor_owning_ty = owning_ty
-                    .as_ref()
-                    .expect("owning type must not be null for constructors");
-                
-                // the return type of methods in generic types has to be specialized 
-                // with the type's own params - this normally happens automatically because we
-                // declare the params before typechecking the return type, but for constructors
-                // the return type is implied so we have to grab the non-specialized version from
-                // earlier and specialize it manually
-                let mut ctor_return_ty = ctor_owning_ty.clone();
-                if let Some(owning_ty_params) = ctor_owning_ty.type_params() {
-                    let own_ty_args = owning_ty_params.clone().to_type_args();
-
-                    ctor_return_ty = ctor_return_ty
-                        .specialize_generic(&own_ty_args, ctx)
-                        .map_err(|e| TypeError::from_generic_err(e, decl.span.clone()))?
-                        .into_owned();
-                }
-                ctor_return_ty
+            (None, None) if is_def && decl.kind == FunctionDeclKind::Constructor => {
+                return Err(TypeError::CtorMethodDefMissingType {
+                    span: decl.name.span().clone(),
+                    ident: decl.name.ident.clone(),
+                })
             }
+
+            _ => None,
         };
 
-        let params: Vec<FunctionParam>;
+        let env = Environment::FunctionDecl {
+            owning_ty_params: owning_ty
+                .as_ref()
+                .and_then(|ty| ty.type_params().cloned()),
+        };
 
-        match (&owning_ty, &enclosing_ty) {
-            // free function with no owning type
-            (None, None) => {
-                params = typecheck_params(decl, None, ctx)?;
-            },
-            
-            // method definition
-            (Some(explicit_owning_ty), None) => {
-                let explicit_ty_span = decl
-                    .name
-                    .owning_ty_qual
-                    .as_ref()
-                    .unwrap()
-                    .span();
-
-                // in a method definition, Self is a known type and should already be translated 
-                // as the actual type itself, parameterized by its own type params.
-                let self_arg_ty = if !decl.kind.is_static_method() {
-                    Some(specialize_self_ty(
-                        explicit_owning_ty.clone(),
-                        explicit_ty_span,
-                        ctx
-                    )?)
-                } else {
-                    None
-                };
-
-                params = typecheck_params(decl, self_arg_ty, ctx)?;
-
-                let param_sigs = params.iter()
-                    .cloned()
-                    .map(FunctionParamSig::from)
-                    .collect();
-                let method_sig = FunctionSig::new(
-                    return_ty.clone(),
-                    param_sigs,
-                    type_params.clone());
-
-                match &explicit_owning_ty {
-                    // can't define interface methods
-                    Type::Interface(..) => {
-                        return Err(TypeError::AbstractMethodDefinition {
-                            span: decl.span.clone(),
-                            owning_ty: explicit_owning_ty.clone(),
-                            method: decl.name.ident.clone(),
-                        });
+        ctx.scope(env, |ctx| {
+            // declare type params from the declaring type, if any
+            // e.g. for method `MyClass[T].A()`, `T` is declared here for the function scope
+            // if this decl is inside an enclosing type, they should already be declared in the body
+            // scope of the type, and can't be redeclared
+            if enclosing_ty.is_none() {
+                if let Some(owning_ty) = &owning_ty {
+                    if let Some(params) = owning_ty.type_params() {
+                        ctx.declare_type_params(params)?;
                     }
+                }
+            }
 
-                    // method definition
-                    _ => match explicit_owning_ty.full_path() {
-                        Some(ty_name) => {
-                            validate_method_def_matches_decl(
-                                &ty_name,
-                                &decl.name.ident,
-                                &method_sig,
-                                decl.kind,
-                                ctx,
-                                decl.span(),
-                            ).map_err(|err| {
-                                TypeError::from_name_err(err, decl.span.clone())
-                            })?;
-                        }
-                        
-                        None => {
-                            return Err(TypeError::InvalidMethodInstanceType {
-                                ty: explicit_owning_ty.clone(),
-                                span: explicit_ty_span.clone(),
+            let decl_mods = DeclMod::typecheck_mods(&decl, owning_ty.is_some(), ctx)?;
+
+            let type_params = match decl.type_params.as_ref() {
+                Some(decl_type_params) => {
+                    let type_params = typecheck_type_params(decl_type_params, ctx)?;
+                    ctx.declare_type_params(&type_params)?;
+                    Some(type_params)
+                },
+                None => None,
+            };
+
+            let return_ty = match decl.kind {
+                FunctionDeclKind::Function | FunctionDeclKind::ClassMethod =>  match &decl.return_ty {
+                    ast::TypeName::Unspecified(..) => Type::Nothing,
+                    ty_name => typecheck_type(ty_name, ctx)?,
+                },
+
+                FunctionDeclKind::Constructor => {
+                    assert!(
+                        !decl.return_ty.is_known(),
+                        "parser must not produce constructors with explicit return types"
+                    );
+
+                    let ctor_owning_ty = owning_ty
+                        .as_ref()
+                        .expect("owning type must not be null for constructors");
+
+                    // the return type of methods in generic types has to be specialized 
+                    // with the type's own params - this normally happens automatically because we
+                    // declare the params before typechecking the return type, but for constructors
+                    // the return type is implied so we have to grab the non-specialized version from
+                    // earlier and specialize it manually
+                    let mut ctor_return_ty = ctor_owning_ty.clone();
+                    if let Some(owning_ty_params) = ctor_owning_ty.type_params() {
+                        let own_ty_args = owning_ty_params.clone().to_type_args();
+
+                        ctor_return_ty = ctor_return_ty
+                            .specialize_generic(&own_ty_args, ctx)
+                            .map_err(|e| TypeError::from_generic_err(e, decl.span.clone()))?
+                            .into_owned();
+                    }
+                    ctor_return_ty
+                }
+            };
+
+            let params: Vec<FunctionParam>;
+
+            match (&owning_ty, &enclosing_ty) {
+                // free function with no owning type
+                (None, None) => {
+                    params = typecheck_params(decl, None, ctx)?;
+                },
+
+                // method definition
+                (Some(explicit_owning_ty), None) => {
+                    let explicit_ty_span = decl
+                        .name
+                        .owning_ty_qual
+                        .as_ref()
+                        .unwrap()
+                        .span();
+
+                    // in a method definition, Self is a known type and should already be translated 
+                    // as the actual type itself, parameterized by its own type params.
+                    let self_arg_ty = if !decl.kind.is_static_method() {
+                        Some(specialize_self_ty(
+                            explicit_owning_ty.clone(),
+                            explicit_ty_span,
+                            ctx
+                        )?)
+                    } else {
+                        None
+                    };
+
+                    params = typecheck_params(decl, self_arg_ty, ctx)?;
+
+                    let param_sigs = params.iter()
+                        .cloned()
+                        .map(FunctionParamSig::from)
+                        .collect();
+                    let method_sig = FunctionSig::new(
+                        return_ty.clone(),
+                        param_sigs,
+                        type_params.clone());
+
+                    match &explicit_owning_ty {
+                        // can't define interface methods
+                        Type::Interface(..) => {
+                            return Err(TypeError::AbstractMethodDefinition {
+                                span: decl.span.clone(),
+                                owning_ty: explicit_owning_ty.clone(),
+                                method: decl.name.ident.clone(),
                             });
                         }
+
+                        // method definition
+                        _ => match explicit_owning_ty.full_path() {
+                            Some(ty_name) => {
+                                validate_method_def_matches_decl(
+                                    &ty_name,
+                                    &decl.name.ident,
+                                    &method_sig,
+                                    decl.kind,
+                                    ctx,
+                                    decl.span(),
+                                ).map_err(|err| {
+                                    TypeError::from_name_err(err, decl.span.clone())
+                                })?;
+                            }
+
+                            None => {
+                                return Err(TypeError::InvalidMethodInstanceType {
+                                    ty: explicit_owning_ty.clone(),
+                                    span: explicit_ty_span.clone(),
+                                });
+                            }
+                        }
                     }
                 }
-            }
 
-            // method decl within a type
-            (_, Some(enclosing_ty)) => {
-                // it may be possible later to specify an explicit implemented interface within the
-                // body of another type, in which case this assertion would no longer be valid
-                assert_eq!(
-                    owning_ty.as_ref(), 
-                    Some(enclosing_ty), 
-                    "if an enclosing type is found, the owning type should always be the enclosing type"
-                );
-                
-                // if the owning type is an interface, this is an interface method definition,
-                // and the type of `self` is the generic `Self` (to stand in for implementing
-                // types in static interfaces). if it's NOT an interface, it must be a concrete
-                // type, in which case the type of self is just that type parameterized by itself
-                let self_param_ty = if let Type::Interface(..) = &enclosing_ty {
-                    Some(Type::MethodSelf)
-                } else if !decl.kind.is_static_method() {
-                    let at = decl.name.ident.span();
-                    Some(specialize_self_ty(enclosing_ty.clone(), at, ctx)?)
-                } else {
-                    None
-                };
+                // method decl within a type
+                (_, Some(enclosing_ty)) => {
+                    // it may be possible later to specify an explicit implemented interface within the
+                    // body of another type, in which case this assertion would no longer be valid
+                    assert_eq!(
+                        owning_ty.as_ref(),
+                        Some(enclosing_ty),
+                        "if an enclosing type is found, the owning type should always be the enclosing type"
+                    );
 
-                params = typecheck_params(decl, self_param_ty, ctx)?;
+                    // if the owning type is an interface, this is an interface method definition,
+                    // and the type of `self` is the generic `Self` (to stand in for implementing
+                    // types in static interfaces). if it's NOT an interface, it must be a concrete
+                    // type, in which case the type of self is just that type parameterized by itself
+                    let self_param_ty = if let Type::Interface(..) = &enclosing_ty {
+                        Some(Type::MethodSelf)
+                    } else if !decl.kind.is_static_method() {
+                        let at = decl.name.ident.span();
+                        Some(specialize_self_ty(enclosing_ty.clone(), at, ctx)?)
+                    } else {
+                        None
+                    };
+
+                    params = typecheck_params(decl, self_param_ty, ctx)?;
+                }
+            };
+
+            Ok(FunctionDecl {
+                name: TypedFunctionName {
+                    ident: decl.name.ident.clone(),
+                    owning_ty,
+                    span: decl.name.span(),
+                },
+                kind: decl.kind,
+                params,
+                type_params: type_params.clone(),
+                return_ty,
+                span: decl.span.clone(),
+                mods: decl_mods,
+            })
+        })
+    }
+
+    pub fn check_new_overload<Overload>(
+        &self, 
+        overloads: &[Overload]
+    ) -> Option<InvalidOverloadKind>
+    where
+        Overload: AsRef<Self>,
+    {
+        if !self.is_overload() {
+            return Some(InvalidOverloadKind::MissingOverloadModifier);
+        } else {
+            let missing_overload = overloads
+                .iter()
+                .any(|decl| {
+                    !decl.as_ref().is_overload()
+                });
+            
+            if missing_overload {
+                return Some(InvalidOverloadKind::MissingOverloadModifier);
             }
         };
 
-        Ok(FunctionDecl {
-            name: TypedFunctionName {
-                ident: decl.name.ident.clone(),
-                owning_ty,
-                span: decl.name.span(),
-            },
-            kind: decl.kind,
-            params,
-            type_params: type_params.clone(),
-            return_ty,
-            span: decl.span.clone(),
-            mods: decl_mods,
-        })
-    })
+        let new_sig = FunctionSig::of_decl(self);
+
+        // check for duplicate overloads
+        for (index, overload) in overloads.iter().enumerate() {
+            let sig = FunctionSig::of_decl(overload.as_ref());
+            if sig == new_sig {
+                return Some(InvalidOverloadKind::Duplicate(index));
+            }
+        }
+        
+        None
+    }
 }
 
 fn specialize_self_ty(self_ty: Type, at: &Span, ctx: &Context) -> TypeResult<Type> {
@@ -474,44 +483,11 @@ fn validate_method_def_matches_decl(
     }
 }
 
-fn typecheck_decl_mods(
-    decl_mods: &[ast::DeclMod<Span>],
-    ctx: &mut Context,
-) -> TypeResult<Vec<DeclMod>> {
-    let mut results = Vec::new();
-
-    for decl_mod in decl_mods {
-        let result = match decl_mod {
-            ast::DeclMod::External { src, span } => {
-                let string_ty = string_type(ctx)?;
-
-                let src = typecheck_expr(src, &string_ty, ctx)?;
-                let src_str = const_eval_string(&src, ctx)?;
-
-                DeclMod::External {
-                    src: src_str,
-                    span: span.clone(),
-                }
-            },
-
-            ast::DeclMod::Inline(span) => DeclMod::Inline(span.clone()),
-
-            ast::DeclMod::Forward(span) => DeclMod::Forward(span.clone()),
-
-            ast::DeclMod::Overload(span) => DeclMod::Overload(span.clone()),
-        };
-
-        results.push(result);
-    }
-
-    Ok(results)
-}
-
 pub fn typecheck_func_def(
     def: &ast::FunctionDef<Span>,
     ctx: &mut Context,
 ) -> TypeResult<FunctionDef> {
-    let mut decl = typecheck_func_decl(&def.decl, true, ctx)?;
+    let mut decl = FunctionDecl::typecheck(&def.decl, true, ctx)?;
 
     // in the body of a method definition, the type parameters of the enclosing type are
     // used to specialize the types in the decl

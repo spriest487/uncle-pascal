@@ -8,7 +8,6 @@ use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::ast::typecheck_func_decl;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::InterfaceMethodDecl;
 use crate::typ::typecheck_type;
@@ -79,9 +78,18 @@ pub fn typecheck_struct_decl(
         fields.push(field);
     }
 
-    let mut methods = Vec::new();
+    let mut methods: Vec<Method> = Vec::new();
     for method in &struct_def.methods {
         let decl = typecheck_method(&method.decl, ctx)?;
+        
+        let existing: Vec<_> = methods
+            .iter()
+            .filter(|m| m.decl.ident() == decl.ident())
+            .collect();
+        
+        if !existing.is_empty() {
+            
+        }
 
         methods.push(Method {
             access: method.access,
@@ -155,19 +163,7 @@ pub fn typecheck_struct_decl(
 }
 
 fn typecheck_method(decl: &ast::FunctionDecl, ctx: &mut Context) -> TypeResult<FunctionDecl> {
-    let decl = typecheck_func_decl(decl, false, ctx)?;
-
-    if !decl.mods.is_empty() {
-        return Err(TypeError::InvalidMethodModifiers {
-            mods: decl.mods.clone(),
-            span: {
-                let start = decl.mods[0].span();
-                let end = decl.mods[decl.mods.len() - 1].span();
-                start.to(end)
-            },
-        });
-    }
-    
+    let decl = FunctionDecl::typecheck(decl, false, ctx)?;    
     Ok(decl)
 }
 
@@ -225,7 +221,7 @@ pub fn typecheck_iface(
             });
         }
 
-        let method_decl = typecheck_func_decl(&method.decl, false, ctx)?;
+        let method_decl = FunctionDecl::typecheck(&method.decl, false, ctx)?;
 
         methods.push(ast::InterfaceMethodDecl { decl: Rc::new(method_decl) });
     }

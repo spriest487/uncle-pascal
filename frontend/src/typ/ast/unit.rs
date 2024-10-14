@@ -6,10 +6,9 @@ use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::expr::expect_stmt_initialized;
-use crate::typ::ast::typecheck_alias;
+use crate::typ::ast::{typecheck_alias, FunctionDecl};
 use crate::typ::ast::typecheck_enum_decl;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::ast::typecheck_func_decl;
 use crate::typ::ast::typecheck_func_def;
 use crate::typ::ast::typecheck_iface;
 use crate::typ::ast::typecheck_stmt;
@@ -143,7 +142,7 @@ fn typecheck_unit_func_decl(
     ctx: &mut Context,
 ) -> TypeResult<UnitDecl> {
     let name = func_decl.name.clone();
-    let func_decl = Rc::new(typecheck_func_decl(func_decl, false, ctx)?);
+    let func_decl = Rc::new(FunctionDecl::typecheck(func_decl, false, ctx)?);
 
     assert!(
         func_decl.name.owning_ty.is_none(),

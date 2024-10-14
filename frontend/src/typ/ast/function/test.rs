@@ -1,20 +1,25 @@
-use std::rc::Rc;
-use crate::ast::{FunctionDeclKind, TypeConstraint};
+use crate::ast::FunctionDeclKind;
+use crate::ast::TypeConstraint;
 use crate::ast::TypeParam;
 use crate::typ::ast::specialize_func_decl;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::TypedFunctionName;
-use crate::typ::builtin_displayable_name;
+use crate::typ::{builtin_displayable_name, TypeResult};
+use crate::typ::test::try_module_from_src;
 use crate::typ::Context;
 use crate::typ::GenericError;
+use crate::typ::InvalidFunctionOverloadKind;
+use crate::typ::InvalidOverloadKind;
 use crate::typ::Primitive;
 use crate::typ::Type;
 use crate::typ::TypeArgList;
+use crate::typ::TypeError;
 use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
 use crate::Ident;
 use common::span::Span;
+use std::rc::Rc;
 
 fn test_span() -> Span {
     Span::zero("test")
@@ -154,5 +159,78 @@ fn specialized_func_decl_checks_constraint() {
         },
         Err(other) => panic!("expected constraint violation error, but got {other}"),
         Ok(..) => panic!("expected constraint violation error, but succeeded"),
+    }
+}
+
+#[test]
+fn duplicate_overload_is_error() {
+    let result = try_module_from_src("Test", r"
+    interface
+    uses System;
+
+    function A(x: Boolean); overload;
+    function A(x: Integer); overload;
+    function A(x: Integer); overload;
+    
+    end.
+    ");
+    
+    match result {
+        Err(TypeError::InvalidFunctionOverload { kind, ident, .. }) => {
+            assert_eq!("A", ident.name.as_str());
+            assert_eq!(
+                InvalidFunctionOverloadKind::InvalidOverload(InvalidOverloadKind::Duplicate(1)), 
+                kind
+            );
+        }
+
+        Ok(..) => panic!("expected an error"),
+        Err(other) => panic!("expected invalid overload error, got:\n{}", other),
+    }
+}
+
+#[test]
+fn missing_overload_modifier_on_existing_is_error() {
+    let result = try_module_from_src("Test", r"
+    interface
+    uses System;
+
+    function A(x: Boolean);
+    function A(x: Integer); overload;
+    
+    end.
+    ");
+
+    expect_missing_overload(result);
+}
+
+#[test]
+fn missing_overload_modifier_on_new_is_error() {
+    let result = try_module_from_src("Test", r"
+    interface
+    uses System;
+    
+    function A(x: Boolean); overload;
+    function A(x: Integer);
+    
+    end.
+    ");
+
+    expect_missing_overload(result);
+}
+
+fn expect_missing_overload<T>(result: TypeResult<T>) {
+    match result {
+        Err(TypeError::InvalidFunctionOverload { kind, ident, .. }) => {
+            assert_eq!("A", ident.name.as_str());
+            assert_eq!(
+                InvalidFunctionOverloadKind::InvalidOverload(InvalidOverloadKind::MissingOverloadModifier),
+                kind
+            );
+        }
+
+        Err(other) => panic!("expected invalid overload error, got:\n{}", other),
+        
+        Ok(..) => panic!("expected an error"),
     }
 }
