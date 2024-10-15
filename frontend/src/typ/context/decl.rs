@@ -122,7 +122,7 @@ pub struct DeclFunctionOverload {
 impl DeclFunctionOverload {
     pub fn new(decl: impl Into<Rc<FunctionDecl>>, visibility: Visibility) -> Self {
         let decl = decl.into();
-        let sig = Rc::new(FunctionSig::of_decl(decl.as_ref()));
+        let sig = Rc::new(decl.sig());
         
         Self {
             decl,

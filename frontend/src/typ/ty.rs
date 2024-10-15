@@ -943,6 +943,63 @@ impl Type {
 
         Ok(specialized)
     }
+
+    pub fn visit_generics<Visitor>(self, visitor: &Visitor) -> Self
+    where
+        Visitor: Fn(TypeParamType) -> TypeParamType
+    {
+        match self {
+            Type::GenericParam(type_param) => {
+                Type::GenericParam(Rc::new(visitor((*type_param).clone())))
+            }
+
+            Type::Record(sym) => {
+                Type::Record(Rc::new((*sym).clone().visit_generics(visitor)))
+            },
+
+            Type::Class(sym) => {
+                Type::Class(Rc::new((*sym).clone().visit_generics(visitor)))
+            },
+
+            Type::Variant(sym) => {
+                Type::Variant(Rc::new((*sym).clone().visit_generics(visitor)))
+            },
+
+            Type::Enum(sym) => {
+                Type::Enum(Rc::new((*sym).clone().visit_generics(visitor)))
+            }
+
+            Type::Array(array_ty) => {
+                let element_ty = array_ty.element_ty.clone().visit_generics(visitor);
+                let arr_ty = ArrayType {
+                    element_ty,
+                    dim: array_ty.dim,
+                };
+                Type::from(arr_ty)
+            },
+
+            Type::DynArray { element } => {
+                let element_ty = (*element).clone().visit_generics(visitor);
+                Type::dyn_array(element_ty)
+            },
+
+            Type::Function(sig) => {
+                let sig = (*sig).clone().visit_generics(visitor);
+                Type::Function(Rc::new(sig))
+            },
+            
+            Type::Pointer(deref) => {
+                Type::Pointer(Rc::new((*deref).clone().visit_generics(visitor)))
+            }
+
+            Type::Nothing
+            | Type::Nil
+            | Type::Primitive(..)
+            | Type::Interface(..)
+            | Type::MethodSelf
+            | Type::Any => self,
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -1069,7 +1126,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
             for param in &func_ty_name.params {
                 let param_ty = typecheck_type(&param.ty, ctx)?;
 
-                params.push(FunctionParamSig {
+                params.push(FunctionSigParam {
                     ty: param_ty,
                     modifier: param.modifier.clone(),
                 });

@@ -736,7 +736,7 @@ impl Context {
     }
 
     pub fn is_function_declared(&self, decl: &FunctionDecl) -> bool {
-        let new_sig = FunctionSig::of_decl(&decl);
+        let new_sig = decl.sig();
         let func_name_path = IdentPath::from(decl.name.ident.clone());
 
         match self.find_function(&func_name_path) {
@@ -801,7 +801,7 @@ impl Context {
         };
 
         if func_decl.external_src().is_some() {
-            let sig_key = DefKey::Sig(Rc::new(FunctionSig::of_decl(&func_decl)));
+            let sig_key = DefKey::Sig(Rc::new(func_decl.sig()));
             let def = Def::External(func_decl);
 
             self.define(name, sig_key, def, |_| DefDeclMatch::Match, |_, _| unreachable!())?;
@@ -925,7 +925,7 @@ impl Context {
         
         let key = MethodKey {
             name: def.decl.ident().clone(),
-            sig: Rc::new(FunctionSig::of_decl(&def.decl)),
+            sig: Rc::new(def.decl.sig()),
         };
 
         match methods.methods.entry(key) {
@@ -1102,7 +1102,7 @@ impl Context {
     }
 
     pub fn define_function(&mut self, name: Ident, def: Rc<FunctionDef>) -> TypeResult<()> {
-        let sig = Rc::new(FunctionSig::of_decl(&def.decl));
+        let sig = Rc::new(def.decl.sig());
         let kind = def.decl.kind;
 
         // defining a function - only the sig needs to match, the visibility of the definition doesn't matter
@@ -1517,7 +1517,7 @@ impl Context {
 
                 match generic_method {
                     Some(method) => {
-                        let generic_sig = FunctionSig::of_decl(&method.decl);
+                        let generic_sig = method.decl.sig();
                         let name = specialize_by_return_ty(
                             name,
                             &generic_sig,
@@ -1550,7 +1550,7 @@ impl Context {
 
                 match generic_method {
                     Some(method) => {
-                        let generic_sig = FunctionSig::of_decl(&method.decl);
+                        let generic_sig = method.decl.sig();
                         let name = specialize_by_return_ty(
                             name,
                             &generic_sig,
@@ -1664,7 +1664,7 @@ impl Context {
         for method in ty_methods {
             let def_key = MethodKey {
                 name: method.decl.ident().clone(),
-                sig: Rc::new(FunctionSig::of_decl(&method.decl)),
+                sig: Rc::new(method.decl.sig()),
             };
             
             // don't need to check the sigs again, they wouldn't be added

@@ -251,7 +251,7 @@ fn specialized_fn_has_right_sig() {
     let ctx = Context::root(span.clone());
 
     let (_, a_func) = module.unit.func_defs().next().unwrap();
-    let a_sig = FunctionSig::of_decl(&a_func.decl);
+    let a_sig = a_func.decl.sig();
 
     let type_args = TypeArgList::new([INT32], span.clone());
 
@@ -262,7 +262,7 @@ fn specialized_fn_has_right_sig() {
     let expect_sig = FunctionSig {
         type_params: Some(ast::TypeList::new([FunctionSigTypeParam { is_ty: Type::Any }], span.clone())),
         return_ty: INT32.clone(),
-        params: vec![FunctionParamSig {
+        params: vec![FunctionSigParam {
             ty: INT32.clone(),
             modifier: None,
         }],
@@ -309,7 +309,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .unwrap();
 
     let (_, b_func) = module.unit.func_defs().next().unwrap();
-    let b_sig = FunctionSig::of_decl(&b_func.decl);
+    let b_sig = b_func.decl.sig();
 
     let ctx = Context::root(span.clone());
 
@@ -318,7 +318,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     let expect_sig = FunctionSig {
         type_params: Some(ast::TypeList::new([FunctionSigTypeParam { is_ty: Type::Any }], span.clone())),
         return_ty: a_int.clone(),
-        params: vec![FunctionParamSig {
+        params: vec![FunctionSigParam {
             ty: a_int,
             modifier: None,
         }],

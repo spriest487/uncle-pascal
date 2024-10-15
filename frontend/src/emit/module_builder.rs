@@ -238,7 +238,7 @@ impl ModuleBuilder {
         
         let specialized_decl = apply_func_decl_named_ty_args((*func_def.decl).clone(), &generic_ctx, &generic_ctx);
 
-        let sig = typ::FunctionSig::of_decl(&specialized_decl);
+        let sig = specialized_decl.sig();
         let ns = key.decl_key.namespace().into_owned();
 
         let id = self.declare_func(&specialized_decl, ns, key.type_args.as_ref());
@@ -284,7 +284,7 @@ impl ModuleBuilder {
         let decl_namespace = key.decl_key.namespace().into_owned();
         let id = self.declare_func(&extern_decl, decl_namespace, None);
 
-        let sig = typ::FunctionSig::of_decl(&extern_decl);
+        let sig = extern_decl.sig();
         let return_ty = self.translate_type(&sig.return_ty, &generic_ctx);
 
         let param_tys = sig.params
@@ -415,7 +415,7 @@ impl ModuleBuilder {
         // it may recurse and instantiate itself in its own body
         let cached_func = FunctionInstance {
             id,
-            sig: Rc::new(typ::FunctionSig::of_decl(&specialized_decl)),
+            sig: Rc::new(specialized_decl.sig()),
         };
 
         let key = FunctionDefKey {
@@ -630,7 +630,7 @@ impl ModuleBuilder {
                                 method: method.decl.name.ident.clone(),
                                 owning_ty: iface_ty.clone(),
                                 self_ty: real_ty.clone(),
-                                sig: Rc::new(typ::FunctionSig::of_decl(&method.decl)),
+                                sig: Rc::new(method.decl.sig()),
                             },
                         });
 

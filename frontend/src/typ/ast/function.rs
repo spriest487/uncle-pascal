@@ -22,7 +22,7 @@ use crate::typ::ClosureBodyEnvironment;
 use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::FunctionBodyEnvironment;
-use crate::typ::FunctionParamSig;
+use crate::typ::FunctionSigParam;
 use crate::typ::FunctionSig;
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
@@ -234,7 +234,7 @@ impl FunctionDecl {
 
                     let param_sigs = params.iter()
                         .cloned()
-                        .map(FunctionParamSig::from)
+                        .map(|param| FunctionSigParam::from_decl_param(param, type_params.as_ref()))
                         .collect();
                     let method_sig = FunctionSig::new(
                         return_ty.clone(),
@@ -348,7 +348,7 @@ impl FunctionDecl {
     }
     
     pub fn sig(&self) -> FunctionSig {
-        FunctionSig::of_decl(self)
+        FunctionSig::from_decl(self.clone())
     }
 }
 
@@ -466,8 +466,8 @@ fn validate_method_def_matches_decl(
             let declared_sig = declared_method.decl.sig();
 
             if *method_sig != declared_sig || declared_method.decl.kind != method_kind {
-                // eprintln!("expect: {:?} {:#?}",  declared_method.decl.kind, declared_sig);
-                // eprintln!("actual: {:?} {:#?}", method_kind, method_sig);
+                eprintln!("expect: {:?} {:#?}",  declared_method.decl.kind, declared_sig);
+                eprintln!("actual: {:?} {:#?}", method_kind, method_sig);
                 
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
@@ -751,7 +751,12 @@ pub fn typecheck_func_expr(
         src_return_ty => Some(typecheck_type(src_return_ty, ctx)?),
     };
 
-    let sig_params = params.iter().map(|p| p.clone().into()).collect();
+    let sig_params = params
+        .iter()
+        .map(|p|{
+            FunctionSigParam::from_decl_param(p.clone(), None)
+        })
+        .collect();
 
     // we manage the scope manually here so we can retrieve this environment object after
     // the body is finished and get the final captures

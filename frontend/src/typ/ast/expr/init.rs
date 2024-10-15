@@ -13,7 +13,7 @@ use crate::typ::ast::Call;
 use crate::typ::ast::Block;
 use crate::typ::ast::VarBinding;
 use crate::typ::Context;
-use crate::typ::FunctionParamSig;
+use crate::typ::FunctionSigParam;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
@@ -155,7 +155,7 @@ fn expect_binding_initialized(binding: &VarBinding, ctx: &Context) -> TypeResult
 }
 
 fn expect_args_initialized(
-    params: &[FunctionParamSig],
+    params: &[FunctionSigParam],
     args: &[Expr],
     ctx: &Context,
 ) -> TypeResult<()> {

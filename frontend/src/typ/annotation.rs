@@ -62,7 +62,7 @@ impl OverloadTyped {
         method: Method,
         span: Span
     ) -> Self {
-        let sig = Rc::new(FunctionSig::of_decl(&method.decl));
+        let sig = Rc::new(method.decl.sig());
 
         Self {
             span,
@@ -125,7 +125,7 @@ pub struct MethodTyped {
 
 impl MethodTyped {
     pub fn new(method: &Method, iface_ty: Type, span: Span) -> Self {
-        let sig = FunctionSig::of_decl(&method.decl);
+        let sig = method.decl.sig();
 
         Self {
             owning_ty: iface_ty,

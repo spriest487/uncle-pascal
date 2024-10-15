@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::typ::{FunctionParamSig, TypeResult};
+use crate::typ::{FunctionSigParam, TypeResult};
 use crate::typ::FunctionSig;
 use crate::typ::Module;
 use crate::typ::ModuleUnit;
@@ -130,13 +130,13 @@ fn sig_with_self_param_is_valid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::Nothing,
         type_params: None,
-        params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
+        params: vec![FunctionSigParam::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: Type::Nothing,
         type_params: None,
-        params: vec![FunctionParamSig::by_val(INT32)],
+        params: vec![FunctionSigParam::by_val(INT32)],
     };
 
     assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
@@ -147,13 +147,13 @@ fn sig_with_self_param_and_return_is_valid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::MethodSelf,
         type_params: None,
-        params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
+        params: vec![FunctionSigParam::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
         type_params: None,
-        params: vec![FunctionParamSig::by_val(INT32)],
+        params: vec![FunctionSigParam::by_val(INT32)],
     };
 
     assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
@@ -164,13 +164,13 @@ fn sig_with_mismatched_self_param_and_return_is_invalid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::MethodSelf,
         type_params: None,
-        params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
+        params: vec![FunctionSigParam::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
         type_params: None,
-        params: vec![FunctionParamSig::by_val(BOOL)],
+        params: vec![FunctionSigParam::by_val(BOOL)],
     };
 
     assert_eq!(None, iface_sig.impl_ty(&impl_sig));

@@ -6,7 +6,7 @@ use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
 use crate::typ::{Context, Specializable};
-use crate::typ::FunctionParamSig;
+use crate::typ::FunctionSigParam;
 use crate::typ::FunctionSig;
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
@@ -344,7 +344,7 @@ fn unwrap_inferred_args(
 /// - mark the names referenced in out vars as initialized
 pub fn validate_args(
     args: &mut [Expr],
-    params: &[FunctionParamSig],
+    params: &[FunctionSigParam],
     span: &Span,
     ctx: &mut Context,
 ) -> TypeResult<()> {

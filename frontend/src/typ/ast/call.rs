@@ -13,7 +13,7 @@ use crate::typ::ast::Expr;
 use crate::typ::ast::ObjectCtor;
 use crate::typ::typecheck_type;
 use crate::typ::Context;
-use crate::typ::FunctionParamSig;
+use crate::typ::FunctionSigParam;
 use crate::typ::FunctionSig;
 use crate::typ::FunctionTyped;
 use crate::typ::GenericError;
@@ -56,7 +56,7 @@ pub enum Invocation {
 
 fn invalid_args(
     actual_args: Vec<Expr>,
-    expected: &[FunctionParamSig],
+    expected: &[FunctionSigParam],
     span: Span,
 ) -> TypeError {
     let expected: Vec<_> = expected
@@ -77,7 +77,7 @@ fn invalid_args(
 }
 
 fn build_args_for_params(
-    params: &[FunctionParamSig],
+    params: &[FunctionSigParam],
     src_args: &[ast::Expr<Span>],
     self_arg: Option<&Expr>,
     span: &Span,

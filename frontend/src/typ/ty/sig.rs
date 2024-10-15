@@ -5,7 +5,7 @@ use crate::typ::ast::FunctionCall;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
-use crate::typ::{GenericError, Specializable, TypeParamContainer};
+use crate::typ::{GenericError, Specializable, TypeParamContainer, TypeParamType};
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
 use crate::typ::Type;
@@ -14,19 +14,19 @@ use crate::typ::TypeArgResolver;
 use crate::typ::TypeParamList;
 use crate::typ::Typed;
 use crate::typ::{Context, TypeParam};
-use crate::ast;
+use crate::{ast, Ident};
 use common::span::Span;
 use common::span::Spanned;
-use std::fmt;
+use std::{fmt, mem};
 use std::rc::Rc;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub struct FunctionParamSig {
+pub struct FunctionSigParam {
     pub modifier: Option<FunctionParamMod>,
     pub ty: Type,
 }
 
-impl FunctionParamSig {
+impl FunctionSigParam {
     pub fn by_val(ty: Type) -> Self {
         Self { ty, modifier: None }
     }
@@ -51,10 +51,8 @@ impl FunctionParamSig {
             _ => false,
         }
     }
-}
-
-impl From<FunctionParam> for FunctionParamSig {
-    fn from(param: FunctionParam) -> Self {
+    
+    pub fn from_decl_param(param: FunctionParam, ty_params: Option<&TypeParamList>) -> Self {
         Self {
             ty: param.ty,
             modifier: param.modifier,
@@ -84,19 +82,19 @@ pub type FunctionSigTypeParamList = ast::TypeList<FunctionSigTypeParam>;
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionSig {
     pub return_ty: Type,
-    pub params: Vec<FunctionParamSig>,
+    pub params: Vec<FunctionSigParam>,
     pub type_params: Option<ast::TypeList<FunctionSigTypeParam>>,
 }
 
 impl FunctionSig {
     pub fn new(
         return_ty: Type,
-        params: Vec<FunctionParamSig>,
+        params: Vec<FunctionSigParam>,
         type_params: Option<TypeParamList>,
     ) -> Self {
         let params = params
             .into_iter()
-            .map(|p| FunctionParamSig {
+            .map(|p| FunctionSigParam {
                 ty: p.ty.clone(),
                 modifier: p.modifier.clone(),
             })
@@ -130,16 +128,45 @@ impl FunctionSig {
         }
     }
 
-    pub fn of_decl(decl: &FunctionDecl) -> Self {
-        let return_ty = decl.return_ty.clone();
+    pub fn from_decl(decl: FunctionDecl) -> Self {
+        let return_ty = decl.return_ty
+            .clone();
+
         let param_sigs = decl
             .params
             .iter()
             .cloned()
-            .map(FunctionParamSig::from)
+            .map(|p| FunctionSigParam::from_decl_param(p, decl.type_params.as_ref()))
             .collect();
 
         Self::new(return_ty, param_sigs, decl.type_params.clone())
+    }
+
+    
+    pub fn visit_generics<Visitor>(mut self, visitor: &Visitor) -> Self 
+    where
+        Visitor: Fn(TypeParamType) -> TypeParamType
+    {
+        self.return_ty = self.return_ty.visit_generics(visitor);
+        
+        for param in &mut self.params {
+            let mut param_ty = Type::Nothing;
+            mem::swap(&mut param_ty, &mut param.ty);
+            
+            param.ty = param_ty.visit_generics(visitor);
+        }
+        
+        if let Some(mut type_params) = self.type_params.take() {
+            for param in &mut type_params.items {
+                let mut is_ty = Type::Nothing;
+                mem::swap(&mut is_ty, &mut param.is_ty);
+                param.is_ty = is_ty.visit_generics(visitor);
+            }
+            
+            self.type_params = Some(type_params)
+        }
+        
+        self
     }
 
     pub fn of_anonymous_func(func: &AnonymousFunctionDef) -> Rc<Self> {
@@ -228,7 +255,7 @@ impl FunctionSig {
                     .clone()
                     .apply_type_args_by_name(ty_params, args);
 
-                FunctionParamSig {
+                FunctionSigParam {
                     ty,
                     ..sig_param.clone()
                 }
@@ -268,7 +295,7 @@ impl FunctionSig {
             .iter()
             .map(|sig_param| {
                 let ty = sig_param.ty.clone().substitute_type_args(type_args);
-                FunctionParamSig {
+                FunctionSigParam {
                     ty,
                     ..sig_param.clone()
                 }

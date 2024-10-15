@@ -2,7 +2,7 @@ use crate::ast::{FunctionDeclKind, Path};
 use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::ast::{Access, IdentPath};
-use crate::typ::{ast, FunctionParamSig, FunctionSig};
+use crate::typ::{ast, FunctionSigParam, FunctionSig};
 use crate::typ::ast::Method;
 use crate::typ::ast::SELF_PARAM_NAME;
 use crate::typ::Context;
@@ -42,7 +42,7 @@ pub const BUILTIN_FILENAME: &str = "<builtin>";
 pub fn get_mem_sig() -> FunctionSig {
     FunctionSig {
         return_ty: Type::Primitive(Primitive::UInt8).ptr(),
-        params: vec![FunctionParamSig {
+        params: vec![FunctionSigParam {
             ty: Type::Primitive(Primitive::Int32),
             modifier: None,
         }],
@@ -53,7 +53,7 @@ pub fn get_mem_sig() -> FunctionSig {
 pub fn free_mem_sig() -> FunctionSig {
     FunctionSig {
         return_ty: Type::Nothing,
-        params: vec![FunctionParamSig {
+        params: vec![FunctionSigParam {
             ty: Type::Primitive(Primitive::UInt8).ptr(),
             modifier: None,
         }],

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use crate::ast::TypeDeclName;
 use crate::ast::IdentPath;
-use crate::typ::GenericError;
+use crate::typ::{GenericError, TypeParamType};
 use crate::typ::GenericResult;
 use crate::typ::Specializable;
 use crate::typ::Type;
@@ -96,6 +96,27 @@ impl Symbol {
     
     pub fn ident(&self) -> &Ident {
         self.full_path.last()
+    }
+    
+    pub fn visit_generics<Visitor>(mut self, visitor: &Visitor) -> Self 
+    where
+        Visitor: Fn(TypeParamType) -> TypeParamType
+    {
+        if let Some(arg_list) = &mut self.type_args {
+            for ty_arg in &mut arg_list.items {
+                *ty_arg = ty_arg.clone().visit_generics(visitor);
+            }
+        }
+
+        if let Some(param_list) = &mut self.type_params {
+            for ty_param in &mut param_list.items {
+                if let Some(constraint) = &mut ty_param.constraint {
+                    constraint.is_ty = constraint.is_ty.clone().visit_generics(visitor);
+                }
+            }
+        }
+        
+        self
     }
 }
 
