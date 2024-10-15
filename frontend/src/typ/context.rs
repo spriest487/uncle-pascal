@@ -965,6 +965,14 @@ impl Context {
             name: method.clone(),
             sig: sig.clone(),
         };
+        
+        if !method_defs.methods.get(&key).is_some() {
+            eprintln!("missing key {}: {}", key.name, key.sig);
+            eprintln!("keys are:");
+            for key in method_defs.methods.keys() {
+                eprintln!(" - {}: {}", key.name, key.sig);
+            }
+        }
 
         let method = method_defs.methods.get(&key)?.as_ref()?;
 

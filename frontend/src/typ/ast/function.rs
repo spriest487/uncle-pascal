@@ -492,14 +492,17 @@ pub fn typecheck_func_def(
     let owning_ty = decl
         .name
         .owning_ty
-        .as_ref();
+        .clone();
 
-    if let Some(outer_ty_params) = owning_ty.and_then(|ty| ty.type_params()) {
-        let implicit_ty_args = outer_ty_params
+    if let Some(outer_ty_params) = owning_ty
+        .as_ref()
+        .and_then(|ty| ty.type_params()) 
+    {
+        let outer_ty_args = outer_ty_params
             .clone()
             .to_type_args();
         
-        decl = apply_func_decl_ty_args(&decl, &implicit_ty_args);
+        decl = apply_func_decl_named_ty_args(decl, outer_ty_params, &outer_ty_args);
     }
     
     let decl = Rc::new(decl);

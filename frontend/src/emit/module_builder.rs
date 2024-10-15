@@ -628,8 +628,8 @@ impl ModuleBuilder {
                             impl_method: MethodDeclKey {
                                 method: method.decl.name.ident.clone(),
                                 owning_ty: iface_ty.clone(),
+                                sig: Rc::new(method.decl.sig().with_self(&real_ty)),
                                 self_ty: real_ty.clone(),
-                                sig: Rc::new(method.decl.sig()),
                             },
                         });
 

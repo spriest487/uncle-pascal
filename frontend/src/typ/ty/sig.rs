@@ -143,7 +143,7 @@ impl FunctionSig {
             .cloned()
             .map(|p| FunctionSigParam::from_decl_param(p))
             .collect();
-
+        
         Self::new(return_ty, param_sigs, decl.type_params.clone())
     }
 
