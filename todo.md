@@ -1,6 +1,7 @@
 # critical
 * remove baked in type arg position info
 * unify type param constraint struct style (use Any)
+* `Self` only works properly when used directly as a function param, not if it's contained in other types
 * maybe split func and type defs up in the context? for simplifying define logic
 * project files/don't auto load used units
 * why is the C backend generating packed decls for everything? 
