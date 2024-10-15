@@ -6,12 +6,12 @@ type Greeter = class
     function Greet(b: Boolean); overload;
 end;
 
-function Greeter.Greet(a: Integer);
+function Greeter.Greet(a: Integer); overload;
 begin
     WriteLn('hello from A: ' + a);
 end;
 
-function Greeter.Greet(b: Boolean);
+function Greeter.Greet(b: Boolean); overload;
 begin
     WriteLn('hello from B: ' + b);
 end;
