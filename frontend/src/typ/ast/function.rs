@@ -234,7 +234,7 @@ impl FunctionDecl {
 
                     let param_sigs = params.iter()
                         .cloned()
-                        .map(|param| FunctionSigParam::from_decl_param(param, type_params.as_ref()))
+                        .map(|param| FunctionSigParam::from_decl_param(param))
                         .collect();
                     let method_sig = FunctionSig::new(
                         return_ty.clone(),
@@ -466,8 +466,8 @@ fn validate_method_def_matches_decl(
             let declared_sig = declared_method.decl.sig();
 
             if *method_sig != declared_sig || declared_method.decl.kind != method_kind {
-                eprintln!("expect: {:?} {:#?}",  declared_method.decl.kind, declared_sig);
-                eprintln!("actual: {:?} {:#?}", method_kind, method_sig);
+                // eprintln!("expect: {:?} {:#?}",  declared_method.decl.kind, declared_sig);
+                // eprintln!("actual: {:?} {:#?}", method_kind, method_sig);
                 
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
@@ -754,7 +754,7 @@ pub fn typecheck_func_expr(
     let sig_params = params
         .iter()
         .map(|p|{
-            FunctionSigParam::from_decl_param(p.clone(), None)
+            FunctionSigParam::from_decl_param(p.clone())
         })
         .collect();
 

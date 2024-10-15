@@ -6,7 +6,6 @@ use crate::emit::build_func_def;
 use crate::emit::build_func_static_closure_def;
 use crate::emit::build_static_closure_impl;
 use crate::emit::builder::Builder;
-use crate::emit::builder::GenericContext;
 use crate::emit::ir;
 use crate::emit::metadata::translate_closure_struct;
 use crate::emit::metadata::translate_iface;
@@ -229,10 +228,10 @@ impl ModuleBuilder {
                     .as_ref()
                     .expect("instantiate_func_def: function referenced with type args must have type params");
 
-                GenericContext::new(type_params, type_args)
+                typ::GenericContext::new(type_params, type_args)
             }
             None => {
-                GenericContext::empty()
+                typ::GenericContext::empty()
             }
         };
         
@@ -279,7 +278,7 @@ impl ModuleBuilder {
             "external function must not be generic"
         );
 
-        let generic_ctx = GenericContext::empty();
+        let generic_ctx = typ::GenericContext::empty();
 
         let decl_namespace = key.decl_key.namespace().into_owned();
         let id = self.declare_func(&extern_decl, decl_namespace, None);
@@ -342,7 +341,7 @@ impl ModuleBuilder {
             ty => ty.clone(),
         };
         
-        let mut generic_ctx = GenericContext::empty();
+        let mut generic_ctx = typ::GenericContext::empty();
         
         // if the self type is a parameterized generic, we'll need to instantiate the specialized
         // def here, since only the type's generic version will be in the definition map
@@ -469,7 +468,7 @@ impl ModuleBuilder {
             });
         
         // virtual methods can't be generic
-        let generic_ctx = GenericContext::empty();
+        let generic_ctx = typ::GenericContext::empty();
 
         let self_ty = self.translate_type(&virtual_key.impl_method.self_ty.clone(), &generic_ctx);
         let method_name = (*virtual_key.impl_method.method.name).clone();
@@ -537,7 +536,7 @@ impl ModuleBuilder {
                         let params_list = func_decl.type_params
                             .as_ref()
                             .expect("function decl with type args must have type params");
-                        let generic_ctx = GenericContext::new(params_list, type_args);
+                        let generic_ctx = typ::GenericContext::new(params_list, type_args);
 
                         let types = type_args.iter()
                             .map(|ty| self.translate_type(ty, &generic_ctx));
@@ -770,7 +769,7 @@ impl ModuleBuilder {
     pub fn translate_type(
         &mut self,
         src_ty: &typ::Type,
-        generic_ctx: &GenericContext,
+        generic_ctx: &typ::GenericContext,
     ) -> ir::Type {
         let src_ty = src_ty.clone().apply_type_args_by_name(generic_ctx, generic_ctx);
 
@@ -998,7 +997,7 @@ impl ModuleBuilder {
     pub fn translate_dyn_array_struct(
         &mut self,
         element_ty: &typ::Type,
-        generic_ctx: &GenericContext,
+        generic_ctx: &typ::GenericContext,
     ) -> ir::TypeDefID {
         let element_ty = self.translate_type(element_ty, generic_ctx);
 
@@ -1030,7 +1029,7 @@ impl ModuleBuilder {
     pub fn translate_func_ty(
         &mut self,
         func_sig: &typ::FunctionSig,
-        generic_ctx: &GenericContext,
+        generic_ctx: &typ::GenericContext,
     ) -> ir::TypeDefID {
         let func_ty_id = match self.find_func_ty(&func_sig) {
             Some(id) => id,
@@ -1046,7 +1045,7 @@ impl ModuleBuilder {
     pub fn build_closure_instance(
         &mut self,
         func: &typ::ast::AnonymousFunctionDef,
-        generic_ctx: &GenericContext,
+        generic_ctx: &typ::GenericContext,
     ) -> ClosureInstance {
         let id = self.module.metadata.insert_func(None);
 
@@ -1088,7 +1087,7 @@ impl ModuleBuilder {
 
     pub fn build_func_static_closure_instance(&mut self,
         func: &FunctionInstance,
-        generic_ctx: &GenericContext
+        generic_ctx: &typ::GenericContext
     ) -> &ir::StaticClosure {
         if let Some(existing) = self.module.metadata.get_static_closure(func.id) {
             return &self.module.static_closures[existing.0];

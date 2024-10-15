@@ -1,4 +1,3 @@
-use crate::emit::builder::GenericContext;
 use crate::emit::ir;
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::syn;
@@ -40,7 +39,7 @@ impl fmt::Display for ClosureInstance {
 pub fn translate_closure_struct(
     identity: ir::ClosureIdentity,
     captures: &LinkedHashMap<Ident, typ::Type>,
-    generic_ctx: &GenericContext,
+    generic_ctx: &typ::GenericContext,
     module: &mut ModuleBuilder,
 ) -> ir::TypeDefID {
     let id = module.metadata_mut().reserve_new_struct();
@@ -88,7 +87,7 @@ pub fn translate_closure_struct(
 
 pub fn translate_sig(
     sig: &typ::FunctionSig,
-    generic_ctx: &GenericContext,
+    generic_ctx: &typ::GenericContext,
     module: &mut ModuleBuilder,
 ) -> FunctionSig {
     assert!(

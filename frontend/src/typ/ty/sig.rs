@@ -1,3 +1,4 @@
+use crate::ast;
 use crate::ast::FunctionParamMod;
 use crate::typ::ast::AnonymousFunctionDef;
 use crate::typ::ast::Expr;
@@ -5,19 +6,23 @@ use crate::typ::ast::FunctionCall;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
-use crate::typ::{GenericError, Specializable, TypeParamContainer, TypeParamType};
+use crate::typ::Context;
+use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
+use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
+use crate::typ::TypeParam;
+use crate::typ::TypeParamContainer;
 use crate::typ::TypeParamList;
+use crate::typ::TypeParamType;
 use crate::typ::Typed;
-use crate::typ::{Context, TypeParam};
-use crate::{ast, Ident};
 use common::span::Span;
 use common::span::Spanned;
-use std::{fmt, mem};
+use std::fmt;
+use std::mem;
 use std::rc::Rc;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -52,7 +57,7 @@ impl FunctionSigParam {
         }
     }
     
-    pub fn from_decl_param(param: FunctionParam, ty_params: Option<&TypeParamList>) -> Self {
+    pub fn from_decl_param(param: FunctionParam) -> Self {
         Self {
             ty: param.ty,
             modifier: param.modifier,
@@ -136,7 +141,7 @@ impl FunctionSig {
             .params
             .iter()
             .cloned()
-            .map(|p| FunctionSigParam::from_decl_param(p, decl.type_params.as_ref()))
+            .map(|p| FunctionSigParam::from_decl_param(p))
             .collect();
 
         Self::new(return_ty, param_sigs, decl.type_params.clone())

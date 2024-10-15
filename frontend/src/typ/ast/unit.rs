@@ -470,7 +470,7 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypeResult<M
         if !undefined.is_empty() {
             return Err(TypeError::UndefinedSymbols {
                 unit: unit.ident.clone(),
-                undefined: undefined,
+                undefined,
             });
         }
 

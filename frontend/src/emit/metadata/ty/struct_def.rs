@@ -7,11 +7,10 @@ use ir_lang::*;
 use std::collections::HashMap;
 use syn::StructKind;
 use typ::layout::StructLayoutMember;
-use crate::emit::builder::GenericContext;
 
 pub fn translate_struct_def(
     struct_def: &typ::ast::StructDef,
-    generic_ctx: &GenericContext,
+    generic_ctx: &typ::GenericContext,
     module: &mut ModuleBuilder,
 ) -> Struct {
     let name_path = translate_name(&struct_def.name, generic_ctx, module);

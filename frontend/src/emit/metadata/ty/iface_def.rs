@@ -1,4 +1,3 @@
-use crate::emit::builder::GenericContext;
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::translate_name;
 use crate::emit::typ;
@@ -6,7 +5,7 @@ use crate::emit::ir;
 
 pub fn translate_iface(
     iface_def: &typ::ast::InterfaceDecl,
-    generic_ctx: &GenericContext,
+    generic_ctx: &typ::GenericContext,
     module: &mut ModuleBuilder,
 ) -> ir::Interface {
     let name = translate_name(&iface_def.name, generic_ctx, module);

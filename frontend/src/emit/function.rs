@@ -1,4 +1,4 @@
-use crate::emit::builder::{jmp_exists, GenericContext};
+use crate::emit::builder::jmp_exists;
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::syn;
 use crate::emit::syn::FunctionParamMod;
@@ -21,7 +21,7 @@ pub struct FunctionInstance {
 
 fn create_function_body_builder<'m>(
     module: &'m mut ModuleBuilder,
-    generic_ctx: GenericContext,
+    generic_ctx: typ::GenericContext,
     debug_name: &str,
 ) -> Builder<'m> {
     let mut comment = format!("function def body of {}", debug_name);
@@ -38,7 +38,7 @@ fn create_function_body_builder<'m>(
 
 pub fn build_func_def(
     module: &mut ModuleBuilder,
-    generic_ctx: GenericContext,
+    generic_ctx: typ::GenericContext,
     def_params: &[typ::ast::FunctionParam],
     def_return_ty: &typ::Type,
     def_locals: &[typ::ast::FunctionLocalBinding],
@@ -93,7 +93,7 @@ pub fn build_func_static_closure_def(
     
     let debug_name = format!("static closure def ({})", target_ir_func.debug_name());
     
-    let generic_ctx = GenericContext::empty();
+    let generic_ctx = typ::GenericContext::empty();
     let mut body_builder = create_function_body_builder(module, generic_ctx, &debug_name);
 
     let return_ty = bind_function_return(&target_func.sig.return_ty, &mut body_builder);
@@ -142,7 +142,7 @@ pub fn build_closure_function_def(
 ) -> FunctionDef {
     let closure_def = module.metadata().get_struct_def(closure_id).cloned().unwrap();
 
-    let generic_ctx = GenericContext::empty();
+    let generic_ctx = typ::GenericContext::empty();
     let mut body_builder = create_function_body_builder(module, generic_ctx, &debug_name);
 
     let return_ty = bind_function_return(&func_def.return_ty, &mut body_builder);

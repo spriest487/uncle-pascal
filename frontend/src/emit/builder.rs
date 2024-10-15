@@ -1,10 +1,8 @@
 pub mod scope;
-mod generic_context;
 
 #[cfg(test)]
 mod test;
 
-pub use self::generic_context::GenericContext;
 use self::scope::*;
 use crate::ast as syn;
 use crate::emit::metadata::*;
@@ -29,7 +27,7 @@ pub struct Builder<'m> {
     // positional list of type args that can be used to reify types in the current context
     // during this stage we only need to be able to substitute args, we don't need to validate
     // anything, so combining them into a single list and ignoring positions is OK
-    generic_context: GenericContext,
+    generic_context: typ::GenericContext,
 
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
@@ -59,7 +57,7 @@ impl<'m> Builder<'m> {
 
             loop_stack: Vec::new(),
 
-            generic_context: GenericContext::empty(),
+            generic_context: typ::GenericContext::empty(),
         }
     }
 
@@ -67,12 +65,12 @@ impl<'m> Builder<'m> {
         &self.module.opts()
     }
     
-    pub fn with_generic_ctx(mut self, ctx: GenericContext) -> Self {
+    pub fn with_generic_ctx(mut self, ctx: typ::GenericContext) -> Self {
         self.generic_context = ctx;
         self
     }
     
-    pub fn generic_context(&self) -> &GenericContext {
+    pub fn generic_context(&self) -> &typ::GenericContext {
         &self.generic_context
     }
 

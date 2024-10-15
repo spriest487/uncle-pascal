@@ -1,5 +1,4 @@
 use crate::ast::IdentPath;
-use crate::emit::builder::GenericContext;
 use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::syn;
 use crate::emit::typ;
@@ -57,7 +56,7 @@ impl NamePathExt for NamePath {
 
 pub fn translate_name(
     name: &typ::Symbol,
-    generic_ctx: &GenericContext,
+    generic_ctx: &typ::GenericContext,
     module: &mut ModuleBuilder,
 ) -> NamePath {
     let name = name.clone().apply_type_args_by_name(generic_ctx, generic_ctx);

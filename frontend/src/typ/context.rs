@@ -7,6 +7,7 @@ mod def;
 mod env;
 mod result;
 mod ufcs;
+mod generic;
 
 pub use self::builtin::*;
 pub use self::decl::*;
@@ -16,6 +17,7 @@ pub use self::result::*;
 pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
+pub use self::generic::*;
 use crate::ast as syn;
 use crate::ast::Access;
 use crate::ast::Ident;
@@ -1679,15 +1681,15 @@ impl Context {
                 .unwrap_or(false);
 
             if !has_def {
-                // eprintln!("no def for {}: {}\ndefs are: {}", def_key.name, def_key.sig, ty_method_defs
-                //     .cloned()
-                //     .unwrap_or_else(|| MethodCollection::new())
-                //     .methods
-                //     .keys()
-                //     .filter(|k| k.name == *method.decl.ident())
-                //     .map(|k| format!("{}: {}", k.name, k.sig))
-                //     .collect::<Vec<_>>()
-                //     .join(",\n\t"));
+                eprintln!("no def for {}: {}\ndefs are: {}", def_key.name, def_key.sig, ty_method_defs
+                    .cloned()
+                    .unwrap_or_else(|| MethodCollection::new())
+                    .methods
+                    .keys()
+                    .filter(|k| k.name == *method.decl.ident())
+                    .map(|k| format!("{}: {}", k.name, k.sig))
+                    .collect::<Vec<_>>()
+                    .join(",\n\t"));
                 
                 let decl_name = ty_name
                     .clone()

@@ -3,11 +3,10 @@ use crate::emit::module_builder::ModuleBuilder;
 use crate::emit::translate_name;
 use crate::emit::typ;
 use common::span::Spanned;
-use crate::emit::builder::GenericContext;
 
 pub fn translate_variant_def(
     variant_def: &typ::ast::VariantDef,
-    generic_ctx: &GenericContext,
+    generic_ctx: &typ::GenericContext,
     module: &mut ModuleBuilder,
 ) -> ir::VariantDef {
     let name_path = translate_name(&variant_def.name, generic_ctx, module);
