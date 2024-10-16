@@ -662,7 +662,10 @@ impl Type {
                 let method_decl = iface_def
                     .methods
                     .iter()
-                    .find(|m| *m.ident() == *method)
+                    .find(|m| {
+                        *m.ident() == *method
+                            // && m.decl.sig().infer_self_ty_from(sig).is_some()
+                    })
                     .map(|m| m.decl.clone());
 
                 match method_decl {

@@ -498,10 +498,10 @@ impl ModuleBuilder {
     ) -> FunctionInstance {
         let mut key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
+                sig: Rc::new((*method_sig).clone().with_self(&self_ty)),
                 owning_ty,
                 self_ty,
                 method: method_name,
-                sig: method_sig,
             }),
 
             // interface method calls can't pass type args

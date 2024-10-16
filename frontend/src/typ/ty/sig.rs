@@ -146,7 +146,6 @@ impl FunctionSig {
         
         Self::new(return_ty, param_sigs, decl.type_params.clone())
     }
-
     
     pub fn visit_generics<Visitor>(mut self, visitor: &Visitor) -> Self 
     where
@@ -225,7 +224,7 @@ impl FunctionSig {
 
         Ok(())
     }
-    
+
     pub fn contains_generic_params(&self, ctx: &Context) -> bool {
         if self.return_ty.contains_unresolved_params(ctx) {
             return true;
@@ -246,11 +245,11 @@ impl FunctionSig {
         let specialized_sig = self.substitute_type_args(type_args);
         Ok(specialized_sig)
     }
-    
+
     pub fn type_params_len(&self) -> usize {
         self.type_params.as_ref().map(|list| list.len()).unwrap_or(0)
     }
-    
+
     pub fn apply_ty_args(&self, ty_params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         let params = self
             .params
@@ -292,7 +291,7 @@ impl FunctionSig {
             type_params: sig_ty_params,
         };
         sig
-    } 
+    }
 
     pub fn substitute_type_args(&self, type_args: &impl TypeArgResolver) -> Self {
         let params = self
@@ -330,13 +329,66 @@ impl FunctionSig {
         sig
     }
 
+    // todo: need a deep implementation of this
+    pub fn infer_self_ty_from(&self, other: &Self) -> Option<Type> {
+        if self.type_params != other.type_params {
+            return None;
+        }
+        
+        if self.params.len() != other.params.len() {
+            return None;
+        }
+
+        let mut inferred_self = None;
+
+        for (own_param, other_param) in self.params.iter().zip(other.params.iter()) {
+            if own_param.modifier != other_param.modifier {
+                return None;
+            }
+
+            if own_param.ty != other_param.ty {
+                if own_param.ty != Type::MethodSelf {
+                    return None;
+                }
+                match &inferred_self {
+                    None => inferred_self = Some(other_param.ty.clone()),
+                    Some(ty) if *ty == other_param.ty => continue,
+                    Some(..) => return None,
+                }
+            }
+        }
+
+        if self.return_ty != other.return_ty {
+            if self.return_ty != Type::MethodSelf {
+                return None;
+            }
+
+            match &inferred_self {
+                None => inferred_self = Some(other.return_ty.clone()),
+                Some(prev_inferred) => {
+                    if *prev_inferred != other.return_ty {
+                        return None;
+                    }
+                },
+            };
+            
+        }
+
+        inferred_self
+    }
+
     /// replace all `Self`-typed args with `self_ty`
+    // todo: need a deep implementation of this
     pub fn with_self(&self, self_ty: &Type) -> Self {
         let mut result = self.clone();
         for param in &mut result.params {
             if param.ty == Type::MethodSelf {
                 param.ty = self_ty.clone();
             }
+        }
+        
+        if result.return_ty == Type::MethodSelf {
+            result.return_ty = self_ty.clone();
         }
 
         result

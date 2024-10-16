@@ -736,7 +736,14 @@ pub fn typecheck_member_value(
                 .get_method(&method, sig.as_ref(), ctx)
                 .ok()
                 .flatten()
-                .expect("find_instance_member should only return methods that exist");
+                .unwrap_or_else(|| {
+                    panic!(
+                        "find_instance_member should only return methods that exist - no match for {}.{} : {}",
+                        iface_ty,
+                        method,
+                        sig,
+                    )
+                });
 
             let method = OverloadTyped::method(
                 iface_ty,
