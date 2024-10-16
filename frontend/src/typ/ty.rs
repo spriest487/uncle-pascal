@@ -664,7 +664,7 @@ impl Type {
                     .iter()
                     .find(|m| {
                         *m.ident() == *method
-                            // && m.decl.sig().infer_self_ty_from(sig).is_some()
+                            && m.decl.sig().eq_as_impl(sig)
                     })
                     .map(|m| m.decl.clone());
 

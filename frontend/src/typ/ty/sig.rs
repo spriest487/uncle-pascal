@@ -330,51 +330,54 @@ impl FunctionSig {
     }
 
     // todo: need a deep implementation of this
-    pub fn infer_self_ty_from(&self, other: &Self) -> Option<Type> {
+    pub fn eq_as_impl(&self, other: &Self) -> bool {
         if self.type_params != other.type_params {
-            return None;
+            return false;
         }
         
         if self.params.len() != other.params.len() {
-            return None;
+            return false;
         }
 
         let mut inferred_self = None;
 
         for (own_param, other_param) in self.params.iter().zip(other.params.iter()) {
             if own_param.modifier != other_param.modifier {
-                return None;
+                return false;
             }
 
             if own_param.ty != other_param.ty {
                 if own_param.ty != Type::MethodSelf {
-                    return None;
+                    return false;
                 }
+
                 match &inferred_self {
-                    None => inferred_self = Some(other_param.ty.clone()),
-                    Some(ty) if *ty == other_param.ty => continue,
-                    Some(..) => return None,
+                    None => {
+                        inferred_self = Some(other_param.ty.clone())
+                    },
+
+                    Some(prev_inferred) => {
+                        if *prev_inferred != other_param.ty {
+                            return false;
+                        }
+                    }
                 }
             }
         }
 
         if self.return_ty != other.return_ty {
             if self.return_ty != Type::MethodSelf {
-                return None;
+                return false
             }
-
-            match &inferred_self {
-                None => inferred_self = Some(other.return_ty.clone()),
-                Some(prev_inferred) => {
-                    if *prev_inferred != other.return_ty {
-                        return None;
-                    }
-                },
-            };
             
+            if let Some(prev_inferred) = inferred_self {
+                if prev_inferred != other.return_ty {
+                    return false;
+                }
+            }
         }
 
-        inferred_self
+        true
     }
 
     /// replace all `Self`-typed args with `self_ty`
