@@ -3,7 +3,6 @@ use crate::ast::type_name::TypeName;
 use crate::ast::Access;
 use crate::ast::Annotation;
 use crate::ast::FunctionDecl;
-use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::Keyword;
 use crate::ast::Method;
@@ -98,10 +97,10 @@ impl<A: Annotation> VariantDef<A> {
 }
 
 impl<A: Annotation> VariantDef<A> {
-    pub fn find_method(&self, ident: &Ident) -> Option<&Method<A>> {
+    pub fn find_methods<'a>(&'a self, ident: &'a Ident) -> impl Iterator<Item=&'a Method<A>> {
         self.methods
             .iter()
-            .find(|m| m.decl.name.ident() == ident)
+            .filter(move |m| m.decl.ident() == ident)
     }
 }
 

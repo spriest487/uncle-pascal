@@ -456,7 +456,7 @@ fn validate_method_def_matches_decl(
 ) -> NameResult<()> {
     let (_, owning_ty) = ctx.find_type(owning_ty_name)?;
 
-    match owning_ty.get_method(method_ident, ctx)? {
+    match owning_ty.get_method(method_ident, method_sig, ctx)? {
         None => Err(NameError::MemberNotFound {
             base: NameContainer::Type(owning_ty.clone()),
             member: method_ident.clone(),

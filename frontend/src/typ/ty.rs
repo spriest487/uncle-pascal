@@ -653,6 +653,7 @@ impl Type {
 
     pub fn get_method(&self,
         method: &Ident,
+        sig: &FunctionSig,
         ctx: &Context
     ) -> NameResult<Option<Method>> {
         match self {
@@ -681,7 +682,9 @@ impl Type {
                     ctx.instantiate_struct_def(&name)?
                 };
 
-                let method = struct_def.find_method(method);
+                let method = struct_def
+                    .find_methods(method)
+                    .find(|m| m.decl.sig() == *sig);
                 Ok(method.cloned())
             }
 
@@ -692,7 +695,9 @@ impl Type {
                     ctx.instantiate_variant_def(&name)?
                 };
 
-                let method = variant_def.find_method(method);
+                let method = variant_def
+                    .find_methods(method)
+                    .find(|m| m.decl.sig() == *sig);
                 Ok(method.cloned())
             }
             
@@ -704,7 +709,7 @@ impl Type {
             }
             
             Type::GenericParam(param) => match &param.is_iface {
-                Some(is_iface) => is_iface.get_method(method, ctx),
+                Some(is_iface) => is_iface.get_method(method, sig, ctx),
                 None => Ok(None),
             }
 

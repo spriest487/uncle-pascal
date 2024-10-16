@@ -8,7 +8,6 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::{check_overload_visibility, const_eval_integer};
 use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
 use crate::typ::ast::overload_to_no_args_call;
@@ -19,7 +18,7 @@ use crate::typ::ast::Call;
 use crate::typ::ast::Expr;
 use crate::typ::ast::MethodCall;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::builtin_displayable_name;
+use crate::typ::ast::{check_overload_visibility, const_eval_integer};
 use crate::typ::string_type;
 use crate::typ::Context;
 use crate::typ::FunctionTyped;
@@ -41,6 +40,7 @@ use crate::typ::ValueKind;
 use crate::typ::DISPLAYABLE_TOSTRING_METHOD;
 use crate::typ::STRING_CONCAT_FUNC_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
+use crate::typ::builtin_displayable_name;
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
@@ -684,19 +684,35 @@ fn typecheck_type_member(
     }
 
     let annotation = match type_member {
-        TypeMember::Method(ty, method) => {            
-            if ty.get_current_access(ctx) < method.access {
+        TypeMember::Method(candidate) => {
+            if candidate.owning_ty.get_current_access(ctx) < candidate.method.access {
                 return Err(TypeError::TypeMemberInaccessible {
+                    ty: candidate.owning_ty.clone(),
                     member: member_ident.clone(),
-                    ty: ty.clone(),
-                    access: method.access,
+                    access: candidate.method.access,
                     span,
                 });
             }
 
             // this is a reference to the method itself, args list to follow presumably
-            MethodTyped::new(&method, ty.clone(), span).into()
+            MethodTyped::new(&candidate.method, ty.clone(), span).into()
         },
+        
+        TypeMember::MethodGroup(group) => {
+            let candidates = group
+                .into_iter()
+                .map(|method_group_item| {
+                    OverloadCandidate::Method { 
+                        owning_ty: method_group_item.owning_ty,
+                        ident: member_ident.clone(),
+                        sig: Rc::new(method_group_item.method.decl.sig()),
+                        access: method_group_item.method.access,
+                    }
+                })
+                .collect();
+
+            OverloadTyped::new(candidates, None, span).into()
+        }
     };
 
     Ok(annotation)
@@ -715,9 +731,9 @@ pub fn typecheck_member_value(
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let annotation = match member {
-        InstanceMember::Method { iface_ty, method } => {
+        InstanceMember::Method { iface_ty, method, sig } => {
             let iface_method = iface_ty
-                .get_method(&method, ctx)
+                .get_method(&method, sig.as_ref(), ctx)
                 .ok()
                 .flatten()
                 .expect("find_instance_member should only return methods that exist");

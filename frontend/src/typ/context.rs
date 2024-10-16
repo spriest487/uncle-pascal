@@ -68,6 +68,7 @@ pub enum InstanceMember {
     Method {
         iface_ty: Type,
         method: Ident,
+        sig: Rc<FunctionSig>,
     },
     UFCSCall {
         func_name: Symbol,
@@ -81,13 +82,28 @@ pub enum InstanceMember {
 
 #[derive(Clone, Debug)]
 pub enum TypeMember {
-    Method(Type, Method),
+    Method(MethodGroupMember),
+    MethodGroup(Vec<MethodGroupMember>),
+}
+
+#[derive(Clone, Debug)]
+pub struct MethodGroupMember {
+    pub owning_ty: Type,
+    pub method: Method,
 }
 
 impl TypeMember {
     pub fn access(&self) -> Access {
         match self {
-            TypeMember::Method(_, method) => method.access,
+            TypeMember::Method(member) => member.method.access,
+
+            TypeMember::MethodGroup(members) => {
+                members
+                    .iter()
+                    .map(|m| m.method.access)
+                    .max()
+                    .unwrap_or(Access::Public)
+            }
         }
     }
 }
@@ -874,9 +890,10 @@ impl Context {
             Type::Record(sym) | Type::Class(sym) => {
                 let struct_def = self.find_struct_def(&sym.full_path)?;
                 let struct_ty = Type::from_struct_type((*sym).clone(), struct_def.kind);
-
+                
                 struct_def
-                    .find_method(&method)
+                    .find_methods(&method)
+                    .find(|m| m.decl.sig() == def.decl.sig())
                     .ok_or_else(|| NameError::MemberNotFound {
                         base: NameContainer::Type(struct_ty.clone()),
                         member: method.clone(),
@@ -890,7 +907,8 @@ impl Context {
                 let variant_ty = Type::variant((*sym).clone());
 
                 variant_def
-                    .find_method(&method)
+                    .find_methods(&method)
+                    .find(|m| m.decl.sig() == def.decl.sig())
                     .ok_or_else(|| NameError::MemberNotFound {
                         base: NameContainer::Type(variant_ty.clone()),
                         member: method.clone(),
@@ -1420,6 +1438,7 @@ impl Context {
                 } => Ok(InstanceMember::Method {
                     iface_ty: iface_ty.clone(),
                     method: method.decl.name.ident.clone(),
+                    sig: Rc::new(method.decl.sig()),
                 }),
 
                 ufcs::InstanceMethod::FreeFunction { func_name, sig, visibility } => {
@@ -1505,82 +1524,122 @@ impl Context {
         ctx: &Context,
     ) -> TypeResult<TypeMember> {
         let result = match ty {
-            Type::Interface(iface) => self
-                .find_iface_def(iface)
-                .map_err(|e| TypeError::from_name_err(e, span.clone()))?
-                .get_method(member_ident)
-                .map(|method_decl| {
-                    TypeMember::Method(
-                        ty.clone(),
-                        Method {
-                            decl: method_decl.decl.clone(),
-                            access: INTERFACE_METHOD_ACCESS,
-                        },
-                    )
-                }),
-
-            Type::Class(name) | Type::Record(name) => {
-                let generic_method = self
-                    .find_struct_def(&name.full_path)
-                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?
-                    .find_method(member_ident);
-
-                match generic_method {
-                    Some(method) => {
-                        let generic_sig = method.decl.sig();
-                        let name = specialize_by_return_ty(
-                            name,
-                            &generic_sig,
-                            expect_return_ty,
-                            span,
-                            ctx,
-                        )
-                        .map_err(|e| TypeError::from_generic_err(e, span.clone()))?;
-
-                        let def = self
-                            .instantiate_struct_def(&name)
-                            .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
-
-                        let method = def.find_method(member_ident).unwrap();
-
-                        let specialized_ty = Type::from_struct_type(name.into_owned(), def.kind);
-
-                        Some(TypeMember::Method(specialized_ty, method.clone()))
-                    },
-
-                    None => None,
-                }
+            Type::Interface(iface) => {
+                let iface_def = self
+                    .find_iface_def(iface)
+                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
+                
+                iface_def
+                    .get_method(member_ident)
+                    .map(|method_decl| {
+                        TypeMember::Method(MethodGroupMember {
+                            method: Method {
+                                decl: method_decl.decl.clone(),
+                                access: INTERFACE_METHOD_ACCESS,
+                            },
+                            owning_ty: ty.clone(),
+                        })
+                    })
             },
 
-            Type::Variant(name) => {
-                let generic_method = self
-                    .find_variant_def(&name.full_path)
+            Type::Class(struct_name) | Type::Record(struct_name) => {
+                let generic_methods: Vec<_> = self
+                    .find_struct_def(&struct_name.full_path)
                     .map_err(|e| TypeError::from_name_err(e, span.clone()))?
-                    .find_method(member_ident);
+                    .find_methods(member_ident)
+                    .collect();
 
-                match generic_method {
-                    Some(method) => {
-                        let generic_sig = method.decl.sig();
-                        let name = specialize_by_return_ty(
-                            name,
-                            &generic_sig,
-                            expect_return_ty,
-                            span,
-                            ctx,
-                        )
-                        .map_err(|e| TypeError::from_generic_err(e, span.clone()))?;
+                if !generic_methods.is_empty() {
+                    let def = self
+                        .instantiate_struct_def(&struct_name)
+                        .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
 
-                        let def = self
-                            .instantiate_variant_def(&name)
+                    let mut method_group = Vec::new();
+
+                    for (i, generic_method) in def.find_methods(member_ident).enumerate() {
+                        let generic_sig = generic_method.decl.sig();
+
+                        let spec_struct_name = 
+                            specialize_by_return_ty(
+                                struct_name,
+                                &generic_sig,
+                                expect_return_ty,
+                                span,
+                                ctx,
+                            )
+                            .map_err(|e| TypeError::from_generic_err(e, span.clone()))?
+                            .into_owned();
+
+                        let spec_def = ctx
+                            .instantiate_struct_def(&spec_struct_name)
                             .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
 
-                        let method = def.find_method(member_ident).unwrap();
-                        let specialized_ty = Type::variant(name.into_owned());
+                        let spec_method = spec_def.methods[i].clone();
+                        
+                        method_group.push(MethodGroupMember {
+                            method: spec_method,
+                            owning_ty: Type::from_struct_type(spec_struct_name, def.kind),
+                        })
+                    }
+                    
+                    if method_group.len() == 1 {
+                        let single_method = method_group.remove(0);
+                        Some(TypeMember::Method(single_method))
+                    } else {
+                        Some(TypeMember::MethodGroup(method_group))
+                    }
+                } else {
+                    None
+                }
+            }
 
-                        Some(TypeMember::Method(specialized_ty, method.clone()))
-                    },
+            Type::Variant(variant_name) => {
+                let generic_methods: Vec<_> = self
+                    .find_variant_def(&variant_name.full_path)
+                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?
+                    .find_methods(member_ident)
+                    .collect();
 
-                    None => None,
+                if !generic_methods.is_empty() {
+                    let def = self
+                        .instantiate_variant_def(&variant_name)
+                        .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
+
+                    let mut method_group = Vec::new();
+
+                    for (i, generic_method) in def.find_methods(member_ident).enumerate() {
+                        let generic_sig = generic_method.decl.sig();
+                        let spec_variant_name =
+                            specialize_by_return_ty(
+                                variant_name,
+                                &generic_sig,
+                                expect_return_ty,
+                                span,
+                                ctx,
+                            )
+                                .map_err(|e| TypeError::from_generic_err(e, span.clone()))?
+                                .into_owned();
+
+                        let spec_def = ctx
+                            .instantiate_variant_def(&spec_variant_name)
+                            .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
+
+                        let spec_method = spec_def.methods[i].clone();
+
+                        method_group.push(MethodGroupMember {
+                            method: spec_method,
+                            owning_ty: Type::variant(spec_variant_name),
+                        })
+                    }
+
+                    if method_group.len() == 1 {
+                        let single_method = method_group.remove(0);
+                        Some(TypeMember::Method(single_method))
+                    } else {
+                        Some(TypeMember::MethodGroup(method_group))
+                    }
+                } else {
+                    None
                 }
             },
 

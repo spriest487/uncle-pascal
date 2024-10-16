@@ -10,7 +10,7 @@ use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::InterfaceMethodDecl;
-use crate::typ::typecheck_type;
+use crate::typ::{typecheck_type, FunctionSig};
 use crate::typ::Context;
 use crate::typ::MismatchedImplementation;
 use crate::typ::MissingImplementation;
@@ -37,6 +37,17 @@ pub type EnumDecl = ast::EnumDecl<Typed>;
 pub type EnumDeclItem = ast::EnumDeclItem<Typed>;
 
 pub const VARIANT_TAG_TYPE: Type = Type::Primitive(Primitive::Int32);
+
+impl StructDef {
+    
+}
+
+impl VariantDef {
+    pub fn find_method<'a>(&'a self, name: &'a Ident, sig: &FunctionSig) -> Option<&'a Method> {
+        self.find_methods(name)
+            .find(move |m| m.decl.sig() == *sig)
+    }
+}
 
 pub fn typecheck_struct_decl(
     name: Symbol,
