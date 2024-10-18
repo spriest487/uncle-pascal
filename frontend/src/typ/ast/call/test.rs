@@ -49,7 +49,7 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
                 Some(explicit_impl) => {
                     let ident = func.decl.name.ident.clone();
                     let method = explicit_impl
-                        .get_method(&ident, &unit.context)
+                        .get_method(&ident, &sig, &unit.context)
                         .unwrap()
                         .expect("method defs in unit must have a corresponding decl in the type");
 
