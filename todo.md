@@ -1,7 +1,9 @@
 # critical
+* remove baked in type arg position info
+* unify type param constraint struct style (use Any)
 * maybe split func and type defs up in the context? for simplifying define logic
 * project files/don't auto load used units
-* why is the C backend generated packed decls for everything? 
+* why is the C backend generating packed decls for everything? 
 * weak refs
 * single-char string literals convert to Byte
 
