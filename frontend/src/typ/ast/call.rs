@@ -234,7 +234,8 @@ fn typecheck_func_call(
         Typed::TypedValue(val) => match &val.ty {
             Type::Function(sig) => {
                 let sig = sig.clone();
-                typecheck_free_func_call(target, &func_call, self_arg.as_ref(), &sig, ctx)
+
+                typecheck_free_func_call(target, &func_call, self_arg.as_ref(), sig, ctx)
                     .map(Box::new)
                     .map(Invocation::Call)?
             },
@@ -256,7 +257,7 @@ fn typecheck_func_call(
 
         Typed::Function(func) => {
             let sig = func.sig.clone();
-            typecheck_free_func_call(target, &func_call, self_arg.as_ref(), &sig, ctx)
+            typecheck_free_func_call(target, &func_call, self_arg.as_ref(), sig, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
@@ -695,7 +696,7 @@ fn typecheck_free_func_call(
     mut target: Expr,
     func_call: &ast::FunctionCall<Span>,
     self_arg: Option<&Expr>,
-    sig: &FunctionSig,
+    sig: Rc<FunctionSig>,
     ctx: &mut Context,
 ) -> TypeResult<Call> {
     let span = func_call.span().clone();
@@ -706,7 +707,7 @@ fn typecheck_free_func_call(
     };
 
     let mut specialized_call_args = specialize_call_args(
-        sig,
+        sig.as_ref(),
         &func_call.args,
         self_arg,
         type_args,
@@ -739,7 +740,7 @@ fn typecheck_free_func_call(
             Typed::Function(func_type) => {
                 let specialized_func_type = FunctionTyped {
                     name: (**func_type).clone().name.with_ty_args(Some(ty_args.clone())),
-                    sig: Rc::new(specialized_call_args.sig),
+                    sig,
                     span: func_type.span.clone(),
                 };
                 
