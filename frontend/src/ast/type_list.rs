@@ -1,12 +1,14 @@
 use crate::ast::Annotation;
+use crate::parse::Match;
 use crate::parse::Parse;
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::TokenStream;
-use crate::parse::{Match, TryParse};
+use crate::parse::TryParse;
+use crate::DelimiterPair;
+use crate::Ident;
 use crate::Separator;
 use crate::TokenTree;
-use crate::{DelimiterPair, Ident};
 use common::span::Span;
 use common::span::Spanned;
 use common::TracedError;
