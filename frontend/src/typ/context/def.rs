@@ -1,3 +1,5 @@
+use std::fmt;
+use std::fmt::Formatter;
 use crate::ast::Ident;
 use crate::typ::ast::EnumDecl;
 use crate::typ::ast::FunctionDecl;
@@ -51,6 +53,15 @@ impl Spanned for Def {
 pub enum DefKey {
     Unique,
     Sig(Rc<FunctionSig>),
+}
+
+impl fmt::Display for DefKey {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            DefKey::Unique => write!(f, "unique"),
+            DefKey::Sig(sig) => write!(f, "signature {sig}")
+        }
+    }
 }
 
 // result of comparing a defined name with its previous decl

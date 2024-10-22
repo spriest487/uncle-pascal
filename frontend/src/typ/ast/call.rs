@@ -471,7 +471,7 @@ pub fn overload_to_no_args_call(
     let call = match &candidates[overload.selected_sig] {
         OverloadCandidate::Function { sig, decl_name } => {
             assert_eq!(sig.type_params_len(), overload.type_args_len());
-            
+
             let return_value = TypedValue {
                 ty: sig.return_ty.clone(),
                 span: span.clone(),
