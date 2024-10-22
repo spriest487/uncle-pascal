@@ -33,7 +33,7 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::SELF_TY_NAME;
-use crate::typ::{specialize_by_return_ty, TypeArgList};
+use crate::typ::specialize_by_return_ty;
 use crate::typ::specialize_struct_def;
 use crate::typ::specialize_variant_def;
 use crate::typ::FunctionSig;
@@ -41,6 +41,7 @@ use crate::typ::InvalidFunctionOverloadKind;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
+use crate::typ::TypeArgList;
 use crate::typ::TypeError;
 use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
@@ -1154,14 +1155,7 @@ impl Context {
     }
 
     pub fn find_def(&self, name: &IdentPath, def_key: &DefKey) -> Option<&Def> {
-        let overloads = self.defs.get(name)?;
-        // if !overloads.contains_key(def_key) {
-        //     eprintln!("find_def: no overload of {} matches {}, overloads are:", name, def_key);
-        //     for (key, _) in overloads {
-        //         eprintln!("{}", key);
-        //     }
-        // }
-        overloads.get(def_key)
+        self.defs.get(name).and_then(|overloads| overloads.get(def_key))
     }
 
     pub fn find_type_def(&self, name: &IdentPath) -> Option<&Def> {
