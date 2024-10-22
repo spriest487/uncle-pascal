@@ -41,7 +41,6 @@ use crate::typ::InvalidFunctionOverloadKind;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
-use crate::typ::TypeArgList;
 use crate::typ::TypeError;
 use crate::typ::TypeParamList;
 use crate::typ::TypeParamType;
@@ -1164,89 +1163,6 @@ impl Context {
 
     pub fn find_func_def(&self, name: &IdentPath, sig: Rc<FunctionSig>) -> Option<&Def> {
         self.find_def(name, &DefKey::Sig(sig))
-    }
-    
-    // get the function definition for a given instantiation of a function. the function sig
-    // provided may be a specialized version of the one defined in the context, in which case
-    // we return the unspecialized definition that would need to be specialized with the type
-    // args provided to match the given signature
-    pub fn find_func_instance_def(
-        &self,
-        name: &IdentPath,
-        sig: &FunctionSig,
-        ty_args: Option<&TypeArgList>,
-    ) -> Option<&Def> {
-        let overloads = self.defs.get(name)?;
-        
-        for (key, def) in overloads {
-            match def {
-                // external defs can't be generic
-                Def::External(..) if ty_args.is_none() => {
-                    let expect_sig = match key {
-                        DefKey::Unique => unreachable!("functions only have sig def keys"),
-                        DefKey::Sig(expect_sig) => expect_sig.as_ref(),
-                    };
-                    
-                    if *expect_sig == *sig {
-                        return Some(def)
-                    }
-                }
-
-                Def::Function(func_def) => {
-                    let expect_sig = match key {
-                        DefKey::Unique => unreachable!("functions only have sig def keys"),
-                        DefKey::Sig(expect_sig) => expect_sig.as_ref(),
-                    };
-                    
-                    assert_eq!(*expect_sig, FunctionSig::of_decl(&func_def.decl));
-
-                    match &expect_sig.type_params {
-                        None => {
-                            if ty_args.is_none() && *sig == *expect_sig {
-                                return Some(def);
-                            }
-                        }
-
-                        Some(sig_ty_params) => {
-                            if let Some(ty_arg_list) = ty_args {
-                                if !ty_arg_list.matches_sig_params(sig_ty_params, self) {
-                                    eprintln!("{}: {} doesn't match expected {:?}", name, ty_arg_list, sig_ty_params);
-                                    continue;
-                                }
-
-                                match expect_sig.specialize_generic(ty_arg_list, self) {
-                                    Ok(spec_sig) => {
-                                        if spec_sig == *sig {
-                                            return Some(def)
-                                        } else {
-                                            eprintln!("\t  actual: {}\n\t\t{:?}", sig, sig);
-                                            eprintln!("\t  expect: {}\n\t\t{:?}", expect_sig, expect_sig);
-                                            eprintln!("\t    spec: {}\n\t\t{:?}", spec_sig, spec_sig);
-                                            eprintln!("\tfind_def: {:?}", self.find_func_def(name, Rc::new(sig.clone())));
-                                        }
-                                    }
-
-                                    other => {
-                                        eprintln!("{}: {} can't specialize into {}: {:?}", name, expect_sig, sig, other);
-                                        continue;
-                                    }
-                                }
-                            } else if *expect_sig == *sig {
-                                // both sigs are unspecialized
-                                return Some(def);
-                            }
-                        }
-                    }
-                },
-
-                _ => continue,
-            };
-            
-            
-        }
-        
-        eprintln!("{}: nothing matched {}", name, sig);
-        None
     }
 
     pub fn find_struct_def(&self, name: &IdentPath) -> NameResult<&Rc<StructDef>> {
