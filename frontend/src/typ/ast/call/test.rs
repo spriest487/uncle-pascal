@@ -242,7 +242,9 @@ fn specializes_func_call_by_arg_ty() {
                 Typed::Function(func) => {
                     assert_eq!("Test.B", func.name.type_args.as_ref().unwrap()[0].to_string());
                     assert_eq!("Test.A[Test.B]",  func.name.to_string());
-                    assert_eq!("Test.B", func.sig.params[0].ty.to_string());
+                    
+                    // this should reference the *declared* sig, not the called one
+                    assert_eq!("T", func.sig.params[0].ty.to_string());
                 }
 
                 other => panic!("expected function, got {:?}", other),
