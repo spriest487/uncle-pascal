@@ -262,6 +262,10 @@ fn build_method_call(
         builder.generic_context(),
         builder.generic_context(),
     );
+    let method_sig = Rc::new(method_sig.apply_ty_args(
+        builder.generic_context(),
+        builder.generic_context(),
+    ));
 
     let self_ir_ty = builder.translate_type(&self_ty);
 
@@ -292,7 +296,7 @@ fn build_method_call(
         },
     };
 
-    translate_call_with_args(call_target, &args, &method_sig, builder)
+    translate_call_with_args(call_target, &args, method_sig.as_ref(), builder)
 }
 
 fn build_variant_ctor_call(
