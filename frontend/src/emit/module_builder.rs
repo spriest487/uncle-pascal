@@ -380,7 +380,7 @@ impl ModuleBuilder {
             )
             .cloned()
             .unwrap_or_else(|| {
-                panic!("instantiate_method: missing method def: {}.{}", generic_self_ty, method_key.method)
+                panic!("instantiate_method: missing method def: {}.{} ({})", generic_self_ty, method_key.method, method_key.sig)
             });
         let generic_method_decl = generic_method_def.decl.as_ref();
 
