@@ -35,7 +35,7 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::SELF_TY_NAME;
-use crate::typ::specialize_by_return_ty;
+use crate::typ::{specialize_by_return_ty, Specializable};
 use crate::typ::specialize_struct_def;
 use crate::typ::specialize_variant_def;
 use crate::typ::FunctionSig;
@@ -1543,42 +1543,51 @@ impl Context {
             },
 
             Type::Class(struct_name) | Type::Record(struct_name) => {
-                let generic_methods: Vec<_> = self
+                // start by looking for methods in the unspecialized struct def, if it's a 
+                // method call we might need to infer the struct's own type args from the call
+                let struct_def = self
                     .find_struct_def(&struct_name.full_path)
-                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?
-                    .find_methods(member_ident)
+                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
+
+                let methods: Vec<_> = struct_def
+                    .methods()
+                    .enumerate()
+                    .filter(|(_, method)| {
+                        method.decl.ident() == member_ident
+                    })
                     .collect();
 
-                if !generic_methods.is_empty() {
-                    let def = self
-                        .instantiate_struct_def(&struct_name)
-                        .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
-
+                if !methods.is_empty() {
                     let mut method_group = Vec::new();
 
-                    for (i, generic_method) in def.find_methods(member_ident).enumerate() {
-                        let generic_sig = generic_method.decl.sig();
+                    for (method_index, method) in methods {
+                        let method_sig = method.decl.sig();
 
-                        let spec_struct_name = 
+                        // if the struct name isn't already specialized, try to infer it from
+                        // the return type
+                        let spec_struct_name = if struct_name.is_unspecialized_generic() {
                             specialize_by_return_ty(
                                 struct_name,
-                                &generic_sig,
+                                &method_sig,
                                 expect_return_ty,
                                 span,
                                 ctx,
                             )
                             .map_err(|e| TypeError::from_generic_err(e, span.clone()))?
-                            .into_owned();
+                            .into_owned()
+                        } else {
+                            (**struct_name).clone()
+                        };
 
                         let spec_def = ctx
                             .instantiate_struct_def(&spec_struct_name)
                             .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
 
-                        let spec_method = spec_def.methods[i].clone();
-                        
+                        let spec_method = spec_def.methods[method_index].clone();
+
                         method_group.push(MethodGroupMember {
                             method: spec_method,
-                            owning_ty: Type::from_struct_type(spec_struct_name, def.kind),
+                            owning_ty: Type::from_struct_type(spec_struct_name, struct_def.kind),
                         })
                     }
                     
@@ -1594,37 +1603,44 @@ impl Context {
             }
 
             Type::Variant(variant_name) => {
-                let generic_methods: Vec<_> = self
+                let variant_def = self
                     .find_variant_def(&variant_name.full_path)
-                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?
-                    .find_methods(member_ident)
+                    .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
+
+                let methods: Vec<_> = variant_def
+                    .methods
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, method)| {
+                        method.decl.ident() == member_ident
+                    })
                     .collect();
 
-                if !generic_methods.is_empty() {
-                    let def = self
-                        .instantiate_variant_def(&variant_name)
-                        .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
-
+                if !methods.is_empty() {
                     let mut method_group = Vec::new();
 
-                    for (i, generic_method) in def.find_methods(member_ident).enumerate() {
-                        let generic_sig = generic_method.decl.sig();
-                        let spec_variant_name =
+                    for (method_index, generic_method) in methods {
+                        let method_sig = generic_method.decl.sig();
+
+                        let spec_variant_name = if variant_name.is_unspecialized_generic() {
                             specialize_by_return_ty(
                                 variant_name,
-                                &generic_sig,
+                                &method_sig,
                                 expect_return_ty,
                                 span,
                                 ctx,
                             )
-                                .map_err(|e| TypeError::from_generic_err(e, span.clone()))?
-                                .into_owned();
+                            .map_err(|e| TypeError::from_generic_err(e, span.clone()))?
+                            .into_owned()
+                        } else {
+                            (**variant_name).clone()
+                        };
 
                         let spec_def = ctx
                             .instantiate_variant_def(&spec_variant_name)
                             .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
 
-                        let spec_method = spec_def.methods[i].clone();
+                        let spec_method = spec_def.methods[method_index].clone();
 
                         method_group.push(MethodGroupMember {
                             method: spec_method,

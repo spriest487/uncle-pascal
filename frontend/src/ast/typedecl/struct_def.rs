@@ -58,8 +58,7 @@ impl<A: Annotation> StructDef<A> {
     }
 
     pub fn find_methods<'a>(&'a self, by_ident: &'a Ident) -> impl Iterator<Item=&'a Method<A>>  {
-        self.methods
-            .iter()
+        self.methods()
             .filter(move |method| method.decl.name.ident() == by_ident)
     }
     

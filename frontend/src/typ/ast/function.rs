@@ -13,7 +13,6 @@ use crate::ast::Visibility;
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::{typecheck_type, InvalidOverloadKind};
 use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
 use crate::typ::validate_ty_args;
@@ -22,8 +21,8 @@ use crate::typ::ClosureBodyEnvironment;
 use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::FunctionBodyEnvironment;
-use crate::typ::FunctionSigParam;
 use crate::typ::FunctionSig;
+use crate::typ::FunctionSigParam;
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
@@ -41,6 +40,7 @@ use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
+use crate::typ::{typecheck_type, InvalidOverloadKind};
 use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
@@ -302,8 +302,8 @@ impl FunctionDecl {
                     params = typecheck_params(decl, self_param_ty, ctx)?;
                 }
             };
-
-            Ok(FunctionDecl {
+            
+            let decl = FunctionDecl {
                 name: TypedFunctionName {
                     ident: decl.name.ident.clone(),
                     owning_ty,
@@ -315,7 +315,9 @@ impl FunctionDecl {
                 return_ty,
                 span: decl.span.clone(),
                 mods: decl_mods,
-            })
+            };
+
+            Ok(decl)
         })
     }
 

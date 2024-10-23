@@ -695,7 +695,7 @@ fn typecheck_type_member(
             }
 
             // this is a reference to the method itself, args list to follow presumably
-            MethodTyped::new(&candidate.method, ty.clone(), span).into()
+            MethodTyped::new(&candidate.method, candidate.owning_ty, span).into()
         },
         
         TypeMember::MethodGroup(group) => {
