@@ -1,5 +1,5 @@
 use crate::typ;
-use crate::typ::Type;
+use crate::typ::{FunctionSig, Specializable, Type};
 use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeParam;
@@ -64,6 +64,14 @@ impl GenericContext {
             arg,
             param,
         })
+    }
+    
+    pub fn apply_to_type(&self, ty: Type) -> Type {
+        ty.apply_type_args_by_name(self, self)
+    }
+
+    pub fn apply_to_sig(&self, sig: &FunctionSig) -> FunctionSig {
+        sig.apply_ty_args(self, self)
     }
 }
 

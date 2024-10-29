@@ -1,7 +1,7 @@
-mod call;
-mod op;
-mod ctor;
-mod cond;
+pub mod call;
+pub mod op;
+pub mod ctor;
+pub mod cond;
 
 use crate::emit::ir;
 use crate::emit::syn;
@@ -10,7 +10,6 @@ use crate::emit::typ;
 use crate::emit::Builder;
 use crate::typ::STRING_TYPE_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
-pub use call::*;
 use common::span::*;
 use ir_lang::Value;
 use syn::Ident;

@@ -496,9 +496,14 @@ impl ModuleBuilder {
         method_sig: Rc<typ::FunctionSig>,
         type_args: Option<typ::TypeArgList>,
     ) -> FunctionInstance {
+        // the sig is expected to match the declaration in the owning type, but it might be
+        // called via the virtual sig (with the placeholder Self type), so fill in the self-type 
+        // with the implementor if necessary
+        let implementor_sig = (*method_sig).clone().with_self(&self_ty);
+        
         let mut key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
-                sig: Rc::new((*method_sig).clone().with_self(&self_ty)),
+                sig: Rc::new(implementor_sig),
                 owning_ty,
                 self_ty,
                 method: method_name,

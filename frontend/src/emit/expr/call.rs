@@ -123,14 +123,14 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
                         }
                         
                         None => {
-                            self_ty = method.owning_ty.clone();
+                            self_ty = method.self_ty.clone();
                         }
                     }
 
                     build_method_call(
-                        &method.method_ident,
-                        &method.method_sig,
-                        method.owning_ty.clone(),
+                        &method.name,
+                        &method.decl_sig,
+                        method.self_ty.clone(),
                         self_ty,
                         &args,
                         method_call.type_args.clone(),
@@ -254,18 +254,9 @@ fn build_method_call(
     ty_args: Option<typ::TypeArgList>,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let owning_ty = owning_ty.apply_type_args_by_name(
-        builder.generic_context(),
-        builder.generic_context(),
-    );
-    let self_ty = self_ty.apply_type_args_by_name(
-        builder.generic_context(),
-        builder.generic_context(),
-    );
-    let method_sig = Rc::new(method_sig.apply_ty_args(
-        builder.generic_context(),
-        builder.generic_context(),
-    ));
+    let owning_ty = builder.generic_context().apply_to_type(owning_ty);
+    let self_ty = builder.generic_context().apply_to_type(self_ty);
+    let method_sig = Rc::new(builder.generic_context().apply_to_sig(&method_sig));
 
     let self_ir_ty = builder.translate_type(&self_ty);
 

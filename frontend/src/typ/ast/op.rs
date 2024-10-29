@@ -332,11 +332,11 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         self_type: src_ty.into_owned(),
         func_type: Type::Function(to_string_sig.clone()),
         annotation: MethodTyped {
-            owning_ty: displayable_ty,
-            method_ident: to_string_ident,
-            method_access: INTERFACE_METHOD_ACCESS,
+            self_ty: displayable_ty,
+            name: to_string_ident,
+            access: INTERFACE_METHOD_ACCESS,
             span: span.clone(),
-            method_sig: to_string_sig,
+            decl_sig: to_string_sig,
         }
         .into(),
     });
@@ -536,10 +536,10 @@ fn typecheck_member_of(
                     } else {
                         let overload_candidate = &[
                             OverloadCandidate::Method {
-                                owning_ty: method.owning_ty.clone(),
-                                ident: method.method_ident.clone(),
-                                access: method.method_access,
-                                sig: method.method_sig.clone(),
+                                owning_ty: method.self_ty.clone(),
+                                ident: method.name.clone(),
+                                access: method.access,
+                                sig: method.decl_sig.clone(),
                             }
                         ];
                         

@@ -1,5 +1,5 @@
 use crate::emit::builder::jmp_exists;
-use crate::emit::expr::{build_call, expr_to_val};
+use crate::emit::expr::{call, expr_to_val};
 use crate::emit::expr::translate_raise;
 use crate::emit::ir;
 use crate::emit::pattern::translate_pattern_match;
@@ -27,7 +27,7 @@ pub fn translate_stmt(stmt: &typ::ast::Stmt, builder: &mut Builder) {
         },
 
         syn::Stmt::Call(call) => {
-            build_call(call, builder);
+            call::build_call(call, builder);
         },
 
         syn::Stmt::Block(block) => {

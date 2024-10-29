@@ -113,35 +113,42 @@ impl From<OverloadTyped> for Typed {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodTyped {
-    pub owning_ty: Type,
+    /// the type via which this method is being referred to. we don't distinguish here between
+    /// an interface method (implemented on a type other than the self type) and a direct method
+    /// call (known to be implemented on the self type used here)
+    pub self_ty: Type,
 
-    pub method_ident: Ident,
-    pub method_access: Access,
+    pub name: Ident,
+    pub access: Access,
 
+    /// span of this reference to the method (not the method's own decl)
     pub span: Span,
 
-    pub method_sig: Rc<FunctionSig>,
+    /// this is used for overload resolution and should match the *declared* sig of the method, 
+    /// eg even if this is part of an expression referring to a parameterized self-type or a
+    /// method call with type parameters, this sig should not have those type args applied to it
+    pub decl_sig: Rc<FunctionSig>,
 }
 
 impl MethodTyped {
-    pub fn new(method: &Method, iface_ty: Type, span: Span) -> Self {
+    pub fn new(method: &Method, self_ty: Type, span: Span) -> Self {
         let sig = method.decl.sig();
-
+ 
         Self {
-            owning_ty: iface_ty,
-            method_ident: method.decl.name.ident.clone(),
-            method_access: method.access,
+            self_ty,
+            name: method.decl.name.ident.clone(),
+            access: method.access,
             span,
-            method_sig: Rc::new(sig),
+            decl_sig: Rc::new(sig),
         }
     }
 
     pub fn func_ty(&self) -> Type {
-        Type::Function(self.method_sig.clone())
+        Type::Function(self.decl_sig.clone())
     }
 
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg: &Type) -> bool {
-        self.method_sig.should_call_noargs_in_expr(expect_ty, self_arg)
+        self.decl_sig.should_call_noargs_in_expr(expect_ty, self_arg)
     }
 }
 
@@ -434,7 +441,7 @@ impl fmt::Display for Typed {
                 write!(f, "function {}", func.function_name) 
             },
             Typed::Method(method) => { 
-                write!(f, "method {}.{}", method.owning_ty, method.method_ident) 
+                write!(f, "method {}.{}", method.self_ty, method.name) 
             },
             Typed::Type(ty, ..) => { 
                 write!(f, "type {}", ty) 

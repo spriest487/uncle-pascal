@@ -540,10 +540,10 @@ pub fn overload_to_no_args_call(
             };
 
             *target.annotation_mut() = Typed::from(MethodTyped {
-                owning_ty: owning_ty.clone(),
-                method_ident: ident.clone(),
-                method_access: *access,
-                method_sig: sig.clone(),
+                self_ty: owning_ty.clone(),
+                name: ident.clone(),
+                access: *access,
+                decl_sig: sig.clone(),
                 span: target.span().clone(),
             });
 
@@ -574,11 +574,11 @@ fn typecheck_method_call(
     with_self_arg: Option<Expr>,
     ctx: &mut Context,
 ) -> TypeResult<Call> {
-    if method.owning_ty.get_current_access(ctx) < method.method_access {
+    if method.self_ty.get_current_access(ctx) < method.access {
         return Err(TypeError::TypeMemberInaccessible {
-            ty: method.owning_ty.clone(),
-            access: method.method_access,
-            member: method.method_ident.clone(),
+            ty: method.self_ty.clone(),
+            access: method.access,
+            member: method.name.clone(),
             span: func_call.span().clone(),
         })
     }
@@ -589,7 +589,7 @@ fn typecheck_method_call(
             GenericError::ArgsLenMismatch {
                 expected: 0,
                 actual: call_type_args.len(),
-                target: GenericTarget::FunctionSig((*method.method_sig).clone()),
+                target: GenericTarget::FunctionSig((*method.decl_sig).clone()),
             },
             call_type_args.span().clone(),
         ));
@@ -602,7 +602,7 @@ fn typecheck_method_call(
         None => {
             let mut ctx = ctx.clone();
             let first_self_pos = method
-                .method_sig
+                .decl_sig
                 .params
                 .iter()
                 .position(|param| param.ty == Type::MethodSelf);
@@ -626,28 +626,28 @@ fn typecheck_method_call(
         }
     };
     
-    if let Type::Interface(..) = method.owning_ty {
+    if let Type::Interface(..) = method.self_ty {
         let is_impl = ctx
-            .is_implementation(self_type.as_ref(), &method.owning_ty)
+            .is_implementation(self_type.as_ref(), &method.self_ty)
             .map_err(|err| TypeError::from_name_err(err, func_call.span().clone()))?;
 
         if !is_impl {
             return Err(TypeError::from_name_err(NameError::NoImplementationFound {
-                owning_ty: method.owning_ty.clone(),
+                owning_ty: method.self_ty.clone(),
                 impl_ty: self_type.into_owned(),
             }, func_call.span().clone()));
         }
     } else if let Some(..) = &with_self_arg {
-        if method.owning_ty != *self_type {
+        if method.self_ty != *self_type {
             return Err(TypeError::TypeMismatch {
                 span: func_call.span().clone(),
-                expected: method.owning_ty.clone(),
+                expected: method.self_ty.clone(),
                 actual: self_type.into_owned(),
             });
         }
     }
 
-    let sig = method.method_sig.with_self(&self_type);
+    let sig = method.decl_sig.with_self(&self_type);
 
     let typechecked_args = build_args_for_params(
         &sig.params, 
@@ -667,8 +667,8 @@ fn typecheck_method_call(
         args_span: func_call.args_span.clone(),
         func_type: Type::Function(Rc::new(sig)),
         self_type: self_type.into_owned(),
-        owning_type: method.owning_ty.clone(),
-        ident: method.method_ident.clone(),
+        owning_type: method.self_ty.clone(),
+        ident: method.name.clone(),
         type_args: None,
         args: typechecked_args,
     }))
