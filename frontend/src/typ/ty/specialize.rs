@@ -149,14 +149,14 @@ pub fn specialize_struct_def<'a>(
             let specialized_decl = specialize_method_decl(
                 &generic_def.name.full_path,
                 self_ty,
-                &generic_method.decl,
+                &generic_method.func_decl,
                 struct_ty_params,
                 ty_args,
             )?;
             
             Ok(MethodDecl {
                 access: generic_method.access,
-                decl: Rc::new(specialized_decl),
+                func_decl: Rc::new(specialized_decl),
             })
         })
         .collect::<GenericResult<_>>()?;
@@ -217,13 +217,13 @@ pub fn specialize_variant_def(
         let specialized_decl = specialize_method_decl(
             &parameterized_name.full_path,
             self_ty.clone(),
-            &method.decl,
+            &method.func_decl,
             variant_ty_params,
             args
         )?;
         
         methods.push(MethodDecl {
-            decl: Rc::new(specialized_decl),
+            func_decl: Rc::new(specialized_decl),
             access: method.access,
         });
     }

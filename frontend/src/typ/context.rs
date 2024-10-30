@@ -90,6 +90,7 @@ pub enum TypeMember {
 pub struct MethodGroupMember {
     pub owning_ty: Type,
     pub method: MethodDecl,
+    pub index: usize,
 }
 
 impl TypeMember {
@@ -893,7 +894,7 @@ impl Context {
                 
                 struct_def
                     .find_methods(&method)
-                    .find(|m| m.decl.sig() == def.decl.sig())
+                    .find(|m| m.func_decl.sig() == def.decl.sig())
                     .ok_or_else(|| NameError::MemberNotFound {
                         base: NameContainer::Type(struct_ty.clone()),
                         member: method.clone(),
@@ -908,7 +909,7 @@ impl Context {
 
                 variant_def
                     .find_methods(&method)
-                    .find(|m| m.decl.sig() == def.decl.sig())
+                    .find(|m| m.func_decl.sig() == def.decl.sig())
                     .ok_or_else(|| NameError::MemberNotFound {
                         base: NameContainer::Type(variant_ty.clone()),
                         member: method.clone(),
@@ -1432,13 +1433,13 @@ impl Context {
             // unambiguous method
             (None, 1) => match matching_methods.last().unwrap() {
                 ufcs::InstanceMethod::Method {
-                    owning_ty: iface_ty,
+                    self_ty: iface_ty,
                     method,
                     ..
                 } => Ok(InstanceMember::Method {
                     iface_ty: iface_ty.clone(),
-                    method: method.decl.name.ident.clone(),
-                    sig: Rc::new(method.decl.sig()),
+                    method: method.func_decl.name.ident.clone(),
+                    sig: Rc::new(method.func_decl.sig()),
                 }),
 
                 ufcs::InstanceMethod::FreeFunction { func_name, sig, visibility } => {
@@ -1529,14 +1530,20 @@ impl Context {
                     .find_iface_def(iface)
                     .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
                 
-                iface_def
-                    .get_method(member_ident)
-                    .map(|method_decl| {
+                let method_index = iface_def.methods
+                    .iter()
+                    .position(|m| m.decl.ident() == member_ident);
+
+                method_index
+                    .map(|method_index| {
+                        let method_decl = &iface_def.methods[method_index];
+
                         TypeMember::Method(MethodGroupMember {
                             method: MethodDecl {
-                                decl: method_decl.decl.clone(),
+                                func_decl: method_decl.decl.clone(),
                                 access: INTERFACE_METHOD_ACCESS,
                             },
+                            index: method_index,
                             owning_ty: ty.clone(),
                         })
                     })
@@ -1553,7 +1560,7 @@ impl Context {
                     .methods()
                     .enumerate()
                     .filter(|(_, method)| {
-                        method.decl.ident() == member_ident
+                        method.func_decl.ident() == member_ident
                     })
                     .collect();
 
@@ -1561,7 +1568,7 @@ impl Context {
                     let mut method_group = Vec::new();
 
                     for (method_index, method) in methods {
-                        let method_sig = method.decl.sig();
+                        let method_sig = method.func_decl.sig();
 
                         // if the struct name isn't already specialized, try to infer it from
                         // the return type
@@ -1587,6 +1594,7 @@ impl Context {
 
                         method_group.push(MethodGroupMember {
                             method: spec_method,
+                            index: method_index,
                             owning_ty: Type::from_struct_type(spec_struct_name, struct_def.kind),
                         })
                     }
@@ -1612,7 +1620,7 @@ impl Context {
                     .iter()
                     .enumerate()
                     .filter(|(_, method)| {
-                        method.decl.ident() == member_ident
+                        method.func_decl.ident() == member_ident
                     })
                     .collect();
 
@@ -1620,7 +1628,7 @@ impl Context {
                     let mut method_group = Vec::new();
 
                     for (method_index, generic_method) in methods {
-                        let method_sig = generic_method.decl.sig();
+                        let method_sig = generic_method.func_decl.sig();
 
                         let spec_variant_name = if variant_name.is_unspecialized_generic() {
                             specialize_by_return_ty(
@@ -1644,6 +1652,7 @@ impl Context {
 
                         method_group.push(MethodGroupMember {
                             method: spec_method,
+                            index: method_index,
                             owning_ty: Type::variant(spec_variant_name),
                         })
                     }
@@ -1748,8 +1757,8 @@ impl Context {
 
         for method in ty_methods {
             let def_key = MethodKey {
-                name: method.decl.ident().clone(),
-                sig: Rc::new(method.decl.sig()),
+                name: method.func_decl.ident().clone(),
+                sig: Rc::new(method.func_decl.sig()),
             };
             
             // don't need to check the sigs again, they wouldn't be added
@@ -1769,7 +1778,7 @@ impl Context {
                     .unwrap_or_else(|| MethodCollection::new())
                     .methods
                     .keys()
-                    .filter(|k| k.name == *method.decl.ident())
+                    .filter(|k| k.name == *method.func_decl.ident())
                     .map(|k| format!("{}: {}", k.name, k.sig))
                     .collect::<Vec<_>>()
                     .join(",\n\t"));
@@ -1777,9 +1786,9 @@ impl Context {
                 let decl_name = ty_name
                     .clone()
                     .into_owned()
-                .child(method.decl.ident().clone());
+                .child(method.func_decl.ident().clone());
 
-                let decl_span = method.decl.span.clone();
+                let decl_span = method.func_decl.span.clone();
                 missing.push((decl_name, decl_span));
             }
         }
@@ -1930,10 +1939,9 @@ fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident
     methods
         .iter()
         .map(|im| match im {
-            ufcs::InstanceMethod::Method {
-                owning_ty: iface_ty,
-                method,
-            } => (iface_ty.clone(), method.decl.name.ident.clone()),
+            ufcs::InstanceMethod::Method { self_ty, method, .. } => {
+                (self_ty.clone(), method.func_decl.name.ident.clone())
+            }
 
             ufcs::InstanceMethod::FreeFunction { sig, func_name, .. } => {
                 let of_ty = sig.params.first().unwrap().ty.clone();

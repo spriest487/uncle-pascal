@@ -22,7 +22,8 @@ pub enum InstanceMethod {
         sig: Rc<FunctionSig>,
     },
     Method {
-        owning_ty: Type,
+        self_ty: Type,
+        index: usize,
         method: MethodDecl,
     },
 }
@@ -31,7 +32,7 @@ impl InstanceMethod {
     pub fn ident(&self) -> &Ident {
         match self {
             InstanceMethod::FreeFunction { func_name, .. } => func_name.ident(),
-            InstanceMethod::Method { method, .. } => &method.decl.name.ident,
+            InstanceMethod::Method { method, .. } => &method.func_decl.name.ident,
         }
     }
 }
@@ -43,8 +44,8 @@ impl fmt::Display for InstanceMethod {
                 write!(f, "function {}", func_name)
             },
 
-            InstanceMethod::Method { owning_ty, method, .. } => {
-                write!(f, "method {}.{}", owning_ty, method.decl.name.ident )
+            InstanceMethod::Method { self_ty: owning_ty, method, .. } => {
+                write!(f, "method {}.{}", owning_ty, method.func_decl.name.ident )
             },
         }
         
@@ -121,11 +122,13 @@ fn find_ufcs_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>
     // eprintln!("{} has methods:", ty);
     let instance_methods = ty_methods
         .into_iter()
-        .filter_map(|method| {
+        .enumerate()
+        .filter_map(|(index, method)| {
             // eprintln!(" - {}", method.name);
             Some(InstanceMethod::Method {
-                owning_ty: ty.clone(),
+                self_ty: ty.clone(),
                 method: method.clone(),
+                index,
             })
         })
         .collect();

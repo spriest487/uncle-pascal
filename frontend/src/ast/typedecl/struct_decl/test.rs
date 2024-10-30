@@ -150,10 +150,10 @@ pub fn method_decl_is_valid() {
     assert_eq!(0, class_def.fields().count());
     
     let method = class_def.methods().nth(0).unwrap();
-    assert_eq!("Greet", method.decl.name.to_string());
+    assert_eq!("Greet", method.func_decl.name.to_string());
 
-    assert!(method.decl.return_ty.is_known());
-    assert_eq!("Int32", class_def.methods().nth(0).unwrap().decl.return_ty.to_string());
+    assert!(method.func_decl.return_ty.is_known());
+    assert_eq!("Int32", class_def.methods().nth(0).unwrap().func_decl.return_ty.to_string());
 }
 
 

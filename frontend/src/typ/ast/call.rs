@@ -350,7 +350,7 @@ fn typecheck_func_overload(
 
     let call = match &overloaded.candidates[overload.selected_sig] {
         OverloadCandidate::Method {
-            owning_ty: iface_ty,
+            self_ty: iface_ty,
             ident,
             access,
             sig,
@@ -529,7 +529,7 @@ pub fn overload_to_no_args_call(
             })
         }
 
-        OverloadCandidate::Method { owning_ty, sig, ident, access, .. } => {
+        OverloadCandidate::Method { self_ty, index, sig, ident, access, .. } => {
             assert_eq!(sig.type_params_len(), overload.type_args_len());
 
             let return_value = TypedValue {
@@ -540,7 +540,8 @@ pub fn overload_to_no_args_call(
             };
 
             *target.annotation_mut() = Typed::from(MethodTyped {
-                self_ty: owning_ty.clone(),
+                self_ty: self_ty.clone(),
+                index: *index,
                 name: ident.clone(),
                 access: *access,
                 decl_sig: sig.clone(),
@@ -552,7 +553,7 @@ pub fn overload_to_no_args_call(
                 self_arg,
                 type_args: overload.type_args,
                 annotation: return_value.into(),
-                owning_type: owning_ty.clone(),
+                owning_type: self_ty.clone(),
             })
         }
     };

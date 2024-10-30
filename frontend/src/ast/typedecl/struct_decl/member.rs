@@ -42,7 +42,7 @@ impl<A: Annotation> StructMemberDecl<A> {
     pub fn ident(&self) -> &Ident {
         match self {
             StructMemberDecl::Field(field) => &field.ident,
-            StructMemberDecl::MethodDecl(method) => method.decl.name.ident(),
+            StructMemberDecl::MethodDecl(method) => method.func_decl.name.ident(),
         }
     } 
 }
@@ -63,7 +63,7 @@ impl<A: Annotation> Spanned for StructMemberDecl<A> {
     fn span(&self) -> &Span {
         match self {
             StructMemberDecl::Field(field) => field.span(),
-            StructMemberDecl::MethodDecl(method) => method.decl.span(),
+            StructMemberDecl::MethodDecl(method) => method.func_decl.span(),
         }
     }
 }
@@ -183,7 +183,7 @@ fn parse_method_decl(
     let decl = FunctionDecl::parse(tokens)?;
     
     members.push(StructMemberDecl::MethodDecl(MethodDecl {
-        decl: Rc::new(decl),
+        func_decl: Rc::new(decl),
         access,
     }));
     
@@ -193,7 +193,7 @@ fn parse_method_decl(
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct MethodDecl<A: Annotation = Span> {
     pub access: Access,
-    pub decl: Rc<FunctionDecl<A>>,
+    pub func_decl: Rc<FunctionDecl<A>>,
 }
 
 pub(crate) fn write_access_if_changed(

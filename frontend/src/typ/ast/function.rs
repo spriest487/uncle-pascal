@@ -390,8 +390,8 @@ impl FunctionDecl {
 
         let methods = iface_ty.methods_at(ctx, &self.span)?;
         for impl_method in methods {
-            if impl_method.decl.name.ident == self.name.ident {
-                let iface_sig = impl_method.decl.sig().with_self(owning_ty);
+            if impl_method.func_decl.name.ident == self.name.ident {
+                let iface_sig = impl_method.func_decl.sig().with_self(owning_ty);
 
                 if iface_sig == sig {
                     return Ok(true);
@@ -458,22 +458,22 @@ fn validate_method_def_matches_decl(
 ) -> NameResult<()> {
     let (_, owning_ty) = ctx.find_type(owning_ty_name)?;
 
-    match owning_ty.get_method(method_ident, method_sig, ctx)? {
+    match owning_ty.find_method(method_ident, method_sig, ctx)? {
         None => Err(NameError::MemberNotFound {
             base: NameContainer::Type(owning_ty.clone()),
             member: method_ident.clone(),
         }),
 
-        Some(declared_method) => {
-            let declared_sig = declared_method.decl.sig();
+        Some((_method_index, declared_method)) => {
+            let declared_sig = declared_method.func_decl.sig();
 
-            if *method_sig != declared_sig || declared_method.decl.kind != method_kind {
+            if *method_sig != declared_sig || declared_method.func_decl.kind != method_kind {
                 // eprintln!("expect: {:?} {:#?}",  declared_method.decl.kind, declared_sig);
                 // eprintln!("actual: {:?} {:#?}", method_kind, method_sig);
                 
                 Err(NameError::DefDeclMismatch {
                     def: def_span.clone(),
-                    decl: declared_method.decl.span.clone(),
+                    decl: declared_method.func_decl.span.clone(),
                     path: owning_ty_name.clone().child(method_ident.clone()),
                 })
             } else {

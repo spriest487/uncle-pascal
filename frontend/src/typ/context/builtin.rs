@@ -298,7 +298,7 @@ pub fn declare_builtin_ty(
             ctx.declare_function(display_method.name.ident.clone(), display_method.clone(), Visibility::Interface)?;
 
             methods.insert(display_method.name.ident.clone(), MethodDecl {
-                decl: display_method,
+                func_decl: display_method,
                 access: Access::Published,
             });
         }
@@ -308,7 +308,7 @@ pub fn declare_builtin_ty(
             ctx.declare_function(compare_method.name.ident.clone(), compare_method.clone(), Visibility::Interface)?;
             
             methods.insert(compare_method.name.ident.clone(), MethodDecl {
-                decl: compare_method,
+                func_decl: compare_method,
                 access: Access::Published,
             });
         }

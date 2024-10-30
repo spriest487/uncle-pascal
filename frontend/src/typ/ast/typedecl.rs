@@ -45,7 +45,7 @@ impl StructDef {
 impl VariantDef {
     pub fn find_method<'a>(&'a self, name: &'a Ident, sig: &FunctionSig) -> Option<&'a MethodDecl> {
         self.find_methods(name)
-            .find(move |m| m.decl.sig() == *sig)
+            .find(move |m| m.func_decl.sig() == *sig)
     }
 }
 
@@ -90,12 +90,12 @@ pub fn typecheck_struct_decl(
 
     let mut methods: Vec<MethodDecl> = Vec::new();
     for method in &struct_def.methods {
-        let decl = typecheck_method(&method.decl, ctx)?;
+        let decl = typecheck_method(&method.func_decl, ctx)?;
         
         let existing: Vec<_> = methods
             .iter()
-            .filter(|m| m.decl.ident() == decl.ident())
-            .map(|m| m.decl.clone())
+            .filter(|m| m.func_decl.ident() == decl.ident())
+            .map(|m| m.func_decl.clone())
             .collect();
         
         if !existing.is_empty() {
@@ -114,7 +114,7 @@ pub fn typecheck_struct_decl(
 
         methods.push(MethodDecl {
             access: method.access,
-            decl: Rc::new(decl),
+            func_decl: Rc::new(decl),
         });
     } 
     
@@ -132,7 +132,7 @@ pub fn typecheck_struct_decl(
                 let actual_method = methods
                     .iter()
                     .find(|method| {
-                        method.decl.name.ident() == iface_method.ident()
+                        method.func_decl.name.ident() == iface_method.ident()
                     });
                 
                 match actual_method {
@@ -144,11 +144,11 @@ pub fn typecheck_struct_decl(
                     }
                     
                     Some(impl_method) => {
-                        let actual_sig = impl_method.decl.sig();
+                        let actual_sig = impl_method.func_decl.sig();
 
                         if actual_sig != expect_sig {
                             mismatched_methods.push(MismatchedImplementation {
-                                impl_method_name: impl_method.decl.name.clone(),
+                                impl_method_name: impl_method.func_decl.name.clone(),
                                 iface_method_name: iface_method.decl.name.clone(),
                                 expect_sig,
                                 actual_sig,
@@ -295,9 +295,9 @@ pub fn typecheck_variant(
 
     let mut methods = Vec::new();
     for method in &variant_def.methods {
-        let decl = typecheck_method(&method.decl, ctx)?;
+        let decl = typecheck_method(&method.func_decl, ctx)?;
         methods.push(MethodDecl {
-            decl: Rc::new(decl),
+            func_decl: Rc::new(decl),
             access: method.access,
         });
     }

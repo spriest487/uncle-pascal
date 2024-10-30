@@ -59,7 +59,7 @@ impl<A: Annotation> StructDecl<A> {
 
     pub fn find_methods<'a>(&'a self, by_ident: &'a Ident) -> impl Iterator<Item=&'a MethodDecl<A>>  {
         self.methods()
-            .filter(move |method| method.decl.name.ident() == by_ident)
+            .filter(move |method| method.func_decl.name.ident() == by_ident)
     }
     
     pub fn fields(&self) -> impl Iterator<Item=&FieldDecl<A>> {
@@ -161,7 +161,7 @@ impl<A: Annotation> fmt::Display for StructDecl<A> {
 
         for method in &self.methods {
             write_access_if_changed(f, &mut access, method.access)?;
-            writeln!(f, "  {};", method.decl)?
+            writeln!(f, "  {};", method.func_decl)?
         }
 
         write!(f, "end")

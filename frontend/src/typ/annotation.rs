@@ -57,22 +57,24 @@ pub struct OverloadTyped {
 
 impl OverloadTyped {
     pub fn method(
-        iface_ty: Type,
+        self_ty: Type,
+        index: usize,
         self_arg: Expr,
         method: MethodDecl,
         span: Span
     ) -> Self {
-        let sig = Rc::new(method.decl.sig());
+        let sig = Rc::new(method.func_decl.sig());
 
         Self {
             span,
             self_arg: Some(Box::new(self_arg)),
             sig: Some(sig.clone()),
             candidates: vec![OverloadCandidate::Method {
-                ident: method.decl.name.ident.clone(),
+                self_ty,
+                index,
+                ident: method.func_decl.name.ident.clone(),
                 access: method.access,
                 sig,
-                owning_ty: iface_ty,
             }],
         }
     }
@@ -111,33 +113,50 @@ impl From<OverloadTyped> for Typed {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct MethodTyped {
     /// the type via which this method is being referred to. we don't distinguish here between
     /// an interface method (implemented on a type other than the self type) and a direct method
     /// call (known to be implemented on the self type used here)
     pub self_ty: Type,
+    pub index: usize,
+    
+    // members below this point are just cached for convenience, all of these can be
+    // fetched from the type by the index
 
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub name: Ident,
+
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub access: Access,
 
     /// span of this reference to the method (not the method's own decl)
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
+    #[derivative(Debug = "ignore")]
     pub span: Span,
+    
 
     /// this is used for overload resolution and should match the *declared* sig of the method, 
     /// eg even if this is part of an expression referring to a parameterized self-type or a
     /// method call with type parameters, this sig should not have those type args applied to it
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub decl_sig: Rc<FunctionSig>,
 }
 
 impl MethodTyped {
-    pub fn new(method: &MethodDecl, self_ty: Type, span: Span) -> Self {
-        let sig = method.decl.sig();
+    pub fn new(self_ty: Type, index: usize, decl: &MethodDecl, span: Span) -> Self {
+        let sig = decl.func_decl.sig();
  
         Self {
             self_ty,
-            name: method.decl.name.ident.clone(),
-            access: method.access,
+            index,
+            name: decl.func_decl.name.ident.clone(),
+            access: decl.access,
             span,
             decl_sig: Rc::new(sig),
         }

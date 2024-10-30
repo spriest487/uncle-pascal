@@ -55,7 +55,7 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
 
                     OverloadCandidate::Method {
                         ident,
-                        owning_ty: explicit_impl.clone(),
+                        self_ty: explicit_impl.clone(),
                         sig: Rc::new(sig),
                         access: method.access,
                     }
@@ -394,7 +394,7 @@ fn overload_with_accessible_method_is_ambiguous() {
             candidates
                 .iter()
                 .find(|candidate| match candidate {
-                    OverloadCandidate::Method { owning_ty: iface_ty, ident, .. } => {
+                    OverloadCandidate::Method { self_ty: iface_ty, ident, .. } => {
                         iface_ty.to_string() == "UnitA.MyClass" && ident.name.as_str() == "A"
                     }
                     _ => false,

@@ -100,7 +100,7 @@ impl<A: Annotation> VariantDecl<A> {
     pub fn find_methods<'a>(&'a self, ident: &'a Ident) -> impl Iterator<Item=&'a MethodDecl<A>> {
         self.methods
             .iter()
-            .filter(move |m| m.decl.ident() == ident)
+            .filter(move |m| m.func_decl.ident() == ident)
     }
 }
 
@@ -153,7 +153,7 @@ impl VariantDecl<Span> {
 
                 let method_decl= FunctionDecl::parse(tokens)?;
                 methods.push(MethodDecl { 
-                    decl: Rc::new(method_decl),
+                    func_decl: Rc::new(method_decl),
                     access,
                 });
 

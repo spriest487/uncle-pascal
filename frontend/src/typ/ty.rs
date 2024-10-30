@@ -588,7 +588,7 @@ impl Type {
                     .methods
                     .iter()
                     .map(|m| MethodDecl { 
-                        decl: m.decl.clone(),
+                        func_decl: m.decl.clone(),
                         access: Access::Published,
                     })
                     .collect();
@@ -651,31 +651,79 @@ impl Type {
             })
     }
 
-    pub fn get_method(&self,
-        method: &Ident,
+    pub fn find_method_index(
+        &self,
+        name: &Ident,
         sig: &FunctionSig,
         ctx: &Context
-    ) -> NameResult<Option<MethodDecl>> {
+    ) -> NameResult<Option<usize>> {
+        match self {
+            Type::Interface(iface_name) => {
+                let iface_def = ctx.find_iface_def(iface_name)?;
+
+                let index = iface_def
+                    .methods
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, m)| {
+                        if *m.ident() == *name && m.decl.sig().eq_as_impl(sig) {
+                            Some(index)
+                        } else {
+                            None
+                        }
+                    });
+
+                Ok(index)
+            }
+
+            Type::Record(type_name) | Type::Class(type_name) => {
+                let struct_def = if type_name.is_unspecialized_generic() {
+                    ctx.find_struct_def(&type_name.full_path)?.clone()
+                } else {
+                    ctx.instantiate_struct_def(&type_name)?
+                };
+
+                Ok(find_in_method_decls(name, sig, struct_def.methods.iter()))
+            }
+
+            Type::Variant(type_name) => {
+                let variant_def = if type_name.is_unspecialized_generic() {
+                    ctx.find_variant_def(&type_name.full_path)?.clone()
+                } else {
+                    ctx.instantiate_variant_def(&type_name)?
+                };
+
+                Ok(find_in_method_decls(name, sig, variant_def.methods.iter()))
+            }
+
+            Type::Primitive(primitive) => {
+                let methods = ctx.get_primitive_methods(*primitive);
+                
+                Ok(find_in_method_decls(name, sig, methods.values()))
+            }
+
+            Type::GenericParam(param) => match &param.is_iface {
+                Some(is_iface) => is_iface.find_method_index(name, sig, ctx),
+                None => Ok(None),
+            }
+
+            _ => Ok(None),
+        }
+    }
+
+    pub fn get_method(&self, method_index: usize, ctx: &Context) -> NameResult<MethodDecl> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
-                let method_decl = iface_def
-                    .methods
-                    .iter()
-                    .find(|m| {
-                        *m.ident() == *method
-                            && m.decl.sig().eq_as_impl(sig)
-                    })
-                    .map(|m| m.decl.clone());
 
-                match method_decl {
-                    Some(decl) => Ok(Some(MethodDecl {
-                        decl: decl.clone(),
-                        access: INTERFACE_METHOD_ACCESS,
-                    })),
-                    
-                    None => Ok(None)
-                }
+                let iface_method = iface_def.methods
+                    .get(method_index)
+                    .expect("invalid method index");
+                
+                Ok(MethodDecl {
+                    func_decl: iface_method.decl.clone(),
+                    access: INTERFACE_METHOD_ACCESS,
+                })
             },
 
             Type::Record(name) | Type::Class(name) => {
@@ -685,10 +733,8 @@ impl Type {
                     ctx.instantiate_struct_def(&name)?
                 };
 
-                let method = struct_def
-                    .find_methods(method)
-                    .find(|m| m.decl.sig() == *sig);
-                Ok(method.cloned())
+                let method = struct_def.methods.get(method_index);
+                Ok(method.cloned().expect("invalid method index"))
             }
 
             Type::Variant(name) => {
@@ -698,25 +744,40 @@ impl Type {
                     ctx.instantiate_variant_def(&name)?
                 };
 
-                let method = variant_def
-                    .find_methods(method)
-                    .find(|m| m.decl.sig() == *sig);
-                Ok(method.cloned())
+                let method = variant_def.methods.get(method_index);
+                Ok(method.cloned().expect("invalid method index"))
             }
-            
+
             Type::Primitive(primitive) => {
                 let methods = ctx.get_primitive_methods(*primitive);
-                let method = methods.get(method);
+                let method = methods.values().nth(method_index);
 
-                Ok(method.cloned())
+                Ok(method.cloned().expect("invalid method index"))
             }
-            
+
             Type::GenericParam(param) => match &param.is_iface {
-                Some(is_iface) => is_iface.get_method(method, sig, ctx),
-                None => Ok(None),
+                Some(is_iface) => is_iface.get_method(method_index, ctx),
+                None => panic!("invalid type for method"),
             }
 
-            _ => Ok(None),
+            _ => panic!("invalid type for method"),
+        }
+    }
+    
+    pub fn find_method(&self,
+        method_ident: &Ident,
+        sig: &FunctionSig,
+        ctx: &Context
+    ) -> NameResult<Option<(usize, MethodDecl)>> {
+        match self.find_method_index(method_ident, sig, ctx)? {
+            Some(index) => {
+                let method = self.get_method(index, ctx)?;
+                Ok(Some((index, method)))
+            }
+
+            None => {
+                Ok(None)
+            }
         }
     }
     
@@ -1246,6 +1307,25 @@ impl Specializable for Type {
 
         result
     }
+}
+
+fn find_in_method_decls<'it, MethodsIter>(
+    name: &Ident,
+    sig: &FunctionSig,
+    methods: MethodsIter
+) -> Option<usize>
+where
+    MethodsIter: Iterator<Item=&'it MethodDecl>
+{
+    methods
+        .enumerate()
+        .find_map(|(index, m)| {
+            if *m.func_decl.ident() == *name && m.func_decl.sig().eq_as_impl(sig) {
+                Some(index)
+            } else {
+                None
+            }
+        })
 }
 
 pub fn string_type(ctx: &mut Context) -> TypeResult<Type> {
