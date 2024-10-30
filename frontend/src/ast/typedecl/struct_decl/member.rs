@@ -17,60 +17,60 @@ use std::rc::Rc;
 use common::TracedError;
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum StructMember<A: Annotation = Span> {
-    Field(Field<A>),
-    MethodDecl(Method<A>),
+pub enum StructMemberDecl<A: Annotation = Span> {
+    Field(FieldDecl<A>),
+    MethodDecl(MethodDecl<A>),
 }
 
-impl<A: Annotation> StructMember<A> {
-    pub fn as_field(&self) -> Option<&Field<A>> {
+impl<A: Annotation> StructMemberDecl<A> {
+    pub fn as_field(&self) -> Option<&FieldDecl<A>> {
         match self {
-            StructMember::Field(field) => Some(field),
+            StructMemberDecl::Field(field) => Some(field),
             _ => None,
         }
     }
     
-    pub fn as_method(&self) -> Option<&Method<A>> {
+    pub fn as_method(&self) -> Option<&MethodDecl<A>> {
         match self {
-            StructMember::MethodDecl(method) => Some(method),
+            StructMemberDecl::MethodDecl(method) => Some(method),
             _ => None,
         }
     }
 }
 
-impl<A: Annotation> StructMember<A> {
+impl<A: Annotation> StructMemberDecl<A> {
     pub fn ident(&self) -> &Ident {
         match self {
-            StructMember::Field(field) => &field.ident,
-            StructMember::MethodDecl(method) => method.decl.name.ident(),
+            StructMemberDecl::Field(field) => &field.ident,
+            StructMemberDecl::MethodDecl(method) => method.decl.name.ident(),
         }
     } 
 }
 
-impl<A: Annotation> From<Field<A>> for StructMember<A> {
-    fn from(value: Field<A>) -> Self {
-        StructMember::Field(value)
+impl<A: Annotation> From<FieldDecl<A>> for StructMemberDecl<A> {
+    fn from(value: FieldDecl<A>) -> Self {
+        StructMemberDecl::Field(value)
     }
 }
 
-impl<A: Annotation> From<Method<A>> for StructMember<A> {
-    fn from(value: Method<A>) -> Self {
-        StructMember::MethodDecl(value)
+impl<A: Annotation> From<MethodDecl<A>> for StructMemberDecl<A> {
+    fn from(value: MethodDecl<A>) -> Self {
+        StructMemberDecl::MethodDecl(value)
     }
 }
 
-impl<A: Annotation> Spanned for StructMember<A> {
+impl<A: Annotation> Spanned for StructMemberDecl<A> {
     fn span(&self) -> &Span {
         match self {
-            StructMember::Field(field) => field.span(),
-            StructMember::MethodDecl(method) => method.decl.span(),
+            StructMemberDecl::Field(field) => field.span(),
+            StructMemberDecl::MethodDecl(method) => method.decl.span(),
         }
     }
 }
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
-pub struct Field<A: Annotation = Span> {
+pub struct FieldDecl<A: Annotation = Span> {
     pub ident: Ident,
     pub ty: A::Type,
     
@@ -82,13 +82,13 @@ pub struct Field<A: Annotation = Span> {
     pub span: Span,
 }
 
-impl<A:Annotation> Spanned for Field<A> {
+impl<A:Annotation> Spanned for FieldDecl<A> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl<A: Annotation> fmt::Display for Field<A> {
+impl<A: Annotation> fmt::Display for FieldDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", self.ident, self.ty)
     }
@@ -101,7 +101,7 @@ pub fn struct_member_start() -> Matcher {
 pub fn parse_struct_members(
     tokens: &mut TokenStream,
     default_access: Access
-) -> ParseResult<Vec<StructMember>> {
+) -> ParseResult<Vec<StructMemberDecl>> {
     let mut access = default_access;
 
     let mut members = Vec::new();
@@ -147,7 +147,7 @@ pub fn parse_struct_members(
 fn parse_field(
     tokens: &mut TokenStream,
     access: Access,
-    members: &mut Vec<StructMember>
+    members: &mut Vec<StructMemberDecl>
 ) -> ParseResult<()> {
     let ident = Ident::parse(tokens)?;
     let mut idents = vec![ident];
@@ -161,14 +161,14 @@ fn parse_field(
     let ty = TypeName::parse(tokens)?;
 
     for ident in idents {
-        let field = Field {
+        let field = FieldDecl {
             access: access,
             span: ident.span().to(&ty),
             ty: ty.clone(),
             ident,
         };
 
-        members.push(StructMember::Field(field));
+        members.push(StructMemberDecl::Field(field));
     }
     
     Ok(())
@@ -177,12 +177,12 @@ fn parse_field(
 fn parse_method_decl(
     tokens: &mut TokenStream,
     access: Access,
-    members: &mut Vec<StructMember>
+    members: &mut Vec<StructMemberDecl>
 ) -> ParseResult<()> {
     // these get parsed one at a time
     let decl = FunctionDecl::parse(tokens)?;
     
-    members.push(StructMember::MethodDecl(Method {
+    members.push(StructMemberDecl::MethodDecl(MethodDecl {
         decl: Rc::new(decl),
         access,
     }));
@@ -191,7 +191,7 @@ fn parse_method_decl(
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Method<A: Annotation = Span> {
+pub struct MethodDecl<A: Annotation = Span> {
     pub access: Access,
     pub decl: Rc<FunctionDecl<A>>,
 }

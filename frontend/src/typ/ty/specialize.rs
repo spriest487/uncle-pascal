@@ -3,7 +3,7 @@ use crate::ast::IdentPath;
 use crate::typ::ast::apply_func_decl_named_ty_args;
 use crate::typ::ast::infer_from_structural_ty_args;
 use crate::typ::ast::FunctionDecl;
-use crate::typ::ast::Method;
+use crate::typ::ast::MethodDecl;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::ast::VariantDef;
@@ -131,7 +131,7 @@ pub fn specialize_struct_def<'a>(
                 .clone()
                 .apply_type_args_by_name(struct_ty_params, ty_args);
 
-            Ok(ast::Field {
+            Ok(ast::FieldDecl {
                 ty,
                 ..generic_field.clone()
             })
@@ -154,7 +154,7 @@ pub fn specialize_struct_def<'a>(
                 ty_args,
             )?;
             
-            Ok(Method {
+            Ok(MethodDecl {
                 access: generic_method.access,
                 decl: Rc::new(specialized_decl),
             })
@@ -222,7 +222,7 @@ pub fn specialize_variant_def(
             args
         )?;
         
-        methods.push(Method {
+        methods.push(MethodDecl {
             decl: Rc::new(specialized_decl),
             access: method.access,
         });

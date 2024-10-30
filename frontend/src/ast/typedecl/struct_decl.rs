@@ -35,14 +35,14 @@ pub enum StructKind {
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
-pub struct StructDef<A: Annotation = Span> {
+pub struct StructDecl<A: Annotation = Span> {
     pub kind: StructKind,
     pub name: A::Name,
     
     pub forward: bool,
 
-    pub fields: Vec<Field<A>>,
-    pub methods: Vec<Method<A>>,
+    pub fields: Vec<FieldDecl<A>>,
+    pub methods: Vec<MethodDecl<A>>,
     
     pub implements: Vec<A::Type>,
 
@@ -52,26 +52,26 @@ pub struct StructDef<A: Annotation = Span> {
     pub span: Span,
 }
 
-impl<A: Annotation> StructDef<A> {    
-    pub fn find_field(&self, by_ident: &Ident) -> Option<&Field<A>> {
+impl<A: Annotation> StructDecl<A> {    
+    pub fn find_field(&self, by_ident: &Ident) -> Option<&FieldDecl<A>> {
         self.fields.iter().find(|field| field.ident == *by_ident)
     }
 
-    pub fn find_methods<'a>(&'a self, by_ident: &'a Ident) -> impl Iterator<Item=&'a Method<A>>  {
+    pub fn find_methods<'a>(&'a self, by_ident: &'a Ident) -> impl Iterator<Item=&'a MethodDecl<A>>  {
         self.methods()
             .filter(move |method| method.decl.name.ident() == by_ident)
     }
     
-    pub fn fields(&self) -> impl Iterator<Item=&Field<A>> {
+    pub fn fields(&self) -> impl Iterator<Item=&FieldDecl<A>> {
         self.fields.iter()
     }
 
-    pub fn methods(&self) -> impl Iterator<Item=&Method<A>> {
+    pub fn methods(&self) -> impl Iterator<Item=&MethodDecl<A>> {
         self.methods.iter()
     }
 }
 
-impl StructDef<Span> {
+impl StructDecl<Span> {
     pub fn match_kw() -> Matcher {
         Keyword::Class | Keyword::Record | Keyword::Packed
     }
@@ -93,7 +93,7 @@ impl StructDef<Span> {
         // the last type in a section can never be forward, so every legal forward declaration
         // will end with a semicolon
         if tokens.look_ahead().match_one(Separator::Semicolon).is_some() {
-            Ok(StructDef {
+            Ok(StructDecl {
                 kind,
                 name,
                 forward: true,
@@ -117,14 +117,14 @@ impl StructDef<Span> {
             let mut fields = Vec::new();
             for member in members {
                 match member {
-                    StructMember::Field(field) => fields.push(field),
-                    StructMember::MethodDecl(method) => methods.push(method),
+                    StructMemberDecl::Field(field) => fields.push(field),
+                    StructMemberDecl::MethodDecl(method) => methods.push(method),
                 }
             }
 
             let end_token = tokens.match_one(Keyword::End)?;
 
-            Ok(StructDef {
+            Ok(StructDecl {
                 kind,
                 name,
                 forward: false,
@@ -137,13 +137,13 @@ impl StructDef<Span> {
     }
 }
 
-impl<A: Annotation> Spanned for StructDef<A> {
+impl<A: Annotation> Spanned for StructDecl<A> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl<A: Annotation> fmt::Display for StructDef<A> {
+impl<A: Annotation> fmt::Display for StructDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let kind = match self.kind {
             StructKind::Record => "record",

@@ -26,12 +26,12 @@ use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
 
-pub type StructDef = ast::StructDef<Typed>;
-pub type StructMember = ast::StructMember<Typed>;
-pub type Field = ast::Field<Typed>;
-pub type Method = ast::Method<Typed>;
+pub type StructDef = ast::StructDecl<Typed>;
+pub type StructMemberDecl = ast::StructMemberDecl<Typed>;
+pub type FieldDecl = ast::FieldDecl<Typed>;
+pub type MethodDecl = ast::MethodDecl<Typed>;
 pub type InterfaceDecl = ast::InterfaceDecl<Typed>;
-pub type VariantDef = ast::VariantDef<Typed>;
+pub type VariantDef = ast::VariantDecl<Typed>;
 pub type AliasDecl = ast::AliasDecl<Typed>;
 pub type EnumDecl = ast::EnumDecl<Typed>;
 pub type EnumDeclItem = ast::EnumDeclItem<Typed>;
@@ -43,7 +43,7 @@ impl StructDef {
 }
 
 impl VariantDef {
-    pub fn find_method<'a>(&'a self, name: &'a Ident, sig: &FunctionSig) -> Option<&'a Method> {
+    pub fn find_method<'a>(&'a self, name: &'a Ident, sig: &FunctionSig) -> Option<&'a MethodDecl> {
         self.find_methods(name)
             .find(move |m| m.decl.sig() == *sig)
     }
@@ -51,7 +51,7 @@ impl VariantDef {
 
 pub fn typecheck_struct_decl(
     name: Symbol,
-    struct_def: &ast::StructDef<Span>,
+    struct_def: &ast::StructDecl<Span>,
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<StructDef> {
@@ -88,7 +88,7 @@ pub fn typecheck_struct_decl(
         fields.push(field);
     }
 
-    let mut methods: Vec<Method> = Vec::new();
+    let mut methods: Vec<MethodDecl> = Vec::new();
     for method in &struct_def.methods {
         let decl = typecheck_method(&method.decl, ctx)?;
         
@@ -112,7 +112,7 @@ pub fn typecheck_struct_decl(
             }
         }
 
-        methods.push(Method {
+        methods.push(MethodDecl {
             access: method.access,
             decl: Rc::new(decl),
         });
@@ -188,14 +188,14 @@ fn typecheck_method(decl: &ast::FunctionDecl, ctx: &mut Context) -> TypeResult<F
 }
 
 fn typecheck_field(
-    field: &ast::Field,
+    field: &ast::FieldDecl,
     ctx: &mut Context
-) -> TypeResult<Field> {
+) -> TypeResult<FieldDecl> {
     let ty = typecheck_type(&field.ty, ctx)?.clone();
 
     ty.expect_sized(ctx, &field.span)?;
 
-    let field = Field {
+    let field = FieldDecl {
         ty,
         span: field.span.clone(),
         ident: field.ident.clone(),
@@ -256,7 +256,7 @@ pub fn typecheck_iface(
 
 pub fn typecheck_variant(
     name: Symbol,
-    variant_def: &ast::VariantDef<Span>,
+    variant_def: &ast::VariantDecl<Span>,
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<VariantDef> {
@@ -296,7 +296,7 @@ pub fn typecheck_variant(
     let mut methods = Vec::new();
     for method in &variant_def.methods {
         let decl = typecheck_method(&method.decl, ctx)?;
-        methods.push(Method {
+        methods.push(MethodDecl {
             decl: Rc::new(decl),
             access: method.access,
         });

@@ -2,7 +2,7 @@
 mod test;
 
 use crate::ast::{Ident, Visibility};
-use crate::typ::ast::Method;
+use crate::typ::ast::MethodDecl;
 use crate::typ::Context;
 use crate::typ::Decl;
 use crate::typ::FunctionSig;
@@ -23,7 +23,7 @@ pub enum InstanceMethod {
     },
     Method {
         owning_ty: Type,
-        method: Method,
+        method: MethodDecl,
     },
 }
 

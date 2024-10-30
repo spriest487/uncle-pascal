@@ -1,5 +1,5 @@
 use crate::ast::util::*;
-use crate::ast::StructDef;
+use crate::ast::StructDecl;
 use crate::ast::Unit;
 use crate::ast::Visibility;
 use crate::ast::TypeAnnotation;
@@ -45,7 +45,7 @@ pub fn empty_struct_is_valid() {
     }
 }
 
-fn get_single_struct_def(unit: &Unit<Span>) -> &StructDef<Span> {
+fn get_single_struct_def(unit: &Unit<Span>) -> &StructDecl<Span> {
     match unit.type_decl_items().nth(0).unwrap().1 {
         TypeDeclItem::Struct(struct_def) => struct_def.as_ref(),
         other => panic!("expected a struct def, got {}", other),

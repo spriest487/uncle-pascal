@@ -1,15 +1,15 @@
 mod enum_decl;
 mod iface_decl;
-mod struct_def;
-mod variant_def;
+mod struct_decl;
+mod variant_decl;
 mod access;
 
 pub use self::access::Access;
 pub use self::access::INTERFACE_METHOD_ACCESS;
 pub use self::enum_decl::*;
 pub use self::iface_decl::*;
-pub use self::struct_def::*;
-pub use self::variant_def::*;
+pub use self::struct_decl::*;
+pub use self::variant_decl::*;
 use crate::ast::unit::AliasDecl;
 use crate::ast::Annotation;
 use crate::ast::Ident;
@@ -87,9 +87,9 @@ impl<A: Annotation> fmt::Display for TypeDecl<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeDeclItem<A: Annotation = Span> {
-    Struct(Rc<StructDef<A>>),
+    Struct(Rc<StructDecl<A>>),
     Interface(Rc<InterfaceDecl<A>>),
-    Variant(Rc<VariantDef<A>>),
+    Variant(Rc<VariantDecl<A>>),
     Alias(Rc<AliasDecl<A>>),
     Enum(Rc<EnumDecl<A>>),
 }
@@ -206,12 +206,12 @@ impl Parse for TypeDeclItem<Span> {
         let name = TypeDeclName::parse(tokens)?;
         tokens.match_one(Operator::Equals)?;
 
-        let composite_kw_matcher = StructDef::match_kw();
+        let composite_kw_matcher = StructDecl::match_kw();
         let decl_start_matcher = composite_kw_matcher.clone().or(Keyword::Variant);
 
         match tokens.look_ahead().next() {
             Some(ref tt) if composite_kw_matcher.is_match(tt) => {
-                let composite_decl = StructDef::parse(tokens, name)?;
+                let composite_decl = StructDecl::parse(tokens, name)?;
                 Ok(TypeDeclItem::Struct(Rc::new(composite_decl)))
             },
 
@@ -221,7 +221,7 @@ impl Parse for TypeDeclItem<Span> {
             },
 
             Some(tt) if tt.is_keyword(Keyword::Variant) => {
-                let variant_decl = VariantDef::parse(tokens, name)?;
+                let variant_decl = VariantDecl::parse(tokens, name)?;
                 Ok(TypeDeclItem::Variant(Rc::new(variant_decl)))
             },
 

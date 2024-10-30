@@ -25,7 +25,7 @@ use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::{Field, Method};
+use crate::typ::ast::{FieldDecl, MethodDecl};
 use crate::typ::builtin_span;
 use crate::typ::builtin_unit_path;
 use crate::typ::context;
@@ -259,7 +259,7 @@ impl Type {
         }
     }
 
-    pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NameResult<Option<Field>> {
+    pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NameResult<Option<FieldDecl>> {
         match self {
             Type::Class(class_name) | Type::Record(class_name) => {
                 let def = ctx.instantiate_struct_def(class_name)?;
@@ -271,7 +271,7 @@ impl Type {
         }
     }
 
-    pub fn get_field(&self, index: usize, ctx: &Context) -> NameResult<Option<Field>> {
+    pub fn get_field(&self, index: usize, ctx: &Context) -> NameResult<Option<FieldDecl>> {
         match self {
             Type::Record(class) | Type::Class(class) => {
                 let class = ctx.instantiate_struct_def(class)?;
@@ -295,7 +295,7 @@ impl Type {
         }
     }
 
-    pub fn fields(&self, ctx: &Context) -> NameResult<Vec<Field>> {
+    pub fn fields(&self, ctx: &Context) -> NameResult<Vec<FieldDecl>> {
         let mut members = Vec::new();
         for i in 0..self.field_count(ctx)? {
             let member = self.get_field(i, ctx)?.unwrap();
@@ -580,14 +580,14 @@ impl Type {
         }
     }
     
-    pub fn methods(&self, ctx: &Context) -> NameResult<Vec<Method>> {
+    pub fn methods(&self, ctx: &Context) -> NameResult<Vec<MethodDecl>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
                 let methods = iface_def
                     .methods
                     .iter()
-                    .map(|m| Method { 
+                    .map(|m| MethodDecl { 
                         decl: m.decl.clone(),
                         access: Access::Published,
                     })
@@ -643,7 +643,7 @@ impl Type {
     pub fn methods_at(&self,
         ctx: &Context,
         at: &Span
-    ) -> TypeResult<Vec<Method>> {
+    ) -> TypeResult<Vec<MethodDecl>> {
         self
             .methods(ctx)
             .map_err(|err| {
@@ -655,7 +655,7 @@ impl Type {
         method: &Ident,
         sig: &FunctionSig,
         ctx: &Context
-    ) -> NameResult<Option<Method>> {
+    ) -> NameResult<Option<MethodDecl>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
@@ -669,7 +669,7 @@ impl Type {
                     .map(|m| m.decl.clone());
 
                 match method_decl {
-                    Some(decl) => Ok(Some(Method {
+                    Some(decl) => Ok(Some(MethodDecl {
                         decl: decl.clone(),
                         access: INTERFACE_METHOD_ACCESS,
                     })),

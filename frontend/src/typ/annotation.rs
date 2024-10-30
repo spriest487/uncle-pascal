@@ -8,7 +8,7 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::typ::ast::Expr;
 use crate::typ::ast::Literal;
-use crate::typ::ast::Method;
+use crate::typ::ast::MethodDecl;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::result::*;
@@ -59,7 +59,7 @@ impl OverloadTyped {
     pub fn method(
         iface_ty: Type,
         self_arg: Expr,
-        method: Method,
+        method: MethodDecl,
         span: Span
     ) -> Self {
         let sig = Rc::new(method.decl.sig());
@@ -131,7 +131,7 @@ pub struct MethodTyped {
 }
 
 impl MethodTyped {
-    pub fn new(method: &Method, self_ty: Type, span: Span) -> Self {
+    pub fn new(method: &MethodDecl, self_ty: Type, span: Span) -> Self {
         let sig = method.decl.sig();
  
         Self {

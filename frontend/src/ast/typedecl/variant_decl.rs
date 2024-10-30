@@ -5,7 +5,7 @@ use crate::ast::Annotation;
 use crate::ast::FunctionDecl;
 use crate::ast::Ident;
 use crate::ast::Keyword;
-use crate::ast::Method;
+use crate::ast::MethodDecl;
 use crate::ast::TypeDeclName;
 use crate::parse::LookAheadTokenStream;
 use crate::parse::Matcher;
@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
-pub struct VariantDef<A: Annotation> {
+pub struct VariantDecl<A: Annotation> {
     pub name: Rc<A::Name>,
     pub forward: bool,
     
@@ -31,7 +31,7 @@ pub struct VariantDef<A: Annotation> {
 
     pub implements: Vec<A::Type>,
     
-    pub methods: Vec<Method<A>>,
+    pub methods: Vec<MethodDecl<A>>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -90,34 +90,34 @@ impl ParseSeq for VariantCase<Span> {
     }
 }
 
-impl<A: Annotation> VariantDef<A> {
+impl<A: Annotation> VariantDecl<A> {
     pub fn case_position(&self, case_ident: &Ident) -> Option<usize> {
         self.cases.iter().position(|c| c.ident == *case_ident)
     }
 }
 
-impl<A: Annotation> VariantDef<A> {
-    pub fn find_methods<'a>(&'a self, ident: &'a Ident) -> impl Iterator<Item=&'a Method<A>> {
+impl<A: Annotation> VariantDecl<A> {
+    pub fn find_methods<'a>(&'a self, ident: &'a Ident) -> impl Iterator<Item=&'a MethodDecl<A>> {
         self.methods
             .iter()
             .filter(move |m| m.decl.ident() == ident)
     }
 }
 
-impl<A: Annotation> VariantDef<A> {
+impl<A: Annotation> VariantDecl<A> {
     pub fn find_case(&self, case: &Ident) -> Option<&VariantCase<A>> {
         self.cases.iter().find(|c| c.ident == *case)
     }
 }
 
-impl VariantDef<Span> {
+impl VariantDecl<Span> {
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Variant)?;
 
         // the last type in a section can never be forward, so every legal forward declaration
         // will end with a semicolon
         if tokens.look_ahead().match_one(Separator::Semicolon).is_some() {
-            Ok(VariantDef {
+            Ok(VariantDecl {
                 name: Rc::new(name),
                 forward: true,
                 
@@ -152,7 +152,7 @@ impl VariantDef<Span> {
                 }
 
                 let method_decl= FunctionDecl::parse(tokens)?;
-                methods.push(Method { 
+                methods.push(MethodDecl { 
                     decl: Rc::new(method_decl),
                     access,
                 });
@@ -164,7 +164,7 @@ impl VariantDef<Span> {
 
             let end_kw = tokens.match_one(Keyword::End)?;
 
-            Ok(VariantDef {
+            Ok(VariantDecl {
                 name: Rc::new(name),
                 forward: false,
                 cases,
@@ -177,7 +177,7 @@ impl VariantDef<Span> {
     }
 }
 
-impl<A: Annotation> fmt::Display for VariantDef<A> {
+impl<A: Annotation> fmt::Display for VariantDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "variant {}", self.name)?;
         for case in &self.cases {
@@ -191,7 +191,7 @@ impl<A: Annotation> fmt::Display for VariantDef<A> {
     }
 }
 
-impl<A: Annotation> Spanned for VariantDef<A> {
+impl<A: Annotation> Spanned for VariantDecl<A> {
     fn span(&self) -> &Span {
         &self.span
     }

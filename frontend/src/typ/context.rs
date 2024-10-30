@@ -30,7 +30,7 @@ use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
 use crate::typ::ast::Literal;
-use crate::typ::ast::Method;
+use crate::typ::ast::MethodDecl;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
@@ -89,7 +89,7 @@ pub enum TypeMember {
 #[derive(Clone, Debug)]
 pub struct MethodGroupMember {
     pub owning_ty: Type,
-    pub method: Method,
+    pub method: MethodDecl,
 }
 
 impl TypeMember {
@@ -136,7 +136,7 @@ pub struct Context {
     scopes: ScopeStack,
 
     // builtin methods declarations for primitive types that can't be declared normally in code
-    primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, Method>>,
+    primitive_methods: HashMap<Primitive, LinkedHashMap<Ident, MethodDecl>>,
 
     // all primitives currently implement the same set of non-generic interfaces, so we can
     // just use this same list for all of them
@@ -1404,7 +1404,7 @@ impl Context {
     }
 
     /// Get the methods implemented by this primitive type
-    pub fn get_primitive_methods(&self, primitive: Primitive) -> &LinkedHashMap<Ident, Method> {
+    pub fn get_primitive_methods(&self, primitive: Primitive) -> &LinkedHashMap<Ident, MethodDecl> {
         &self.primitive_methods[&primitive]
     }
 
@@ -1533,7 +1533,7 @@ impl Context {
                     .get_method(member_ident)
                     .map(|method_decl| {
                         TypeMember::Method(MethodGroupMember {
-                            method: Method {
+                            method: MethodDecl {
                                 decl: method_decl.decl.clone(),
                                 access: INTERFACE_METHOD_ACCESS,
                             },

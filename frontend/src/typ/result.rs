@@ -195,7 +195,7 @@ pub enum TypeError {
     },
     InvalidStatement(InvalidStatement<Typed>),
 
-    EmptyVariant(Box<ast::VariantDef<Span>>),
+    EmptyVariant(Box<ast::VariantDecl<Span>>),
     EmptyVariantCaseBinding {
         variant: Box<VariantDef>,
         case_index: usize,

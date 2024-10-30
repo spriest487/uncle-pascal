@@ -3,7 +3,7 @@ use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::ast::{Access, IdentPath};
 use crate::typ::{ast, FunctionSigParam, FunctionSig};
-use crate::typ::ast::Method;
+use crate::typ::ast::MethodDecl;
 use crate::typ::ast::SELF_PARAM_NAME;
 use crate::typ::Context;
 use crate::typ::Environment;
@@ -101,13 +101,13 @@ pub fn builtin_string_class() -> ast::StructDef {
     ast::StructDef {
         name: builtin_string_name(),
         fields: vec![
-            ast::Field {
+            ast::FieldDecl {
                 ident: Ident::new(STRING_CHARS_FIELD, builtin_span.clone()),
                 ty: Type::from(Primitive::UInt8).ptr(),
                 span: builtin_span.clone(),
                 access: Access::Private,
             },
-            ast::Field {
+            ast::FieldDecl {
                 ident: Ident::new(STRING_LEN_FIELD, builtin_span.clone()),
                 ty: Type::from(Primitive::Int32),
                 span: builtin_span.clone(),
@@ -283,7 +283,7 @@ pub fn declare_builtin_ty(
     ty: Type,
     comparable: bool,
     displayable: bool
-) -> TypeResult<LinkedHashMap<Ident, Method>> {
+) -> TypeResult<LinkedHashMap<Ident, MethodDecl>> {
     let builtin_span = builtin_span();
     
     let ident = Ident::new(name, builtin_span.clone());
@@ -297,7 +297,7 @@ pub fn declare_builtin_ty(
             let display_method = Rc::new(builtin_displayable_display_method(ty.clone(), ty.clone()));
             ctx.declare_function(display_method.name.ident.clone(), display_method.clone(), Visibility::Interface)?;
 
-            methods.insert(display_method.name.ident.clone(), Method {
+            methods.insert(display_method.name.ident.clone(), MethodDecl {
                 decl: display_method,
                 access: Access::Published,
             });
@@ -307,7 +307,7 @@ pub fn declare_builtin_ty(
             let compare_method = Rc::new(builtin_comparable_compare_method(ty.clone(), ty.clone()));
             ctx.declare_function(compare_method.name.ident.clone(), compare_method.clone(), Visibility::Interface)?;
             
-            methods.insert(compare_method.name.ident.clone(), Method {
+            methods.insert(compare_method.name.ident.clone(), MethodDecl {
                 decl: compare_method,
                 access: Access::Published,
             });

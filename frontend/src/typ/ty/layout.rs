@@ -1,5 +1,5 @@
 use crate::ast::StructKind;
-use crate::ast::Field;
+use crate::ast::FieldDecl;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VARIANT_TAG_TYPE;
 use crate::typ::Context;
@@ -203,7 +203,7 @@ impl StructLayout {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StructLayoutMember<'a> {
     Data {
-        member: &'a Field<Typed>,
+        member: &'a FieldDecl<Typed>,
         size: usize,
     },
     PaddingByte,
