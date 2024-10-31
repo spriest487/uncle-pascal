@@ -26,6 +26,9 @@ pub struct MethodCall<A: Annotation> {
     // for virtual calls, the owning type is the interface and the self type is the implementor
     pub owning_type: A::Type,
     pub self_type: A::Type,
+    
+    // index of the method in the self-type's method list
+    pub method_index: usize,
 
     pub func_type: A::Type,
 

@@ -48,13 +48,14 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
             match &func.decl.name.owning_ty {
                 Some(explicit_impl) => {
                     let ident = func.decl.name.ident.clone();
-                    let method = explicit_impl
-                        .get_method(&ident, &sig, &unit.context)
+                    let (method_index, method) = explicit_impl
+                        .find_method(&ident, &sig, &unit.context)
                         .unwrap()
                         .expect("method defs in unit must have a corresponding decl in the type");
 
                     OverloadCandidate::Method {
                         ident,
+                        index: method_index,
                         self_ty: explicit_impl.clone(),
                         sig: Rc::new(sig),
                         access: method.access,

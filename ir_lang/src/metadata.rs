@@ -551,7 +551,10 @@ impl Metadata {
 
         match self.ifaces.get_mut(&iface_id) {
             Some(InterfaceDecl::Def(iface_def)) => {
-                let index = iface_def.method_index(&method_name).unwrap();
+                let index = iface_def
+                    .method_index(&method_name)
+                    .unwrap_or_else(|| panic!("expected {} to contain method {}", iface_def.name, method_name));
+
                 iface_def.add_impl(for_ty, index, func_id);
             },
 

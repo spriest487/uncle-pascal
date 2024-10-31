@@ -128,10 +128,9 @@ impl<'m> Builder<'m> {
 
     pub fn translate_method(
         &mut self,
-        owning_ty: typ::Type,
+        iface_ty: typ::Type,
         self_ty: typ::Type,
-        method: Ident,
-        method_sig: Rc<typ::FunctionSig>,
+        self_ty_method_index: usize,
         mut call_ty_args: Option<typ::TypeArgList>
     ) -> FunctionInstance {
         if let Some(args_list) = &mut call_ty_args {
@@ -140,7 +139,7 @@ impl<'m> Builder<'m> {
                 .apply_type_args_by_name(&self.generic_context, &self.generic_context);
         }
         
-        self.module.translate_method_impl(owning_ty, self_ty, method, method_sig, call_ty_args)
+        self.module.translate_method_impl(iface_ty, self_ty, self_ty_method_index, call_ty_args)
     }
 
     pub fn translate_func(
@@ -269,6 +268,32 @@ impl<'m> Builder<'m> {
 
         closure_ref
     }
+    
+    pub fn get_method(&self, self_ty: &typ::Type, index: usize) -> typ::ast::MethodDecl {
+        self.module.get_method(self_ty, index)
+    }
+
+    // for a given interface type and method index, get the method index from the self-type that
+    // implements that method. panics on any error retrieving the methods, if the method index is
+    // not valid for the interface type, or if the self-type is not an implementor of the interface
+    pub fn get_impl_method_index(
+        &self,
+        self_ty: &typ::Type,
+        iface_ty: &typ::Type,
+        iface_method_index: usize,
+    ) -> usize {
+        if self_ty == iface_ty {
+            return iface_method_index;
+        }
+        
+        let iface_method = self.get_method(&iface_ty, iface_method_index);
+
+        let method_name = iface_method.func_decl.ident();
+
+        let impl_sig = iface_method.func_decl.sig().with_self(&self_ty);
+        
+        self.module.find_method_index(self_ty, method_name, &impl_sig)
+    }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
         self.module.metadata().pretty_ty_name(ty)
@@ -282,6 +307,7 @@ impl<'m> Builder<'m> {
         self.module.metadata().get_struct_def(id)
     }
 
+    #[allow(unused)]
     pub fn get_iface(&self, id: InterfaceID) -> Option<&Interface> {
         self.module.metadata().get_iface_def(id)
     }

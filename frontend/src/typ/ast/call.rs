@@ -47,6 +47,15 @@ pub type MethodCallNoArgs = ast::MethodCallNoArgs<Typed>;
 pub type VariantCtorCall = ast::VariantCtorCall<Typed>;
 pub type Call = ast::Call<Typed>;
 
+impl MethodCallNoArgs {
+    pub fn method(&self) -> &MethodTyped {
+        match self.target.annotation() {
+            Typed::Method(method) => method.as_ref(),
+            other => panic!("method call target can only be a method, got: {other}"),
+        }
+    }
+}
+
 // it's possible that during typechecking we discover what was parsed as a call with zero args
 // is actually the ctor for a class with no fields
 pub enum Invocation {
@@ -354,6 +363,7 @@ fn typecheck_func_overload(
             ident,
             access,
             sig,
+            index,
             ..
         } => {
             // we resolved the overload using the local type args earlier, but we only get an
@@ -411,13 +421,14 @@ fn typecheck_func_overload(
             .into();
 
             let method_call = MethodCall {
+                owning_type: iface_ty.clone(),
+                self_type,
+                method_index: *index,
                 annotation: return_annotation,
                 ident: ident.clone(),
                 args: overload.args,
                 type_args: overload.type_args,
-                self_type,
                 func_type: Type::Function(sig.clone()),
-                owning_type: iface_ty.clone(),
                 args_span,
             };
 
@@ -665,6 +676,7 @@ fn typecheck_method_call(
             decl: None,
         }
         .into(),
+        method_index: method.index,
         args_span: func_call.args_span.clone(),
         func_type: Type::Function(Rc::new(sig)),
         self_type: self_type.into_owned(),

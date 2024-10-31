@@ -718,7 +718,7 @@ impl Type {
 
                 let iface_method = iface_def.methods
                     .get(method_index)
-                    .expect("invalid method index");
+                    .unwrap_or_else(|| panic!("invalid method index: {} in {}", method_index, iface));
                 
                 Ok(MethodDecl {
                     func_decl: iface_method.decl.clone(),
@@ -757,10 +757,10 @@ impl Type {
 
             Type::GenericParam(param) => match &param.is_iface {
                 Some(is_iface) => is_iface.get_method(method_index, ctx),
-                None => panic!("invalid type for method"),
+                None => panic!("invalid type for method: {self}"),
             }
 
-            _ => panic!("invalid type for method"),
+            _ => panic!("invalid type for method: {self}"),
         }
     }
     

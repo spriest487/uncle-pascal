@@ -331,11 +331,12 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
     // make a call
     let displayable_call = Call::Method(MethodCall {
         owning_type: displayable_ty.clone(),
+        self_type: src_ty.into_owned(),
+        method_index: to_string_index,
         ident: to_string_ident.clone(),
         args: vec![expr.clone()],
         type_args: None,
         args_span: span.clone(),
-        self_type: src_ty.into_owned(),
         func_type: Type::Function(to_string_sig.clone()),
         annotation: MethodTyped {
             self_ty: displayable_ty,
