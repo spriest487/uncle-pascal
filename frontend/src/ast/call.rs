@@ -23,12 +23,14 @@ use std::rc::Rc;
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
 pub struct MethodCall<A: Annotation> {
-    // for virtual calls, the owning type is the interface and the self type is the implementor
-    pub owning_type: A::Type,
+    // for non-virtual calls, the interface type is the same as the self type
+    pub iface_type: A::Type,
+    
+    // for static calls, the self type should be Nothing
     pub self_type: A::Type,
     
-    // index of the method in the self-type's method list
-    pub method_index: usize,
+    // index of the method in the interface type's method list
+    pub iface_method_index: usize,
 
     pub func_type: A::Type,
 
@@ -53,7 +55,7 @@ impl<A: Annotation> Spanned for MethodCall<A> {
 
 impl<A: Annotation> fmt::Display for MethodCall<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}.{}(", self.owning_type, self.ident)?;
+        write!(f, "{}.{}(", self.iface_type, self.ident)?;
         for (i, arg) in self.args.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;

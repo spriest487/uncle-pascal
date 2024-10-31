@@ -128,7 +128,6 @@ impl<'m> Builder<'m> {
 
     pub fn translate_method(
         &mut self,
-        iface_ty: typ::Type,
         self_ty: typ::Type,
         self_ty_method_index: usize,
         mut call_ty_args: Option<typ::TypeArgList>
@@ -139,7 +138,7 @@ impl<'m> Builder<'m> {
                 .apply_type_args_by_name(&self.generic_context, &self.generic_context);
         }
         
-        self.module.translate_method_impl(iface_ty, self_ty, self_ty_method_index, call_ty_args)
+        self.module.translate_method_impl(self_ty, self_ty_method_index, call_ty_args)
     }
 
     pub fn translate_func(

@@ -133,11 +133,11 @@ pub fn build_call(call: &typ::ast::Call, builder: &mut Builder) -> Option<Ref> {
         ),
 
         syn::Call::Method(method_call) => {
-            eprintln!("build_method_call: {}", method_call);
+            // eprintln!("build_method_call: {} ({}){} = {}", method_call, method_call.iface_type, method_call.self_type, method_call.iface_method_index);
             build_method_call(
-                method_call.owning_type.clone(),
+                method_call.iface_type.clone(),
                 method_call.self_type.clone(),
-                method_call.method_index,
+                method_call.iface_method_index,
                 &method_call.args,
                 method_call.type_args.clone(),
                 builder,
@@ -266,17 +266,14 @@ fn build_method_call(
         },
 
         _ => {
-            eprintln!("method call ({}){}.{}: invoking method {}", iface_ty, self_ty, method_decl.func_decl.ident(), method_decl_index);
+            // eprintln!("method call ({}){}.{}: invoking method {}", iface_ty, self_ty, method_decl.func_decl.ident(), method_decl_index);
             
             let func_instance = builder.translate_method(
-                iface_ty,
-                self_ty,
+                method_decl_ty.clone(),
                 method_decl_index,
                 ty_args,
             );
             
-            eprintln!("-> {}", func_instance.id);
-
             let func_val = Ref::Global(GlobalRef::Function(func_instance.id));
 
             CallTarget::Function(func_val.into())

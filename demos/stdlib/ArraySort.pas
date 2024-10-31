@@ -1,5 +1,7 @@
 implementation
-    uses System, Arrays;
+uses 
+    System,
+    Arrays;
 
 initialization
     var foods: array of String := [

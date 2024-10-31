@@ -39,7 +39,9 @@ pub enum OverloadCandidate {
         visibility: Visibility,
     },
     Method {
+        iface_ty: Type,
         self_ty: Type,
+
         index: usize,
 
         ident: Ident,
@@ -51,11 +53,12 @@ pub enum OverloadCandidate {
 impl OverloadCandidate {
     pub fn from_instance_method(im: InstanceMethod) -> Self {
         match im {
-            InstanceMethod::Method { self_ty, index, method } => {
+            InstanceMethod::Method { self_ty, iface_ty, index, method } => {
                 let sig = method.func_decl.sig();
 
                 OverloadCandidate::Method {
                     self_ty,
+                    iface_ty,
                     index,
                     ident: method.func_decl.name.ident.clone(),
                     access: method.access,
@@ -94,7 +97,7 @@ impl fmt::Display for OverloadCandidate {
             OverloadCandidate::Function { decl_name, .. } => {
                 write!(f, "function {}", decl_name)
             },
-            OverloadCandidate::Method { self_ty: iface_ty, ident, .. } => {
+            OverloadCandidate::Method { iface_ty, ident, .. } => {
                 write!(f, "method {}.{}", iface_ty, ident)
             },
         }
@@ -172,7 +175,7 @@ pub fn resolve_overload(
         // we don't actually know at this point whether that implementation exists!
         if self_arg.is_none() {
             if let OverloadCandidate::Method {
-                self_ty: iface_ty @ Type::Interface(..),
+                iface_ty: iface_ty @ Type::Interface(..),
                 ident: method_ident,
                 ..
             } = &candidates[0] {
@@ -327,7 +330,7 @@ fn disqualify_inaccessible(
                 *visibility >= Visibility::Interface
                     || ctx.is_current_namespace_child(&decl_name.full_path)
             },
-            OverloadCandidate::Method { access, self_ty: iface_ty, .. } => {
+            OverloadCandidate::Method { access, iface_ty, .. } => {
                 let accessible = iface_ty.get_current_access(ctx) >= *access;
 
                 if !accessible {

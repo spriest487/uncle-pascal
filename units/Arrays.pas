@@ -18,10 +18,10 @@ begin
 
     while true do begin
         while arr[l].Compare(pivot) < 0 do begin
-            l := l + 1;
+            l += 1;
         end;
         while arr[r].Compare(pivot) > 0 do begin
-            r := r - 1;
+            r -= 1;
         end;
 
         if l < r then begin

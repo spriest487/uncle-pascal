@@ -23,6 +23,8 @@ pub enum InstanceMethod {
     },
     Method {
         self_ty: Type,
+        iface_ty: Type,
+
         index: usize,
         method: MethodDecl,
     },
@@ -44,9 +46,9 @@ impl fmt::Display for InstanceMethod {
                 write!(f, "function {}", func_name)
             },
 
-            InstanceMethod::Method { self_ty: owning_ty, method, .. } => {
-                write!(f, "method {}.{}", owning_ty, method.func_decl.name.ident )
-            },
+            InstanceMethod::Method { self_ty, method, .. } => {
+                write!(f, "method {}.{}", self_ty, method.func_decl.name.ident )
+            }
         }
         
     }
@@ -65,7 +67,7 @@ pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<Inst
     
     let mut ufcs_methods = find_ufcs_methods(ty, ctx)?;
     methods.append(&mut ufcs_methods);
-    
+
     Ok(methods)
 }
 
@@ -116,8 +118,25 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
     methods
 }
 
-fn find_ufcs_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>> {
-    let ty_methods = ty.methods(ctx)?;
+fn find_ufcs_methods(self_ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>> {
+    // if the type of the self-argument is a generic parameter with a constraint interface,
+    // we can call methods through the interface, but we can't get a method index for it so we 
+    // need to call it through the interface instead
+    let (ty_methods, iface_ty) = match self_ty {
+        Type::GenericParam(p) => {
+            match &p.is_iface {
+                Some(is_iface) => {
+                    (is_iface.methods(ctx)?, (**is_iface).clone())
+                }
+
+                None => return Ok(Vec::new()),
+            }
+        }
+        
+        ty => {
+            (ty.methods(ctx)?, ty.clone())
+        },
+    };
 
     // eprintln!("{} has methods:", ty);
     let instance_methods = ty_methods
@@ -126,7 +145,8 @@ fn find_ufcs_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>
         .filter_map(|(index, method)| {
             // eprintln!(" - {}", method.name);
             Some(InstanceMethod::Method {
-                self_ty: ty.clone(),
+                self_ty: self_ty.clone(),
+                iface_ty: iface_ty.clone(),
                 method: method.clone(),
                 index,
             })

@@ -358,83 +358,6 @@ fn typecheck_func_overload(
     let args_span = func_call.args_span.clone();
 
     let call = match &overloaded.candidates[overload.selected_sig] {
-        OverloadCandidate::Method {
-            self_ty: iface_ty,
-            ident,
-            access,
-            sig,
-            index,
-            ..
-        } => {
-            // we resolved the overload using the local type args earlier, but we only get an
-            // index back, so we need to apply them here
-            let sig = match &overload.type_args {
-                Some(args) => {
-                    sig.specialize_generic(args, ctx)
-                        .map_err(|e| {
-                            TypeError::from_generic_err(e, func_call.span().clone())
-                        })?
-                },
-                None => (**sig).clone(),
-            };
-            
-            let self_type = match &overloaded.self_arg {
-                Some(self_arg) => self_arg.annotation().ty().into_owned(),
-
-                None => {
-                    let arg_tys: Vec<_> = overload
-                        .args
-                        .iter()
-                        .map(|a| a.annotation().ty().into_owned())
-                        .collect();
-
-                    match sig.self_ty_from_args(&arg_tys) {
-                        Some(self_ty) => self_ty.clone(),
-                        None => {
-                            return Err(TypeError::AmbiguousSelfType {
-                                span: overloaded.span.clone(),
-                                method: ident.clone(),
-                                iface: iface_ty.clone(),
-                            })
-                        },
-                    }
-                },
-            };
-
-            if self_type.get_current_access(ctx) < *access {
-                return Err(TypeError::TypeMemberInaccessible {
-                    ty: self_type,
-                    access: *access,
-                    member: ident.clone(),
-                    span: func_call.span().clone(),
-                })
-            }
-
-            let sig = Rc::new(sig.with_self(&self_type));
-
-            let return_annotation = TypedValue {
-                span: overloaded.span.clone(),
-                ty: sig.return_ty.clone(),
-                decl: Some(ident.clone()),
-                value_kind: ValueKind::Temporary,
-            }
-            .into();
-
-            let method_call = MethodCall {
-                owning_type: iface_ty.clone(),
-                self_type,
-                method_index: *index,
-                annotation: return_annotation,
-                ident: ident.clone(),
-                args: overload.args,
-                type_args: overload.type_args,
-                func_type: Type::Function(sig.clone()),
-                args_span,
-            };
-
-            ast::Call::Method(method_call)
-        },
-
         OverloadCandidate::Function { decl_name, sig, visibility } => {
             if *visibility < Visibility::Interface 
                 && !ctx.is_current_namespace_child(&decl_name.full_path) {
@@ -477,6 +400,62 @@ fn typecheck_func_overload(
             };
 
             ast::Call::Function(func_call)
+        },
+
+        OverloadCandidate::Method {
+            self_ty,
+            iface_ty,
+            ident,
+            access,
+            sig,
+            index,
+            ..
+        } => {
+            // we resolved the overload using the local type args earlier, but we only get an
+            // index back, so we need to apply them here
+            let sig = match &overload.type_args {
+                Some(args) => {
+                    sig.specialize_generic(args, ctx)
+                        .map_err(|e| {
+                            TypeError::from_generic_err(e, func_call.span().clone())
+                        })?
+                },
+                None => (**sig).clone(),
+            };
+
+            if self_ty.get_current_access(ctx) < *access {
+                return Err(TypeError::TypeMemberInaccessible {
+                    ty: self_ty.clone(),
+                    access: *access,
+                    member: ident.clone(),
+                    span: func_call.span().clone(),
+                })
+            }
+
+            let sig = Rc::new(sig.with_self(&self_ty));
+
+            let return_annotation = TypedValue {
+                span: overloaded.span.clone(),
+                ty: sig.return_ty.clone(),
+                decl: Some(ident.clone()),
+                value_kind: ValueKind::Temporary,
+            }.into();
+
+            // eprintln!("method call (overload) {} = ({}){}.{} -> {}", func_call, iface_ty, self_ty, ident, index);
+
+            let method_call = MethodCall {
+                iface_type: iface_ty.clone(),
+                self_type: self_ty.clone(),
+                iface_method_index: *index,
+                annotation: return_annotation,
+                ident: ident.clone(),
+                args: overload.args,
+                type_args: overload.type_args,
+                func_type: Type::Function(sig.clone()),
+                args_span,
+            };
+
+            ast::Call::Method(method_call)
         },
     };
 
@@ -668,6 +647,8 @@ fn typecheck_method_call(
         func_call.span(), ctx
     )?;
     
+    // eprintln!("method call {} = ({}){}.{} -> {}", func_call, method.self_ty, self_type, method.name, method.index);
+    
     Ok(Call::Method(MethodCall {
         annotation: TypedValue {
             ty: sig.return_ty.clone(),
@@ -676,11 +657,12 @@ fn typecheck_method_call(
             decl: None,
         }
         .into(),
-        method_index: method.index,
+        self_type: self_type.into_owned(),
+        iface_type: method.self_ty.clone(),
+        iface_method_index: method.index,
+
         args_span: func_call.args_span.clone(),
         func_type: Type::Function(Rc::new(sig)),
-        self_type: self_type.into_owned(),
-        owning_type: method.self_ty.clone(),
         ident: method.name.clone(),
         type_args: None,
         args: typechecked_args,

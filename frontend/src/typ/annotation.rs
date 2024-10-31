@@ -58,6 +58,7 @@ pub struct OverloadTyped {
 impl OverloadTyped {
     pub fn method(
         self_ty: Type,
+        iface_ty: Type,
         index: usize,
         self_arg: Expr,
         method: MethodDecl,
@@ -70,6 +71,7 @@ impl OverloadTyped {
             self_arg: Some(Box::new(self_arg)),
             sig: Some(sig.clone()),
             candidates: vec![OverloadCandidate::Method {
+                iface_ty,
                 self_ty,
                 index,
                 ident: method.func_decl.name.ident.clone(),

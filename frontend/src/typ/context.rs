@@ -67,6 +67,7 @@ pub enum InstanceMember {
     },
     Method {
         iface_ty: Type,
+        self_ty: Type,
         method: Ident,
         sig: Rc<FunctionSig>,
     },
@@ -88,7 +89,7 @@ pub enum TypeMember {
 
 #[derive(Clone, Debug)]
 pub struct MethodGroupMember {
-    pub owning_ty: Type,
+    pub iface_ty: Type,
     pub method: MethodDecl,
     pub index: usize,
 }
@@ -1433,11 +1434,13 @@ impl Context {
             // unambiguous method
             (None, 1) => match matching_methods.last().unwrap() {
                 ufcs::InstanceMethod::Method {
-                    self_ty: iface_ty,
+                    iface_ty,
+                    self_ty,
                     method,
                     ..
                 } => Ok(InstanceMember::Method {
                     iface_ty: iface_ty.clone(),
+                    self_ty: self_ty.clone(),
                     method: method.func_decl.name.ident.clone(),
                     sig: Rc::new(method.func_decl.sig()),
                 }),
@@ -1544,7 +1547,7 @@ impl Context {
                                 access: INTERFACE_METHOD_ACCESS,
                             },
                             index: method_index,
-                            owning_ty: ty.clone(),
+                            iface_ty: ty.clone(),
                         })
                     })
             },
@@ -1595,7 +1598,7 @@ impl Context {
                         method_group.push(MethodGroupMember {
                             method: spec_method,
                             index: method_index,
-                            owning_ty: Type::from_struct_type(spec_struct_name, struct_def.kind),
+                            iface_ty: Type::from_struct_type(spec_struct_name, struct_def.kind),
                         })
                     }
                     
@@ -1653,7 +1656,7 @@ impl Context {
                         method_group.push(MethodGroupMember {
                             method: spec_method,
                             index: method_index,
-                            owning_ty: Type::variant(spec_variant_name),
+                            iface_ty: Type::variant(spec_variant_name),
                         })
                     }
 

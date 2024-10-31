@@ -8,7 +8,6 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
 use crate::typ::ast::overload_to_no_args_call;
 use crate::typ::ast::try_resolve_overload;
@@ -18,7 +17,11 @@ use crate::typ::ast::Call;
 use crate::typ::ast::Expr;
 use crate::typ::ast::MethodCall;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::ast::{check_overload_visibility, const_eval_integer};
+use crate::typ::ast::check_overload_visibility;
+use crate::typ::ast::const_eval_integer;
+use crate::typ::ast::implicit_conversion;
+use crate::typ::ast::MethodDecl;
+use crate::typ::builtin_displayable_name;
 use crate::typ::string_type;
 use crate::typ::Context;
 use crate::typ::FunctionTyped;
@@ -40,7 +43,6 @@ use crate::typ::ValueKind;
 use crate::typ::DISPLAYABLE_TOSTRING_METHOD;
 use crate::typ::STRING_CONCAT_FUNC_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
-use crate::typ::builtin_displayable_name;
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
@@ -322,31 +324,33 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
     {
         None => return None,
         Some(index) => {
-            (index, &displayable_iface.methods[index])
+            let method_decl = MethodDecl {
+                func_decl: displayable_iface.methods[index].decl.clone(),
+                access: INTERFACE_METHOD_ACCESS,
+            };
+
+            (index, method_decl)
         }
     };
 
-    let to_string_sig = Rc::new(to_string_method.decl.sig());
+    let to_string_sig = Rc::new(to_string_method.func_decl.sig());
 
     // make a call
     let displayable_call = Call::Method(MethodCall {
-        owning_type: displayable_ty.clone(),
+        iface_type: displayable_ty.clone(),
         self_type: src_ty.into_owned(),
-        method_index: to_string_index,
+        iface_method_index: to_string_index,
         ident: to_string_ident.clone(),
         args: vec![expr.clone()],
         type_args: None,
         args_span: span.clone(),
         func_type: Type::Function(to_string_sig.clone()),
-        annotation: MethodTyped {
-            self_ty: displayable_ty,
-            index: to_string_index,
-            name: to_string_ident,
-            access: INTERFACE_METHOD_ACCESS,
-            span: span.clone(),
-            decl_sig: to_string_sig,
-        }
-        .into(),
+        annotation: MethodTyped::new(
+            displayable_ty,
+            to_string_index,
+            &to_string_method,
+            span.clone()
+        ).into(),
     });
 
     Some(Expr::from(displayable_call))
@@ -544,6 +548,7 @@ fn typecheck_member_of(
                     } else {
                         let overload_candidate = &[
                             OverloadCandidate::Method {
+                                iface_ty: method.self_ty.clone(),
                                 self_ty: method.self_ty.clone(),
                                 index: method.index,
 
@@ -695,9 +700,9 @@ fn typecheck_type_member(
 
     let annotation = match type_member {
         TypeMember::Method(candidate) => {
-            if candidate.owning_ty.get_current_access(ctx) < candidate.method.access {
+            if candidate.iface_ty.get_current_access(ctx) < candidate.method.access {
                 return Err(TypeError::TypeMemberInaccessible {
-                    ty: candidate.owning_ty.clone(),
+                    ty: candidate.iface_ty.clone(),
                     member: member_ident.clone(),
                     access: candidate.method.access,
                     span,
@@ -705,7 +710,7 @@ fn typecheck_type_member(
             }
 
             // this is a reference to the method itself, args list to follow presumably
-            MethodTyped::new(candidate.owning_ty, candidate.index, &candidate.method, span).into()
+            MethodTyped::new(candidate.iface_ty, candidate.index, &candidate.method, span).into()
         },
         
         TypeMember::MethodGroup(group) => {
@@ -713,7 +718,8 @@ fn typecheck_type_member(
                 .into_iter()
                 .map(|method_group_item| {
                     OverloadCandidate::Method { 
-                        self_ty: method_group_item.owning_ty,
+                        iface_ty: method_group_item.iface_ty.clone(),
+                        self_ty: method_group_item.iface_ty,
                         index: method_group_item.index,
 
                         ident: member_ident.clone(),
@@ -743,7 +749,7 @@ pub fn typecheck_member_value(
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let annotation = match member {
-        InstanceMember::Method { iface_ty, method, sig } => {
+        InstanceMember::Method { iface_ty, self_ty, method, sig } => {
             let (method_index, iface_method) = iface_ty
                 .find_method(&method, sig.as_ref(), ctx)
                 .ok()
@@ -758,6 +764,7 @@ pub fn typecheck_member_value(
                 });
 
             let method = OverloadTyped::method(
+                self_ty,
                 iface_ty,
                 method_index,
                 lhs.clone(),

@@ -189,7 +189,7 @@ impl ModuleBuilder {
             .find_method(name, &sig, &self.src_metadata)
             .ok()
             .flatten()
-            .expect("method of type must exist");
+            .unwrap_or_else(|| panic!("method {} of type {} must exist", name, ty));
 
         index
     }
@@ -347,23 +347,12 @@ impl ModuleBuilder {
         type_args: Option<&typ::TypeArgList>,
     ) -> FunctionInstance {
         // eprintln!("instantiate_method: {:#?}", method_key);
-        
-        // the self-type determines which actual class implements the method:
-        // * for direct type method calls, both types are the same, so it doesn't matter which
-        //   one we instantiate
-        // * for virtual calls, instantiate this implementor's impl method
-        // * if the self-type is null, this is a static call, so instantiate the method from
-        //   the owning type
-        let self_ty = match &method_key.self_ty {
-            typ::Type::Nothing => method_key.iface_ty.clone(),
-            ty => ty.clone(),
-        };
-        
+
         let mut generic_ctx = typ::GenericContext::empty();
         
         // if the self type is a parameterized generic, we'll need to instantiate the specialized
         // def here, since only the original declared version will be in the definition map
-        let decl_self_ty = match &self_ty {
+        let decl_self_ty = match &method_key.self_ty {
             typ::Type::Class(sym) if sym.type_args.is_some() => {
                 let type_params = sym.type_params.as_ref().unwrap();
                 let type_args = sym.type_args.as_ref().unwrap();
@@ -392,12 +381,12 @@ impl ModuleBuilder {
             _ => {
                 assert_eq!(
                     TypeArgsResult::NotGeneric, 
-                    self_ty.type_args(), "expected non-generic self type for instantiation of {} method {} without type args", 
-                    method_key.iface_ty, 
+                    method_key.self_ty.type_args(), "expected non-generic self type for instantiation of {} method {} without type args", 
+                    method_key.self_ty, 
                     method_key.method_index
                 );
-                
-                self_ty.clone()
+
+                method_key.self_ty.clone()
             }
         };
         
@@ -438,7 +427,7 @@ impl ModuleBuilder {
             generic_method_decl.clone(),
             &generic_ctx,
             &generic_ctx);
-        specialized_decl.name.owning_ty = Some(self_ty);
+        specialized_decl.name.owning_ty = Some(method_key.self_ty.clone());
 
         let ns = method_key
             .self_ty
@@ -489,7 +478,7 @@ impl ModuleBuilder {
             .full_path()
             .expect("interface type must not be unnamed");
 
-        let iface_method_decl = impl_method.iface_ty
+        let iface_method_decl = virtual_key.iface_ty
             .get_method(virtual_key.iface_method_index, &self.src_metadata)
             .unwrap_or_else(|e| {
                 panic!("instantiate_virtual_method: failed to get {} method {}: {}", impl_method.self_ty, impl_method.method_index, e)
@@ -536,7 +525,6 @@ impl ModuleBuilder {
     // this call reserves us a function ID
     pub fn translate_method_impl(
         &mut self,
-        iface_ty: typ::Type,
         self_ty: typ::Type, 
         self_ty_method_index: usize,
         type_args: Option<typ::TypeArgList>,
@@ -544,7 +532,6 @@ impl ModuleBuilder {
         let mut key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 method_index: self_ty_method_index,
-                iface_ty,
                 self_ty,
             }),
 
@@ -669,7 +656,6 @@ impl ModuleBuilder {
                             iface_method_index,
 
                             impl_method: MethodDeclKey {
-                                iface_ty: iface_ty.clone(),
                                 self_ty: self_ty.clone(),
                                 method_index: impl_index,
                             },
@@ -1243,7 +1229,7 @@ impl FunctionDeclKey {
                 .expect("types used as interfaces should never be unnamed"),
 
             FunctionDeclKey::Method(key) => key
-                .iface_ty
+                .self_ty
                 .full_path()
                 .expect("types with method implementations should never be unnamed"),
         }
@@ -1252,8 +1238,6 @@ impl FunctionDeclKey {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct MethodDeclKey {
-    pub iface_ty: typ::Type,
-
     pub self_ty: typ::Type,
     pub method_index: usize,
 }

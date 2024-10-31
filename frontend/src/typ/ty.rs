@@ -631,10 +631,10 @@ impl Type {
                 Ok(methods)
             }
 
-            Type::GenericParam(param) => match &param.is_iface {
-                Some(is_iface) => is_iface.methods(ctx),
-                None => Ok(Vec::new()),
-            }
+            // Type::GenericParam(param) => match &param.is_iface {
+            //     Some(is_iface) => is_iface.methods(ctx),
+            //     None => Ok(Vec::new()),
+            // }
 
             _ => Ok(Vec::new()),
         }
@@ -702,10 +702,10 @@ impl Type {
                 Ok(find_in_method_decls(name, sig, methods.values()))
             }
 
-            Type::GenericParam(param) => match &param.is_iface {
-                Some(is_iface) => is_iface.find_method_index(name, sig, ctx),
-                None => Ok(None),
-            }
+            // Type::GenericParam(param) => match &param.is_iface {
+            //     Some(is_iface) => is_iface.find_method_index(name, sig, ctx),
+            //     None => Ok(None),
+            // }
 
             _ => Ok(None),
         }
@@ -755,10 +755,10 @@ impl Type {
                 Ok(method.cloned().expect("invalid method index"))
             }
 
-            Type::GenericParam(param) => match &param.is_iface {
-                Some(is_iface) => is_iface.get_method(method_index, ctx),
-                None => panic!("invalid type for method: {self}"),
-            }
+            // Type::GenericParam(param) => match &param.is_iface {
+            //     Some(is_iface) => is_iface.get_method(method_index, ctx),
+            //     None => panic!("invalid type for method: {self}"),
+            // }
 
             _ => panic!("invalid type for method: {self}"),
         }
