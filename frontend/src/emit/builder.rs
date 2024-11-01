@@ -74,13 +74,6 @@ impl<'m> Builder<'m> {
         &self.generic_context
     }
 
-    // pub fn apply_ty_args<Generic>(&self, target: Generic) -> Generic
-    // where
-    //     Generic: Specializable,
-    // {
-    //     self.module.apply_ty_args(target, &self.generic_context, &self.generic_context)
-    // }
-
     pub fn translate_variant_case<'ty>(
         &'ty mut self,
         variant: &typ::Symbol,
@@ -137,7 +130,7 @@ impl<'m> Builder<'m> {
                 .clone()
                 .apply_type_args_by_name(&self.generic_context, &self.generic_context);
         }
-        
+
         self.module.translate_method_impl(self_ty, self_ty_method_index, call_ty_args)
     }
 

@@ -441,7 +441,7 @@ fn typecheck_func_overload(
                 value_kind: ValueKind::Temporary,
             }.into();
 
-            // eprintln!("method call (overload) {} = ({}){}.{} -> {}", func_call, iface_ty, self_ty, ident, index);
+            // eprintln!("method call (overload) {} = ({}){}.{} -> {} ({})", func_call, iface_ty, self_ty, ident, index, sig);
 
             let method_call = MethodCall {
                 iface_type: iface_ty.clone(),

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::emit::builder::Builder;
 use crate::emit::expr;
 use crate::emit::syn;
@@ -249,9 +250,21 @@ fn build_method_call(
 
     let method_decl_sig = method_decl.func_decl
         .sig()
-        .with_self(&self_ty); 
-
-    let method_call_sig = builder.generic_context().apply_to_sig(&method_decl_sig);
+        .with_self(&self_ty);
+    
+    let call_generic_ctx = if let Some(ty_args_list) = &ty_args {
+        let ty_params_list = method_decl.func_decl.type_params
+            .as_ref()
+            .expect("call with type args must have type params");
+        
+        Cow::Owned(builder
+            .generic_context()
+            .child_context(ty_params_list, ty_args_list))
+    }  else {
+        Cow::Borrowed(builder.generic_context())
+    };
+    
+    let method_call_sig = call_generic_ctx.apply_to_sig(&method_decl_sig);
 
     let call_target = match builder.translate_type(&self_ty) {
         Type::RcPointer(VirtualTypeID::Interface(iface_id)) => {

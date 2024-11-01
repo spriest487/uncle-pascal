@@ -543,9 +543,7 @@ fn typecheck_member_of(
                 }
 
                 Typed::Method(method) => {
-                    let no_args_call = if !method.should_call_noargs_in_expr(expect_ty, lhs_ty.as_ref()) {
-                        None
-                    } else {
+                    let no_args_call = if method.should_call_noargs_in_expr(expect_ty, lhs_ty.as_ref()) {
                         let overload_candidate = &[
                             OverloadCandidate::Method {
                                 iface_ty: method.self_ty.clone(),
@@ -559,6 +557,8 @@ fn typecheck_member_of(
                         ];
                         
                         op_to_no_args_call(overload_candidate, &member_op, &span, ctx)?
+                    } else {
+                        None
                     };
 
                     match no_args_call {
