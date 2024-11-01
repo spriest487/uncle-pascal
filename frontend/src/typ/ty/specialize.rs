@@ -84,7 +84,8 @@ pub fn specialize_generic_name<'a>(
         for (i, param) in type_params.items.iter().enumerate() {
             let is_iface = param.constraint
                 .clone()
-                .map(|constraint| Rc::new(constraint.is_ty));
+                .map(|constraint| constraint.is_ty)
+                .unwrap_or(Type::Nothing);
 
             let arg = args.resolve(&TypeParamType {
                 name: param.name.clone(),

@@ -59,7 +59,8 @@ fn make_ty_param_ty(param_list: &[TypeParam<Type>], pos: usize) -> Type {
         is_iface: param
             .constraint
             .as_ref()
-            .map(|constraint| Rc::new(constraint.is_ty.clone())),
+            .map(|constraint| constraint.is_ty.clone())
+            .unwrap_or(Type::Nothing),
         pos,
     }))
 }

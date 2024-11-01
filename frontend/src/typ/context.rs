@@ -714,7 +714,7 @@ impl Context {
                 .constraint
                 .as_ref()
                 .map(|c| c.is_ty.clone())
-                .map(Rc::new);
+                .unwrap_or(Type::Nothing);
 
             self.declare_type(
                 param.name.clone(),
@@ -1348,8 +1348,8 @@ impl Context {
 
         match self_ty {
             Type::GenericParam(param_ty) => match &param_ty.is_iface {
-                Some(as_iface) => Ok(**as_iface == *iface_ty),
-                None => Ok(false),
+                Type::Nothing => Ok(false),
+                as_iface => Ok(as_iface == iface_ty),
             },
 
             Type::Primitive(..) => Ok(self.primitive_implements.contains(iface_ty)),

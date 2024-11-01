@@ -1,4 +1,5 @@
 # critical
+* generate bounds checks as a separate function instead of inlining them
 * remove baked in type arg position info
 * unify type param constraint struct style (use Any)
 * `Self` only works properly when used directly as a function param, not if it's contained in other types

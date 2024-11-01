@@ -100,7 +100,7 @@ impl Type {
         let ty_param_ty = TypeParamType {
             name,
             pos,
-            is_iface: None,
+            is_iface: Type::Nothing,
         };
         
         Type::GenericParam(Rc::new(ty_param_ty))
@@ -117,11 +117,11 @@ impl Type {
         Type::DynArray { element: Rc::new(self) }
     }
 
-    pub fn generic_constrained_param(name: Ident, pos: usize, is_iface: impl Into<Rc<Type>>) -> Type {
+    pub fn generic_constrained_param(name: Ident, pos: usize, is_iface: Type) -> Type {
         let ty_param_ty = TypeParamType {
             name,
             pos,
-            is_iface: Some(is_iface.into()),
+            is_iface,
         };
 
         Type::GenericParam(Rc::new(ty_param_ty))
@@ -792,8 +792,8 @@ impl Type {
     pub fn implemented_ifaces(&self, ctx: &Context) -> NameResult<Vec<Type>> {
         match self {
             Type::GenericParam(param_ty) => match &param_ty.is_iface {
-                Some(as_iface) => Ok(vec![(**as_iface).clone()]),
-                None => Ok(Vec::new()),
+                Type::Nothing => Ok(Vec::new()),
+                is_iface => Ok(vec![is_iface.clone()]),
             },
 
             Type::Primitive(primitive) => {

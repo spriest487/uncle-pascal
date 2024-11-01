@@ -58,7 +58,8 @@ impl TypeParamList {
             pos,
             is_iface: item
                 .constraint
-                .map(|constraint| Rc::new(constraint.is_ty))
+                .map(|constraint| constraint.is_ty)
+                .unwrap_or(Type::Nothing)
         })))
     }
 }
@@ -111,7 +112,7 @@ pub fn validate_ty_args(args: &TypeArgList, params: &TypeParamList, ctx: &Contex
 pub struct TypeParamType {
     pub name: Ident,
     pub pos: usize,
-    pub is_iface: Option<Rc<Type>>,
+    pub is_iface: Type,
 }
 
 impl fmt::Display for TypeParamType {
