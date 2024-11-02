@@ -1,11 +1,12 @@
-use crate::{ast, Ident};
-use crate::ast::{Access, TypeList, Visibility};
-use crate::typ::ast::check_implicit_conversion;
+use crate::ast;
+use crate::ast::TypeList;
+use crate::ast::Visibility;
+use crate::typ::ast::{check_implicit_conversion, MethodDecl};
 use crate::typ::ast::specialize_call_args;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
+use crate::typ::ast::FunctionDecl;
 use crate::typ::Context;
-use crate::typ::FunctionSig;
 use crate::typ::InstanceMethod;
 use crate::typ::NameError;
 use crate::typ::Symbol;
@@ -35,7 +36,7 @@ impl Overload {
 pub enum OverloadCandidate {
     Function {
         decl_name: Symbol,
-        sig: Rc<FunctionSig>,
+        decl: Rc<FunctionDecl>,
         visibility: Visibility,
     },
     Method {
@@ -44,9 +45,7 @@ pub enum OverloadCandidate {
 
         index: usize,
 
-        ident: Ident,
-        access: Access,
-        sig: Rc<FunctionSig>,
+        decl: MethodDecl,
     },
 }
 
@@ -54,39 +53,35 @@ impl OverloadCandidate {
     pub fn from_instance_method(im: InstanceMethod) -> Self {
         match im {
             InstanceMethod::Method { self_ty, iface_ty, index, method } => {
-                let sig = method.func_decl.sig();
-
                 OverloadCandidate::Method {
                     self_ty,
                     iface_ty,
                     index,
-                    ident: method.func_decl.name.ident.clone(),
-                    access: method.access,
-                    sig: Rc::new(sig),
+                    decl: method.clone(),
                 }
             }
 
-            InstanceMethod::FreeFunction { func_name, sig, visibility } => {
+            InstanceMethod::FreeFunction { func_name, decl, visibility } => {
                 OverloadCandidate::Function {
                     decl_name: func_name,
+                    decl,
                     visibility,
-                    sig,
                 }
             },
         }
     }
 
-    pub fn sig(&self) -> &Rc<FunctionSig> {
+    pub fn decl(&self) -> &Rc<FunctionDecl> {
         match self {
-            OverloadCandidate::Function { sig, .. } => sig,
-            OverloadCandidate::Method { sig, .. } => sig,
+            OverloadCandidate::Function { decl, .. } => decl,
+            OverloadCandidate::Method { decl, .. } => &decl.func_decl,
         }
     }
 
     pub fn span(&self) -> &Span {
         match self {
-            OverloadCandidate::Function { decl_name, .. } => decl_name.span(),
-            OverloadCandidate::Method { ident, .. } => ident.span(),
+            OverloadCandidate::Function { decl, .. } => decl.span(),
+            OverloadCandidate::Method { decl, .. } => decl.func_decl.span(),
         }
     }
 }
@@ -97,8 +92,8 @@ impl fmt::Display for OverloadCandidate {
             OverloadCandidate::Function { decl_name, .. } => {
                 write!(f, "function {}", decl_name)
             },
-            OverloadCandidate::Method { iface_ty, ident, .. } => {
-                write!(f, "method {}.{}", iface_ty, ident)
+            OverloadCandidate::Method { iface_ty, decl, .. } => {
+                write!(f, "method {}.{}", iface_ty, decl.func_decl.ident())
             },
         }
     }
@@ -145,11 +140,11 @@ pub fn resolve_overload(
             let self_ty = self_arg.annotation().ty();
             candidates
                 .iter()
-                .map(|c| c.sig().with_self(&self_ty))
+                .map(|c| c.decl().sig().with_self(&self_ty))
                 .collect()
         },
 
-        None => candidates.iter().map(|c| (**c.sig()).clone()).collect(),
+        None => candidates.iter().map(|c| c.decl().sig().clone()).collect(),
     };
 
     // no overload resolution needed, we can use the param type hint for all args
@@ -176,14 +171,14 @@ pub fn resolve_overload(
         if self_arg.is_none() {
             if let OverloadCandidate::Method {
                 iface_ty: iface_ty @ Type::Interface(..),
-                ident: method_ident,
+                decl: method_decl,
                 ..
             } = &candidates[0] {
                 let self_ty = sig.self_ty_from_args(&actual_arg_tys).ok_or_else(|| {
                     TypeError::AmbiguousSelfType {
                         iface: iface_ty.clone(),
                         span: span.clone(),
-                        method: method_ident.clone(),
+                        method: method_decl.func_decl.ident().clone(),
                     }
                 })?;
                 
@@ -330,8 +325,9 @@ fn disqualify_inaccessible(
                 *visibility >= Visibility::Interface
                     || ctx.is_current_namespace_child(&decl_name.full_path)
             },
-            OverloadCandidate::Method { access, iface_ty, .. } => {
-                let accessible = iface_ty.get_current_access(ctx) >= *access;
+
+            OverloadCandidate::Method { decl, iface_ty, .. } => {
+                let accessible = iface_ty.get_current_access(ctx) >= decl.access;
 
                 if !accessible {
                     // eprintln!("disqualifying {}: inaccessible from this context", candidate.sig());

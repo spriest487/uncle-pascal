@@ -110,13 +110,11 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_type(&mut self, src_ty: &typ::Type) -> Type {
-        self.module
-            .translate_type(src_ty, &self.generic_context)
+        self.module.translate_type(src_ty, &self.generic_context)
     }
 
     pub fn translate_dyn_array_struct(&mut self, element_ty: &typ::Type) -> TypeDefID {
-        self.module
-            .translate_dyn_array_struct(element_ty, &self.generic_context)
+        self.module.translate_dyn_array_struct(element_ty, &self.generic_context)
     }
 
     pub fn translate_method(

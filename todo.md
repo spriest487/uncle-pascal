@@ -1,4 +1,7 @@
 # critical
+* !! functions need their decl sig to identify which overload to call, but their call decl for stuff like return type
+  * maybe just revert some of the changes and make sure it uses the specialized return ty instead of the decl one
+
 * generate bounds checks as a separate function instead of inlining them
 * remove baked in type arg position info
 * unify type param constraint struct style (use Any)

@@ -68,13 +68,12 @@ pub enum InstanceMember {
     Method {
         iface_ty: Type,
         self_ty: Type,
-        method: Ident,
-        sig: Rc<FunctionSig>,
+        method: MethodDecl,
     },
     UFCSCall {
         func_name: Symbol,
         visibility: Visibility,
-        sig: Rc<FunctionSig>,
+        decl: Rc<FunctionDecl>,
     },
     Overloaded {
         candidates: Vec<OverloadCandidate>,
@@ -1441,14 +1440,13 @@ impl Context {
                 } => Ok(InstanceMember::Method {
                     iface_ty: iface_ty.clone(),
                     self_ty: self_ty.clone(),
-                    method: method.func_decl.name.ident.clone(),
-                    sig: Rc::new(method.func_decl.sig()),
+                    method: method.clone(),
                 }),
 
-                ufcs::InstanceMethod::FreeFunction { func_name, sig, visibility } => {
+                ufcs::InstanceMethod::FreeFunction { func_name, decl, visibility } => {
                     Ok(InstanceMember::UFCSCall {
                         func_name: func_name.clone(),
-                        sig: sig.clone(),
+                        decl: decl.clone(),
                         visibility: *visibility,
                     })
                 },
@@ -1946,8 +1944,8 @@ fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident
                 (self_ty.clone(), method.func_decl.name.ident.clone())
             }
 
-            ufcs::InstanceMethod::FreeFunction { sig, func_name, .. } => {
-                let of_ty = sig.params.first().unwrap().ty.clone();
+            ufcs::InstanceMethod::FreeFunction { decl, func_name, .. } => {
+                let of_ty = decl.params.first().unwrap().ty.clone();
                 (of_ty.clone(), func_name.ident().clone())
             },
         })

@@ -2,8 +2,9 @@ mod init;
 mod literal;
 
 use crate::ast;
+use crate::ast::Ident;
 use crate::ast::IdentPath;
-use crate::ast::{Ident, Visibility};
+use crate::ast::Visibility;
 pub use crate::typ::ast::call::typecheck_call;
 pub use crate::typ::ast::call::Invocation;
 use crate::typ::ast::cast::typecheck_cast_expr;
@@ -41,7 +42,6 @@ use crate::IntConstant;
 use common::span::*;
 pub use init::*;
 pub use literal::*;
-use std::rc::Rc;
 
 pub type Expr = ast::Expr<Typed>;
 
@@ -197,21 +197,20 @@ fn typecheck_ident(
             
             let call_expr = if can_call_noargs {
                 let func_decl = overloads[0].decl().clone();
-                let func_sig = overloads[0].sig().clone();
                 let func_vis = overloads[0].visiblity();
 
                 let func_path = decl_namespace.child(ident.clone());
                 let func_sym = Symbol::from(func_path)
                     .with_ty_params(func_decl.type_params.clone());
 
-                let candidates = &[OverloadCandidate::Function {
+                let candidates = [OverloadCandidate::Function {
                     decl_name: func_sym.clone(),
-                    sig: func_sig.clone(),
+                    decl: func_decl.clone(),
                     visibility: func_vis,
                 }];
 
                 let overload_result = try_resolve_overload(
-                    candidates,
+                    &candidates,
                     &[],
                     None,
                     None,
@@ -221,24 +220,25 @@ fn typecheck_ident(
 
                 match overload_result {
                     Some(overload) => {
-                        check_overload_visibility(&overload, candidates, span, ctx)?;
+                        check_overload_visibility(&overload, &candidates, span, ctx)?;
                         
-                        let func_annotation = FunctionTyped {
-                            name: func_sym,
-                            sig: func_sig,
-                            span: span.clone(),
-                            visibility: func_vis,
-                        };
+                        let func_annotation = FunctionTyped::new(
+                            func_sym,
+                            func_vis,
+                            func_decl,
+                            span.clone(),
+                        );
                         
                         let func_expr = Expr::Ident(ident.clone(), func_annotation.into());
                         
                         let call = overload_to_no_args_call(
-                            candidates,
+                            &candidates,
                             overload,
                             func_expr,
                             None,
-                            span
-                        );
+                            span,
+                            ctx
+                        )?;
                         Some(call)
                     },
 
@@ -324,12 +324,12 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
                 let func_sym = Symbol::from(func_path)
                     .with_ty_params(decl.type_params.clone());
 
-                FunctionTyped {
+                FunctionTyped::new(
+                    func_sym,
+                    *visibility,
+                    decl.clone(),
                     span,
-                    name: func_sym,
-                    sig: Rc::new(decl.sig()),
-                    visibility: *visibility,
-                }.into()
+                ).into()
             } else {
                 let candidates = overloads
                     .iter()
@@ -339,7 +339,7 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
 
                         OverloadCandidate::Function {
                             decl_name: func_sym,
-                            sig: overload.sig().clone(),
+                            decl: overload.decl().clone(),
                             visibility: overload.visiblity(),
                         }
                     })

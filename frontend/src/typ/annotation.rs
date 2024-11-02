@@ -2,18 +2,20 @@ mod symbol;
 
 pub use symbol::*;
 
-use crate::ast::{Access, Visibility};
 use crate::ast::Annotation;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
-use crate::typ::ast::Expr;
+use crate::ast::Visibility;
 use crate::typ::ast::Literal;
 use crate::typ::ast::MethodDecl;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::TypedFunctionName;
+use crate::typ::ast::Expr;
+use crate::typ::ast::FunctionDecl;
 use crate::typ::result::*;
 use crate::typ::ty::*;
-use crate::typ::{Context, ValueKind};
+use crate::typ::Context;
+use crate::typ::ValueKind;
 use crate::IntConstant;
 use common::span::*;
 use derivative::*;
@@ -74,9 +76,7 @@ impl OverloadTyped {
                 iface_ty,
                 self_ty,
                 index,
-                ident: method.func_decl.name.ident.clone(),
-                access: method.access,
-                sig,
+                decl: method.clone(),
             }],
         }
     }
@@ -87,7 +87,7 @@ impl OverloadTyped {
         span: Span,
     ) -> Self {
         let sig = if candidates.len() == 1 {
-            Some(candidates[0].sig().clone())
+            Some(Rc::new(candidates[0].decl().sig()))
         } else {
             // undecided
             None
@@ -127,49 +127,34 @@ pub struct MethodTyped {
     // members below this point are just cached for convenience, all of these can be
     // fetched from the type by the index
 
-    #[derivative(PartialEq = "ignore")]
-    #[derivative(Hash = "ignore")]
-    pub name: Ident,
-
-    #[derivative(PartialEq = "ignore")]
-    #[derivative(Hash = "ignore")]
-    pub access: Access,
-
     /// span of this reference to the method (not the method's own decl)
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
     #[derivative(Debug = "ignore")]
     pub span: Span,
-    
 
-    /// this is used for overload resolution and should match the *declared* sig of the method, 
-    /// eg even if this is part of an expression referring to a parameterized self-type or a
-    /// method call with type parameters, this sig should not have those type args applied to it
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
-    pub decl_sig: Rc<FunctionSig>,
+    #[derivative(Debug = "ignore")]
+    pub decl: MethodDecl,
 }
 
 impl MethodTyped {
-    pub fn new(self_ty: Type, index: usize, decl: &MethodDecl, span: Span) -> Self {
-        let sig = decl.func_decl.sig();
- 
+    pub fn new(self_ty: Type, index: usize, decl: MethodDecl, span: Span) -> Self {
         Self {
             self_ty,
             index,
-            name: decl.func_decl.name.ident.clone(),
-            access: decl.access,
             span,
-            decl_sig: Rc::new(sig),
+            decl,
         }
     }
 
     pub fn func_ty(&self) -> Type {
-        Type::Function(self.decl_sig.clone())
+        Type::Function(Rc::new(self.decl.func_decl.sig()))
     }
 
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type, self_arg: &Type) -> bool {
-        self.decl_sig.should_call_noargs_in_expr(expect_ty, self_arg)
+        self.decl.func_decl.sig().should_call_noargs_in_expr(expect_ty, self_arg)
     }
 }
 
@@ -185,6 +170,7 @@ pub struct FunctionTyped {
     pub name: Symbol,
     pub visibility: Visibility,
 
+    pub decl: Rc<FunctionDecl>,
     pub sig: Rc<FunctionSig>,
 
     #[derivative(Debug = "ignore")]
@@ -194,6 +180,16 @@ pub struct FunctionTyped {
 }
 
 impl FunctionTyped {
+    pub fn new(name: Symbol, visibility: Visibility, decl: Rc<FunctionDecl>, span: Span) -> Self {
+        Self {
+            name,
+            visibility,
+            sig: Rc::new(decl.sig()),
+            decl,
+            span,
+        }
+    }
+    
     pub fn func_ty(&self) -> Type {
         Type::Function(self.sig.clone())
     }
@@ -274,10 +270,13 @@ impl From<ConstTyped> for Typed {
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Hash, Debug, PartialEq)]
 pub struct UfcsTyped {
-    pub self_arg: Box<Expr>,
     pub function_name: Symbol,
-    pub sig: Rc<FunctionSig>,
     pub visibility: Visibility,
+    
+    pub self_arg: Box<Expr>,
+    
+    pub decl: Rc<FunctionDecl>,
+    pub sig: Rc<FunctionSig>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -286,6 +285,23 @@ pub struct UfcsTyped {
 }
 
 impl UfcsTyped {
+    pub fn new(
+        function_name: Symbol,
+        visibility: Visibility,
+        self_arg: Expr,
+        decl: Rc<FunctionDecl>,
+        span: Span
+    ) -> Self {
+        Self {
+            self_arg: Box::new(self_arg),
+            function_name,
+            sig: Rc::new(decl.sig()),
+            decl,
+            visibility,
+            span,
+        }
+    }
+    
     pub fn func_ty(&self) -> Type {
         Type::Function(self.sig.clone())
     }
@@ -293,7 +309,7 @@ impl UfcsTyped {
     pub fn should_call_noargs_in_expr(&self, expect_ty: &Type) -> bool {
         let self_arg_ty = self.self_arg.annotation().ty();
 
-        self.sig.should_call_noargs_in_expr(expect_ty, self_arg_ty.as_ref())
+        self.decl.sig().should_call_noargs_in_expr(expect_ty, self_arg_ty.as_ref())
     }
 }
 
@@ -462,7 +478,7 @@ impl fmt::Display for Typed {
                 write!(f, "function {}", func.function_name) 
             },
             Typed::Method(method) => { 
-                write!(f, "method {}.{}", method.self_ty, method.name) 
+                write!(f, "method {}.{}", method.self_ty, method.decl.func_decl.ident()) 
             },
             Typed::Type(ty, ..) => { 
                 write!(f, "type {}", ty) 

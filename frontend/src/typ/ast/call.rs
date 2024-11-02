@@ -4,17 +4,18 @@ mod overload;
 mod args;
 
 use crate::ast;
-use crate::ast::{Ident, Visibility};
 use crate::ast::TypeList;
+use crate::ast::Ident;
+use crate::ast::Visibility;
 use crate::typ::ast::cast::implicit_conversion;
-use crate::typ::ast::typecheck_expr;
+use crate::typ::ast::{specialize_func_decl, typecheck_expr};
 use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::Expr;
 use crate::typ::ast::ObjectCtor;
-use crate::typ::typecheck_type;
+use crate::typ::{specialize_generic_name, typecheck_type};
 use crate::typ::Context;
-use crate::typ::FunctionSigParam;
 use crate::typ::FunctionSig;
+use crate::typ::FunctionSigParam;
 use crate::typ::FunctionTyped;
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
@@ -267,7 +268,7 @@ fn typecheck_func_call(
         Typed::Function(func) => {
             func.check_visible(func_call.span(), ctx)?;
             
-            let sig = func.sig.clone();
+            let sig = Rc::new(func.decl.sig());
             
             typecheck_free_func_call(target, &func_call, self_arg.as_ref(), sig, ctx)
                 .map(Box::new)
@@ -358,7 +359,7 @@ fn typecheck_func_overload(
     let args_span = func_call.args_span.clone();
 
     let call = match &overloaded.candidates[overload.selected_sig] {
-        OverloadCandidate::Function { decl_name, sig, visibility } => {
+        OverloadCandidate::Function { decl_name, decl, visibility } => {
             if *visibility < Visibility::Interface 
                 && !ctx.is_current_namespace_child(&decl_name.full_path) {
                 return Err(TypeError::NameNotVisible {
@@ -369,7 +370,7 @@ fn typecheck_func_overload(
             
             let return_annotation = TypedValue {
                 span: overloaded.span.clone(),
-                ty: sig.return_ty.clone(),
+                ty: decl.return_ty.clone(),
                 decl: Some(decl_name.ident().clone()),
                 value_kind: ValueKind::Temporary,
             }
@@ -380,12 +381,12 @@ fn typecheck_func_overload(
             let mut target = target.clone();
             match target.annotation_mut() {
                 annotation @ Typed::Overload(..) => {
-                    *annotation = Typed::Function(Rc::new(FunctionTyped {
-                        name: decl_name.clone(),
-                        sig: sig.clone(),
-                        span: annotation.span().clone(),
-                        visibility: *visibility,
-                    })) 
+                    *annotation = Typed::from(FunctionTyped::new(
+                        decl_name.clone(),
+                        *visibility,
+                        decl.clone(),
+                        annotation.span().clone(),
+                    ))
                 },
 
                 _ => panic!("typecheck_func_overload: target expr must be annotated as an overload"),
@@ -405,9 +406,7 @@ fn typecheck_func_overload(
         OverloadCandidate::Method {
             self_ty,
             iface_ty,
-            ident,
-            access,
-            sig,
+            decl,
             index,
             ..
         } => {
@@ -415,19 +414,21 @@ fn typecheck_func_overload(
             // index back, so we need to apply them here
             let sig = match &overload.type_args {
                 Some(args) => {
-                    sig.specialize_generic(args, ctx)
+                    decl.func_decl
+                        .sig()
+                        .specialize_generic(args, ctx)
                         .map_err(|e| {
                             TypeError::from_generic_err(e, func_call.span().clone())
                         })?
                 },
-                None => (**sig).clone(),
+                None => decl.func_decl.sig(),
             };
 
-            if self_ty.get_current_access(ctx) < *access {
+            if self_ty.get_current_access(ctx) < decl.access {
                 return Err(TypeError::TypeMemberInaccessible {
                     ty: self_ty.clone(),
-                    access: *access,
-                    member: ident.clone(),
+                    access: decl.access,
+                    member: decl.func_decl.ident().clone(),
                     span: func_call.span().clone(),
                 })
             }
@@ -437,7 +438,7 @@ fn typecheck_func_overload(
             let return_annotation = TypedValue {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
-                decl: Some(ident.clone()),
+                decl: Some(decl.func_decl.ident().clone()),
                 value_kind: ValueKind::Temporary,
             }.into();
 
@@ -448,7 +449,7 @@ fn typecheck_func_overload(
                 self_type: self_ty.clone(),
                 iface_method_index: *index,
                 annotation: return_annotation,
-                ident: ident.clone(),
+                ident: decl.func_decl.ident().clone(),
                 args: overload.args,
                 type_args: overload.type_args,
                 func_type: Type::Function(sig.clone()),
@@ -490,51 +491,50 @@ pub fn overload_to_no_args_call(
     mut target: Expr,
     self_arg: Option<Expr>,
     span: &Span,
-) -> Expr {
+    ctx: &Context,
+) -> TypeResult<Expr> {
     assert_eq!(self_arg.iter().len(), overload.args.len());
+    
+    let decl = candidates[overload.selected_sig].decl();
+    assert_eq!(decl.type_params_len(), overload.type_args_len());
+
+    let call_decl = match &overload.type_args {
+        Some(type_args) => {
+            let specialized = specialize_func_decl(decl, type_args, ctx)
+                .map_err(|e| TypeError::from_generic_err(e, span.clone()))?;
+
+            Rc::new(specialized)
+        }
+
+        None => decl.clone(),
+    };
 
     let call = match &candidates[overload.selected_sig] {
-        OverloadCandidate::Function { sig, decl_name, visibility } => {
-            assert_eq!(sig.type_params_len(), overload.type_args_len());
+        OverloadCandidate::Function { decl_name, visibility, .. } => {
+            let return_value = TypedValue::temp(call_decl.return_ty.clone(), span.clone());
 
-            let return_value = TypedValue {
-                ty: sig.return_ty.clone(),
-                span: span.clone(),
-                decl: None,
-                value_kind: ValueKind::Temporary,
-            };
-
-            *target.annotation_mut() = Typed::from(FunctionTyped {
-                name: decl_name.clone(),
-                sig: sig.clone(),
-                span: target.span().clone(),
-                visibility: *visibility
-            });
+            *target.annotation_mut() = Typed::from(FunctionTyped::new(
+                decl_name.clone(),
+                *visibility,
+                decl.clone(),
+                target.span().clone(),
+            ));
 
             Call::FunctionNoArgs(FunctionCallNoArgs {
                 target: Expr::from(target),
                 self_arg,
                 type_args: overload.type_args,
-                annotation: return_value.into(),
+                annotation: Typed::from(return_value),
             })
         }
 
-        OverloadCandidate::Method { self_ty, index, sig, ident, access, .. } => {
-            assert_eq!(sig.type_params_len(), overload.type_args_len());
-
-            let return_value = TypedValue {
-                ty: sig.return_ty.clone(),
-                span: span.clone(),
-                decl: None,
-                value_kind: ValueKind::Temporary,
-            };
+        OverloadCandidate::Method { self_ty, index, decl, .. } => {
+            let return_value = TypedValue::temp(call_decl.return_ty.clone(), span.clone());
 
             *target.annotation_mut() = Typed::from(MethodTyped {
                 self_ty: self_ty.clone(),
                 index: *index,
-                name: ident.clone(),
-                access: *access,
-                decl_sig: sig.clone(),
+                decl: decl.clone(),
                 span: target.span().clone(),
             });
 
@@ -548,7 +548,7 @@ pub fn overload_to_no_args_call(
         }
     };
 
-    Expr::Call(Box::new(call))
+    Ok(Expr::Call(Box::new(call)))
 }
 
 /// * `iface_method` - Method to be called
@@ -565,11 +565,11 @@ fn typecheck_method_call(
     with_self_arg: Option<Expr>,
     ctx: &mut Context,
 ) -> TypeResult<Call> {
-    if method.self_ty.get_current_access(ctx) < method.access {
+    if method.self_ty.get_current_access(ctx) < method.decl.access {
         return Err(TypeError::TypeMemberInaccessible {
             ty: method.self_ty.clone(),
-            access: method.access,
-            member: method.name.clone(),
+            access: method.decl.access,
+            member: method.decl.func_decl.ident().clone(),
             span: func_call.span().clone(),
         })
     }
@@ -580,7 +580,7 @@ fn typecheck_method_call(
             GenericError::ArgsLenMismatch {
                 expected: 0,
                 actual: call_type_args.len(),
-                target: GenericTarget::FunctionSig((*method.decl_sig).clone()),
+                target: GenericTarget::FunctionSig(method.decl.func_decl.sig()),
             },
             call_type_args.span().clone(),
         ));
@@ -592,9 +592,7 @@ fn typecheck_method_call(
 
         None => {
             let mut ctx = ctx.clone();
-            let first_self_pos = method
-                .decl_sig
-                .params
+            let first_self_pos = method.decl.func_decl.params
                 .iter()
                 .position(|param| param.ty == Type::MethodSelf);
             
@@ -638,7 +636,7 @@ fn typecheck_method_call(
         }
     }
 
-    let sig = method.decl_sig.with_self(&self_type);
+    let sig = method.decl.func_decl.sig().with_self(&self_type);
 
     let typechecked_args = build_args_for_params(
         &sig.params, 
@@ -663,7 +661,7 @@ fn typecheck_method_call(
 
         args_span: func_call.args_span.clone(),
         func_type: Type::Function(Rc::new(sig)),
-        ident: method.name.clone(),
+        ident: method.decl.func_decl.ident().clone(),
         type_args: None,
         args: typechecked_args,
     }))
@@ -683,9 +681,9 @@ fn typecheck_ufcs_call(
             span: span.clone(),
         });
     }
-    
+
     let mut specialized_call_args = args::specialize_call_args(
-        &ufcs_call.sig,
+        &ufcs_call.decl.sig(),
         &rest_args,
         Some(&ufcs_call.self_arg),
         None, // ufcs call can't have explicit type args
@@ -703,16 +701,15 @@ fn typecheck_ufcs_call(
         .clone()
         .with_ty_args(specialized_call_args.type_args.clone());
 
-    let func_annotation = FunctionTyped {
-        name: func_sym,
-        span: span.clone(),
-        sig: Rc::new(specialized_call_args.sig.clone()),
-        visibility: ufcs_call.visibility,
-    }
-    .into();
+    let func_annotation = FunctionTyped::new(
+        func_sym,
+        ufcs_call.visibility,
+        ufcs_call.decl.clone(),
+        span.clone(),
+    );
 
     // todo: this should construct a fully qualified path expr instead
-    let target = ast::Expr::Ident(ufcs_call.function_name.ident().clone(), func_annotation);
+    let target = ast::Expr::Ident(ufcs_call.function_name.ident().clone(), func_annotation.into());
 
     let annotation = TypedValue {
         ty: specialized_call_args.sig.return_ty.clone(),
@@ -764,32 +761,39 @@ fn typecheck_free_func_call(
     let return_ty = specialized_call_args.sig.return_ty.clone();
 
     let annotation = match return_ty {
-        Type::Nothing => Typed::Untyped(span),
+        Type::Nothing => Typed::Untyped(span.clone()),
+
         return_ty => TypedValue {
             ty: return_ty,
             value_kind: ValueKind::Temporary,
-            span,
+            span: span.clone(),
             decl: None,
         }
         .into(),
     };
-    
-    if let Some(ty_args) = &specialized_call_args.type_args {
-        match target.annotation_mut() {
-            Typed::Function(func_type) => {
-                func_type.check_visible(func_call.span(), ctx)?;
-                
-                let specialized_func_type = FunctionTyped {
-                    name: (**func_type).clone().name.with_ty_args(Some(ty_args.clone())),
-                    sig,
-                    span: func_type.span.clone(),
-                    visibility: func_type.visibility,
-                };
-                
-                *func_type = Rc::new(specialized_func_type);
-            }
-            _ => panic!("typecheck_func_call: target did not have function type"),
+
+    if let Typed::Function(func_type) = target.annotation_mut() {
+        func_type.check_visible(func_call.span(), ctx)?;
+
+        if let Some(ty_args) = &specialized_call_args.type_args {
+            let call_name = specialize_generic_name(&func_type.name, ty_args, ctx)
+                .map_err(|e| TypeError::from_generic_err(e, span.clone()))?
+                .into_owned();
+
+            let specialized_func_type = FunctionTyped::new(
+                call_name,
+                func_type.visibility,
+                func_type.decl.clone(),
+                func_type.span.clone(),
+            );
+
+            *func_type = Rc::new(specialized_func_type);
         }
+    } else {
+        assert!(
+            specialized_call_args.type_args.is_none(),
+            "typecheck_func_call: calls to function values can't have type args"
+        )
     }
 
     Ok(ast::Call::Function(FunctionCall {

@@ -436,6 +436,13 @@ impl<A: Annotation> FunctionDecl<A> {
     pub fn is_overload(&self) -> bool {
         self.get_mod(DeclMod::<A>::OVERLOAD_WORD).is_some() && self.external_src().is_none()
     }
+    
+    pub fn type_params_len(&self) -> usize {
+        match &self.type_params {
+            Some(list) => list.len(),
+            None => 0,
+        }
+    } 
 }
 
 impl<A: Annotation> Spanned for FunctionDecl<A> {

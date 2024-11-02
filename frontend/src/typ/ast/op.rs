@@ -348,7 +348,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         annotation: MethodTyped::new(
             displayable_ty,
             to_string_index,
-            &to_string_method,
+            to_string_method,
             span.clone()
         ).into(),
     });
@@ -393,12 +393,12 @@ fn desugar_string_concat(
 
             let concat_sym = Symbol::from(concat_path.clone());
 
-            let concat_typed = FunctionTyped {
-                name: concat_sym.clone(),
-                span: span.clone(),
-                sig: concat_decls[0].sig().clone(),
-                visibility: concat_decls[0].visiblity(),
-            };
+            let concat_typed = FunctionTyped::new(
+                concat_sym.clone(),
+                concat_decls[0].visiblity(),
+                concat_decls[0].decl().clone(),
+                span.clone(),
+            );
 
             let concat_func = ast::Expr::Ident(concat_path.last().clone(), concat_typed.into());
 
@@ -506,7 +506,7 @@ fn typecheck_member_of(
                     } else {
                         let overload_candidate = &[
                             OverloadCandidate::Function {
-                                sig: func_val.sig.clone(),
+                                decl: func_val.decl.clone(),
                                 decl_name: func_val.name.clone(),
                                 visibility: func_val.visibility,
                             }
@@ -527,7 +527,7 @@ fn typecheck_member_of(
                     } else {
                         let overload_candidate = &[
                             OverloadCandidate::Function {
-                                sig: ufcs_val.sig.clone(),
+                                decl: ufcs_val.decl.clone(),
                                 decl_name: ufcs_val.function_name.clone(),
                                 visibility: ufcs_val.visibility,
                             }
@@ -550,9 +550,7 @@ fn typecheck_member_of(
                                 self_ty: method.self_ty.clone(),
                                 index: method.index,
 
-                                ident: method.name.clone(),
-                                access: method.access,
-                                sig: method.decl_sig.clone(),
+                                decl: method.decl.clone(),
                             }
                         ];
                         
@@ -580,14 +578,14 @@ fn typecheck_member_of(
                         Some(overload) => {
                             check_overload_visibility(&overload, &overloaded.candidates, &span, ctx)?;
                             
-                            let call = overload_to_no_args_call(
+                            overload_to_no_args_call(
                                 &overloaded.candidates,
                                 overload,
                                 Expr::from(member_op.clone()),
                                 self_arg.cloned(),
-                                &span
-                            );
-                            Ok(call)
+                                &span,
+                                ctx,
+                            )
                         }
                         None => Ok(Expr::from(member_op)),
                     }
@@ -673,7 +671,7 @@ fn op_to_no_args_call(
     check_overload_visibility(&overload, candidates, span, ctx)?;
     
     let target = Expr::from(target.clone());
-    let call = overload_to_no_args_call(candidates, overload, target, self_arg, span);
+    let call = overload_to_no_args_call(candidates, overload, target, self_arg, span, ctx)?;
     
     Ok(Some(call))
 }
@@ -710,7 +708,7 @@ fn typecheck_type_member(
             }
 
             // this is a reference to the method itself, args list to follow presumably
-            MethodTyped::new(candidate.iface_ty, candidate.index, &candidate.method, span).into()
+            MethodTyped::new(candidate.iface_ty, candidate.index, candidate.method, span).into()
         },
         
         TypeMember::MethodGroup(group) => {
@@ -721,10 +719,8 @@ fn typecheck_type_member(
                         iface_ty: method_group_item.iface_ty.clone(),
                         self_ty: method_group_item.iface_ty,
                         index: method_group_item.index,
-
-                        ident: member_ident.clone(),
-                        sig: Rc::new(method_group_item.method.func_decl.sig()),
-                        access: method_group_item.method.access,
+                        
+                        decl: method_group_item.method.clone(),
                     }
                 })
                 .collect();
@@ -749,16 +745,18 @@ pub fn typecheck_member_value(
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let annotation = match member {
-        InstanceMember::Method { iface_ty, self_ty, method, sig } => {
+        InstanceMember::Method { iface_ty, self_ty, method } => {
+            let sig = method.func_decl.sig();
+
             let (method_index, iface_method) = iface_ty
-                .find_method(&method, sig.as_ref(), ctx)
+                .find_method(method.func_decl.ident(), &sig, ctx)
                 .ok()
                 .flatten()
                 .unwrap_or_else(|| {
                     panic!(
                         "find_instance_member should only return methods that exist - no match for {}.{} : {}",
                         iface_ty,
-                        method,
+                        method.func_decl.ident(),
                         sig,
                     )
                 });
@@ -775,15 +773,15 @@ pub fn typecheck_member_value(
             Typed::from(method)
         },
 
-        InstanceMember::UFCSCall { func_name, sig, visibility } => {
+        InstanceMember::UFCSCall { func_name, decl, visibility } => {
             // to be resolved later, presumably in a subsequent call
-            UfcsTyped {
-                function_name: func_name,
+            UfcsTyped::new(
+                func_name,
                 visibility,
-                sig,
-                span: span.clone(),
-                self_arg: Box::new(lhs.clone()),
-            }.into()
+                lhs.clone(),
+                decl.clone(),
+                span.clone(),
+            ).into()
         },
 
         InstanceMember::Overloaded { candidates } => {

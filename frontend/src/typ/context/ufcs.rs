@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod test;
 
-use crate::ast::{Ident, Visibility};
+use crate::ast::Ident;
+use crate::ast::Visibility;
+use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::MethodDecl;
 use crate::typ::Context;
 use crate::typ::Decl;
-use crate::typ::FunctionSig;
 use crate::typ::NameResult;
 use crate::typ::Symbol;
 use crate::typ::Type;
@@ -19,7 +20,8 @@ pub enum InstanceMethod {
         /// fully-qualified function name, starting with the namespace the function is declared in
         func_name: Symbol,
         visibility: Visibility,
-        sig: Rc<FunctionSig>,
+        
+        decl: Rc<FunctionDecl>,
     },
     Method {
         self_ty: Type,
@@ -108,7 +110,7 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
 
                 methods.push(InstanceMethod::FreeFunction {
                     func_name,
-                    sig: overload.sig().clone(),
+                    decl: overload.decl().clone(),
                     visibility: overload.visiblity(),
                 })
             }

@@ -16,7 +16,6 @@ use crate::typ::Typed;
 use crate::TokenTree;
 use common::span::Span;
 use common::BuildOptions;
-use std::rc::Rc;
 
 fn expr_from_str(src: &str) -> ast::Expr<Span> {
     let test_unit = Preprocessor::new("test", BuildOptions::default())
@@ -42,7 +41,7 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
 
     let candidates = unit.unit
         .func_defs()
-        .map(|(vis, func)| {
+        .map(|(visibility, func)| {
             let sig = func.decl.sig();
 
             match &func.decl.name.owning_ty {
@@ -54,12 +53,10 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
                         .expect("method defs in unit must have a corresponding decl in the type");
 
                     OverloadCandidate::Method {
-                        ident,
                         index: method_index,
                         self_ty: explicit_impl.clone(),
                         iface_ty: explicit_impl.clone(),
-                        sig: Rc::new(sig),
-                        access: method.access,
+                        decl: method,
                     }
                 },
 
@@ -68,8 +65,8 @@ fn candidates_from_module(module: &Module, unit_name: &str) -> Vec<OverloadCandi
 
                     OverloadCandidate::Function {
                         decl_name: Symbol::from(decl_name),
-                        visibility: vis,
-                        sig: Rc::new(sig),
+                        visibility,
+                        decl: func.decl.clone(),
                     }
                 },
             }
@@ -396,8 +393,8 @@ fn overload_with_accessible_method_is_ambiguous() {
             candidates
                 .iter()
                 .find(|candidate| match candidate {
-                    OverloadCandidate::Method { iface_ty, ident, .. } => {
-                        iface_ty.to_string() == "UnitA.MyClass" && ident.name.as_str() == "A"
+                    OverloadCandidate::Method { iface_ty, decl, .. } => {
+                        iface_ty.to_string() == "UnitA.MyClass" && decl.func_decl.ident().as_str() == "A"
                     }
                     _ => false,
                 })

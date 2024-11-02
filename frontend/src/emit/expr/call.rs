@@ -161,16 +161,14 @@ fn build_func_call(
             let func = builder.translate_func(&func.name, &func.sig, call_ty_args);
 
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
-            let func_sig = func.sig;
 
             let call_target = CallTarget::Function(func_val);
 
-            translate_call_with_args(call_target, args, &func_sig, builder)
+            translate_call_with_args(call_target, args, &func.sig, builder)
         },
 
         typ::Typed::UfcsFunction(func) => {
-            let func_sig = func.sig.clone();
-            let func_instance = builder.translate_func(&func.function_name, &func_sig, None);
+            let func_instance = builder.translate_func(&func.function_name, &func.sig, None);
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func_instance.id)));
 
             let call_target = CallTarget::Function(func_val);
@@ -179,7 +177,7 @@ fn build_func_call(
             args_with_self_arg.push((*func.self_arg).clone());
             args_with_self_arg.extend(args.iter().cloned());
 
-            translate_call_with_args(call_target, &args_with_self_arg, &func_sig, builder)
+            translate_call_with_args(call_target, &args_with_self_arg, &func_instance.sig, builder)
         },
 
         // invoking a closure value that refers to a function
