@@ -43,6 +43,10 @@ impl Ident {
             span: span.into(),
         }
     }
+    
+    pub fn as_str(&self) -> &str {
+        self.name.as_str()
+    }
 }
 
 impl Parse for Ident {
