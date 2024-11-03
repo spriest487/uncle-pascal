@@ -213,9 +213,7 @@ pub fn specialize_call_args(
 
     if let Some(explicit_ty_args) = explicit_ty_args {
         // we have explicit args, don't try to infer types
-        let call_sig = decl_sig.specialize_generic(&explicit_ty_args, ctx)
-            .map_err(|err| TypeError::from_generic_err(err, span.clone()))?;
-
+        let call_sig = decl_sig.apply_ty_args(ty_params, &explicit_ty_args);
         let actual_args = call::build_args_for_params(&call_sig.params, args, self_arg, span, ctx)?;
 
         Ok(SpecializedCallArgs {
@@ -268,25 +266,26 @@ pub fn specialize_call_args(
 
             actual_args.push(actual_arg);
         }
+        
+        let call_sig = inferred_ty_args.apply_to_sig(&decl_sig);
 
-        let inferred_ty_args = try_unwrap_inferred_args(ty_params, inferred_ty_args, ctx, span)
-            .ok_or_else(|| {
+        let call_ty_args = match try_unwrap_inferred_args(ty_params, inferred_ty_args, ctx, span) {
+            Some(list) => list,
+            None => {
                 let arg_tys = actual_args
                     .iter()
                     .map(|a| a.annotation().ty().into_owned())
                     .collect();
-    
-                TypeError::from_generic_err(
+
+                return Err(TypeError::from_generic_err(
                     GenericError::CannotInferArgs {
                         target: GenericTarget::FunctionSig(decl_sig.clone()),
                         hint: GenericTypeHint::ArgTypes(arg_tys),
                     },
                     span.clone(),
-                )
-            })?;
-
-        let call_sig = decl_sig.specialize_generic(&inferred_ty_args, ctx)
-            .map_err(|err| TypeError::from_generic_err(err, span.clone()))?;
+                ));
+            }
+        };
 
         // eprintln!(
         //     "INFERRED ARGS:\n\tdecl: {}\n\tinferred:{}\n\tfinal sig: {}\n\tfinal argument types: [{}]", 
@@ -301,7 +300,7 @@ pub fn specialize_call_args(
         // );
 
         Ok(SpecializedCallArgs {
-            type_args: Some(inferred_ty_args),
+            type_args: Some(call_ty_args),
             sig: call_sig,
             actual_args,
         })
@@ -316,21 +315,38 @@ pub fn try_unwrap_inferred_args(
     ctx: &Context,
     span: &Span,
 ) -> Option<TypeList<Type>> {
-    let mut items = Vec::new();
-
-    for param in type_params.iter() {
-        let ty_arg = inferred_args.find_arg(param.name.as_str())?;
-        
-        if let Some(constraint) = &param.constraint {
-            if !ty_arg.match_constraint(&constraint.is_ty, ctx) {
-                return None;
-            }
-        }
-
-        items.push(ty_arg.clone());
+    if !validate_inferred_args(type_params, &inferred_args, ctx) {
+        return None;
     }
 
+    let items: Vec<_> = inferred_args
+        .into_items()
+        .into_iter()
+        .map(|resolved| resolved.arg)
+        .collect();
+
     Some(TypeList::new(items, span.clone()))
+}
+
+fn validate_inferred_args(
+    type_params: &TypeParamList,
+    inferred_args: &GenericContext,
+    ctx: &Context,
+) -> bool {
+    for param in type_params.iter() {
+        let ty_arg = match inferred_args.find_arg(param.name.as_str()) {
+            Some(ty) => ty,
+            None => return false,
+        };
+
+        if let Some(constraint) = &param.constraint {
+            if !ty_arg.match_constraint(&constraint.is_ty, ctx) {
+                return false;
+            }
+        }
+    }
+
+    true
 }
 
 /// final arg validation when all arg types are known and specialized correctly, and any

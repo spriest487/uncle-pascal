@@ -415,14 +415,19 @@ fn typecheck_func_overload(
             // index back, so we need to apply them here
             let sig = match &overload.type_args {
                 Some(args) => {
+                    let params = decl.func_decl.type_params
+                        .as_ref()
+                        .expect("overload resolved with type args must have type params");
+                    
                     decl.func_decl
                         .sig()
-                        .specialize_generic(args, ctx)
-                        .map_err(|e| {
-                            TypeError::from_generic_err(e, func_call.span().clone())
-                        })?
+                        .with_self(self_ty)
+                        .apply_ty_args(params, args)
                 },
-                None => decl.func_decl.sig(),
+
+                None => decl.func_decl
+                    .sig()
+                    .with_self(self_ty),
             };
 
             if self_ty.get_current_access(ctx) < decl.access {

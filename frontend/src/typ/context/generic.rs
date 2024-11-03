@@ -86,6 +86,12 @@ impl GenericContext {
     pub fn into_items(self) -> Vec<ResolvedTypeArg> {
         self.items
     }
+    
+    pub fn into_args(self) -> impl Iterator<Item=Type> {
+        self.items
+            .into_iter()
+            .map(|i| i.arg)
+    }
 }
 
 #[derive(Debug, Clone)]
