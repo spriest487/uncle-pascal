@@ -13,11 +13,11 @@ pub use self::builtin::*;
 pub use self::decl::*;
 pub use self::def::*;
 pub use self::env::*;
+pub use self::generic::*;
 pub use self::result::*;
 pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
-pub use self::generic::*;
 use crate::ast as syn;
 use crate::ast::Access;
 use crate::ast::Ident;
@@ -35,11 +35,12 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::SELF_TY_NAME;
-use crate::typ::{specialize_by_return_ty, Specializable};
+use crate::typ::specialize_by_return_ty;
 use crate::typ::specialize_struct_def;
 use crate::typ::specialize_variant_def;
 use crate::typ::FunctionSig;
 use crate::typ::Primitive;
+use crate::typ::Specializable;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
@@ -719,7 +720,7 @@ impl Context {
                 param.name.clone(),
                 Type::GenericParam(Rc::new(TypeParamType {
                     name: param.name.clone(),
-                    is_iface,
+                    is_ty: is_iface,
                     pos,
                 })),
                 Visibility::Implementation,
@@ -1346,7 +1347,7 @@ impl Context {
         }
 
         match self_ty {
-            Type::GenericParam(param_ty) => match &param_ty.is_iface {
+            Type::GenericParam(param_ty) => match &param_ty.is_ty {
                 Type::Nothing => Ok(false),
                 as_iface => Ok(as_iface == iface_ty),
             },

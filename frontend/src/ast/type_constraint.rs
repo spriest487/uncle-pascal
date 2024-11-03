@@ -18,14 +18,14 @@ use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TypeConstraint<T: TypeAnnotation> {
-    pub param_ident: Ident,
+    pub name: Ident,
     pub is_ty: T,
     pub span: Span,
 }
 
 impl<T: TypeAnnotation> fmt::Display for TypeConstraint<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} is {}", self.param_ident, self.is_ty)
+        write!(f, "{} is {}", self.name, self.is_ty)
     }
 }
 
@@ -107,7 +107,7 @@ impl ParseSeq for WhereClauseItem {
 
         Ok(WhereClauseItem(TypeConstraint {
             span: param_ident.span().to(is_ty.span()),
-            param_ident,
+            name: param_ident,
             is_ty,
         }))
     }

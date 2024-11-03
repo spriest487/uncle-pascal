@@ -4,17 +4,18 @@ mod overload;
 mod args;
 
 use crate::ast;
-use crate::ast::TypeList;
 use crate::ast::Ident;
 use crate::ast::Visibility;
 use crate::typ::ast::cast::implicit_conversion;
-use crate::typ::ast::{specialize_func_decl, typecheck_expr};
+use crate::typ::ast::specialize_func_decl;
+use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::Expr;
+use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::ObjectCtor;
-use crate::typ::{specialize_generic_name, typecheck_type};
+use crate::typ::{specialize_generic_name, FunctionSig};
+use crate::typ::typecheck_type;
 use crate::typ::Context;
-use crate::typ::FunctionSig;
 use crate::typ::FunctionSigParam;
 use crate::typ::FunctionTyped;
 use crate::typ::GenericError;
@@ -27,6 +28,7 @@ use crate::typ::OverloadTyped;
 use crate::typ::Specializable;
 use crate::typ::Symbol;
 use crate::typ::Type;
+use crate::typ::TypeArgList;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
@@ -166,16 +168,16 @@ fn build_args_for_params(
 }
 
 pub fn typecheck_type_args(
-    type_args: &TypeList<ast::TypeName>,
+    type_args: &ast::TypeList<ast::TypeName>,
     ctx: &mut Context,
-) -> TypeResult<TypeList<Type>> {
+) -> TypeResult<TypeArgList> {
     let items: Vec<_> = type_args
         .items
         .iter()
         .map(|arg_ty| typecheck_type(arg_ty, ctx))
         .collect::<TypeResult<_>>()?;
 
-    Ok(TypeList::new(items, type_args.span().clone()))
+    Ok(TypeArgList::new(items, type_args.span().clone()))
 }
 
 pub fn typecheck_call(
@@ -245,7 +247,7 @@ fn typecheck_func_call(
             Type::Function(sig) => {
                 let sig = sig.clone();
 
-                typecheck_free_func_call(target, &func_call, self_arg.as_ref(), sig, ctx)
+                typecheck_func_value_call(target, &func_call, self_arg.as_ref(), &sig, ctx)
                     .map(Box::new)
                     .map(Invocation::Call)?
             },
@@ -267,10 +269,9 @@ fn typecheck_func_call(
 
         Typed::Function(func) => {
             func.check_visible(func_call.span(), ctx)?;
+            let decl = func.decl.clone();
             
-            let sig = Rc::new(func.decl.sig());
-            
-            typecheck_free_func_call(target, &func_call, self_arg.as_ref(), sig, ctx)
+            typecheck_free_func_call(target, &func_call, self_arg.as_ref(), &decl, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
@@ -683,7 +684,7 @@ fn typecheck_ufcs_call(
     }
 
     let mut specialized_call_args = args::specialize_call_args(
-        &ufcs_call.decl.sig(),
+        &ufcs_call.decl,
         &rest_args,
         Some(&ufcs_call.self_arg),
         None, // ufcs call can't have explicit type args
@@ -728,11 +729,58 @@ fn typecheck_ufcs_call(
     }))
 }
 
+// functions called via function values (lambdas, references to functions) must have a fixed
+// signature that was already resolved when the reference was created, so we expect to know
+// all parameter types exactly and have no type arguments
+fn typecheck_func_value_call(
+    target: Expr,
+    func_call: &ast::FunctionCall<Span>,
+    self_arg: Option<&Expr>,
+    sig: &Rc<FunctionSig>,
+    ctx: &mut Context,
+) -> TypeResult<Call> {
+    let mut call_args = Vec::with_capacity(func_call.args.len());
+    let expect_arg_tys = sig.params
+            .iter()
+            .map(|p| &p.ty)
+            .chain(iter::repeat(&Type::Nothing));
+    
+    if let Some(self_arg) = self_arg {
+        call_args.push(self_arg.clone());
+    }
+    
+    for (arg, expect_ty) in func_call.args.iter().zip(expect_arg_tys) {
+        let arg = typecheck_expr(arg, expect_ty, ctx)?;
+        call_args.push(arg);
+    }
+
+    validate_args(
+        &mut call_args,
+        &sig.params,
+        func_call.span(),
+        ctx,
+    )?;
+
+    let span = func_call.span().clone();
+    let annotation = match &sig.return_ty {
+        Type::Nothing => Typed::Untyped(span.clone()),
+        return_ty => Typed::from(TypedValue::temp(return_ty.clone(), span.clone()))
+    };
+
+    Ok(ast::Call::Function(FunctionCall {
+        target,
+        args: call_args,
+        type_args: None,
+        args_span: func_call.args_span.clone(),
+        annotation,
+    }))
+}
+
 fn typecheck_free_func_call(
     mut target: Expr,
     func_call: &ast::FunctionCall<Span>,
     self_arg: Option<&Expr>,
-    sig: Rc<FunctionSig>,
+    decl: &Rc<FunctionDecl>,
     ctx: &mut Context,
 ) -> TypeResult<Call> {    
     let span = func_call.span().clone();
@@ -743,7 +791,7 @@ fn typecheck_free_func_call(
     };
 
     let mut specialized_call_args = specialize_call_args(
-        sig.as_ref(),
+        &decl,
         &func_call.args,
         self_arg,
         type_args,
@@ -762,14 +810,7 @@ fn typecheck_free_func_call(
 
     let annotation = match return_ty {
         Type::Nothing => Typed::Untyped(span.clone()),
-
-        return_ty => TypedValue {
-            ty: return_ty,
-            value_kind: ValueKind::Temporary,
-            span: span.clone(),
-            decl: None,
-        }
-        .into(),
+        return_ty => Typed::from(TypedValue::temp(return_ty, span.clone()))
     };
 
     if let Typed::Function(func_type) = target.annotation_mut() {

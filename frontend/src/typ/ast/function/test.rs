@@ -45,7 +45,7 @@ fn make_ty_param_of(name: &str, constraint: Type) -> TypeParam<Type> {
         name: name.clone(),
         constraint: Some(TypeConstraint {
             span: name.span.clone(),
-            param_ident: name,
+            name: name,
             is_ty: constraint,
         }),
     }
@@ -56,7 +56,7 @@ fn make_ty_param_ty(param_list: &[TypeParam<Type>], pos: usize) -> Type {
 
     Type::GenericParam(Rc::new(TypeParamType {
         name: param.name.clone(),
-        is_iface: param
+        is_ty: param
             .constraint
             .as_ref()
             .map(|constraint| constraint.is_ty.clone())

@@ -51,7 +51,8 @@ where
     UnitSources: IntoIterator<Item = (&'a str, &'a str)>,
 {
 
-    try_module_from_srcs(unit_srcs).unwrap()
+    try_module_from_srcs(unit_srcs)
+        .unwrap_or_else(|err| panic!("{}", err))
 }
 
 pub fn unit_from_src(unit_name: &'static str, src: &'static str) -> ModuleUnit {

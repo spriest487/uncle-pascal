@@ -56,7 +56,7 @@ impl TypeParamList {
         self.map(|item, pos| Type::GenericParam(Rc::new(TypeParamType {
             name: item.name,
             pos,
-            is_iface: item
+            is_ty: item
                 .constraint
                 .map(|constraint| constraint.is_ty)
                 .unwrap_or(Type::Nothing)
@@ -75,7 +75,7 @@ pub fn typecheck_type_params(
             Some(constraint) => {
                 let is_ty = typecheck_type(&constraint.is_ty, ctx)?;
                 Some(ast::TypeConstraint {
-                    param_ident: ty_param.name.clone(),
+                    name: ty_param.name.clone(),
                     span: constraint.span.clone(),
                     is_ty,
                 })
@@ -112,7 +112,7 @@ pub fn validate_ty_args(args: &TypeArgList, params: &TypeParamList, ctx: &Contex
 pub struct TypeParamType {
     pub name: Ident,
     pub pos: usize,
-    pub is_iface: Type,
+    pub is_ty: Type,
 }
 
 impl fmt::Display for TypeParamType {

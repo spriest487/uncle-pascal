@@ -100,7 +100,7 @@ impl Type {
         let ty_param_ty = TypeParamType {
             name,
             pos,
-            is_iface: Type::Nothing,
+            is_ty: Type::Nothing,
         };
         
         Type::GenericParam(Rc::new(ty_param_ty))
@@ -121,7 +121,7 @@ impl Type {
         let ty_param_ty = TypeParamType {
             name,
             pos,
-            is_iface,
+            is_ty: is_iface,
         };
 
         Type::GenericParam(Rc::new(ty_param_ty))
@@ -791,7 +791,7 @@ impl Type {
 
     pub fn implemented_ifaces(&self, ctx: &Context) -> NameResult<Vec<Type>> {
         match self {
-            Type::GenericParam(param_ty) => match &param_ty.is_iface {
+            Type::GenericParam(param_ty) => match &param_ty.is_ty {
                 Type::Nothing => Ok(Vec::new()),
                 is_iface => Ok(vec![is_iface.clone()]),
             },

@@ -126,7 +126,7 @@ fn find_ufcs_methods(self_ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMe
     // need to call it through the interface instead
     let (ty_methods, iface_ty) = match self_ty {
         Type::GenericParam(p) => {
-            match &p.is_iface {
+            match &p.is_ty {
                 Type::Nothing => return Ok(Vec::new()),
 
                 is_iface => {

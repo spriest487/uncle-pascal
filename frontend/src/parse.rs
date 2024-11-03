@@ -169,7 +169,7 @@ impl DiagnosticOutput for ParseError {
             }
 
             ParseError::TypeConstraintAlreadySpecified(c) => {
-                Some(format!("parameter `{}` has more than one type constraint", c.param_ident))
+                Some(format!("parameter `{}` has more than one type constraint", c.name))
             }
 
             ParseError::EmptyTypeParamList { .. } => {
@@ -185,7 +185,7 @@ impl DiagnosticOutput for ParseError {
             }
 
             ParseError::NoMatchingParamForTypeConstraint(c) => {
-                Some(format!("type constraint was specified for parameter `{}` which does not exist", c.param_ident))
+                Some(format!("type constraint was specified for parameter `{}` which does not exist", c.name))
             }
             
             ParseError::InvalidTypeParamName(..) => None,

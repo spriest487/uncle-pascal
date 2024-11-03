@@ -150,7 +150,7 @@ pub fn resolve_overload(
     // no overload resolution needed, we can use the param type hint for all args
     if candidates.len() == 1 {
         let specialized = specialize_call_args(
-            &candidate_sigs[0],
+            candidates[0].decl(),
             args,
             self_arg,
             type_args.cloned(),

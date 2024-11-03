@@ -2,6 +2,7 @@ use crate::ast;
 use crate::ast::IdentPath;
 use crate::typ::ast::apply_func_decl_named_ty_args;
 use crate::typ::ast::infer_from_structural_ty_args;
+use crate::typ::ast::try_unwrap_inferred_args;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::MethodDecl;
 use crate::typ::ast::StructDef;
@@ -10,6 +11,7 @@ use crate::typ::ast::VariantDef;
 use crate::typ::validate_ty_args;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
+use crate::typ::GenericContext;
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
@@ -89,7 +91,7 @@ pub fn specialize_generic_name<'a>(
 
             let arg = args.resolve(&TypeParamType {
                 name: param.name.clone(),
-                is_iface,
+                is_ty: is_iface,
                 pos: i,
             });
 
@@ -302,43 +304,20 @@ pub fn specialize_by_return_ty<'a>(
 
     let ty_params = name.type_params.as_ref().unwrap();
 
-    let mut inferred_ty_args = vec![None; ty_params.len()];
-    infer_from_structural_ty_args(&generic_sig.return_ty, expect_return_ty, &mut inferred_ty_args);
-
-    let mut ty_args = Vec::new();
-    for (pos, arg) in inferred_ty_args.into_iter().enumerate() {
-        let valid_arg = match arg {
-            None => None,
-
-            Some(arg) => {
-                if let Some(constraint) = &ty_params.items[pos].constraint {
-                    if arg.match_constraint(&constraint.is_ty, ctx) {
-                        Some(arg)
-                    } else {
-                        None
-                    }
-                } else {
-                    Some(arg)
-                }
-            },
-        };
-        
-        match valid_arg {
-            Some(ty) => { 
-                ty_args.push(ty); 
+    let mut inferred_ty_args = GenericContext::empty();
+    infer_from_structural_ty_args(&generic_sig.return_ty, expect_return_ty, &mut inferred_ty_args, span);
+    
+    let ty_args = try_unwrap_inferred_args(&ty_params, inferred_ty_args, ctx, span)
+        .ok_or_else(|| {
+            GenericError::CannotInferArgs {
+                target: GenericTarget::FunctionSig(generic_sig.clone()),
+                hint: GenericTypeHint::ExpectedReturnType(expect_return_ty.clone()),
             }
-            None => {
-                return Err(GenericError::CannotInferArgs {
-                    target: GenericTarget::FunctionSig(generic_sig.clone()),
-                    hint: GenericTypeHint::ExpectedReturnType(expect_return_ty.clone()),
-                })
-            }
-        }
-    }
+        })?;
 
     let specialized = name
         .clone()
-        .with_ty_args(Some(TypeArgList::new(ty_args, span.clone())));
+        .with_ty_args(Some(ty_args));
 
     Ok(Cow::Owned(specialized))
 }

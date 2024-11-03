@@ -1,13 +1,15 @@
 use crate::typ;
-use crate::typ::{FunctionSig, Specializable, Type};
+use crate::typ::FunctionSig;
+use crate::typ::Specializable;
+use crate::typ::Type;
 use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeParam;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeParamList;
 use std::borrow::Cow;
-use std::fmt;
 use std::fmt::Formatter;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct GenericContext {
@@ -59,7 +61,7 @@ impl GenericContext {
         self.items.is_empty()
     }
     
-    fn add(&mut self, param: TypeParam, arg: Type) {
+    pub fn add(&mut self, param: TypeParam, arg: Type) {
         self.items.push(ResolvedTypeArg {
             arg,
             param,
@@ -73,10 +75,21 @@ impl GenericContext {
     pub fn apply_to_sig(&self, sig: &FunctionSig) -> FunctionSig {
         sig.apply_ty_args(self, self)
     }
+    
+    pub fn find_arg(&self, name: &str) -> Option<&Type> {
+        self.items
+            .iter()
+            .find(|i| i.param.name.as_str() == name)
+            .map(|i| &i.arg)
+    }
+
+    pub fn into_items(self) -> Vec<ResolvedTypeArg> {
+        self.items
+    }
 }
 
 #[derive(Debug, Clone)]
-struct ResolvedTypeArg {
+pub struct ResolvedTypeArg {
     pub param: typ::TypeParam,
     pub arg: typ::Type,
 }

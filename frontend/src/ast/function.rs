@@ -208,7 +208,7 @@ impl FunctionDecl<Span> {
                     let constraint_index = where_clause
                         .constraints
                         .iter()
-                        .position(|c| c.param_ident == *type_param_ident);
+                        .position(|c| c.name == *type_param_ident);
 
                     let constraint = match constraint_index {
                         Some(i) => Some(where_clause.constraints.remove(i)),
@@ -225,7 +225,7 @@ impl FunctionDecl<Span> {
                 if !where_clause.constraints.is_empty() {
                     let first_bad = where_clause.constraints.remove(0);
                     // just error on the first one
-                    let is_duplicate = type_params.iter().any(|p| p.name == first_bad.param_ident);
+                    let is_duplicate = type_params.iter().any(|p| p.name == first_bad.name);
                     return Err(TracedError::trace(if is_duplicate {
                         ParseError::TypeConstraintAlreadySpecified(first_bad)
                     } else {
