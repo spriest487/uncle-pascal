@@ -187,13 +187,11 @@ fn translate_is_variant(
         a: val,
         of_ty: variant_ty,
     });
+    
+    let tag_val = ir::Value::LiteralI32(case_index as i32);
 
     let is = builder.local_temp(ir::Type::Bool);
-    builder.append(ir::Instruction::Eq {
-        out: is.clone(),
-        a: ir::Value::Ref(tag_ptr.to_deref()),
-        b: ir::Value::LiteralI32(case_index as i32), //todo: proper size type,
-    });
+    builder.eq(is.clone(), tag_ptr.to_deref(), tag_val);
 
     is
 }

@@ -21,7 +21,7 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
-use ir_lang::InstructionFormatter;
+use ir_lang::InstructionFormatter as _;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -812,32 +812,36 @@ impl Interpreter {
             ir::Instruction::LocalBegin => self.exec_local_begin()?,
             ir::Instruction::LocalEnd => self.exec_local_end()?,
 
-            ir::Instruction::RcNew { out, struct_id } => self.exec_rc_new(out, *struct_id)?,
+            ir::Instruction::RcNew { out, type_id: struct_id } => self.exec_rc_new(out, *struct_id)?,
 
-            ir::Instruction::Add { out, a, b } => self.exec_add(out, a, b)?,
+            ir::Instruction::Add(op) => self.exec_add(op)?,
 
-            ir::Instruction::Mul { out, a, b } => self.exec_mul(out, a, b)?,
-            ir::Instruction::Div { out, a, b } => self.exec_div(out, a, b)?,
-            ir::Instruction::Mod { out, a, b } => self.exec_mod(out, a, b)?,
-            ir::Instruction::Sub { out, a, b } => self.exec_sub(out, a, b)?,
-            ir::Instruction::Shl { out, a, b } => self.exec_shl(out, a, b)?,
-            ir::Instruction::Shr { out, a, b } => self.exec_shr(out, a, b)?,
-            ir::Instruction::Eq { out, a, b } => self.exec_eq(out, a, b)?,
-            ir::Instruction::Gt { out, a, b } => self.exec_gt(out, a, b)?,
-            ir::Instruction::Not { out, a } => self.exec_not(out, a)?,
-            ir::Instruction::And { out, a, b } => self.exec_and(out, a, b)?,
-            ir::Instruction::Or { out, a, b } => self.exec_or(out, a, b)?,
+            ir::Instruction::Mul(op) => self.exec_mul(op)?,
+            ir::Instruction::IDiv(op) => self.exec_idiv(op)?,
+            ir::Instruction::FDiv(op) => self.exec_fdiv(op)?,
+            ir::Instruction::Mod(op) => self.exec_mod(op)?,
+            ir::Instruction::Sub(op) => self.exec_sub(op)?,
+            ir::Instruction::Shl(op) => self.exec_shl(op)?,
+            ir::Instruction::Shr(op) => self.exec_shr(op)?,
+            ir::Instruction::Eq(op) => self.exec_eq(op)?,
+            ir::Instruction::Gt(op) => self.exec_gt(op)?,
+            ir::Instruction::Gte(op) => self.exec_gte(op)?,
+            ir::Instruction::Lt(op) => self.exec_lt(op)?,
+            ir::Instruction::Lte(op) => self.exec_lte(op)?,
+            ir::Instruction::Not(op) => self.exec_not(&op)?,
+            ir::Instruction::And(op) => self.exec_and(&op)?,
+            ir::Instruction::Or(op) => self.exec_or(&op)?,
 
-            ir::Instruction::BitAnd { out, a, b } => {
-                self.exec_bitwise(out, a, b, u64::bitand, instruction)?
+            ir::Instruction::BitAnd(op) => {
+                self.exec_bitwise(op, u64::bitand, ir::Instruction::BitAnd)?
             },
-            ir::Instruction::BitOr { out, a, b } => {
-                self.exec_bitwise(out, a, b, u64::bitor, instruction)?
+            ir::Instruction::BitOr(op) => {
+                self.exec_bitwise(op, u64::bitor, ir::Instruction::BitOr)?
             },
-            ir::Instruction::BitXor { out, a, b } => {
-                self.exec_bitwise(out, a, b, u64::bitxor, instruction)?
+            ir::Instruction::BitXor(op) => {
+                self.exec_bitwise(op, u64::bitxor, ir::Instruction::BitXor)?
             },
-            ir::Instruction::BitNot { out, a } => self.exec_bitwise_not(out, a, instruction)?,
+            ir::Instruction::BitNot(op) => self.exec_bitwise_not(op)?,
 
             ir::Instruction::Move { out, new_val } => {
                 let val = self.evaluate(new_val)?;
@@ -942,34 +946,6 @@ impl Interpreter {
 
         self.store(out, DynValue::Pointer(rc_ptr))?;
 
-        Ok(())
-    }
-
-    fn exec_add(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
-
-        let result = match (a_val, b_val) {
-            // pointer arithmetic
-            (DynValue::Pointer(ptr), DynValue::I32(offset))
-            | (DynValue::I32(offset), DynValue::Pointer(ptr)) => {
-                let offset_ptr = self.offset_ptr(ptr, offset as isize)?;
-
-                Ok(DynValue::Pointer(offset_ptr))
-            },
-
-            // value addition
-            (a_val, b_val) => match a_val.try_add(&b_val) {
-                Some(result) => Ok(result),
-                None => Err(ExecError::IllegalInstruction(ir::Instruction::Add {
-                    a: a.clone(),
-                    b: b.clone(),
-                    out: out.clone(),
-                })),
-            },
-        }?;
-
-        self.store(out, result)?;
         Ok(())
     }
 
@@ -1184,51 +1160,73 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_div(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
+    fn exec_add(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
 
-        match a_val.try_div(&b_val) {
-            Some(result) => self.store(out, result),
-            None => Err(ExecError::IllegalInstruction(ir::Instruction::Div {
-                a: a.clone(),
-                b: b.clone(),
-                out: out.clone(),
-            })),
+        let result = match (a_val, b_val) {
+            // pointer arithmetic
+            (DynValue::Pointer(ptr), DynValue::I32(offset))
+            | (DynValue::I32(offset), DynValue::Pointer(ptr)) => {
+                let offset_ptr = self.offset_ptr(ptr, offset as isize)?;
+
+                Ok(DynValue::Pointer(offset_ptr))
+            },
+
+            // value addition
+            (a_val, b_val) => match a_val.try_add(&b_val) {
+                Some(result) => Ok(result),
+                None => Err(ExecError::IllegalInstruction(ir::Instruction::Add(op.clone()))),
+            },
+        }?;
+
+        self.store(&op.out, result)?;
+        Ok(())
+    }
+
+    fn exec_idiv(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
+
+        match a_val.try_idiv(&b_val) {
+            Some(result) => self.store(&op.out, result),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::IDiv(op.clone()))),
         }
     }
 
-    fn exec_mod(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
+    fn exec_fdiv(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
+
+        match a_val.try_fdiv(&b_val) {
+            Some(result) => self.store(&op.out, result),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::IDiv(op.clone()))),
+        }
+    }
+
+    fn exec_mod(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
 
         match a_val.try_mod(&b_val) {
-            Some(result) => self.store(out, result),
-            None => Err(ExecError::IllegalInstruction(ir::Instruction::Mod {
-                a: a.clone(),
-                b: b.clone(),
-                out: out.clone(),
-            })),
+            Some(result) => self.store(&op.out, result),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Mod(op.clone()))),
         }
     }
 
-    fn exec_mul(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
+    fn exec_mul(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
 
         match a_val.try_mul(&b_val) {
-            Some(result) => self.store(out, result),
-            None => Err(ExecError::IllegalInstruction(ir::Instruction::Mul {
-                a: a.clone(),
-                b: b.clone(),
-                out: out.clone(),
-            })),
+            Some(result) => self.store(&op.out, result),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Mul(op.clone()))),
         }
     }
 
-    fn exec_sub(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
+    fn exec_sub(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
 
         let result = match (a_val, b_val) {
             // pointer arithmetic
@@ -1242,145 +1240,147 @@ impl Interpreter {
             // value addition
             (a_val, b_val) => match a_val.try_sub(&b_val) {
                 Some(result) => Ok(result),
-                None => Err(ExecError::IllegalInstruction(ir::Instruction::Sub {
-                    a: a.clone(),
-                    b: b.clone(),
-                    out: out.clone(),
-                })),
+                None => Err(ExecError::IllegalInstruction(ir::Instruction::Sub(op.clone()))),
             },
         }?;
 
-        self.store(out, result)?;
+        self.store(&op.out, result)?;
         Ok(())
     }
 
-    fn exec_shl(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
+    fn exec_shl(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
 
         match a_val.try_shl(&b_val) {
-            Some(result) => self.store(out, result),
-            None => Err(ExecError::IllegalInstruction(ir::Instruction::Shl {
-                a: a.clone(),
-                b: b.clone(),
-                out: out.clone(),
-            })),
+            Some(result) => self.store(&op.out, result),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Shl(op.clone()))),
         }
     }
 
-    fn exec_shr(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
+    fn exec_shr(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
 
         match a_val.try_shr(&b_val) {
-            Some(result) => self.store(out, result),
-            None => Err(ExecError::IllegalInstruction(ir::Instruction::Shr {
-                a: a.clone(),
-                b: b.clone(),
-                out: out.clone(),
-            })),
+            Some(result) => self.store(&op.out, result),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Shr(op.clone()))),
         }
     }
 
-    fn exec_eq(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
+    fn exec_eq(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
 
         match a_val.try_eq(&b_val) {
-            Some(eq) => self.store(out, DynValue::Bool(eq)),
-            None => Err(ExecError::IllegalInstruction(ir::Instruction::Eq {
-                a: a.clone(),
-                b: b.clone(),
-                out: out.clone(),
-            })),
+            Some(eq) => self.store(&op.out, DynValue::Bool(eq)),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Eq(op.clone()))),
         }
     }
 
-    fn exec_gt(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
-        let b_val = self.evaluate(b)?;
+    fn exec_gt(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
 
         match a_val.try_gt(&b_val) {
-            Some(gt) => self.store(out, DynValue::Bool(gt)),
-            None => Err(ExecError::IllegalInstruction(ir::Instruction::Gt {
-                a: a.clone(),
-                b: b.clone(),
-                out: out.clone(),
-            })),
+            Some(gt) => self.store(&op.out, DynValue::Bool(gt)),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Gt(op.clone()))),
         }
     }
 
-    fn exec_not(&mut self, out: &ir::Ref, a: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?;
+    fn exec_gte(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
+
+        match a_val.try_gte(&b_val) {
+            Some(gt) => self.store(&op.out, DynValue::Bool(gt)),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Gte(op.clone()))),
+        }
+    }
+
+    fn exec_lt(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
+
+        match a_val.try_lt(&b_val) {
+            Some(gt) => self.store(&op.out, DynValue::Bool(gt)),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Lt(op.clone()))),
+        }
+    }
+
+    fn exec_lte(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
+        let b_val = self.evaluate(&op.b)?;
+
+        match a_val.try_lte(&b_val) {
+            Some(gt) => self.store(&op.out, DynValue::Bool(gt)),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Lte(op.clone()))),
+        }
+    }
+
+    fn exec_not(&mut self, op: &ir::UnaryOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?;
 
         match a_val.try_not() {
-            Some(not) => self.store(out, DynValue::Bool(not)),
-            None => Err(ExecError::IllegalInstruction(ir::Instruction::Not {
-                a: a.clone(),
-                out: out.clone(),
-            })),
+            Some(not) => self.store(&op.out, DynValue::Bool(not)),
+            None => Err(ExecError::IllegalInstruction(ir::Instruction::Not(op.clone()))),
         }
     }
 
-    fn exec_and(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?.as_bool().ok_or_else(|| {
-            let msg = format!("operand a of And instruction must be bool, got {:?}", a);
-            ExecError::illegal_state(msg)
+    fn exec_and(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?.as_bool().ok_or_else(|| {
+            ExecError::IllegalInstruction(ir::Instruction::And(op.clone()))
         })?;
 
-        let b_val = self.evaluate(b)?.as_bool().ok_or_else(|| {
-            let msg = format!("operand b of And instruction must be bool, got {:?}", b);
-            ExecError::illegal_state(msg)
+        let b_val = self.evaluate(&op.b)?.as_bool().ok_or_else(|| {
+            ExecError::IllegalInstruction(ir::Instruction::And(op.clone()))
         })?;
 
-        self.store(out, DynValue::Bool(a_val && b_val))?;
+        self.store(&op.out, DynValue::Bool(a_val && b_val))?;
 
         Ok(())
     }
 
-    fn exec_or(&mut self, out: &ir::Ref, a: &ir::Value, b: &ir::Value) -> ExecResult<()> {
-        let a_val = self.evaluate(a)?.as_bool().ok_or_else(|| {
-            let msg = format!("operand a of Or instruction must be bool, got {:?}", a);
-            ExecError::illegal_state(msg)
+    fn exec_or(&mut self, op: &ir::BinOpInstruction) -> ExecResult<()> {
+        let a_val = self.evaluate(&op.a)?.as_bool().ok_or_else(|| {
+            ExecError::IllegalInstruction(ir::Instruction::Or(op.clone()))
         })?;
 
-        let b_val = self.evaluate(b)?.as_bool().ok_or_else(|| {
-            let msg = format!("operand b of Or instruction must be bool, got {:?}", b);
-            ExecError::illegal_state(msg)
+        let b_val = self.evaluate(&op.b)?.as_bool().ok_or_else(|| {
+            ExecError::IllegalInstruction(ir::Instruction::Or(op.clone()))
         })?;
 
-        self.store(out, DynValue::Bool(a_val || b_val))?;
+        self.store(&op.out, DynValue::Bool(a_val || b_val))?;
 
         Ok(())
     }
 
-    fn exec_bitwise<Op>(
+    fn exec_bitwise<OpFn, ToInstructionFn>(
         &mut self,
-        out: &ir::Ref,
-        a: &ir::Value,
-        b: &ir::Value,
-        op: Op,
-        instruction: &ir::Instruction,
+        op: &ir::BinOpInstruction,
+        op_fn: OpFn,
+        to_instruction: ToInstructionFn
     ) -> ExecResult<()>
     where
-        Op: Fn(u64, u64) -> u64,
+        OpFn: Fn(u64, u64) -> u64,
+        ToInstructionFn: Fn(ir::BinOpInstruction) -> ir::Instruction, 
     {
-        let a_cell = self.evaluate(a)?;
+        let a_cell = self.evaluate(&op.a)?;
 
         let a_val = a_cell
             .try_cast(&ir::Type::U64)
             .and_then(|val| val.as_u64())
-            .ok_or_else(|| ExecError::IllegalInstruction(instruction.clone()))?;
+            .ok_or_else(|| ExecError::IllegalInstruction(to_instruction(op.clone())))?;
 
         let b_val = self
-            .evaluate(b)?
+            .evaluate(&op.b)?
             .try_cast(&ir::Type::U64)
             .and_then(|val| val.as_u64())
-            .ok_or_else(|| ExecError::IllegalInstruction(instruction.clone()))?;
+            .ok_or_else(|| ExecError::IllegalInstruction(to_instruction(op.clone())))?;
 
-        let result = op(a_val, b_val);
+        let result = op_fn(a_val, b_val);
         self.store(
-            out,
+            &op.out,
             match a_cell {
                 DynValue::U8(_) => DynValue::U8(result as u8),
                 DynValue::U16(_) => DynValue::U16(result as u16),
@@ -1393,19 +1393,17 @@ impl Interpreter {
 
     fn exec_bitwise_not(
         &mut self,
-        out: &ir::Ref,
-        a: &ir::Value,
-        instruction: &ir::Instruction,
+        op: &ir::UnaryOpInstruction,
     ) -> ExecResult<()> {
-        let a_cell = self.evaluate(a)?;
+        let a_cell = self.evaluate(&op.a)?;
         let a_val = a_cell
             .try_cast(&ir::Type::U64)
             .and_then(|val| val.as_u64())
-            .ok_or_else(|| ExecError::IllegalInstruction(instruction.clone()))?;
+            .ok_or_else(|| ExecError::IllegalInstruction(ir::Instruction::BitNot(op.clone())))?;
 
         let result = !a_val;
         self.store(
-            out,
+            &op.out,
             match a_cell {
                 DynValue::U8(_) => DynValue::U8(result as u8),
                 DynValue::U16(_) => DynValue::U16(result as u16),

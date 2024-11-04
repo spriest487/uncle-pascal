@@ -28,7 +28,7 @@ pub fn translate_object_ctor(ctor: &typ::ast::ObjectCtor, builder: &mut Builder)
         // allocate class struct at out pointer
         builder.append(Instruction::RcNew {
             out: out_val.clone(),
-            struct_id,
+            type_id: struct_id,
         });
     }
 
@@ -136,10 +136,7 @@ fn translate_dyn_array_ctor(
 
     // allocate the array object itself
     builder.scope(|builder| {
-        builder.append(Instruction::RcNew {
-            out: arr.clone(),
-            struct_id,
-        });
+        builder.rc_new(arr.clone(), struct_id);
 
         // get pointer to the length
         let len_ref = builder.local_temp(Type::I32.ptr());
@@ -180,11 +177,7 @@ fn translate_dyn_array_ctor(
                     let index = Value::LiteralI32(i as i32);
 
                     // el_ptr := arr_ptr^ + i
-                    builder.append(Instruction::Add {
-                        a: Value::Ref(arr_ptr.clone().to_deref()),
-                        b: index,
-                        out: el_ptr.clone(),
-                    });
+                    builder.add(el_ptr.clone(), arr_ptr.clone().to_deref(), index);
 
                     // el_ptr^ := el
                     let el = expr::translate_expr(&el.value, builder);

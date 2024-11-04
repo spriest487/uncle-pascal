@@ -1,10 +1,7 @@
 # critical
-* generate bounds checks as a separate function instead of inlining them
-* make IR function src spans optional?? some builtins don't have them
 * `Self` only works properly when used directly as a function param, not if it's contained in other types
   * limit self to inferface method decls, don't allow it as a general alias for the current type now that forward
     decls are working properly
-* maybe split func and type defs up in the context? for simplifying define logic
 * project files/don't auto load used units
 * why is the C backend generating packed decls for everything? 
 * weak refs
@@ -30,4 +27,5 @@
 * undefined symbol checking can probably be moved to IR codegen rather than during typechecking 
 * type cache so we don't need to construct/pass around type objects all the time in the typechecker (This is really slow)
 * stop outputting empty releaser funcs where there's nothing ot be released
-
+* make IR function src spans optional?? some builtins don't have them
+* maybe split func and type defs up in the context? for simplifying define logic

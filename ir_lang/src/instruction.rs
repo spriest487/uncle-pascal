@@ -20,85 +20,31 @@ pub enum Instruction {
         out: Ref,
         new_val: Value,
     },
-    Add {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Sub {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Mul {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Div {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Mod {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Shl {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Shr {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    BitAnd {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    BitOr {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    BitXor {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    BitNot {
-        out: Ref,
-        a: Value,
-    },
 
-    Eq {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Gt {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Not {
-        out: Ref,
-        a: Value,
-    },
-    And {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
-    Or {
-        out: Ref,
-        a: Value,
-        b: Value,
-    },
+    Add(BinOpInstruction),
+    Sub(BinOpInstruction),
+    Mul(BinOpInstruction),
+    IDiv(BinOpInstruction),
+    FDiv(BinOpInstruction),
+    Mod(BinOpInstruction),
+    Shl(BinOpInstruction),
+    Shr(BinOpInstruction),
+    BitAnd(BinOpInstruction),
+    BitOr(BinOpInstruction),
+    BitXor(BinOpInstruction),
+    BitNot(UnaryOpInstruction),
+
+    Eq(BinOpInstruction),
+    
+    Gt(BinOpInstruction),
+    Lt(BinOpInstruction),
+    Lte(BinOpInstruction),
+    Gte(BinOpInstruction),
+    
+    Not(UnaryOpInstruction),
+
+    And(BinOpInstruction),
+    Or(BinOpInstruction),
 
     /// Stores a pointer to `a` into `out`
     AddrOf {
@@ -167,7 +113,7 @@ pub enum Instruction {
 
     RcNew {
         out: Ref,
-        struct_id: TypeDefID,
+        type_id: TypeDefID,
     },
 
     Release {
@@ -221,22 +167,26 @@ impl Instruction {
 
             // operator instructions
             // discard if they output into a discard ref
-            | Instruction::Add { out, .. }
-            | Instruction::Sub { out, .. }
-            | Instruction::Mul { out, .. }
-            | Instruction::Div { out, .. }
-            | Instruction::Mod { out, .. }
-            | Instruction::Shl { out, .. }
-            | Instruction::Shr { out, .. }
-            | Instruction::Eq { out, .. }
-            | Instruction::Gt { out, .. }
-            | Instruction::Not { out, .. }
-            | Instruction::And { out, .. }
-            | Instruction::Or { out, .. }
-            | Instruction::BitOr { out, .. }
-            | Instruction::BitAnd { out, .. }
-            | Instruction::BitXor { out, .. }
-            | Instruction::BitNot { out, .. }
+            | Instruction::Add(BinOpInstruction { out, .. })
+            | Instruction::Sub(BinOpInstruction { out, .. })
+            | Instruction::Mul(BinOpInstruction { out, .. })
+            | Instruction::IDiv(BinOpInstruction { out, .. })
+            | Instruction::FDiv(BinOpInstruction { out, .. })
+            | Instruction::Mod(BinOpInstruction { out, .. })
+            | Instruction::Shl(BinOpInstruction { out, .. })
+            | Instruction::Shr(BinOpInstruction { out, .. })
+            | Instruction::Eq(BinOpInstruction { out, .. })
+            | Instruction::Gt(BinOpInstruction { out, .. })
+            | Instruction::Gte(BinOpInstruction { out, .. })
+            | Instruction::Lt(BinOpInstruction { out, .. })
+            | Instruction::Lte(BinOpInstruction { out, .. })
+            | Instruction::Not(UnaryOpInstruction { out, .. })
+            | Instruction::And(BinOpInstruction { out, .. })
+            | Instruction::Or(BinOpInstruction { out, .. })
+            | Instruction::BitOr(BinOpInstruction { out, .. })
+            | Instruction::BitAnd(BinOpInstruction { out, .. })
+            | Instruction::BitXor(BinOpInstruction { out, .. })
+            | Instruction::BitNot(UnaryOpInstruction { out, .. })
             | Instruction::AddrOf { out, .. }
             | Instruction::Element { out, .. }
             | Instruction::VariantTag { out, .. }
@@ -267,4 +217,17 @@ impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:", self.0)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BinOpInstruction {
+    pub out: Ref,
+    pub a: Value,
+    pub b: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnaryOpInstruction {
+    pub out: Ref,
+    pub a: Value,
 }

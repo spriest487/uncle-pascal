@@ -1,9 +1,18 @@
+use crate::instruction::BinOpInstruction;
 use crate::instruction::Instruction;
-use crate::metadata::{InterfaceID, MethodID};
-use crate::ty::{FieldID, Type, VirtualTypeID};
-use crate::val::{Ref, Value};
+use crate::metadata::InterfaceID;
+use crate::metadata::MethodID;
+use crate::ty::FieldID;
+use crate::ty::Type;
+use crate::ty::VirtualTypeID;
+use crate::val::Ref;
+use crate::val::Value;
 use crate::NamePath;
-use std::{cell::Cell, fmt};
+use crate::UnaryOpInstruction;
+use std::cell::Cell;
+use std::fmt;
+
+const IX_WIDTH: usize = 8;
 
 pub trait InstructionFormatter {
     fn format_instruction<W: fmt::Write>(
@@ -11,7 +20,6 @@ pub trait InstructionFormatter {
         instruction: &Instruction,
         f: &mut W,
     ) -> fmt::Result {
-        const IX_WIDTH: usize = 8;
         match instruction {
             Instruction::Comment(comment) => write!(f, "{:>width$} {}", "//", comment, width = IX_WIDTH),
 
@@ -39,147 +47,70 @@ pub trait InstructionFormatter {
                 write!(f, " := ")?;
                 self.format_val(new_val, f)
             }
-            Instruction::Add { out, a, b } => {
-                write!(f, "{:>width$} ", "add", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " + ")?;
-                self.format_val(b, f)
+            Instruction::Add(op) => {
+                self.format_bin_op_instruction(f, "add", op, "+")
             }
-            Instruction::Sub { out, a, b } => {
-                write!(f, "{:>width$} ", "sub", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " - ")?;
-                self.format_val(b, f)
+            Instruction::Sub(op) => {
+                self.format_bin_op_instruction(f, "sub", op, "-")
             }
-            Instruction::Mul { out, a, b } => {
-                write!(f, "{:>width$} ", "mul", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " * ")?;
-                self.format_val(b, f)
+            Instruction::Mul(op) => {
+                self.format_bin_op_instruction(f, "mul", op, "*")
             }
-            Instruction::Div { out, a, b } => {
-                write!(f, "{:>width$} ", "idiv", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " div ")?;
-                self.format_val(b, f)
+            Instruction::IDiv(op) => {
+                self.format_bin_op_instruction(f, "idiv", op, "div")
             }
-            Instruction::Mod { out, a, b } => {
-                write!(f, "{:>width$} ", "mod", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " mod ")?;
-                self.format_val(b, f)
+            Instruction::FDiv(op) => {
+                self.format_bin_op_instruction(f, "fdiv", op, "/")
             }
-            Instruction::Shl { out, a, b } => {
-                write!(f, "{:>width$} ", "shl", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " shl ")?;
-                self.format_val(b, f)
+            Instruction::Mod(op) => {
+                self.format_bin_op_instruction(f, "mod", op, "mod")
             }
-            Instruction::Shr { out, a, b } => {
-                write!(f, "{:>width$} ", "shr", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " shr ")?;
-                self.format_val(b, f)
+            Instruction::Shl(op) => {
+                self.format_bin_op_instruction(f, "shl", op, "shl")
+            }
+            Instruction::Shr(op) => {
+                self.format_bin_op_instruction(f, "shr", op, "shr")
             }
 
-            Instruction::BitAnd { out, a, b } => {
-                write!(f, "{:>width$} ", "bitand", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " & ")?;
-                self.format_val(b, f)
+            Instruction::BitAnd(op) => {
+                self.format_bin_op_instruction(f, "bitand", op, "&")
             }
-            Instruction::BitOr { out, a, b } => {
-                write!(f, "{:>width$} ", "bitor", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " | ")?;
-                self.format_val(b, f)
+            Instruction::BitOr(op) => {
+                self.format_bin_op_instruction(f, "bitor", op, "|")
             }
-            Instruction::BitXor { out, a, b } => {
-                write!(f, "{:>width$} ", "bitxor", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " ^ ")?;
-                self.format_val(b, f)
+            Instruction::BitXor(op) => {
+                self.format_bin_op_instruction(f, "bixor", op, "^")
             }
-            Instruction::BitNot { out, a } => {
-                write!(f, "{:>width$} ", "bitnot", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ~")?;
-                self.format_val(a, f)
+            Instruction::BitNot(op) => {
+                self.format_prefix_op_instruction(f, "bitnot", op, "~")
             }
 
-            Instruction::Eq { out, a, b } => {
-                write!(f, "{:>width$} ", "eq", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " = ")?;
-                self.format_val(b, f)
+            Instruction::Eq(op) => {
+                self.format_bin_op_instruction(f, "eq", op, "=")
             }
-            Instruction::Gt { out, a, b } => {
-                write!(f, "{:>width$} ", "gt", width = IX_WIDTH)?;
 
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " > ")?;
-                self.format_val(b, f)
+            Instruction::Gt(op) => {
+                self.format_bin_op_instruction(f, "gt", op, ">")
             }
-            Instruction::Not { out, a } => {
-                write!(f, "{:>width$} ", "not", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ~")?;
-                self.format_val(a, f)
+            Instruction::Gte(op) => {
+                self.format_bin_op_instruction(f, "gt", op, ">=")
             }
-            Instruction::And { out, a, b } => {
-                write!(f, "{:>width$} ", "and", width = IX_WIDTH)?;
-
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " and ")?;
-                self.format_val(b, f)
+            Instruction::Lt(op) => {
+                self.format_bin_op_instruction(f, "gt", op, "<")
             }
-            Instruction::Or { out, a, b } => {
-                write!(f, "{:>width$} ", "or", width = IX_WIDTH)?;
+            Instruction::Lte(op) => {
+                self.format_bin_op_instruction(f, "gt", op, "<=")
+            }
 
-                self.format_ref(out, f)?;
-                write!(f, " := ")?;
-                self.format_val(a, f)?;
-                write!(f, " or ")?;
-                self.format_val(b, f)
+            Instruction::Not(op) => {
+                self.format_prefix_op_instruction(f, "not", op, "not")
+            }
+
+            Instruction::And(op) => {
+                self.format_bin_op_instruction(f, "and", op, "and")
+            }
+            Instruction::Or(op) => {
+                self.format_bin_op_instruction(f, "or", op, "or")
             }
 
             Instruction::Call {
@@ -322,7 +253,7 @@ pub trait InstructionFormatter {
                 self.format_val(test, f)
             }
 
-            Instruction::RcNew { out, struct_id } => {
+            Instruction::RcNew { out, type_id: struct_id } => {
                 write!(f, "{:>width$} ", "rcnew", width = IX_WIDTH)?;
                 self.format_type(&Type::Struct(*struct_id), f)?;
                 write!(f, " at {}", out)
@@ -358,6 +289,39 @@ pub trait InstructionFormatter {
         f: &mut dyn fmt::Write,
     ) -> fmt::Result;
     fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut dyn fmt::Write) -> fmt::Result;
+    
+    fn format_bin_op_instruction<W: fmt::Write>(&self,
+        f: &mut W,
+        instruction_name: &str,
+        op: &BinOpInstruction,
+        operator: &str
+    ) -> fmt::Result {
+        write!(f, "{:>width$} ", instruction_name, width = IX_WIDTH)?;
+
+        self.format_ref(&op.out, f)?;
+        write!(f, " := ")?;
+
+        self.format_val(&op.a, f)?;
+        write!(f, " {} ", operator)?;
+        self.format_val(&op.b, f)?;
+        
+        Ok(())
+    }
+
+    fn format_prefix_op_instruction<W: fmt::Write>(&self,
+        f: &mut W,
+        instruction_name: &str,
+        op: &UnaryOpInstruction,
+        operator: &str
+    ) -> fmt::Result {
+        write!(f, "{:>width$} ", instruction_name, width = IX_WIDTH)?;
+
+        self.format_ref(&op.out, f)?;
+        write!(f, " := {}", operator)?;
+        self.format_val(&op.a, f)?;
+
+        Ok(())
+    }
 
     fn format_name(&self, name: &NamePath, f: &mut dyn fmt::Write) -> fmt::Result {
         write!(f, "{}", name.path.join("::"))?;

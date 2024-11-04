@@ -820,6 +820,9 @@ impl InstructionFormatter for Metadata {
     fn format_val(&self, val: &Value, f: &mut dyn fmt::Write) -> fmt::Result {
         match val {
             Value::Ref(r) => self.format_ref(r, f),
+            Value::SizeOf(ty) => {
+                write!(f, "sizeof({})", self.pretty_ty_name(ty))
+            }
             _ => RawInstructionFormatter.format_val(val, f),
         }
     }

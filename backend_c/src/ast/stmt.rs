@@ -166,51 +166,56 @@ impl<'a> Builder<'a> {
                 )));
             },
 
-            ir::Instruction::Eq { out, a, b } => {
+            ir::Instruction::Eq(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::Eq, b);
             },
 
-            ir::Instruction::Add { out, a, b } => {
+            ir::Instruction::Add(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::Add, b);
             },
 
-            ir::Instruction::Sub { out, a, b } => {
+            ir::Instruction::Sub(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::Sub, b);
             },
 
-            ir::Instruction::Mul { out, a, b } => {
+            ir::Instruction::Mul(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::Mul, b);
             },
 
-            ir::Instruction::Mod { out, a, b } => {
+            ir::Instruction::Mod(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::Rem, b);
             },
 
-            ir::Instruction::Div { out, a, b } => {
+            ir::Instruction::IDiv(ir::BinOpInstruction { out, a, b }) => {
+                // TODO: make sure integer divisions with 2 floats returns an int
                 self.write_infix_op(out, a, InfixOp::Div, b);
             },
 
-            ir::Instruction::Shl { out, a, b } => {
+            ir::Instruction::FDiv(ir::BinOpInstruction { out, a, b }) => {
+                self.write_infix_op(out, a, InfixOp::Div, b);
+            },
+
+            ir::Instruction::Shl(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::Shl, b);
             },
 
-            ir::Instruction::Shr { out, a, b } => {
+            ir::Instruction::Shr(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::Shr, b);
             },
 
-            ir::Instruction::BitAnd { out, a, b } => {
+            ir::Instruction::BitAnd(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::BitAnd, b);
             },
 
-            ir::Instruction::BitOr { out, a, b } => {
+            ir::Instruction::BitOr(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::BitOr, b);
             },
 
-            ir::Instruction::BitXor { out, a, b } => {
+            ir::Instruction::BitXor(ir::BinOpInstruction { out, a, b }) => {
                 self.write_infix_op(out, a, InfixOp::BitXor, b);
             },
 
-            ir::Instruction::BitNot { out, a } => {
+            ir::Instruction::BitNot(ir::UnaryOpInstruction { out, a }) => {
                 let val = Expr::PrefixOp {
                     op: PrefixOp::BitNot,
                     operand: Box::new(Expr::translate_val(a, self.module)),
@@ -284,11 +289,11 @@ impl<'a> Builder<'a> {
                 self.translate_call(out.as_ref(), function, args);
             },
 
-            ir::Instruction::RcNew { out, struct_id } => {
+            ir::Instruction::RcNew { out, type_id: struct_id } => {
                 self.translate_rc_new(out, *struct_id);
             },
 
-            ir::Instruction::Gt { out, a, b } => {
+            ir::Instruction::Gt(ir::BinOpInstruction { out, a, b }) => {
                 let gt = Expr::translate_infix_op(a, InfixOp::Gt, b, self.module);
                 self.stmts.push(Statement::Expr(Expr::translate_assign(
                     out,
@@ -297,7 +302,34 @@ impl<'a> Builder<'a> {
                 )))
             },
 
-            ir::Instruction::And { out, a, b } => {
+            ir::Instruction::Gte(ir::BinOpInstruction { out, a, b }) => {
+                let gt = Expr::translate_infix_op(a, InfixOp::Gte, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    gt,
+                    self.module,
+                )))
+            },
+
+            ir::Instruction::Lt(ir::BinOpInstruction { out, a, b }) => {
+                let gt = Expr::translate_infix_op(a, InfixOp::Lt, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    gt,
+                    self.module,
+                )))
+            },
+            ir::Instruction::Lte(ir::BinOpInstruction { out, a, b }) => {
+                let gt = Expr::translate_infix_op(a, InfixOp::Lte, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    gt,
+                    self.module,
+                )))
+            },
+            
+
+            ir::Instruction::And(ir::BinOpInstruction { out, a, b }) => {
                 let and = Expr::translate_infix_op(a, InfixOp::And, b, self.module);
                 self.stmts.push(Statement::Expr(Expr::translate_assign(
                     out,
@@ -306,7 +338,7 @@ impl<'a> Builder<'a> {
                 )))
             },
 
-            ir::Instruction::Or { out, a, b } => {
+            ir::Instruction::Or(ir::BinOpInstruction { out, a, b }) => {
                 let or = Expr::translate_infix_op(a, InfixOp::Or, b, self.module);
                 self.stmts.push(Statement::Expr(Expr::translate_assign(
                     out,
@@ -315,7 +347,7 @@ impl<'a> Builder<'a> {
                 )))
             },
 
-            ir::Instruction::Not { out, a } => {
+            ir::Instruction::Not(ir::UnaryOpInstruction { out, a }) => {
                 let a_expr = Expr::translate_val(a, self.module);
                 let not = Expr::PrefixOp {
                     op: PrefixOp::Not,

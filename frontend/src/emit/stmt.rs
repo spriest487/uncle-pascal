@@ -269,7 +269,7 @@ pub fn translate_compound_assignment(
                 builder.mul(op_result.clone(), lhs.clone(), rhs.clone())
             }
             syn::CompoundAssignmentOperator::FDivAssign => {
-                builder.idiv(op_result.clone(), lhs.clone(), rhs.clone())
+                builder.fdiv(op_result.clone(), lhs.clone(), rhs.clone())
             }
         };
 

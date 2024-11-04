@@ -212,7 +212,7 @@ impl DynValue {
         }
     }
 
-    pub fn try_div(&self, other: &Self) -> Option<Self> {
+    pub fn try_idiv(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a / b)),
             (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a / b)),
@@ -228,6 +228,17 @@ impl DynValue {
                 Some(DynValue::Pointer(a.addr_div(b.addr)))
             },
 
+            (DynValue::F32(a), DynValue::F32(b)) => {
+                let rounded = f32::round(a / b);
+                Some(DynValue::F32(rounded))
+            },
+
+            _ => None,
+        }
+    }
+
+    pub fn try_fdiv(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a / b)),
 
             _ => None,
@@ -313,6 +324,69 @@ impl DynValue {
             _ => None,
         }
     }
+
+    pub fn try_gte(&self, other: &Self) -> Option<bool> {
+        match (self, other) {
+            (DynValue::I8(a), DynValue::I8(b)) => Some(a >= b),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(a >= b),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(a >= b),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(a >= b),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(a >= b),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(a >= b),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(a >= b),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(a >= b),
+            (DynValue::F32(a), DynValue::F32(b)) => Some(a >= b),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(a >= b),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(a >= b),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(a.addr >= b.addr)
+            },
+
+            _ => None,
+        }
+    }
+
+    pub fn try_lt(&self, other: &Self) -> Option<bool> {
+        match (self, other) {
+            (DynValue::I8(a), DynValue::I8(b)) => Some(a < b),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(a < b),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(a < b),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(a < b),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(a < b),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(a < b),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(a < b),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(a < b),
+            (DynValue::F32(a), DynValue::F32(b)) => Some(a < b),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(a < b),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(a < b),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(a.addr < b.addr)
+            },
+
+            _ => None,
+        }
+    }
+
+    pub fn try_lte(&self, other: &Self) -> Option<bool> {
+        match (self, other) {
+            (DynValue::I8(a), DynValue::I8(b)) => Some(a <= b),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(a <= b),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(a <= b),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(a <= b),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(a <= b),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(a <= b),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(a <= b),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(a <= b),
+            (DynValue::F32(a), DynValue::F32(b)) => Some(a <= b),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(a <= b),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(a <= b),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(a.addr <= b.addr)
+            },
+
+            _ => None,
+        }
+    }    
 
     pub fn as_function(&self) -> Option<FunctionID> {
         match self {

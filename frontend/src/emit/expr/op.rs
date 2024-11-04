@@ -61,12 +61,7 @@ pub fn translate_bin_op(
                 .find_field(&member_name)
                 .expect("referenced field must exist");
 
-            builder.append(Instruction::Field {
-                out: out_val.clone(),
-                a: lhs_val,
-                of_ty,
-                field,
-            });
+            builder.field(out_val.clone(), lhs_val, of_ty, field);
         },
 
         syn::Operator::Index => {
@@ -84,168 +79,73 @@ pub fn translate_bin_op(
 
         syn::Operator::NotEquals => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Eq {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
-            builder.append(Instruction::Not {
-                out: out_val.clone(),
-                a: Value::Ref(out_val.clone()),
-            });
+            builder.eq(out_val.clone(), lhs_val, b);
+            builder.not(out_val.clone(), out_val.clone());
         },
 
         syn::Operator::Equals => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Eq {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            builder.eq(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Add => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Add {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            builder.add(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Mul => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Mul {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b,
-            });
+            builder.mul(out_val.clone(), lhs_val, b);
         }
 
         syn::Operator::Mod => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Mod {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b,
-            });
+            builder.modulo(out_val.clone(), lhs_val, b);
         }
 
-        // both types of division translate to the same instructions, it just may imply some
-        // conversions for the values which should already be done by this point
-        syn::Operator::FDiv | syn::Operator::IDiv => {
+        syn::Operator::FDiv => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Div {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b,
-            });
+            builder.fdiv(out_val.clone(), lhs_val, b);
+        }
+
+        syn::Operator::IDiv => {
+            let b = expr::expr_to_val(&bin_op.rhs, builder);
+            builder.idiv(out_val.clone(), lhs_val, b);
         }
 
         syn::Operator::Gt => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Gt {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b,
-            });
+            builder.gt(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Gte => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-
-            let gt = builder.local_temp(Type::Bool);
-            builder.append(Instruction::Gt {
-                out: gt.clone(),
-                a: lhs_val.clone().into(),
-                b: b.clone(),
-            });
-
-            let eq = builder.local_temp(Type::Bool);
-            builder.append(Instruction::Eq {
-                out: eq.clone(),
-                a: lhs_val.clone().into(),
-                b,
-            });
-
-            builder.append(Instruction::Or {
-                out: out_val.clone(),
-                a: gt.into(),
-                b: eq.into(),
-            });
+            builder.gte(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Lt => {
-            let b = expr::translate_expr(&bin_op.rhs, builder);
-
-            let gt = builder.local_temp(Type::Bool);
-            builder.append(Instruction::Gt {
-                out: gt.clone(),
-                a: lhs_val.clone().into(),
-                b: b.clone().into(),
-            });
-
-            let eq = builder.local_temp(Type::Bool);
-            builder.append(Instruction::Eq {
-                out: eq.clone(),
-                a: lhs_val.clone().into(),
-                b: b.clone().into(),
-            });
-
-            let gte = builder.local_temp(Type::Bool);
-            builder.append(Instruction::Or {
-                out: gte.clone(),
-                a: gt.into(),
-                b: eq.into(),
-            });
-
-            builder.append(Instruction::Not {
-                out: out_val.clone(),
-                a: gte.into(),
-            });
+            let b = expr::expr_to_val(&bin_op.rhs, builder);
+            builder.lt(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Lte => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-
-            let gt = builder.local_temp(Type::Bool);
-            builder.append(Instruction::Gt {
-                out: gt.clone(),
-                a: lhs_val.clone().into(),
-                b: b.clone().into(),
-            });
-
-            builder.append(Instruction::Not {
-                out: out_val.clone(),
-                a: gt.into(),
-            });
+            builder.lte(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Sub => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Sub {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            builder.sub(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Shl => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Shl {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            builder.shl(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Shr => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::Shr {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            builder.shr(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::And => {
@@ -289,29 +189,17 @@ pub fn translate_bin_op(
 
         syn::Operator::BitAnd => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::BitAnd {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            builder.bit_and(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::BitOr => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::BitOr {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            builder.bit_or(out_val.clone(), lhs_val, b);
         },
 
         syn::Operator::Caret => {
             let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.append(Instruction::BitXor {
-                out: out_val.clone(),
-                a: lhs_val.into(),
-                b: b.into(),
-            });
+            builder.bit_xor(out_val.clone(), lhs_val, b);
         },
 
         _ => unimplemented!("IR for op {}", bin_op.op),
@@ -374,11 +262,7 @@ pub fn translate_unary_op(
                 _ => unimplemented!("unary negation of {}", op_ty),
             };
 
-            builder.append(Instruction::Sub {
-                a: zero_val,
-                b: Value::Ref(operand_ref),
-                out: out_val.clone(),
-            });
+            builder.sub(out_val.clone(), zero_val, operand_ref);
 
             out_val
         },

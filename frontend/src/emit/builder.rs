@@ -198,7 +198,7 @@ impl<'m> Builder<'m> {
         self.scope(|builder| {
             builder.append(Instruction::RcNew {
                 out: closure_ref.clone(),
-                struct_id: closure.closure_id,
+                type_id: closure.closure_id,
             });
 
             // the closure pointer type (a virtual pointer to any closure of this function type)
@@ -373,45 +373,84 @@ impl<'m> Builder<'m> {
             new_val: val.into(),
         });
     }
+    
+    pub fn rc_new(&mut self, out: impl Into<Ref>, type_id: TypeDefID) {
+        self.append(Instruction::RcNew { 
+            out: out.into(),
+            type_id,
+        });
+    }
 
     pub fn add(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::Add {
+        self.append(Instruction::Add(BinOpInstruction {
             out: out.into(),
             a: a.into(),
             b: b.into(),
-        });
+        }));
     }
 
     pub fn sub(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::Sub {
+        self.append(Instruction::Sub(BinOpInstruction {
             out: out.into(),
             a: a.into(),
             b: b.into(),
-        });
+        }));
     }
 
     pub fn mul(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::Mul {
+        self.append(Instruction::Mul(BinOpInstruction {
             out: out.into(),
             a: a.into(),
             b: b.into(),
-        });
+        }));
     }
 
     pub fn idiv(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::Div {
+        self.append(Instruction::IDiv(BinOpInstruction {
             out: out.into(),
             a: a.into(),
             b: b.into(),
-        });
+        }));
+    }
+
+    pub fn fdiv(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::FDiv(BinOpInstruction {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        }));
+    }
+
+    pub fn modulo(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Mod(BinOpInstruction {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        }));
+    }
+
+    pub fn shl(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Shl(BinOpInstruction {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        }));
+    }
+
+    pub fn shr(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Shr(BinOpInstruction {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        }));
     }
 
     pub fn and(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::And {
+        self.append(Instruction::And(BinOpInstruction {
             a: a.into(),
             b: b.into(),
             out: out.into(),
-        });
+        }));
     }
 
     pub fn and_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
@@ -439,85 +478,66 @@ impl<'m> Builder<'m> {
     }
 
     pub fn not(&mut self, out: impl Into<Ref>, bool_val: impl Into<Value>) {
-        self.append(Instruction::Not {
+        self.append(Instruction::Not(UnaryOpInstruction {
             a: bool_val.into(),
             out: out.into(),
-        });
+        }));
     }
 
     pub fn or(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::Or {
+        self.append(Instruction::Or(BinOpInstruction {
             a: a.into(),
             b: b.into(),
             out: out.into(),
-        });
+        }));
+    }
+
+    pub fn bit_and(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::BitAnd(BinOpInstruction {
+            a: a.into(),
+            b: b.into(),
+            out: out.into(),
+        }));
+    }
+
+    pub fn bit_or(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::BitOr(BinOpInstruction {
+            a: a.into(),
+            b: b.into(),
+            out: out.into(),
+        }));
+    }
+
+    pub fn bit_xor(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::BitXor(BinOpInstruction {
+            a: a.into(),
+            b: b.into(),
+            out: out.into(),
+        }));
     }
 
     pub fn eq(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::Eq {
+        self.append(Instruction::Eq(BinOpInstruction {
             out: out.into(),
             a: a.into(),
             b: b.into(),
-        })
+        }))
     }
 
     pub fn gt(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        self.append(Instruction::Gt {
+        self.append(Instruction::Gt(BinOpInstruction {
             out: out.into(),
             a: a.into(),
             b: b.into(),
-        })
+        }))
     }
 
-    pub fn lt(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        let out = out.into();
-        let a = a.into();
-        let b = b.into();
-        
-        // out := not (a >= b)
-        let gte = self.gte_to_val(a, b);
-        self.not(out, gte);
-    }
-
-    pub fn lt_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
-        let a = a.into();
-        let b = b.into();
-
-        if let (Some(a_val), Some(b_val)) = (a.to_literal_val(), b.to_literal_val()) {
-            Value::LiteralBool(a_val < b_val)
-        } else {
-            let result = self.local_temp(Type::Bool);
-            self.lt(result.clone(), a, b);
-            Value::Ref(result)
-        }
-    }
-
-    #[allow(unused)]
-    pub fn lte(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        let out = out.into();
-
-        // out := a gt b
-        self.gt(out.clone(), a, b);
-
-        // out := not out
-        self.not(out.clone(), out);
-    }
-
-    #[allow(unused)]
     pub fn gte(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
-        let out = out.into();
-        let a = a.into();
-        let b = b.into();
-
-        // out := a > b
-        self.gt(out.clone(), a.clone(), b.clone());
-
-        // let eq := a = b
-        let eq = self.local_temp(Type::Bool);
-        self.eq(eq.clone(), a, b);
-
-        // out := out or eq
-        self.or(out.clone(), eq, out)
+        self.append(Instruction::Gte(BinOpInstruction {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        }))
     }
 
     pub fn gte_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
@@ -529,6 +549,35 @@ impl<'m> Builder<'m> {
         } else {
             let result = self.local_temp(Type::Bool);
             self.gte(result.clone(), a, b);
+            Value::Ref(result)
+        }
+    }
+
+    pub fn lt(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Lt(BinOpInstruction {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        }))
+    }
+
+    pub fn lte(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Lte(BinOpInstruction {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        }))
+    }
+
+    pub fn lt_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
+        let a = a.into();
+        let b = b.into();
+
+        if let (Some(a_val), Some(b_val)) = (a.to_literal_val(), b.to_literal_val()) {
+            Value::LiteralBool(a_val < b_val)
+        } else {
+            let result = self.local_temp(Type::Bool);
+            self.lt(result.clone(), a, b);
             Value::Ref(result)
         }
     }
