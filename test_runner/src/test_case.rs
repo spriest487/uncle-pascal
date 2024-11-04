@@ -1,13 +1,27 @@
 use crate::concat_reader::ConcatReader;
-use crate::opts::{ExecutionMethod, Opts};
-use crate::test_script::{TestScript, TestScriptStep};
+use crate::opts::ExecutionMethod;
+use crate::opts::Opts;
+use crate::test_script::TestScript;
+use crate::test_script::TestScriptStep;
 use regex::Regex;
 use std::env;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::fs::DirEntry;
-use std::io::{self, BufRead, BufWriter, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Output, Stdio};
+use std::io;
+use std::io::BufRead;
+use std::io::BufWriter;
+use std::io::Read;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::ChildStderr;
+use std::process::ChildStdin;
+use std::process::ChildStdout;
+use std::process::Command;
+use std::process::ExitStatus;
+use std::process::Output;
+use std::process::Stdio;
 use std::time::SystemTime;
 
 #[derive(Clone)]
@@ -80,8 +94,9 @@ impl TestCase {
             )?;
             
             if !build_status.success() {
-                dump_output_buffers(&build_stdout, &build_stderr);
-                return Ok(build_status);
+                let mut no_stdin: Vec<u8> = Vec::new();
+                run(&mut no_stdin.as_mut_slice(), &mut build_stdout.as_slice(), &mut build_stderr.as_slice());
+                return Ok(build_status)
             }
         }
 
@@ -106,7 +121,7 @@ impl TestCase {
         build_stderr: &mut Vec<u8>,
         opts: &Opts
     ) -> io::Result<Option<ExitStatus>> {
-        if !is_target_outdated(&exe_path, &self.path, opts) {
+        if !is_target_outdated(exe_path, &self.path, opts) {
             return Ok(None);
         }
         
@@ -183,6 +198,7 @@ impl TestCase {
         println!("RUNNING: {}", self.path.display());
 
         let mut io_error = false;
+        let mut step_failed = false;
         
         let runner = match opts.exec {
             ExecutionMethod::Interpret => Self::run_interpreted,
@@ -193,15 +209,19 @@ impl TestCase {
             let mut line_buf = Vec::new();
             for step in &self.script.steps {
                 match run_step(step, &mut *stdin, stdout, stderr, &mut line_buf) {
-                    Ok(true) => {},
+                    Ok(true) => {
+                        continue;
+                    },
+
                     Ok(false) => {
-                        io_error = true;
+                        step_failed = true;
                         break;
                     }
+
                     Err(err) => {
                         println!("FAILED ({err})");
 
-                        io_error = false;
+                        io_error = true;
                         break;
                     }
                 }
@@ -209,8 +229,9 @@ impl TestCase {
         })?;
         
         let expect_error = self.script.steps.iter().any(|step| step.error_regex.is_some());
+        let is_error = !status.success();
 
-        let ok = !io_error && (status.success() || expect_error);
+        let ok = !step_failed && !io_error && (!is_error || expect_error);
 
         let completed = if ok {
             println!("OK");
