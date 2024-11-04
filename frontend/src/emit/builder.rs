@@ -381,6 +381,14 @@ impl<'m> Builder<'m> {
         });
     }
 
+    pub fn class_is(&mut self, out: impl Into<Ref>, a: impl Into<Value>, type_id: VirtualTypeID) {
+        self.append(Instruction::ClassIs {
+            out: out.into(),
+            a: a.into(),
+            class_id: type_id,
+        })
+    }
+    
     pub fn add(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Add(BinOpInstruction {
             out: out.into(),

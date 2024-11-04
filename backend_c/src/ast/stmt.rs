@@ -42,9 +42,36 @@ pub enum Statement {
     Comment(String),
     IfCond {
         cond: Expr,
-        then: Box<Statement>,
+        then_branch: Vec<Statement>,
+        else_branch: Vec<Statement>,
     },
-    Return(Expr),
+    Return,
+    ReturnValue(Expr),
+}
+
+impl Statement {
+    pub fn if_then(
+        cond: impl Into<Expr>,
+        then_branch: impl IntoIterator<Item=Statement>
+    ) -> Statement {
+        Statement::IfCond {
+            cond: cond.into(),
+            then_branch: then_branch.into_iter().collect(),
+            else_branch: vec![],
+        }
+    }
+
+    pub fn if_then_else(
+        cond: impl Into<Expr>,
+        then_branch: impl IntoIterator<Item=Statement>,
+        else_branch: impl IntoIterator<Item=Statement>
+    ) -> Statement {
+        Statement::IfCond {
+            cond: cond.into(),
+            then_branch: then_branch.into_iter().collect(),
+            else_branch: else_branch.into_iter().collect(),
+        }
+    }
 }
 
 impl fmt::Display for Statement {
@@ -71,13 +98,26 @@ impl fmt::Display for Statement {
 
             Statement::Comment(text) => write!(f, "/* {} */", text),
 
-            Statement::IfCond { cond, then } => {
+            Statement::IfCond { cond, then_branch, else_branch } => {
                 writeln!(f, "if ({}) {{", cond)?;
-                writeln!(f, "{}", then)?;
-                writeln!(f, "}}")
-            },
+                for then_stmt in then_branch {
+                    writeln!(f, "  {}", then_stmt)?;
+                }
+                write!(f, "}}")?;
 
-            Statement::Return(expr) => write!(f, "return {};", expr),
+                if !else_branch.is_empty() {
+                    writeln!(f, " else {{")?;
+                    for else_stmt in else_branch {
+                        writeln!(f, "  {}", else_stmt)?;
+                    }
+                    write!(f, "}}")?;
+                }
+                
+                writeln!(f)
+            }
+
+            Statement::Return => write!(f, "return;"),
+            Statement::ReturnValue(expr) => write!(f, "return {};", expr),
         }
     }
 }
@@ -138,10 +178,10 @@ impl<'a> Builder<'a> {
             ir::Instruction::Jump { dest } => self.stmts.push(Statement::Goto(*dest)),
             ir::Instruction::JumpIf { dest, test } => {
                 let cond_expr = Expr::translate_val(test, self.module);
-                self.stmts.push(Statement::IfCond {
-                    cond: cond_expr,
-                    then: Box::new(Statement::Goto(*dest)),
-                });
+                
+                self.stmts.push(Statement::if_then(cond_expr, [
+                    Statement::Goto(*dest)
+                ]));
             },
             ir::Instruction::Comment(text) => {
                 let safe_text = text.replace("/*", "").replace("*/", "");
@@ -403,7 +443,7 @@ impl<'a> Builder<'a> {
             },
 
             ir::Instruction::ClassIs { out, a, class_id } => {
-                self.translate_is(out, a, *class_id);
+                self.translate_class_is(out, a, *class_id);
             },
 
             ir::Instruction::Raise { val } => {
@@ -438,43 +478,53 @@ impl<'a> Builder<'a> {
         )))
     }
 
-    fn translate_is(&mut self, out: &ir::Ref, a: &ir::Value, class_id: ir::VirtualTypeID) {
+    fn translate_class_is(&mut self, out: &ir::Ref, a: &ir::Value, class_id: ir::VirtualTypeID) {
         let actual_expr = Expr::translate_val(a, self.module);
 
         // get class ptr from rc
         let rc_ptr = actual_expr.cast(Type::Rc.ptr());
-        let actual_class_ptr = rc_ptr.arrow(FieldName::RcClass);
+        let actual_class_ptr = rc_ptr.clone().arrow(FieldName::RcClass);
+        
+        // zombie refs don't count as any type
+        let is_zombie = rc_ptr
+            .arrow(FieldName::RcStrongCount)
+            .not();
 
-        let is = match class_id {
-            ir::VirtualTypeID::Class(struct_id) => {
-                let is_class_ptr = Expr::class_ptr(struct_id);
-                Expr::infix_op(actual_class_ptr, InfixOp::Eq, is_class_ptr)
-            },
+        self.stmts.push(Statement::if_then_else(is_zombie, [
+            Statement::Expr(Expr::translate_assign(out, Expr::LitBool(false), self.module)),
+        ], [{
+            let is = match class_id {
+                ir::VirtualTypeID::Class(struct_id) => {
+                    let is_class_ptr = Expr::class_ptr(struct_id);
+                    Expr::infix_op(actual_class_ptr, InfixOp::Eq, is_class_ptr)
+                },
 
-            ir::VirtualTypeID::Any => {
-                // `is Any` is true for anything!
-                Expr::LitBool(true)
-            },
+                ir::VirtualTypeID::Any => {
+                    // `is Any` is true for anything!
+                    Expr::LitBool(true)
+                },
 
-            ir::VirtualTypeID::Closure(_func_ty_id) => {
-                // TODO - can you use `is` on a function type?
-                Expr::LitBool(false)
-            },
+                ir::VirtualTypeID::Closure(_func_ty_id) => {
+                    // TODO - can you use `is` on a function type?
+                    Expr::LitBool(false)
+                },
 
-            ir::VirtualTypeID::Interface(iface_id) => {
-                let is_impl_func = Expr::Function(FunctionName::IsImpl);
+                ir::VirtualTypeID::Interface(iface_id) => {
+                    let is_impl_func = Expr::Function(FunctionName::IsImpl);
 
-                Expr::call(
-                    is_impl_func,
-                    vec![actual_class_ptr, Expr::LitInt(iface_id.0 as i128)],
-                )
-            },
-        };
-        self.stmts.push(Statement::Expr(Expr::translate_assign(
-            out,
-            is,
-            self.module,
-        )));
+                    Expr::call(
+                        is_impl_func,
+                        vec![actual_class_ptr, Expr::LitInt(iface_id.0 as i128)],
+                    )
+                },
+            };
+
+            Statement::Expr(Expr::translate_assign(
+                out,
+                is,
+                self.module,
+            ))
+        }]));
     }
 
     fn translate_call(&mut self, out: Option<&ir::Ref>, function: &ir::Value, args: &[ir::Value]) {

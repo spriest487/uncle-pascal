@@ -239,7 +239,7 @@ impl fmt::Display for FunctionDef {
         }
 
         if self.decl.return_ty != Type::Void {
-            write!(f, "{}", Statement::Return(Expr::Local(ir::LocalID(0))))?;
+            write!(f, "{}", Statement::ReturnValue(Expr::Local(ir::LocalID(0))))?;
         }
 
         write!(f, "}}")

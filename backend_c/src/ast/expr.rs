@@ -192,12 +192,26 @@ impl Expr {
     pub fn cast(self, ty: Type) -> Self {
         Expr::Cast(Box::new(self), ty)
     }
+    
+    pub fn field(self, field: FieldName) -> Self {
+        Expr::Field {
+            base: Box::new(self),
+            field,
+        }
+    }
 
     pub fn assign(lhs: Self, rhs: Self) -> Self {
         Expr::InfixOp {
             lhs: Box::new(lhs),
             op: InfixOp::Assign,
             rhs: Box::new(rhs),
+        }
+    }
+    
+    pub fn not(self) -> Self {
+        Expr::PrefixOp {
+            op: PrefixOp::Not,
+            operand: Box::new(self),
         }
     }
 

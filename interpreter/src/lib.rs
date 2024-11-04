@@ -10,6 +10,8 @@ mod diag;
 
 pub use self::dyn_value::*;
 pub use self::ptr::Pointer;
+use crate::diag::DiagnosticOutput;
+use crate::diag::DiagnosticWorker;
 use crate::func::BuiltinFn;
 use crate::func::BuiltinFunction;
 use crate::func::Function;
@@ -21,7 +23,7 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
-use ir_lang::{InstructionFormatter as _};
+use ir_lang::InstructionFormatter as _;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -29,7 +31,6 @@ use std::ops::BitAnd;
 use std::ops::BitOr;
 use std::ops::BitXor;
 use std::rc::Rc;
-use crate::diag::{DiagnosticOutput, DiagnosticWorker};
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -1513,6 +1514,14 @@ impl Interpreter {
                 Err(ExecError::illegal_state(msg))
             },
         }?;
+        
+        if let Some(rc) = &a_val.rc {
+            // zombie references never count as castable any type
+            if rc.strong_count == 0 {
+                self.store(out, DynValue::Bool(false))?;
+                return Ok(());
+            }
+        }
 
         let is = match class_id {
             ir::VirtualTypeID::Any => true,

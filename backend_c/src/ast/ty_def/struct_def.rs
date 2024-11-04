@@ -141,7 +141,8 @@ pub enum FieldName {
     Rc,
 
     // builtin name: ref count field of RC internal struct
-    RcRefCount,
+    RcStrongCount,
+    RcWeakCount,
 
     // builtin name: class info pointer field of RC internal struct
     RcClass,
@@ -159,7 +160,8 @@ impl fmt::Display for FieldName {
         match self {
             FieldName::ID(id) => write!(f, "field_{}", id.0),
             FieldName::Rc => write!(f, "rc"),
-            FieldName::RcRefCount => write!(f, "strong_count"),
+            FieldName::RcStrongCount => write!(f, "strong_count"),
+            FieldName::RcWeakCount => write!(f, "weak_count"),
             FieldName::RcClass => write!(f, "class"),
             FieldName::StaticArrayElements => write!(f, "elements"),
             FieldName::VariantTag => write!(f, "tag"),

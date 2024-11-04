@@ -21,6 +21,6 @@ initialization
     
     add := bigAddToX;
     y := add(2);
-    
+
     WriteLn(IntToStr(y));
 end

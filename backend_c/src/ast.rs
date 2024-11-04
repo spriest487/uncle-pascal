@@ -586,7 +586,7 @@ impl fmt::Display for Module {
                 class_field = FieldName::RcClass,
                 class_name = GlobalName::ClassInstance(ir::STRING_ID),
             )?;
-            writeln!(f, "    .{strong_count} = -1,", strong_count = FieldName::RcRefCount)?;
+            writeln!(f, "    .{strong_count} = -1,", strong_count = FieldName::RcStrongCount)?;
             writeln!(f, "  }},")?;
 
             write!(f, "  .{} = {}", chars_field, lit)?;

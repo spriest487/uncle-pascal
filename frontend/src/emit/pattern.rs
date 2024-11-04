@@ -148,31 +148,27 @@ pub fn translate_pattern_match(
     }
 }
 
-pub fn translate_is_ty(val: ir::Ref, val_ty: &ir::Type, ty: &ir::Type, builder: &mut Builder) -> ir::Value {
-    if val_ty.is_rc() {
-        match ty {
-            ir::Type::RcPointer(class_id) => {
-                // checking if one RC type (probably an interface) is an instance of another RC
-                // type (probably a class): this is a runtime check
-                let result = builder.local_temp(ir::Type::Bool);
+pub fn translate_is_ty(
+    val: ir::Ref,
+    val_ty: &ir::Type,
+    ty: &ir::Type,
+    builder: &mut Builder
+) -> ir::Value {
+    // eprintln!("is_ty pattern: {} is {}?", builder.pretty_ty_name(val_ty), builder.pretty_ty_name(ty));
+    
+    if let ir::Type::RcPointer(class_id) = ty {
+        // casting strong or weak RC type to strong RC type: do a dynamic check
+        if val_ty.is_rc() {
+            let result = builder.local_temp(ir::Type::Bool);
+            builder.class_is(result.clone(), val, *class_id);
 
-                builder.append(ir::Instruction::ClassIs {
-                    out: result.clone(),
-                    a: ir::Value::Ref(val),
-                    class_id: *class_id,
-                });
-
-                ir::Value::Ref(result)
-            },
-
-            // value is a value type, we wanted an RC type
-            _ => ir::Value::LiteralBool(false),
+            return ir::Value::Ref(result);
         }
-    } else {
-        // value types must match exactly
-        let same_ty = *val_ty == *ty;
-        ir::Value::LiteralBool(same_ty)
     }
+
+    // any other type combination must match exactly
+    let same_ty = *val_ty == *ty;
+    ir::Value::LiteralBool(same_ty)
 }
 
 fn translate_is_variant(

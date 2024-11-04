@@ -1,10 +1,18 @@
-use std::fmt;
-use serde::{Deserialize, Serialize};
+use crate::formatter::InstructionFormatter;
+use crate::formatter::RawInstructionFormatter;
+use crate::metadata::InterfaceID;
+use crate::metadata::MethodID;
+use crate::metadata::TypeDefID;
+use crate::ty::FieldID;
+use crate::ty::Type;
+use crate::ty::VirtualTypeID;
+use crate::val::LocalID;
+use crate::val::Ref;
+use crate::val::Value;
 use common::span::Span;
-use crate::formatter::{InstructionFormatter, RawInstructionFormatter};
-use crate::metadata::{InterfaceID, MethodID, TypeDefID};
-use crate::ty::{FieldID, Type, VirtualTypeID};
-use crate::val::{LocalID, Ref, Value};
+use serde::Deserialize;
+use serde::Serialize;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Instruction {

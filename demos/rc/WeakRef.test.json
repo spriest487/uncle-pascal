@@ -1,0 +1,9 @@
+{
+  "steps": [
+    { "output": "disposed parent Parent1" },
+    { "output": "Parent1 has expired" },
+    { "output": "child is still alive" },
+    { "output": "disposed parent Parent2" },
+    { "output": "disposed child" }
+  ]
+}
