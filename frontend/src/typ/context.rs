@@ -714,7 +714,7 @@ impl Context {
                 .constraint
                 .as_ref()
                 .map(|c| c.is_ty.clone())
-                .unwrap_or(Type::Nothing);
+                .unwrap_or(Type::Any);
 
             self.declare_type(
                 param.name.clone(),
@@ -1347,7 +1347,8 @@ impl Context {
 
         match self_ty {
             Type::GenericParam(param_ty) => match &param_ty.is_ty {
-                Type::Nothing => Ok(false),
+                Type::Any => Ok(false),
+
                 as_iface => Ok(as_iface == iface_ty),
             },
 

@@ -142,7 +142,8 @@ pub fn infer_from_structural_ty_args(
                     let inferred_param = TypeParam {
                         name: param_generic.name.clone(),
                         constraint: match &param_generic.is_ty {
-                            Type::Nothing => None,
+                            Type::Any => None,
+
                             is_ty => Some(TypeConstraint {
                                 name: param_generic.name.clone(),
                                 is_ty: is_ty.clone(),

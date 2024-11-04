@@ -61,7 +61,7 @@ impl TypeParamList {
             is_ty: item
                 .constraint
                 .map(|constraint| constraint.is_ty)
-                .unwrap_or(Type::Nothing)
+                .unwrap_or(Type::Any)
         })))
     }
 }

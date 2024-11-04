@@ -127,7 +127,7 @@ fn find_ufcs_methods(self_ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMe
     let (ty_methods, iface_ty) = match self_ty {
         Type::GenericParam(p) => {
             match &p.is_ty {
-                Type::Nothing => return Ok(Vec::new()),
+                Type::Any => return Ok(Vec::new()),
 
                 is_iface => {
                     (is_iface.methods(ctx)?, is_iface.clone())

@@ -74,7 +74,7 @@ impl FunctionSigTypeParam {
                 .as_ref()
                 .map(|constraint| &constraint.is_ty)
                 .cloned()
-                .unwrap_or(Type::Nothing)
+                .unwrap_or(Type::Any)
         }
     }
 }
