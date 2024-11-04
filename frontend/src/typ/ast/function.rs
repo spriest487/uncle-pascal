@@ -190,10 +190,11 @@ impl FunctionDecl {
                     // earlier and specialize it manually
                     let mut ctor_return_ty = ctor_owning_ty.clone();
                     if let Some(owning_ty_params) = ctor_owning_ty.type_params() {
-                        let own_ty_args = owning_ty_params.clone().to_type_args();
+                        let own_ty_args = owning_ty_params.clone().into_type_args();
 
+                        // specialize, not apply, because this is the declaring type of the ty params 
                         ctor_return_ty = ctor_return_ty
-                            .specialize_generic(&own_ty_args, ctx)
+                            .specialize(&own_ty_args, ctx)
                             .map_err(|e| TypeError::from_generic_err(e, decl.span.clone()))?
                             .into_owned();
                     }
@@ -360,7 +361,8 @@ fn specialize_self_ty(self_ty: Type, at: &Span, ctx: &Context) -> TypeResult<Typ
             .clone()
             .map(TypeParam::into_generic_param_ty);
 
-        let ty = self_ty.specialize_generic(&params_as_args, ctx)
+        let ty = self_ty
+            .specialize(&params_as_args, ctx)
             .map_err(|e| {
                 TypeError::from_generic_err(e, at.clone())
             })?
@@ -502,7 +504,7 @@ pub fn typecheck_func_def(
     {
         let outer_ty_args = outer_ty_params
             .clone()
-            .to_type_args();
+            .into_type_args();
         
         decl = apply_func_decl_named_ty_args(decl, outer_ty_params, &outer_ty_args);
     }

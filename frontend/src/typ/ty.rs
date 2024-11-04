@@ -953,7 +953,7 @@ impl Type {
         }
     }
 
-    pub fn specialize_generic<'a, 'res>(
+    pub fn specialize<'a, 'res>(
         &'a self,
         args: &'a TypeArgList,
         ctx: &Context,
@@ -1152,7 +1152,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
                     let type_args_span = type_args.span().clone();
                     let checked_type_args = TypeArgList::new(checked_type_arg_items, type_args_span);
 
-                    Type::specialize_generic(&raw_ty, &checked_type_args, ctx)
+                    Type::specialize(&raw_ty, &checked_type_args, ctx)
                         .map_err(|err| TypeError::from_generic_err(err, span.clone()))?
                         .into_owned()
                 },

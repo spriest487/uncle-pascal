@@ -208,7 +208,7 @@ fn find_ctor_ty(
             match &ty_args {
                 Some(ty_arg_list) => {
                     generic_ty
-                        .specialize_generic(*ty_arg_list, ctx)
+                        .specialize(*ty_arg_list, ctx)
                         .map_err(|err| {
                             TypeError::from_generic_err(err, span.clone())
                         })?

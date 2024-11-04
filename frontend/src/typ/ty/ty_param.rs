@@ -52,7 +52,7 @@ impl TypeParamList {
             })
     }
     
-    pub fn to_type_args(self) -> TypeArgList {
+    pub fn into_type_args(self) -> TypeArgList {
         self.map(|item, pos| Type::GenericParam(Rc::new(TypeParamType {
             name: item.name,
             pos,
