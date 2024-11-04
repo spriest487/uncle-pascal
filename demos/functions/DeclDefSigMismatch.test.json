@@ -1,5 +1,5 @@
 {
   "steps": [
-    { "error_regex": "Definition does not match previous declaration" }
+    { "error_regex": "missing the `overload` modifier" }
   ]
 }
