@@ -1141,6 +1141,20 @@ impl<'m> Builder<'m> {
             dest: continue_label,
         });
     }
+    
+    pub fn bounds_check(&mut self,
+        element_ty: &Type,
+        length: impl Into<Value>,
+        index: impl Into<Value>
+    ) {
+        let bounds_check_func = self.module.gen_bounds_check(element_ty);
+        let func_ref = Value::Ref(Ref::Global(GlobalRef::Function(bounds_check_func)));
+
+        self.call(func_ref, [
+            length.into(),
+            index.into(),
+        ], None);
+    }
 
     pub fn exit_function(&mut self) {
         self.cleanup_scope(0);

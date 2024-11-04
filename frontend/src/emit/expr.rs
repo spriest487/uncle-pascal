@@ -11,7 +11,6 @@ use crate::emit::Builder;
 use crate::typ::STRING_TYPE_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
 use common::span::*;
-use ir_lang::Value;
 use syn::Ident;
 
 pub fn expr_to_val(expr: &typ::ast::Expr, builder: &mut Builder) -> ir::Value {
@@ -97,8 +96,9 @@ fn translate_indexer(
 
             let element_ty = builder.translate_type(&array_ty.element_ty);
             let len = cast::i32(array_ty.dim).expect("array dim must be within range of i32");
+            let len_val = ir::Value::LiteralI32(len);
 
-            gen_bounds_check(index_val.clone(), ir::Value::LiteralI32(len), builder);
+            builder.bounds_check(&element_ty, len_val, index_val.clone());
 
             builder.append(ir::Instruction::Element {
                 out: element_ptr.clone(),
@@ -113,6 +113,7 @@ fn translate_indexer(
         },
 
         typ::Type::DynArray { element } => {
+            let element_type = builder.translate_type(element);
             let element_ptr = builder.local_temp(val_ty.clone().ptr());
 
             builder.begin_scope();
@@ -137,11 +138,7 @@ fn translate_indexer(
                 ir::DYNARRAY_PTR_FIELD,
             );
 
-            gen_bounds_check(
-                index_val.clone(),
-                ir::Value::Ref(len_field_ptr.to_deref()),
-                builder,
-            );
+            builder.bounds_check(&element_type, len_field_ptr.to_deref(), index_val.clone());
 
             // array_ptr := (array_field_ptr)^
             // element_ptr := array_ptr + index
@@ -163,32 +160,6 @@ fn translate_indexer(
 
         unimpl => unimplemented!("IR for indexing into {}", unimpl),
     }
-}
-
-fn gen_bounds_check(index_val: impl Into<ir::Value>, len_val: impl Into<ir::Value>, builder: &mut Builder) {
-    let index_val = index_val.into();
-    let len_val = len_val.into();
-
-    builder.comment(&format!("bounds check for index={}, len={}", index_val, len_val));
-
-    let bounds_ok_label = builder.alloc_label();
-
-    // if index >= 0 and index < arr.len then goto "bounds_ok"
-    let gte_zero = builder.gte_to_val(index_val.clone(), ir::Value::LiteralI32(0));
-    let lt_len = builder.lt_to_val(index_val, len_val);
-    let bounds_check_ok = builder.and_to_val(gte_zero, lt_len);
-    builder.append(ir::Instruction::JumpIf {
-        dest: bounds_ok_label,
-        test: bounds_check_ok,
-    });
-
-    // otherwise: raise
-    let err_str = builder.find_or_insert_string("array index out of bounds");
-    builder.append(ir::Instruction::Raise {
-        val: ir::Ref::Global(ir::GlobalRef::StringLiteral(err_str)),
-    });
-
-    builder.append(ir::Instruction::Label(bounds_ok_label));
 }
 
 pub fn translate_if_cond_expr(
@@ -425,7 +396,7 @@ fn gen_fill_byte(at: ir::Ref, at_ty: ir::Type, count: ir::Value, byte_val: ir::V
     builder.mov(dst_ptr.clone().to_deref(), byte_val.clone());
 
     // dst_ptr += 1;
-    builder.add(dst_ptr.clone(), dst_ptr.clone(), Value::LiteralISize(1));
+    builder.add(dst_ptr.clone(), dst_ptr.clone(), ir::Value::LiteralISize(1));
     
     // continue
     builder.jmp(continue_label);

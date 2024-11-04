@@ -87,6 +87,8 @@ pub struct Metadata {
 
     runtime_types: HashMap<Type, RuntimeType>,
     dyn_array_runtime_types: HashMap<Type, DynArrayRuntimeType>,
+    
+    bounds_check_functions: HashMap<Type, FunctionID>,
 }
 
 impl Metadata {
@@ -170,6 +172,12 @@ impl Metadata {
                 self.dyn_array_runtime_types.insert(el_ty.clone(), runtime_ty.clone());
             }
         }
+        
+        for (element_ty, func_id) in &other.bounds_check_functions {
+            if !self.bounds_check_functions.contains_key(element_ty) {
+                self.bounds_check_functions.insert(element_ty.clone(), *func_id);
+            }
+        }
     }
 
     pub fn type_defs(&self) -> impl Iterator<Item = (TypeDefID, &TypeDef)> {
@@ -235,6 +243,10 @@ impl Metadata {
         self.functions.insert(id, Rc::new(decl));
 
         id
+    }
+    
+    pub fn get_bounds_check_func(&self, type_id: &Type) -> Option<FunctionID> {
+        self.bounds_check_functions.get(type_id).cloned()
     }
 
     pub fn declare_runtime_type(&mut self, ty: &Type) -> RuntimeType {

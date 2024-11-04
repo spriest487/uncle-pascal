@@ -20,7 +20,7 @@ use crate::emit::typ;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ::ast::apply_func_decl_named_ty_args;
-use crate::typ::builtin_ident;
+use crate::typ::{builtin_ident, builtin_span};
 use crate::typ::free_mem_sig;
 use crate::typ::get_mem_sig;
 use crate::typ::layout::StructLayout;
@@ -33,7 +33,6 @@ use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
-use ir_lang::FunctionID;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -53,8 +52,8 @@ pub struct ModuleBuilder {
     function_types_by_sig: HashMap<typ::FunctionSig, ir::TypeDefID>,
 
     // looked up on first use
-    free_mem_func: Option<FunctionID>,
-    get_mem_func: Option<FunctionID>,
+    free_mem_func: Option<ir::FunctionID>,
+    get_mem_func: Option<ir::FunctionID>,
     
     module: ir::Module,
 }
@@ -194,7 +193,7 @@ impl ModuleBuilder {
         index
     }
 
-    fn instantiate_system_func(&mut self, name: &str, sig: Rc<typ::FunctionSig>) -> FunctionID {
+    fn instantiate_system_func(&mut self, name: &str, sig: Rc<typ::FunctionSig>) -> ir::FunctionID {
         let ident_path = IdentPath::new(builtin_ident(name), [
             builtin_ident(SYSTEM_UNIT_NAME),
         ]);
@@ -209,7 +208,7 @@ impl ModuleBuilder {
         instance.id
     }
     
-    pub fn instantiate_get_mem_func(&mut self) -> FunctionID {
+    pub fn instantiate_get_mem_func(&mut self) -> ir::FunctionID {
         match self.get_mem_func {
             Some(id) => id,
             None => {
@@ -220,7 +219,7 @@ impl ModuleBuilder {
         }
     }
 
-    pub fn instantiate_free_mem_func(&mut self) -> FunctionID {
+    pub fn instantiate_free_mem_func(&mut self) -> ir::FunctionID {
         match self.free_mem_func {
             Some(id) => id,
             None => {
@@ -1033,6 +1032,68 @@ impl ModuleBuilder {
             Some(id) => id,
             None => self.module.metadata.define_dyn_array_struct(element_ty),
         }
+    }
+
+    pub fn gen_bounds_check(
+        &mut self,
+        element_ty: &ir::Type,
+    ) -> ir::FunctionID {
+        let func_id = match self.metadata().get_bounds_check_func(element_ty) {
+            Some(existing_id) => return existing_id,
+            None => {
+                self.metadata_mut().insert_func(None)
+            }
+        };
+
+        let mut builder = Builder::new(self);
+        builder.bind_param(ir::LocalID(0), ir::Type::I32, "len", false);
+        builder.bind_param(ir::LocalID(1), ir::Type::I32, "index", false);
+        
+        let len_val = ir::Value::from(ir::Ref::Local(ir::LocalID(0)));
+        let index_val = ir::Value::from(ir::Ref::Local(ir::LocalID(1)));
+
+        builder.comment(&format!("bounds check for index={}, len={}", index_val, len_val));
+
+        let bounds_ok_label = builder.alloc_label();
+
+        // if index >= 0 and index < arr.len then goto "bounds_ok"
+        let gte_zero = builder.gte_to_val(index_val.clone(), ir::Value::LiteralI32(0));
+        let lt_len = builder.lt_to_val(index_val, len_val);
+        let bounds_check_ok = builder.and_to_val(gte_zero, lt_len);
+        builder.append(ir::Instruction::JumpIf {
+            dest: bounds_ok_label,
+            test: bounds_check_ok,
+        });
+
+        // otherwise: raise
+        let err_str = builder.find_or_insert_string("array index out of bounds");
+        builder.append(ir::Instruction::Raise {
+            val: ir::Ref::Global(ir::GlobalRef::StringLiteral(err_str)),
+        });
+
+        builder.append(ir::Instruction::Label(bounds_ok_label));
+
+        let body = builder.finish();
+
+        let element_name = self.metadata().pretty_ty_name(element_ty);
+        let debug_name = format!("bounds check for {element_name}");
+
+        let func_def = ir::FunctionDef {
+            body,
+            sig: ir::FunctionSig {
+                return_ty: ir::Type::Nothing,
+                param_tys: vec![
+                    ir::Type::I32,
+                    ir::Type::I32,
+                ],
+            },
+            src_span: builtin_span(),
+            debug_name,
+        };
+
+        self.insert_func(func_id, ir::Function::Local(func_def));
+
+        func_id
     }
 
     pub fn aligned_struct_members<'a>(&self, struct_def: &'a typ::ast::StructDef) -> Vec<StructLayoutMember<'a>> {

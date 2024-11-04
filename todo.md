@@ -1,5 +1,6 @@
 # critical
 * generate bounds checks as a separate function instead of inlining them
+* make IR function src spans optional?? some builtins don't have them
 * `Self` only works properly when used directly as a function param, not if it's contained in other types
   * limit self to inferface method decls, don't allow it as a general alias for the current type now that forward
     decls are working properly
