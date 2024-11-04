@@ -102,19 +102,9 @@ impl Symbol {
         } else {
             let mut resolved_args = Vec::with_capacity(type_params.len());
 
-            for (i, param) in type_params.items.iter().enumerate() {
-                let is_ty = param.constraint
-                    .clone()
-                    .map(|constraint| constraint.is_ty)
-                    .unwrap_or(Type::Any);
-
-                let arg = args.resolve(&TypeParamType {
-                    name: param.name.clone(),
-                    is_ty: is_ty.clone(),
-                    pos: i,
-                });
-
-                resolved_args.push(arg.into_owned());
+            for i in 0..type_params.len() {
+                let arg = args.get(i).unwrap();
+                resolved_args.push(arg.clone());
             }
             TypeArgList::new(resolved_args, self.span().clone())
         };

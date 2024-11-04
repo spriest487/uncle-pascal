@@ -34,7 +34,6 @@ use crate::typ::Type;
 use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeError;
-use crate::typ::TypeParam;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
@@ -359,7 +358,7 @@ fn specialize_self_ty(self_ty: Type, at: &Span, ctx: &Context) -> TypeResult<Typ
     if let Some(self_ty_params) = self_ty.type_params() {
         let params_as_args = self_ty_params
             .clone()
-            .map(TypeParam::into_generic_param_ty);
+            .map(|param, _pos| param.into_generic_param_ty());
 
         let ty = self_ty
             .specialize(&params_as_args, ctx)

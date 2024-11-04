@@ -129,7 +129,7 @@ pub fn infer_from_structural_ty_args(
         match param_ty_arg {
             Type::GenericParam(param_generic) => {
                 if let Some(pos) = inferred_ty_args.find_position(param_generic.name.as_str()) {
-                    let inferred = inferred_ty_args.find_by_pos(pos).unwrap();
+                    let inferred = inferred_ty_args.get(pos).unwrap();
                     
                     assert_eq!(
                         inferred,

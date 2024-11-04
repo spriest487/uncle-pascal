@@ -61,7 +61,6 @@ fn make_ty_param_ty(param_list: &[TypeParam<Type>], pos: usize) -> Type {
             .as_ref()
             .map(|constraint| constraint.is_ty.clone())
             .unwrap_or(Type::Nothing),
-        pos,
     }))
 }
 

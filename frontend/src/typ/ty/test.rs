@@ -187,7 +187,7 @@ fn specialized_class_has_correct_method_types_with_method_ty_params() {
     let specialized_def = specialize_struct_def(&tys[0], &type_args, &module.context).unwrap();
 
     let self_ty = Type::class(specialized_def.name.clone());
-    let generic_u = Type::generic_param(builtin_ident("U"), 0);
+    let generic_u = Type::generic_param(builtin_ident("U"));
 
     let methods: Vec<_> = specialized_def.methods().collect();
     assert_eq!(self_ty, methods[0].func_decl.params[0].ty);

@@ -7,7 +7,6 @@ use crate::typ::TypeArgResolver;
 use crate::typ::TypeParam;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeParamList;
-use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::fmt;
 
@@ -101,15 +100,7 @@ pub struct ResolvedTypeArg {
 }
 
 impl TypeArgResolver for GenericContext {
-    fn resolve(&self, param: &typ::TypeParamType) -> Cow<typ::Type> {
-        let pos = self
-            .find_position(param.name.name.as_str())
-            .unwrap_or_else(|| panic!("missing type param {}", param.name));
-
-        Cow::Borrowed(&self.items[pos].arg)
-    }
-
-    fn find_by_pos(&self, pos: usize) -> Option<&typ::Type> {
+    fn get(&self, pos: usize) -> Option<&typ::Type> {
         self.items.get(pos).map(|item| &item.arg)
     }
 

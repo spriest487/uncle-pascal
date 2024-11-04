@@ -1,25 +1,28 @@
 use crate::ast;
-use crate::ast::{Ident, TypeConstraint};
-use crate::typ::{Context, GenericError, GenericResult, Specializable};
+use crate::ast::Ident;
+use crate::ast::TypeConstraint;
+use crate::typ::typecheck_type;
 use crate::typ::Type;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
-use crate::typ::typecheck_type;
+use crate::typ::GenericError;
+use crate::typ::Context;
+use crate::typ::GenericResult;
+use crate::typ::Specializable;
 use common::span::Spanned;
-use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
 
 pub type TypeParam = ast::TypeParam<Type>;
 
 impl TypeParam {
-    pub fn into_generic_param_ty(self, pos: usize) -> Type {
+    pub fn into_generic_param_ty(self) -> Type {
         match self.constraint {
             Some(constraint) => {
-                Type::generic_constrained_param(self.name, pos, constraint.is_ty)
+                Type::generic_constrained_param(self.name, constraint.is_ty)
             },
             None => {
-                Type::generic_param(self.name, pos)
+                Type::generic_param(self.name)
             },
         }
     }
@@ -53,9 +56,8 @@ impl TypeParamList {
     }
     
     pub fn into_type_args(self) -> TypeArgList {
-        self.map(|item, pos| Type::GenericParam(Rc::new(TypeParamType {
+        self.map(|item, _pos| Type::GenericParam(Rc::new(TypeParamType {
             name: item.name,
-            pos,
             is_ty: item
                 .constraint
                 .map(|constraint| constraint.is_ty)
@@ -111,7 +113,6 @@ pub fn validate_generic_constraints(args: &TypeArgList, params: &TypeParamList, 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct TypeParamType {
     pub name: Ident,
-    pub pos: usize,
     pub is_ty: Type,
 }
 
@@ -129,22 +130,13 @@ pub enum TypeArgsResult<'a> {
 }
 
 pub trait TypeArgResolver {
-    fn resolve(&self, param: &TypeParamType) -> Cow<Type>;
-
-    fn find_by_pos(&self, pos: usize) -> Option<&Type>;
+    fn get(&self, pos: usize) -> Option<&Type>;
 
     fn len(&self) -> usize;
 }
 
 impl TypeArgResolver for TypeArgList {
-    fn resolve(&self, param: &TypeParamType) -> Cow<Type> {
-        let arg = self
-            .find_by_pos(param.pos)
-            .expect("resolving type param out of range");
-        Cow::Borrowed(arg)
-    }
-
-    fn find_by_pos(&self, pos: usize) -> Option<&Type> {
+    fn get(&self, pos: usize) -> Option<&Type> {
         self.items.get(pos)
     }
 

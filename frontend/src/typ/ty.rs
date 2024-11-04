@@ -96,10 +96,9 @@ impl Type {
         Type::Interface(Rc::new(name.into()))
     }
     
-    pub fn generic_param(name: Ident, pos: usize) -> Type {
+    pub fn generic_param(name: Ident) -> Type {
         let ty_param_ty = TypeParamType {
             name,
-            pos,
             is_ty: Type::Nothing,
         };
         
@@ -117,10 +116,9 @@ impl Type {
         Type::DynArray { element: Rc::new(self) }
     }
 
-    pub fn generic_constrained_param(name: Ident, pos: usize, is_iface: Type) -> Type {
+    pub fn generic_constrained_param(name: Ident, is_iface: Type) -> Type {
         let ty_param_ty = TypeParamType {
             name,
-            pos,
             is_ty: is_iface,
         };
 
@@ -1192,7 +1190,7 @@ impl Specializable for Type {
                 // generic params, the names of params must be unique between all param lists
                 params
                     .find_position(param.name.name.as_str())
-                    .and_then(|pos| args.find_by_pos(pos))
+                    .and_then(|pos| args.get(pos))
                     .cloned()
                     .unwrap_or_else(|| Type::GenericParam(param.clone()))
             }
