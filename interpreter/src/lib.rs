@@ -21,7 +21,7 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
-use ir_lang::InstructionFormatter as _;
+use ir_lang::{InstructionFormatter as _};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -154,7 +154,8 @@ impl Interpreter {
 
             ir::Type::Struct(id) => DynValue::from(self.init_struct(*id)?),
 
-            ir::Type::RcPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
+            ir::Type::RcPointer(class_id) 
+            | ir::Type::RcWeakPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
                 ir::VirtualTypeID::Class(struct_id) => ir::Type::Struct(*struct_id),
                 ir::VirtualTypeID::Closure(..)
                 | ir::VirtualTypeID::Any
@@ -557,8 +558,27 @@ impl Interpreter {
             ExecError::illegal_state(msg)
         })
     }
+    
+    // load a pointer, expected to point to an RC struct
+    // guarantees that the struct value returned has some value for its rc field
+    fn load_rc_struct_ptr(&self, ptr: &Pointer) -> ExecResult<(Box<StructValue>, RcState)> {
+        let struct_val = match self.load_indirect(&ptr)?.into_owned() {
+            DynValue::Structure(struct_val) => struct_val,
+            other => {
+                let msg = format!("released val was not a structure, found: {:?}", other);
+                return Err(ExecError::illegal_state(msg));
+            },
+        };
 
-    fn release_dyn_val(&mut self, val: &DynValue) -> ExecResult<bool> {
+        let struct_rc = struct_val.rc.as_ref().cloned().ok_or_else(|| {
+            let msg = "unable to access rc state of released structure".to_string();
+            ExecError::illegal_state(msg)
+        })?;
+        
+        Ok((struct_val, struct_rc))
+    }
+
+    fn release_dyn_val(&mut self, val: &DynValue, weak: bool) -> ExecResult<bool> {
         let ptr = val
             .as_pointer()
             .ok_or_else(|| {
@@ -571,35 +591,59 @@ impl Interpreter {
         if ptr.is_null() {
             return Ok(false);
         }
-
-        let mut struct_val = match self.load_indirect(&ptr)?.into_owned() {
-            DynValue::Structure(struct_val) => *struct_val,
-            other => {
-                let msg = format!("released val was not a structure, found: {:?}", other);
-                return Err(ExecError::illegal_state(msg));
-            },
-        };
-
-        let mut struct_rc = struct_val.rc.as_ref().cloned().ok_or_else(|| {
-            let msg = "unable to access rc state of released structure".to_string();
-            ExecError::illegal_state(msg)
-        })?;
+        
+        let (mut struct_val, mut struct_rc) = self.load_rc_struct_ptr(ptr)?;
 
         // release calls are totally ignored for immortal refs
         if struct_rc.strong_count < 0 {
             return Ok(false);
         }
 
-        if struct_rc.strong_count == 0 {
-            panic!(
-                "releasing with no strong refs remaining @ {} (+{} weak refs remain)\n{}",
-                ptr.to_pretty_string(&self.metadata),
-                struct_rc.weak_count,
-                self.stack_trace_formatted(),
-            );
-        }
+        if weak {
+            if struct_rc.weak_count == 0 {
+                panic!(
+                    "releasing with 0 weak refs remaining @ {} (+{} weak refs remain)\n{}",
+                    ptr.to_pretty_string(&self.metadata),
+                    struct_rc.weak_count,
+                    self.stack_trace_formatted(),
+                );
+            }
+            
+            struct_rc.weak_count -= 1;
+        } else {
+            if struct_rc.strong_count == 0 {
+                panic!(
+                    "releasing with 0 strong refs remaining @ {} (+{} strong refs remain)\n{}",
+                    ptr.to_pretty_string(&self.metadata),
+                    struct_rc.strong_count,
+                    self.stack_trace_formatted(),
+                );
+            }
 
-        struct_rc.strong_count -= 1;
+            // if we just removed the last strong reference, dispose the object, making it a zombie
+            // until the last weak ref is removed, if there are any
+            if struct_rc.strong_count == 1 {
+                if self.opts.trace_rc {
+                    println!(
+                        "rc: dispose @ {} ({}+{} refs remain)",
+                        ptr.to_pretty_string(&self.metadata),
+                        struct_rc.strong_count,
+                        struct_rc.weak_count,
+                    );
+                }
+
+                // Dispose() the inner resource. For an RC type, interfaces are implemented
+                // for the RC pointer type, not the resource type
+                let class_id = ir::VirtualTypeID::Class(struct_val.type_id);
+                self.invoke_disposer(&val, &ir::Type::RcPointer(class_id))?;
+
+                // Now release the fields of the struct as if it was a normal record
+                let rc_funcs = self.find_rc_boilerplate(&ir::Type::Struct(struct_val.type_id))?;
+                self.call(rc_funcs.release, &[val.clone()], None)?;
+            }
+
+            struct_rc.strong_count -= 1;
+        }
 
         if self.opts.trace_rc {
             eprintln!(
@@ -610,95 +654,78 @@ impl Interpreter {
                 self.struct_debug_string(&struct_val),
             )
         }
-
-        // are we releasing the last strong ref here?
-        if struct_rc.strong_count == 0 {
+        
+        if struct_rc.strong_count == 0 && struct_rc.weak_count == 0 {
+            // no more refs, free the object
             if self.opts.trace_rc {
-                println!(
-                    "rc: dispose @ {} ({}+{} refs remain)",
+                eprintln!(
+                    "rc: free @ {} of {}",
                     ptr.to_pretty_string(&self.metadata),
-                    struct_rc.strong_count,
-                    struct_rc.weak_count,
-                );
+                    self.struct_debug_string(&struct_val),
+                )
             }
 
-            // Dispose() the inner resource. For an RC type, interfaces are implemented
-            // for the RC pointer type, not the resource type
-            let class_id = ir::VirtualTypeID::Class(struct_val.type_id);
-            self.invoke_disposer(&val, &ir::Type::RcPointer(class_id))?;
-
-            // Now release the fields of the struct as if it was a normal record
-            let rc_funcs = self.find_rc_boilerplate(&ir::Type::Struct(struct_val.type_id))?;
-            self.call(rc_funcs.release, &[val.clone()], None)?;
-
-            if struct_rc.weak_count == 0 {
-                // no more weak refs, free the object
-                if self.opts.trace_rc {
-                    eprintln!(
-                        "rc: free @ {} of {}",
-                        ptr.to_pretty_string(&self.metadata),
-                        self.struct_debug_string(&struct_val),
-                    )
-                }
-
-                self.dynfree(ptr)?;
-            }
-
-            Ok(true)
-        } else {
-            // update the object's ref count and store it
-            struct_val.rc = Some(struct_rc);
-
-            self.store_indirect(&ptr, DynValue::Structure(Box::new(struct_val)))?;
-
-            Ok(false)
+            self.dynfree(ptr)?;
+            
+            return Ok(true);
         }
+
+        struct_val.rc = Some(struct_rc);
+        self.store_indirect(&ptr, DynValue::Structure(struct_val.clone()))?;
+
+        Ok(false)
     }
 
-    fn retain_dyn_val(&mut self, val: &DynValue) -> ExecResult<()> {
-        match val {
-            DynValue::Pointer(ptr) => {
-                // retain on null is valid and does nothing
-                // it should never normally happen in user code, but with unsafe casting it's
-                // possible to create a null RC pointer
-                if ptr.is_null() {
-                    return Ok(());
-                }
-                
-                let mut rc_val = self.load_indirect(ptr)?.into_owned();
-
-                match &mut rc_val {
-                    DynValue::Structure(struct_val) if struct_val.rc.is_some() => {
-                        let struct_rc = struct_val.rc.as_mut().unwrap();
-                        struct_rc.strong_count += 1;
-
-                        if self.opts.trace_rc {
-                            eprintln!(
-                                "rc: retain @ {} ({}+{} refs)",
-                                ptr.to_pretty_string(&self.metadata),
-                                struct_rc.strong_count,
-                                struct_rc.weak_count
-                            );
-                        }
-                    },
-
-                    other => {
-                        let msg =
-                            format!("retained val must point to an rc val, found: {:?}", other);
-                        return Err(ExecError::illegal_state(msg));
-                    },
-                };
-
-                self.store_indirect(ptr, rc_val)?;
-
-                Ok(())
-            },
-
-            _ => Err(ExecError::illegal_state(format!(
+    fn retain_dyn_val(&mut self, val: &DynValue, weak: bool) -> ExecResult<()> {
+        let ptr = val
+            .as_pointer()
+            .ok_or_else(|| ExecError::illegal_state(format!(
                 "{:?} cannot be retained",
                 val
-            ))),
+            )))?;
+
+        // retain on null is valid and does nothing
+        // it should never normally happen in user code, but with unsafe casting it's
+        // possible to create a null RC pointer
+        if ptr.is_null() {
+            return Ok(());
         }
+
+        let (mut struct_val, mut struct_rc) = self.load_rc_struct_ptr(ptr)?;
+        
+        // don't retain immortal refs
+        if struct_rc.strong_count < 0 {
+            return Ok(());
+        }
+
+        if weak {
+            struct_rc.weak_count += 1;
+        } else {
+            if struct_rc.strong_count == 0 {
+                panic!(
+                    "resurrecting with 0 strong refs @ {} (+{} weak refs remain)\n{}",
+                    ptr.to_pretty_string(&self.metadata),
+                    struct_rc.strong_count,
+                    self.stack_trace_formatted(),
+                );
+            }
+            
+            struct_rc.strong_count += 1;
+        }
+
+        if self.opts.trace_rc {
+            eprintln!(
+                "rc: retain @ {} ({}+{} refs)",
+                ptr.to_pretty_string(&self.metadata),
+                struct_rc.strong_count,
+                struct_rc.weak_count
+            );
+        }
+        
+        struct_val.rc = Some(struct_rc);
+        self.store_indirect(ptr, DynValue::Structure(struct_val))?;
+        
+        Ok(())
     }
 
     fn struct_debug_string(&self, struct_val: &StructValue) -> String {
@@ -901,8 +928,8 @@ impl Interpreter {
             ir::Instruction::Jump { dest } => self.exec_jump(pc, &labels[dest])?,
             ir::Instruction::JumpIf { dest, test } => self.exec_jmpif(pc, &labels, *dest, test)?,
 
-            ir::Instruction::Release { at } => self.exec_release(at)?,
-            ir::Instruction::Retain { at } => self.exec_retain(at)?,
+            ir::Instruction::Release { at, weak } => self.exec_release(at, *weak)?,
+            ir::Instruction::Retain { at, weak } => self.exec_retain(at, *weak)?,
 
             ir::Instruction::Raise { val } => self.exec_raise(&val)?,
 
@@ -1028,18 +1055,18 @@ impl Interpreter {
         Ok(ptr)
     }
 
-    fn exec_retain(&mut self, at: &ir::Ref) -> ExecResult<()> {
+    fn exec_retain(&mut self, at: &ir::Ref, weak: bool) -> ExecResult<()> {
         let val = self.load(at)?.into_owned();
-        self.retain_dyn_val(&val)?;
+        self.retain_dyn_val(&val, weak)?;
 
         Ok(())
     }
 
-    fn exec_release(&mut self, at: &ir::Ref) -> ExecResult<()> {
+    fn exec_release(&mut self, at: &ir::Ref, weak: bool) -> ExecResult<()> {
         let val = self.load(at)?.into_owned();
 
         // to aid with debugging, set freed RC pointers to a recognizable value
-        if self.release_dyn_val(&val)? {
+        if self.release_dyn_val(&val, weak)? {
             self.store(
                 at,
                 DynValue::Pointer(Pointer {
@@ -2024,8 +2051,14 @@ impl Interpreter {
         let globals: Vec<_> = self.globals.values().cloned().collect();
 
         for GlobalValue { value, ty } in globals {
-            if ty.is_rc() {
-                self.release_dyn_val(&value)?;
+            let ref_weak = match ty {
+                ir::Type::RcPointer(..) => Some(false),
+                ir::Type::RcWeakPointer(..) => Some(false),
+                _ => None,
+            };
+
+            if let Some(weak) = ref_weak {
+                self.release_dyn_val(&value, weak)?;
             }
         }
 

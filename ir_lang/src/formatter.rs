@@ -259,12 +259,14 @@ pub trait InstructionFormatter {
                 write!(f, " at {}", out)
             }
 
-            Instruction::Release { at } => {
-                write!(f, "{:>width$} {}", "release", at, width = IX_WIDTH)
+            Instruction::Release { at, weak } => {
+                let ref_kind = if *weak { "weak" } else { "strong" };
+                write!(f, "{:>width$} {} ({})", "release", at, ref_kind, width = IX_WIDTH)
             }
 
-            Instruction::Retain { at } => {
-                write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH)
+            Instruction::Retain { at, weak } => {
+                let ref_kind = if *weak { "weak" } else { "strong" };
+                write!(f, "{:>width$} {} ({})", "retain", at, ref_kind, width = IX_WIDTH)
             }
 
             Instruction::Raise { val } => {

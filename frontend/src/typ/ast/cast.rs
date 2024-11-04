@@ -56,7 +56,7 @@ pub fn check_implicit_conversion(
         Type::Primitive(primitive_ty) => match primitive_ty {
             Primitive::Pointer if *from == Type::Nil => Conversion::Blittable,
 
-            Primitive::Pointer if from.is_rc_reference() => Conversion::UnsafeBlittable,
+            Primitive::Pointer if from.is_strong_rc_reference() => Conversion::UnsafeBlittable,
             Primitive::Pointer if from.is_pointer() => Conversion::UnsafeBlittable,
 
             _ => Conversion::Illegal,
@@ -69,8 +69,10 @@ pub fn check_implicit_conversion(
         }
 
         Type::Pointer(_) if *to == *from || *from == Type::Nil => Conversion::Blittable,
+        
+        Type::Weak(weak_ty) if weak_ty.as_ref() == from => Conversion::Blittable,
 
-        Type::Interface(..) if from.is_rc_reference() => {
+        Type::Interface(..) if from.is_strong_rc_reference() => {
             if ctx.is_implementation_at(from, to, span)? {
                 Conversion::Blittable
             } else {

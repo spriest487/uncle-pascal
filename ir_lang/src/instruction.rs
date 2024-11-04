@@ -118,9 +118,11 @@ pub enum Instruction {
 
     Release {
         at: Ref,
+        weak: bool,
     },
     Retain {
         at: Ref,
+        weak: bool,
     },
 
     Raise {
@@ -157,8 +159,8 @@ impl Instruction {
 
             // instructions that mutate state
             // discard if they operate on a discard ref
-            | Instruction::Release { at }
-            | Instruction::Retain { at } => *at == Ref::Discard,
+            | Instruction::Release { at, .. }
+            | Instruction::Retain { at, .. } => *at == Ref::Discard,
 
             // mov: discard if either the origin or destination refs are discards
             | Instruction::Move { out: Ref::Discard, .. }

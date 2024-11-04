@@ -955,9 +955,13 @@ impl<'m> Builder<'m> {
                 true
             },
 
-            _ if ty.is_rc() => {
-                self.append(Instruction::Retain { at });
+            Type::RcPointer(..) => {
+                self.append(Instruction::Retain { at, weak: false });
+                true
+            },
 
+            Type::RcWeakPointer(..) => {
+                self.append(Instruction::Retain { at, weak: true });
                 true
             },
 
@@ -992,9 +996,13 @@ impl<'m> Builder<'m> {
                 true
             },
 
-            _ if ty.is_rc() => {
-                self.append(Instruction::Release { at });
+            Type::RcPointer(..) => {
+                self.append(Instruction::Release { at, weak: false });
+                true
+            },
 
+            Type::RcWeakPointer(..) => {
+                self.append(Instruction::Release { at, weak: true });
                 true
             },
 

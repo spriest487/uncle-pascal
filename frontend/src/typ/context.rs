@@ -1499,6 +1499,8 @@ impl Context {
 
             Type::Array(array_ty) => self.is_unsized_ty(&array_ty.element_ty),
 
+            Type::Weak(weak_ty) => self.is_unsized_ty(weak_ty),
+
             Type::Any
             | Type::Class(..)
             | Type::GenericParam(_)

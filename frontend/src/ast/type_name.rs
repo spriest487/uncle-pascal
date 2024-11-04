@@ -8,9 +8,8 @@ use crate::ast::{Expr, TypeArgList};
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
 use crate::ast::TypeList;
-use crate::parse::LookAheadTokenStream;
+use crate::parse::{LookAheadTokenStream, ParseError};
 use crate::parse::Match;
-use crate::parse::MatchOneOf;
 use crate::parse::Matcher;
 use crate::parse::Parse;
 use crate::parse::ParseResult;
@@ -27,6 +26,7 @@ use common::span::Spanned;
 use derivative::Derivative;
 use std::fmt;
 use std::hash::Hash;
+use common::TracedError;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, Hash, PartialEq)]
@@ -110,6 +110,8 @@ pub enum TypeName {
 
     Ident(IdentTypeName),
     Array(ArrayTypeName),
+    
+    Weak(Box<TypeName>, Span),
 
     Function(FunctionTypeName),
 }
@@ -121,6 +123,7 @@ impl Spanned for TypeName {
             TypeName::Array(a) => a.span(),
             TypeName::Unspecified(span) => span,
             TypeName::Function(f) => f.span(),
+            TypeName::Weak(_, span) => span,
         }
     }
 }
@@ -146,20 +149,38 @@ impl Parse for TypeName {
             indirection += 1;
         }
 
-        match tokens.match_one_maybe(Keyword::Array.or(Keyword::Function).or(Keyword::Procedure)) {
-            None => Self::parse_named_type(tokens, indirection, indirection_span.as_ref()),
+        match tokens.look_ahead().match_one(Self::start_matcher()) {
+            Some(TokenTree::Ident(..)) => Self::parse_named_type(tokens, indirection, indirection_span.as_ref()),
 
             Some(array_kw) if array_kw.is_keyword(Keyword::Array) => {
+                tokens.advance(1);
                 Self::parse_array_type(tokens, array_kw.span(), indirection, indirection_span)
             },
 
             Some(fn_kw)
                 if fn_kw.is_keyword(Keyword::Function) || fn_kw.is_keyword(Keyword::Procedure) =>
             {
+                tokens.advance(1);
                 Self::parse_function_type(tokens, fn_kw.into_span(), indirection, indirection_span)
             },
+            
+            Some(weak_kw) if weak_kw.is_keyword(Keyword::Weak) => {
+                tokens.advance(1);
+                let weak_ty = Self::parse(tokens)?;
+                
+                // a type can't be "weak weak"
+                if let Some(next_weak) = tokens.look_ahead().match_one(Keyword::Weak) {
+                    let expected = Some(start_non_weak_matcher());
+                    let err = ParseError::UnexpectedToken(Box::new(next_weak), expected);
+                    return Err(TracedError::trace(err))
+                }
 
-            Some(..) => unreachable!(),
+                let span = weak_kw.into_span().to(weak_ty.span());
+                
+                Ok(TypeName::Weak(Box::new(weak_ty), span))
+            }
+
+            _ => unreachable!(),
         }
     }
 }
@@ -181,12 +202,13 @@ impl Match for TypeName {
     }
 }
 
+fn start_non_weak_matcher() -> Matcher {
+    Keyword::Array | Keyword::Function | Keyword::Procedure | Matcher::AnyIdent
+}
+
 impl TypeName {
     pub fn start_matcher() -> Matcher {
-        Keyword::Array
-            .or(Keyword::Function)
-            .or(Keyword::Procedure)
-            .or(Matcher::AnyIdent)
+        start_non_weak_matcher() | Keyword::Weak
     }
 
     fn parse_array_type(
@@ -326,6 +348,7 @@ impl fmt::Display for TypeName {
             TypeName::Ident(ident_type_name) => write!(f, "{}", ident_type_name),
             TypeName::Array(array_type_name) => write!(f, "{}", array_type_name),
             TypeName::Function(func_type_name) => write!(f, "{}", func_type_name),
+            TypeName::Weak(type_name, ..) => write!(f, "weak {}", type_name),
             TypeName::Unspecified(_) => write!(f, "<unknown type>"),
         }
     }

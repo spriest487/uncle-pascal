@@ -33,7 +33,7 @@ pub fn translate_struct_def(
 
                 let name = member.ident.to_string();
                 let ty = module.translate_type(&member.ty, generic_ctx);
-                let rc = member.ty.is_rc_reference();
+                let rc = member.ty.is_strong_rc_reference();
                 fields.insert(next_id, StructFieldDef { name: Some(name), ty, rc });
                 next_id.0 += 1;
             }

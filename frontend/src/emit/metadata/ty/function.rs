@@ -66,7 +66,7 @@ pub fn translate_closure_struct(
             ir::StructFieldDef {
                 name: Some((*capture_name.name).clone()),
                 ty,
-                rc: capture_ty.is_rc_reference(),
+                rc: capture_ty.is_strong_rc_reference(),
             },
         );
 

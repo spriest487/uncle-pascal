@@ -350,27 +350,14 @@ impl Metadata {
                 let elem_name = self.pretty_ty_name(element);
                 Cow::Owned(format!("array [{}] of {}", dim, elem_name))
             },
+            
+            Type::RcWeakPointer(class_id) => {
+                let resource_name = self.pretty_virtual_type_name(*class_id);
+                Cow::Owned(format!("*weak {}", resource_name))
+            }
 
             Type::RcPointer(class_id) => {
-                let resource_name = match class_id {
-                    VirtualTypeID::Any => Cow::Borrowed("any"),
-
-                    VirtualTypeID::Interface(iface_id) => {
-                        Cow::Owned(self.iface_name(*iface_id))
-                    },
-
-                    VirtualTypeID::Closure(func_ty_id) => {
-                        Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
-                            Some(sig) => format!("closure of {}", self.pretty_func_sig(sig)),
-                            None => format!("closure of {}", *func_ty_id),
-                        })
-                    }
-
-                    VirtualTypeID::Class(struct_id) => {
-                        self.pretty_ty_name(&Type::Struct(*struct_id))
-                    },
-                };
-
+                let resource_name = self.pretty_virtual_type_name(*class_id);
                 Cow::Owned(format!("*{}", resource_name))
             },
 
@@ -384,6 +371,27 @@ impl Metadata {
             Type::Pointer(ty) => Cow::Owned(format!("^{}", self.pretty_ty_name(ty))),
 
             ty => Cow::Owned(ty.to_string()),
+        }
+    }
+    
+    fn pretty_virtual_type_name(&self, id: VirtualTypeID) -> Cow<str> {
+        match id {
+            VirtualTypeID::Any => Cow::Borrowed("any"),
+
+            VirtualTypeID::Interface(iface_id) => {
+                Cow::Owned(self.iface_name(iface_id))
+            },
+
+            VirtualTypeID::Closure(func_ty_id) => {
+                Cow::Owned(match self.get_func_ptr_ty(func_ty_id) {
+                    Some(sig) => format!("closure of {}", self.pretty_func_sig(sig)),
+                    None => format!("closure of {}", func_ty_id),
+                })
+            }
+
+            VirtualTypeID::Class(struct_id) => {
+                self.pretty_ty_name(&Type::Struct(struct_id))
+            },
         }
     }
 

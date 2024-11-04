@@ -950,10 +950,9 @@ fn typecheck_variant_ctor_call(
                     span,
                 });
             }
-
-            args[0].annotation().expect_value(data_ty)?;
-
-            Some(args.into_iter().next().unwrap())
+            
+            let data_val = implicit_conversion(args.into_iter().next().unwrap(), data_ty, ctx)?;
+            Some(data_val)
         },
     };
 

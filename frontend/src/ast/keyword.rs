@@ -51,6 +51,7 @@ pub enum Keyword {
     Array,
     Of,
     Const,
+    Weak,
     
     In,
     Out,
@@ -125,6 +126,7 @@ impl Keyword {
             "array" => Some(Keyword::Array),
             "of" => Some(Keyword::Of),
             "const" => Some(Keyword::Const),
+            "weak" => Some(Keyword::Weak),
 
             "in" => Some(Keyword::In),
             "out" => Some(Keyword::Out),
@@ -211,6 +213,7 @@ impl fmt::Display for Keyword {
             Keyword::Array => "array",
             Keyword::Of => "of",
             Keyword::Const => "const",
+            Keyword::Weak => "weak",
             
             Keyword::Out => "out",
             Keyword::In => "in",

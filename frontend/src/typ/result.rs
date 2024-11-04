@@ -213,9 +213,13 @@ pub enum TypeError {
         stmt: Box<ast::Stmt<Span>>,
     },
 
+    InvalidWeakType {
+        ty: Type,
+        span: Span,
+    },
     InvalidUnsizedType {
         ty: Type,
-        at: Span,
+        span: Span,
     },
 
     InvalidMethodModifiers {
@@ -393,7 +397,8 @@ impl Spanned for TypeError {
             
             TypeError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
             TypeError::NoFunctionContext { stmt, .. } => stmt.annotation().span(),
-            TypeError::InvalidUnsizedType { at, .. } => at,
+            TypeError::InvalidWeakType { span: at, .. } => at,
+            TypeError::InvalidUnsizedType { span: at, .. } => at,
             
             TypeError::InvalidMethodModifiers { span, .. } => span,
             TypeError::InvalidMethodOwningType { span, .. } => span,
@@ -512,6 +517,7 @@ impl DiagnosticOutput for TypeError {
             TypeError::NoLoopContext { .. } => "Statement requires loop context",
             TypeError::NoFunctionContext { .. } => "Statement requires function context",
 
+            TypeError::InvalidWeakType { .. } => "Invalid weak reference type",
             TypeError::InvalidUnsizedType { .. } => "Size of type is unknown",
             
             TypeError::InvalidMethodOwningType { .. } => "Explicit interface implementation for method is invalid",
@@ -1002,6 +1008,10 @@ impl fmt::Display for TypeError {
 
             TypeError::NoFunctionContext { stmt } => {
                 write!(f, "the stmt `{}` can only appear inside a function", stmt)
+            }
+
+            TypeError::InvalidWeakType { ty, .. } => {
+                write!(f, "the type `{}` cannot be used as a weak reference", ty)
             }
 
             TypeError::InvalidUnsizedType { ty, .. } => {

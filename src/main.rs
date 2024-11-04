@@ -381,11 +381,7 @@ fn clang_compile(module: &ir::Module, args: &Args, out_path: &OsStr) -> io::Resu
     let c_module = translate_c(module, args);
     
     let mut clang_cmd = Command::new("clang");
-        
     clang_cmd
-        .arg("-x").arg("c")
-        .arg("-o").arg(out_path)
-        .arg("-")
         .arg("-Werror")
         .arg("-Wall")
         .arg("-Wextra")
@@ -393,25 +389,43 @@ fn clang_compile(module: &ir::Module, args: &Args, out_path: &OsStr) -> io::Resu
         .arg("-Wno-unused-parameter")
         .arg("-Wno-unused-variable")
         .arg("-Wno-unused-label")
-        .stdin(Stdio::piped());
+        .arg("-x").arg("c")
+        .arg("-o").arg(out_path);
     
-    if args.debug || args.debug_codeview {
-        clang_cmd
+    let debug = args.debug || args.debug_codeview;
+
+    let mut clang = if debug {
+        // debug: generate a source file next to the output
+        let c_file_path = PathBuf::from(out_path).with_extension("c");
+        
+        let mut c_file = File::create(&c_file_path)?; 
+        write!(c_file, "{c_module}")?;
+
+        clang_cmd.arg(c_file_path)
             .arg("-g")
             .arg("-O0");
-    }
-    if args.debug_codeview {
-        clang_cmd.arg("-gcodeview");
-    }
 
-    let mut clang = clang_cmd.spawn()?;
-    
-    let mut clang_in = clang.stdin
-        .take()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "unable to write to stdin"))?;
-    
-    write!(clang_in, "{}", c_module)?;
-    drop(clang_in);
+        if args.debug_codeview {
+            clang_cmd.arg("-gcodeview");
+        }
+
+        clang_cmd.spawn()?
+    } else {
+        // release: compile from stdin
+        clang_cmd.arg("-")
+            .stdin(Stdio::piped());
+
+        let mut clang = clang_cmd.spawn()?;
+
+        let mut clang_in = clang.stdin
+            .take()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "unable to write to stdin"))?;
+
+        write!(clang_in, "{}", c_module)?;
+        drop(clang_in);
+        
+        clang
+    };
 
     let status = clang.wait()?;
 

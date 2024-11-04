@@ -25,7 +25,8 @@ use crate::ast::IdentTypeName;
 use crate::ast::StructKind;
 use crate::ast::TypeAnnotation;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::{FieldDecl, MethodDecl};
+use crate::typ::ast::FieldDecl;
+use crate::typ::ast::MethodDecl;
 use crate::typ::builtin_span;
 use crate::typ::builtin_unit_path;
 use crate::typ::context;
@@ -38,6 +39,7 @@ use crate::typ::NameResult;
 use crate::typ::Symbol;
 use crate::typ::Typed;
 use crate::typ::SYSTEM_UNIT_NAME;
+use crate::Keyword;
 use crate::Operator;
 use common::span::*;
 use std::borrow::Cow;
@@ -59,6 +61,7 @@ pub enum Type {
     DynArray { element: Rc<Type> },
     MethodSelf,
     GenericParam(Rc<TypeParamType>),
+    Weak(Rc<Type>),
     Any,
     Enum(Rc<Symbol>),
 }
@@ -167,6 +170,7 @@ impl Type {
             Type::Interface(_) => true,
             Type::DynArray { .. } => true,
             Type::MethodSelf => true,
+            Type::Weak(..) => true,
             Type::Any => true,
         }
     }
@@ -185,6 +189,7 @@ impl Type {
             | Type::Function(_)
             | Type::Nothing
             | Type::GenericParam(_)
+            | Type::Weak(..)
             | Type::Enum(_) => false,
 
             | Type::Variant(variant_name) => {
@@ -417,7 +422,7 @@ impl Type {
         }
     }
 
-    pub fn is_rc_reference(&self) -> bool {
+    pub fn is_strong_rc_reference(&self) -> bool {
         match self {
             Type::Class(..) => true,
             Type::Interface(..) => true,
@@ -449,7 +454,7 @@ impl Type {
         if !sized {
             return Err(TypeError::InvalidUnsizedType {
                 ty: self.clone(),
-                at: at.clone(),
+                span: at.clone(),
             });
         }
         
@@ -996,6 +1001,11 @@ impl Type {
             Type::Pointer(deref) => {
                 Type::Pointer(Rc::new((*deref).clone().visit_generics(visitor)))
             }
+            
+            Type::Weak(weak_ty) => {
+                let weak_ty = (*weak_ty).clone().visit_generics(visitor);
+                Type::Weak(Rc::new(weak_ty))
+            }
 
             Type::Nothing
             | Type::Nil
@@ -1012,6 +1022,7 @@ impl fmt::Display for Type {
         match self {
             Type::Nil => write!(f, "nil"),
             Type::Class(name) | Type::Record(name) | Type::Enum(name) => write!(f, "{}", name),
+            Type::Weak(weak_ty) => write!(f, "{} {}", Keyword::Weak, weak_ty),
             Type::Interface(iface) => write!(f, "{}", iface),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
             Type::Array(array_ty) => write!(f, "{}", array_ty),
@@ -1144,6 +1155,18 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypeResult<Type>
             }
 
             Ok(ty)
+        },
+        
+        ast::TypeName::Weak(weak_type, ..) => {
+            let weak_type = typecheck_type(weak_type, ctx)?;
+            if !weak_type.is_strong_rc_reference() {
+                return Err(TypeError::InvalidWeakType {
+                    ty: weak_type,
+                    span: ty.span().clone(),
+                });
+            }
+            
+            Ok(Type::Weak(Rc::new(weak_type)))
         },
 
         ast::TypeName::Unspecified(_) => unreachable!("trying to resolve unknown type"),

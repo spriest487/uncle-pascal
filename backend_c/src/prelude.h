@@ -140,30 +140,35 @@ static void* RcAlloc(struct Class* class) {
     return rc;
 }
 
-static void RcRetain(void* instance) {
+static void RcRetain(void* instance, bool weak) {
     if (!instance) {
         return;
     }
 
     struct Rc* rc = (struct Rc*)instance;
-    if (rc->strong_count == 0) {
-        fprintf(stderr, "called RcRetain for an invalid pointer\n");
-        abort();
-    }
-
+    
     // don't retain immortal refs
     if (rc->strong_count < 0) {
         return;
     }
     
-    rc->strong_count += 1;
+    if (weak) {
+        rc->weak_count += 1;
+    } else {
+        if (rc->strong_count == 0) {
+            fprintf(stderr, "resurrecting with 0 strong refs pointer @ 0x%p (+ %d weak refs remain)\n", instance, rc->weak_count);
+            abort();
+        }
+    
+        rc->strong_count += 1;
+    }
 
 #if TRACE_RC
     printf("rc: retain %s @ 0x%p (%d+%d refs)\n", rc->class->name, instance, rc->strong_count, rc->weak_count);
 #endif
 }
 
-static void RcRelease(void* instance) {
+static void RcRelease(void* instance, bool weak) {
     if (!instance) {
         // releasing NULL should be ignored
         return;
@@ -171,47 +176,57 @@ static void RcRelease(void* instance) {
 
     struct Rc* rc = (struct Rc*)instance;
 
-    if (rc->strong_count == 0) {
-        fprintf(stderr, "called RcRelease for an invalid pointer\n");
-        abort();
-    }
-
     if (rc->strong_count < 0) {
         // immortal
         return;
     }
-
-#if TRACE_RC
-    printf("rc: release %s @ 0x%p (%d+%d remain)\n", rc->class->name, instance, rc->strong_count - 1, rc->weak_count);
-#endif
-
-    if (rc->strong_count > 1) {
-        // reference is still alive: don't free it yet 
-        rc->strong_count -= 1;
-        return;
-    } 
-
-    // run the disposer if present
-    if (rc->class->disposer) {
-#if TRACE_RC
-        printf("rc:   disposing %s @ 0x%p\n", rc->class->name, instance);
-#endif
-        rc->class->disposer(instance);
-        
-        if (rc->strong_count > 1) {
-            fprintf(stderr, "dispose function for %s added a reference to the disposed instance\n", rc->class->name);
+   
+    if (weak) {
+        if (rc->weak_count == 0) {
+            fprintf(stderr, "releasing with 0 weak refs remaining @ 0x%p\n", instance);
             abort();
         }
+
+#if TRACE_RC
+        printf("rc: release %s @ 0x%p (%d+%d remain)\n", rc->class->name, instance, rc->strong_count, rc->weak_count - 1);
+#endif
+        
+        rc->weak_count -= 1;
+    } else {
+        if (rc->strong_count == 0) {
+            fprintf(stderr, "releasing with 0 strong refs remaining @ 0x%p\n", instance);
+            abort();
+        }
+
+#if TRACE_RC
+        printf("rc: release %s @ 0x%p (%d+%d remain)\n", rc->class->name, instance, rc->strong_count - 1, rc->weak_count);
+#endif
+
+        // call the disposer before decrementing the ref count, because it must still be a live reference
+        // while the function is executing
+        if (rc->strong_count == 1 && rc->class->disposer) {
+#if TRACE_RC
+            printf("rc: \tdisposing %s @ 0x%p\n", rc->class->name, instance);
+#endif
+            rc->class->disposer(instance);
+            
+            // invoke structural release to release struct fields
+            rc->class->cleanup(instance);
+            rc->class = NULL;
+
+            if (rc->strong_count != 1) {
+                fprintf(stderr, "disposal routine for %s modified the reference count of the disposed instance\n", rc->class->name);
+                abort();
+            }
+        }
+  
+        rc->strong_count -= 1;
     }
-    
-    rc->strong_count = 0;
 
-    // invoke structural release to release struct fields
-    rc->class->cleanup(instance);
-    rc->class = NULL;
-
-    // free memory
-    Free(instance);
+    if (rc->strong_count == 0 && rc->weak_count == 0) {
+        // free memory
+        Free(instance);
+    }
 }
 
 _Noreturn static void Raise(STRING_STRUCT* msg_str);

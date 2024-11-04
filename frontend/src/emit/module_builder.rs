@@ -707,6 +707,8 @@ impl ModuleBuilder {
 
             typ::Type::Primitive(typ::Primitive::Pointer) => ir::Type::Nothing.ptr(),
 
+            typ::Type::Weak(weak_ty) => self.find_type(weak_ty), 
+
             typ::Type::Pointer(target) => self.find_type(target).ptr(),
 
             typ::Type::Record(class) | typ::Type::Class(class) => {
@@ -856,6 +858,13 @@ impl ModuleBuilder {
 
                 ty
             },
+            
+            typ::Type::Weak(weak_ty) => {
+                match self.translate_type(weak_ty, generic_ctx) {
+                    ir::Type::RcPointer(id) => ir::Type::RcWeakPointer(id),
+                    other => unreachable!("only RC class types can be weak, found: {}", other),
+                }
+            }
 
             typ::Type::Interface(iface_def) => {
                 let iface_def = self.src_metadata
@@ -886,7 +895,6 @@ impl ModuleBuilder {
                 self.type_cache.insert(src_ty, ty.clone());
                 ty
             },
-
 
             typ::Type::DynArray { element } => {
                 let id = self.translate_dyn_array_struct(&element, generic_ctx);

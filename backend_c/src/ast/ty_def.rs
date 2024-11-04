@@ -52,10 +52,11 @@ impl Type {
         match ty {
             ir::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
             ir::Type::Function(id) => Type::DefinedType(TypeDefName::Alias(*id)),
-            ir::Type::RcPointer(ir::VirtualTypeID::Class(id)) => {
+            ir::Type::RcPointer(ir::VirtualTypeID::Class(id))
+            | ir::Type::RcWeakPointer(ir::VirtualTypeID::Class(id)) => {
                 Type::DefinedType(TypeDefName::Struct(*id)).ptr()
             },
-            ir::Type::RcPointer(..) => Type::Void.ptr(),
+            ir::Type::RcPointer(..) | ir::Type::RcWeakPointer(..) => Type::Void.ptr(),
             ir::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
             ir::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
             ir::Type::Nothing => Type::Void,

@@ -316,6 +316,7 @@ pub fn literal_to_val(
             match ir_ty {
                 ir::Type::Pointer(_)
                 | ir::Type::RcPointer(_)
+                | ir::Type::RcWeakPointer(_)
                 | ir::Type::Function(_) => {
                     ir::Value::LiteralNull
                 },

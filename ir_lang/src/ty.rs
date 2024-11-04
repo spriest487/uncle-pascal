@@ -23,6 +23,7 @@ pub enum Type {
     /// of the inner type. the resource type is Some in the case that the type is known, and
     /// None for the Any type
     RcPointer(VirtualTypeID),
+    RcWeakPointer(VirtualTypeID),
 
     // Function pointer type for a function
     Function(TypeDefID),
@@ -52,6 +53,10 @@ impl Type {
 
     pub const fn rc_ptr_to(class: VirtualTypeID) -> Self {
         Type::RcPointer(class)
+    }
+    
+    pub const fn rc_weak_ptr_to(class: VirtualTypeID) -> Self {
+        Type::RcWeakPointer(class)
     }
 
     pub const fn rc_ptr_any() -> Self {
@@ -93,6 +98,7 @@ impl Type {
     pub fn as_iface(&self) -> Option<InterfaceID> {
         match self {
             Type::RcPointer(VirtualTypeID::Interface(id)) => Some(*id),
+            Type::RcWeakPointer(VirtualTypeID::Interface(id)) => Some(*id),
             _ => None,
         }
     }
@@ -100,6 +106,7 @@ impl Type {
     pub fn is_rc(&self) -> bool {
         match self {
             Type::RcPointer(..) => true,
+            Type::RcWeakPointer(..) => true,
             _ => false,
         }
     }
@@ -114,6 +121,7 @@ impl Type {
     pub fn rc_resource_class_id(&self) -> Option<VirtualTypeID> {
         match self {
             Type::RcPointer(class_id) => Some(*class_id),
+            Type::RcWeakPointer(class_id) => Some(*class_id),
             _ => None,
         }
     }
@@ -143,6 +151,12 @@ impl fmt::Display for Type {
                 VirtualTypeID::Class(id) => write!(f, "class {}", id),
                 VirtualTypeID::Interface(id) => write!(f, "iface {}", id),
                 VirtualTypeID::Closure(id) => write!(f, "closure {}", id),
+            },
+            Type::RcWeakPointer(id) => match id {
+                VirtualTypeID::Any => write!(f, "weak any"),
+                VirtualTypeID::Class(id) => write!(f, "weak class {}", id),
+                VirtualTypeID::Interface(id) => write!(f, "weak iface {}", id),
+                VirtualTypeID::Closure(id) => write!(f, "weak closure {}", id),
             },
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
             Type::Function(id) => write!(f, "function {}", id),

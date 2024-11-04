@@ -430,7 +430,9 @@ impl Marshaller {
             ir::Type::Variant(id) => {
                 let def = metadata
                     .get_variant_def(*id)
-                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
+                    .ok_or_else(|| {
+                        MarshalError::UnsupportedType(ty.clone())
+                    })?;
 
                 self.add_variant(*id, def, metadata)
             },
@@ -438,12 +440,17 @@ impl Marshaller {
             ir::Type::Struct(id) => {
                 let def = metadata
                     .get_struct_def(*id)
-                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
+                    .ok_or_else(|| {
+                        MarshalError::UnsupportedType(ty.clone())
+                    })?;
 
                 self.add_struct(*id, def, metadata)
             },
 
-            ir::Type::RcPointer(..) | ir::Type::Pointer(..) | ir::Type::Function(..) => Ok(ForeignType::pointer()),
+            ir::Type::RcPointer(..) 
+            | ir::Type::RcWeakPointer(..) 
+            | ir::Type::Pointer(..) 
+            | ir::Type::Function(..) => Ok(ForeignType::pointer()),
 
             ir::Type::Array { element, dim } => {
                 let el_ty = self.build_marshalled_type(&element, metadata)?;
@@ -473,7 +480,10 @@ impl Marshaller {
                 Ok(ForeignType::structure(el_tys))
             },
 
-            ir::Type::Pointer(..) | ir::Type::RcPointer(..) | ir::Type::Function(..) => Ok(ForeignType::pointer()),
+            ir::Type::Pointer(..) 
+            | ir::Type::RcPointer(..) 
+            | ir::Type::RcWeakPointer(..) 
+            | ir::Type::Function(..) => Ok(ForeignType::pointer()),
 
             ty => match self.types.get(ty) {
                 Some(cached_ty) => Ok(cached_ty.clone()),
@@ -639,7 +649,8 @@ impl Marshaller {
                 }
             },
 
-            ir::Type::RcPointer(class_id) => {
+            ir::Type::RcPointer(class_id)
+            | ir::Type::RcWeakPointer(class_id) => {
                 let raw_ptr_val = self.unmarshal_ptr(ir::Type::Nothing, in_bytes)?;
 
                 // null rcpointers can exist - e.g. uninitialized stack values

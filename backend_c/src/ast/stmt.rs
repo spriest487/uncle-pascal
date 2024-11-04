@@ -360,18 +360,20 @@ impl<'a> Builder<'a> {
                 )))
             },
 
-            ir::Instruction::Retain { at } => {
+            ir::Instruction::Retain { at, weak } => {                
                 let retain = Expr::Function(FunctionName::RcRetain);
+
                 let rc_ptr = Expr::translate_ref(at, self.module);
-                let call_retain = Expr::call(retain, vec![rc_ptr]);
+                let call_retain = Expr::call(retain, vec![rc_ptr, Expr::LitBool(*weak)]);
 
                 self.stmts.push(Statement::Expr(call_retain));
             },
 
-            ir::Instruction::Release { at } => {
+            ir::Instruction::Release { at, weak } => {
                 let release = Expr::Function(FunctionName::RcRelease);
+
                 let rc_ptr = Expr::translate_ref(at, self.module);
-                let call_release = Expr::call(release, vec![rc_ptr]);
+                let call_release = Expr::call(release, vec![rc_ptr, Expr::LitBool(*weak)]);
 
                 self.stmts.push(Statement::Expr(call_release));
             },

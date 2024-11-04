@@ -63,7 +63,7 @@ impl DynValue {
 
             Type::Nothing => None,
 
-            Type::RcPointer(class_id) => {
+            Type::RcPointer(class_id) | Type::RcWeakPointer(class_id) => {
                 // assume self is a pointer-compatible type, its int value be the address
                 let addr = cast::usize(self.to_bigint()?).ok()?;
 

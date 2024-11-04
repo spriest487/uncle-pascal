@@ -16,7 +16,7 @@ pub fn translate_variant_def(
         let (case_ty, case_rc) = match case.data_ty.as_ref() {
             Some(data_ty) => {
                 let case_ty = module.translate_type(data_ty, generic_ctx);
-                (Some(case_ty), data_ty.is_rc_reference())
+                (Some(case_ty), data_ty.is_strong_rc_reference())
             },
             None => (None, false),
         };

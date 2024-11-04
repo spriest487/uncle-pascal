@@ -65,6 +65,8 @@ impl StructLayout {
 
                     usize::max(tag_align, max_data_align)
                 },
+                
+                Type::Weak(weak_ty) => self.align_of(&weak_ty, ctx)?,
 
                 Type::MethodSelf | Type::GenericParam(..) => {
                     return Err(NameError::GenericError(
@@ -98,6 +100,10 @@ impl StructLayout {
                 Primitive::Int64 | Primitive::UInt64 => 8,
                 Primitive::NativeInt | Primitive::NativeUInt | Primitive::Pointer => WORD_SIZE,
             },
+            
+            Type::Weak(weak_ty) => {
+                self.size_of(weak_ty, ctx)?
+            }
 
             Type::Variant(variant_name) => {
                 let variant_def = ctx.instantiate_variant_def(&variant_name)?;
@@ -117,6 +123,7 @@ impl StructLayout {
                 let end_pad = Self::padding(tag_size + tag_pad + max_data_size, tag_align);
                 tag_size + tag_pad + max_data_size + end_pad
             },
+
             Type::Record(struct_sym) => {
                 let struct_def = ctx.instantiate_struct_def(&struct_sym)?;
 
