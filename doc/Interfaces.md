@@ -1,7 +1,22 @@
-Interfaces can have type params (`NYI`).
+Interfaces declarations can make use of the `Self` type, which is an undefined, unsized
+placeholder type that stands in the for the implementing type.
+
+For example:
 
 ```pascal
-type IPerson of Job = interface
+type IAddToSelf = interface
+    function Add(other: Self): Self;
+end;
+
+type Value = class of IAddToSelf
+    function Add(other: Value): Value;
+end;
+```
+
+Interfaces can be declared with type params (NYI).
+
+```pascal
+type IPerson[Job] = interface
     function DoWork(self: Self; job: Job);
 end;
 ```
@@ -14,7 +29,7 @@ be known in advance.
 
 ```pascal
 type IPerson = interface
-    { Error }
-    function DoWork of Job(self: Self; job: Job);
+    // Not valid:
+    function DoWork[Job](self: Self; job: Job);
 end;
 ```
