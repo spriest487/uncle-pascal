@@ -8,7 +8,6 @@ use crate::typ::ast::MethodDecl;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::ast::VariantDef;
-use crate::typ::validate_ty_args;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
 use crate::typ::GenericContext;
@@ -22,7 +21,6 @@ use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeParamList;
-use crate::typ::TypeParamType;
 use common::span::Span;
 use common::span::Spanned;
 use std::borrow::Cow;
@@ -55,59 +53,6 @@ pub trait Specializable {
     fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self;
 }
 
-
-pub fn specialize_generic_name<'a>(
-    name: &'a Symbol,
-    args: &TypeArgList,
-    ctx: &Context,
-) -> GenericResult<Cow<'a, Symbol>> {
-    let type_params = match name.type_params.as_ref() {
-        None => return Ok(Cow::Borrowed(name)),
-        Some(type_params) => type_params,
-    };
-
-    if args.len() != type_params.items.len() {
-        return Err(GenericError::ArgsLenMismatch {
-            target: GenericTarget::Name(name.full_path.clone()),
-            expected: type_params.items.len(),
-            actual: args.len(),
-        });
-    }
-
-    validate_ty_args(args, type_params, ctx)?;
-
-    let type_args = if let Some(existing_args) = &name.type_args {
-        existing_args
-            .clone()
-            .map(|arg, _pos| arg.apply_type_args_by_name(type_params, args))
-    } else {
-        let mut resolved_args = Vec::with_capacity(type_params.len());
-
-        for (i, param) in type_params.items.iter().enumerate() {
-            let is_iface = param.constraint
-                .clone()
-                .map(|constraint| constraint.is_ty)
-                .unwrap_or(Type::Nothing);
-
-            let arg = args.resolve(&TypeParamType {
-                name: param.name.clone(),
-                is_ty: is_iface,
-                pos: i,
-            });
-
-            resolved_args.push(arg.into_owned());
-        }
-        TypeArgList::new(resolved_args, name.span().clone())
-    };
-
-    let name = Symbol {
-        type_args: Some(type_args),
-        ..name.clone()
-    };
-
-    Ok(Cow::Owned(name))
-}
-
 pub fn specialize_struct_def<'a>(
     generic_def: &Rc<StructDef>,
     ty_args: &TypeArgList,
@@ -118,8 +63,7 @@ pub fn specialize_struct_def<'a>(
         Some(param_list) => param_list,
     };
 
-    let specialized_name= specialize_generic_name(&generic_def.name, ty_args, ctx)?
-        .into_owned();
+    let specialized_name = generic_def.name.specialize(ty_args, ctx)?.into_owned();
 
     let implements = specialize_implements_clause(
         &generic_def.implements,
@@ -185,8 +129,7 @@ pub fn specialize_variant_def(
         Some(param_list) => param_list,
     };
 
-    let parameterized_name= specialize_generic_name(&variant.name, args, ctx)?
-        .into_owned();
+    let parameterized_name = variant.name.specialize(args, ctx)?.into_owned();
     
     let implements = specialize_implements_clause(
         &variant.implements,

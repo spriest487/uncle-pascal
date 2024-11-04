@@ -13,7 +13,6 @@ use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::ObjectCtor;
-use crate::typ::{specialize_generic_name, FunctionSig};
 use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::FunctionSigParam;
@@ -35,6 +34,7 @@ use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::UfcsTyped;
 use crate::typ::ValueKind;
+use crate::typ::FunctionSig;
 pub use args::*;
 use common::span::Span;
 use common::span::Spanned as _;
@@ -822,7 +822,7 @@ fn typecheck_free_func_call(
         func_type.check_visible(func_call.span(), ctx)?;
 
         if let Some(ty_args) = &specialized_call_args.type_args {
-            let call_name = specialize_generic_name(&func_type.name, ty_args, ctx)
+            let call_name = func_type.name.specialize(ty_args, ctx)
                 .map_err(|e| TypeError::from_generic_err(e, span.clone()))?
                 .into_owned();
 

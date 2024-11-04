@@ -92,7 +92,7 @@ pub fn typecheck_type_params(
     Ok(TypeParamList::new(items, type_params.span().clone()))
 }
 
-pub fn validate_ty_args(args: &TypeArgList, params: &TypeParamList, ctx: &Context) -> GenericResult<()> {
+pub fn validate_generic_constraints(args: &TypeArgList, params: &TypeParamList, ctx: &Context) -> GenericResult<()> {
     for pos in 0..params.len() {
         if let Some(constraint_ty) = &params[pos].constraint {
             let ty_arg = &args.items[pos];

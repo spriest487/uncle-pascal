@@ -15,7 +15,7 @@ use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
-use crate::typ::validate_ty_args;
+use crate::typ::validate_generic_constraints;
 use crate::typ::Binding;
 use crate::typ::ClosureBodyEnvironment;
 use crate::typ::Context;
@@ -665,11 +665,11 @@ pub fn specialize_func_decl(
         });
     }
 
-    validate_ty_args(args, ty_params, ctx)?;
+    validate_generic_constraints(args, ty_params, ctx)?;
     
     let mut decl = decl.clone();
     visit_type_refs(&mut decl, |ty| {
-        *ty = ty.specialize_generic(args, ctx)?.into_owned();
+        *ty = ty.clone().apply_type_args_by_name(ty_params, args);
         Ok(())
     })?;
     Ok(decl)

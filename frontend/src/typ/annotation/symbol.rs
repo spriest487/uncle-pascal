@@ -1,20 +1,23 @@
-use std::borrow::Cow;
-use crate::ast::TypeDeclName;
 use crate::ast::IdentPath;
-use crate::typ::{GenericError, TypeParamType};
+use crate::ast::TypeDeclName;
+use crate::typ::typecheck_type_params;
+use crate::typ::validate_generic_constraints;
+use crate::typ::Context;
+use crate::typ::GenericError;
 use crate::typ::GenericResult;
+use crate::typ::GenericTarget;
 use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeArgList;
-use crate::typ::TypeParamList;
-use crate::typ::TypeResult;
-use crate::typ::typecheck_type_params;
-use crate::typ::Context;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeParamContainer;
+use crate::typ::TypeParamList;
+use crate::typ::TypeParamType;
+use crate::typ::TypeResult;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
+use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
 
@@ -70,6 +73,58 @@ impl Symbol {
                 ty: Type::Class(Rc::new(self.clone())),
             })
         }
+    }
+
+    pub fn specialize<'a>(
+        &'a self,
+        args: &TypeArgList,
+        ctx: &Context,
+    ) -> GenericResult<Cow<'a, Symbol>> {
+        let type_params = match self.type_params.as_ref() {
+            None => return Ok(Cow::Borrowed(self)),
+            Some(type_params) => type_params,
+        };
+
+        if args.len() != type_params.items.len() {
+            return Err(GenericError::ArgsLenMismatch {
+                target: GenericTarget::Name(self.full_path.clone()),
+                expected: type_params.items.len(),
+                actual: args.len(),
+            });
+        }
+
+        validate_generic_constraints(args, type_params, ctx)?;
+
+        let type_args = if let Some(existing_args) = &self.type_args {
+            existing_args
+                .clone()
+                .map(|arg, _pos| arg.apply_type_args_by_name(type_params, args))
+        } else {
+            let mut resolved_args = Vec::with_capacity(type_params.len());
+
+            for (i, param) in type_params.items.iter().enumerate() {
+                let is_ty = param.constraint
+                    .clone()
+                    .map(|constraint| constraint.is_ty)
+                    .unwrap_or(Type::Any);
+
+                let arg = args.resolve(&TypeParamType {
+                    name: param.name.clone(),
+                    is_ty: is_ty.clone(),
+                    pos: i,
+                });
+
+                resolved_args.push(arg.into_owned());
+            }
+            TypeArgList::new(resolved_args, self.span().clone())
+        };
+
+        let name = Symbol {
+            type_args: Some(type_args),
+            ..self.clone()
+        };
+
+        Ok(Cow::Owned(name))
     }
 
     pub fn substitute_ty_args(self, args: &impl TypeArgResolver) -> Self {

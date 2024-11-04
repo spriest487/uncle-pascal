@@ -13,6 +13,7 @@ use std::fmt::Debug;
 pub enum GenericTarget {
     Name(IdentPath),
     FunctionSig(FunctionSig),
+    Type(Type),
 }
 
 impl fmt::Display for GenericTarget {
@@ -20,6 +21,7 @@ impl fmt::Display for GenericTarget {
         match self {
             GenericTarget::Name(name) => write!(f, "name `{}`", name),
             GenericTarget::FunctionSig(sig) => write!(f, "function with signature `{}`", sig),
+            GenericTarget::Type(ty) => write!(f, "type `{}`", ty),
         }
     }
 }

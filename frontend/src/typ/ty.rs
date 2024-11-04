@@ -962,52 +962,34 @@ impl Type {
         'a: 'res,
     {
         let specialized = match self {
-            Type::GenericParam(type_param) => args.resolve(type_param),
-
             Type::Record(sym) => {
-                let sym = specialize_generic_name(&sym, args, ctx)?;
+                let sym = sym.specialize(args, ctx)?;
                 let record_ty = Type::Record(Rc::new(sym.into_owned()));
 
                 Cow::Owned(record_ty)
             },
 
             Type::Class(sym) => {
-                let sym = specialize_generic_name(&sym, args, ctx)?;
+                let sym = sym.specialize(args, ctx)?;
                 let class_ty = Type::Class(Rc::new(sym.into_owned()));
 
                 Cow::Owned(class_ty)
             },
 
             Type::Variant(variant) => {
-                let sym = specialize_generic_name(&variant, args, ctx)?;
+                let sym = variant.specialize(args, ctx)?;
                 let variant_ty = Type::Variant(Rc::new(sym.into_owned()));
 
                 Cow::Owned(variant_ty)
             },
 
-            Type::Array(array_ty) => {
-                let element_ty = array_ty.element_ty.specialize_generic(args, ctx)?;
-                let arr_ty = ArrayType {
-                    element_ty: element_ty.into_owned(),
-                    dim: array_ty.dim,
-                };
-                Cow::Owned(Type::from(arr_ty))
-            },
-
-            Type::DynArray { element } => {
-                let element_ty = element.specialize_generic(args, ctx)?;
-
-                Cow::Owned(Type::DynArray {
-                    element: Rc::new(element_ty.into_owned()),
+            not_parameterized => {
+                return Err(GenericError::ArgsLenMismatch {
+                    target: GenericTarget::Type(not_parameterized.clone()),
+                    actual: args.len(),
+                    expected: 0,
                 })
             },
-
-            Type::Function(sig) => {
-                let specialized_sig = sig.specialize_generic(args, ctx)?;
-                Cow::Owned(Type::Function(Rc::new(specialized_sig)))
-            },
-
-            not_generic => Cow::Borrowed(not_generic),
         };
 
         Ok(specialized)
