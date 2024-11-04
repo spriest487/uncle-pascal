@@ -3,12 +3,7 @@
   * limit self to inferface method decls, don't allow it as a general alias for the current type now that forward
     decls are working properly
 * project files/don't auto load used units
-* why is the C backend generating packed decls for everything? 
-* weak refs
-  * implemented as a keyword for now
-  * `weak T`
-  * need to cast to a reference to access: `if ref is T strongRef then...`
-  * implement weak ref checking in 
+* why is the C backend generating packed decls for everything?
 * single-char string literals convert to Byte
 * "System" should always be implicitly used
 
