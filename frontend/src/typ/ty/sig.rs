@@ -7,9 +7,6 @@ use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
 use crate::typ::Context;
-use crate::typ::GenericError;
-use crate::typ::GenericResult;
-use crate::typ::GenericTarget;
 use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeArgList;
@@ -181,50 +178,6 @@ impl FunctionSig {
             .expect("anonymous function must have function type")
     }
 
-    /// test if a list of type args that could be used to specialize this function are applicable
-    /// e.g. this sig has type params, the number of type params is the same as the number
-    /// of args provided, and that each arg passes the constraints for its corresponding param
-    pub fn validate_type_args(
-        &self,
-        type_args: &impl TypeArgResolver,
-        ctx: &Context,
-    ) -> GenericResult<()> {
-        let expected_type_args_len = match self.type_params.as_ref() {
-            Some(type_params) => type_params.len(),
-            None => 0,
-        };
-
-        if type_args.len() != expected_type_args_len {
-            return Err(GenericError::ArgsLenMismatch {
-                expected: expected_type_args_len,
-                actual: type_args.len(),
-                target: GenericTarget::FunctionSig(self.clone()),
-            });
-        }
-
-        let type_params = self
-            .type_params
-            .as_ref()
-            .expect("must have type params or previous check would fail");
-
-        for arg_pos in 0..type_params.len() {
-            let constraint_ty = &type_params[arg_pos].is_ty;
-            
-            let actual_ty = type_args
-                .find_by_pos(arg_pos)
-                .expect("already checked the length matches");
-
-            if !actual_ty.match_constraint(constraint_ty, ctx) {
-                return Err(GenericError::ConstraintNotSatisfied {
-                    is_not_ty: constraint_ty.clone(),
-                    actual_ty: Some(actual_ty.clone()),
-                });
-            }
-        }
-
-        Ok(())
-    }
-
     pub fn contains_generic_params(&self, ctx: &Context) -> bool {
         if self.return_ty.contains_unresolved_params(ctx) {
             return true;
@@ -233,17 +186,6 @@ impl FunctionSig {
         self.params
             .iter()
             .any(|param| param.ty.contains_unresolved_params(ctx))
-    }
-
-    pub fn specialize_generic(
-        &self,
-        type_args: &impl TypeArgResolver,
-        ctx: &Context,
-    ) -> GenericResult<Self> {
-        self.validate_type_args(type_args, ctx)?;
-        
-        let specialized_sig = self.substitute_type_args(type_args);
-        Ok(specialized_sig)
     }
 
     pub fn type_params_len(&self) -> usize {
