@@ -671,7 +671,7 @@ pub fn specialize_func_decl(
     
     let mut decl = decl.clone();
     visit_type_refs(&mut decl, |ty| {
-        *ty = ty.clone().apply_type_args_by_name(ty_params, args);
+        *ty = ty.clone().apply_type_args(ty_params, args);
         Ok(())
     })?;
     Ok(decl)
@@ -683,7 +683,7 @@ pub fn apply_func_decl_named_ty_args(
     args: &impl TypeArgResolver
 ) -> FunctionDecl {
     visit_type_refs(&mut decl, |ty| -> Result<(), ()> {
-        *ty = ty.clone().apply_type_args_by_name(params, args);
+        *ty = ty.clone().apply_type_args(params, args);
         Ok(())
     }).unwrap();
 
@@ -691,14 +691,20 @@ pub fn apply_func_decl_named_ty_args(
 }
 
 pub fn apply_func_decl_ty_args(decl: &FunctionDecl, args: &TypeArgList) -> FunctionDecl {
-    let mut decl = decl.clone();
-    visit_type_refs(&mut decl, |ty| -> Result<(), ()> {
-        *ty = ty.clone().substitute_type_args(args);
-        
-        Ok(())
-    }).unwrap();
+    match decl.type_params.as_ref() {
+        None => decl.clone(),
 
-    decl
+        Some(ty_params) => {
+            let mut decl = decl.clone();
+            
+            _ = visit_type_refs(&mut decl, |ty| -> Result<(), ()> {
+                *ty = ty.clone().apply_type_args(ty_params, args);
+                Ok(())
+            });
+            
+            decl
+        }
+    }
 }
 
 fn visit_type_refs<F, E>(decl: &mut FunctionDecl, mut f: F) -> Result<(), E> 

@@ -791,7 +791,7 @@ impl ModuleBuilder {
     where 
         Generic: Specializable,
     {
-        target.apply_type_args_by_name(params, args)
+        target.apply_type_args(params, args)
     }
 
     pub fn translate_type(
@@ -799,7 +799,7 @@ impl ModuleBuilder {
         src_ty: &typ::Type,
         generic_ctx: &typ::GenericContext,
     ) -> ir::Type {
-        let src_ty = src_ty.clone().apply_type_args_by_name(generic_ctx, generic_ctx);
+        let src_ty = src_ty.clone().apply_type_args(generic_ctx, generic_ctx);
 
         if let Some(cached) = self.type_cache.get(&src_ty) {
             return cached.clone();

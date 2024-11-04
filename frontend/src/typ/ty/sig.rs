@@ -192,14 +192,14 @@ impl FunctionSig {
         self.type_params.as_ref().map(|list| list.len()).unwrap_or(0)
     }
 
-    pub fn apply_ty_args(&self, ty_params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
+    pub fn apply_type_args(&self, ty_params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         let params = self
             .params
             .iter()
             .map(|sig_param| {
                 let ty = sig_param.ty
                     .clone()
-                    .apply_type_args_by_name(ty_params, args);
+                    .apply_type_args(ty_params, args);
 
                 FunctionSigParam {
                     ty,
@@ -210,7 +210,7 @@ impl FunctionSig {
 
         let return_ty = self.return_ty
             .clone()
-            .apply_type_args_by_name(ty_params, args);
+            .apply_type_args(ty_params, args);
 
         let sig_ty_params = match &self.type_params {
             Some(type_params) => {
@@ -219,7 +219,7 @@ impl FunctionSig {
                     items.push(FunctionSigTypeParam {
                         is_ty: item
                             .is_ty.clone()
-                            .apply_type_args_by_name(ty_params, args),
+                            .apply_type_args(ty_params, args),
                     });
                 }
                 Some(ast::TypeList::new(items, type_params.span().clone()))
@@ -231,42 +231,6 @@ impl FunctionSig {
             return_ty,
             params,
             type_params: sig_ty_params,
-        };
-        sig
-    }
-
-    pub fn substitute_type_args(&self, type_args: &impl TypeArgResolver) -> Self {
-        let params = self
-            .params
-            .iter()
-            .map(|sig_param| {
-                let ty = sig_param.ty.clone().substitute_type_args(type_args);
-                FunctionSigParam {
-                    ty,
-                    ..sig_param.clone()
-                }
-            })
-            .collect();
-
-        let return_ty = self.return_ty.clone().substitute_type_args(type_args);
-
-        let type_params = match &self.type_params {
-            Some(type_params) => {
-                let mut items = Vec::with_capacity(type_params.len());
-                for item in &type_params.items {
-                    items.push(FunctionSigTypeParam {
-                        is_ty: item.is_ty.clone().substitute_type_args(type_args),
-                    });
-                }
-                Some(ast::TypeList::new(items, type_params.span().clone()))
-            },
-            None => None,
-        };
-
-        let sig = FunctionSig {
-            return_ty,
-            params,
-            type_params,
         };
         sig
     }

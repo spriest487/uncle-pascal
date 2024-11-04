@@ -59,7 +59,7 @@ pub fn translate_name(
     generic_ctx: &typ::GenericContext,
     module: &mut ModuleBuilder,
 ) -> NamePath {
-    let name = name.clone().apply_type_args_by_name(generic_ctx, generic_ctx);
+    let name = name.clone().apply_type_args(generic_ctx, generic_ctx);
 
     if name.is_unspecialized_generic() {
         panic!("can't translate unspecialized generic name: {}", name);

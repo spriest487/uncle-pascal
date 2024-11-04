@@ -422,7 +422,7 @@ fn typecheck_func_overload(
                     decl.func_decl
                         .sig()
                         .with_self(self_ty)
-                        .apply_ty_args(params, args)
+                        .apply_type_args(params, args)
                 },
 
                 None => decl.func_decl

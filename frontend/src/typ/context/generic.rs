@@ -38,8 +38,8 @@ impl GenericContext {
     pub fn child_context(&self, params: &TypeParamList, args: &TypeArgList) -> Self {
         assert_eq!(params.len(), args.len());
 
-        let params = params.clone().apply_type_args_by_name(self, self);        
-        let args = args.clone().apply_type_args_by_name(self, self);
+        let params = params.clone().apply_type_args(self, self);        
+        let args = args.clone().apply_type_args(self, self);
 
         let mut child = self.clone();
         for (param, arg) in params.items.into_iter().zip(args.items.into_iter()) {
@@ -69,11 +69,11 @@ impl GenericContext {
     }
     
     pub fn apply_to_type(&self, ty: Type) -> Type {
-        ty.apply_type_args_by_name(self, self)
+        ty.apply_type_args(self, self)
     }
 
     pub fn apply_to_sig(&self, sig: &FunctionSig) -> FunctionSig {
-        sig.apply_ty_args(self, self)
+        sig.apply_type_args(self, self)
     }
     
     pub fn find_arg(&self, name: &str) -> Option<&Type> {

@@ -90,7 +90,7 @@ pub fn translate_pattern_match(
              ..
          } => {
             let variant = (**variant).clone()
-                .apply_type_args_by_name(builder.generic_context(), builder.generic_context());
+                .apply_type_args(builder.generic_context(), builder.generic_context());
 
             let (struct_id, case_index, case_ty) =
                 builder.translate_variant_case(&variant, case);

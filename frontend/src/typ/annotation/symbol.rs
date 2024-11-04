@@ -98,7 +98,7 @@ impl Symbol {
         let type_args = if let Some(existing_args) = &self.type_args {
             existing_args
                 .clone()
-                .map(|arg, _pos| arg.apply_type_args_by_name(type_params, args))
+                .map(|arg, _pos| arg.apply_type_args(type_params, args))
         } else {
             let mut resolved_args = Vec::with_capacity(type_params.len());
 
@@ -125,28 +125,6 @@ impl Symbol {
         };
 
         Ok(Cow::Owned(name))
-    }
-
-    pub fn substitute_ty_args(self, args: &impl TypeArgResolver) -> Self {
-        let new_args = self
-            .type_args
-            .as_ref()
-            .and_then(|name_type_args| {
-                let items = name_type_args
-                    .items
-                    .iter()
-                    .cloned()
-                    .map(|arg| arg.substitute_type_args(args));
-
-                let span = name_type_args.span().clone();
-
-                Some(TypeArgList::new(items, span))
-            });
-
-        Symbol {
-            type_args: new_args,
-            ..self
-        }
     }
     
     pub fn ident(&self) -> &Ident {
@@ -201,17 +179,17 @@ impl Specializable for Symbol {
         Cow::Borrowed(&self.full_path)
     }
 
-    fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
+    fn apply_type_args(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         let sym_ty_args = self
             .type_args
             .map(|args_list| {
-                args_list.apply_type_args_by_name(params, args)
+                args_list.apply_type_args(params, args)
             });
 
         let sym_ty_params = self
             .type_params
             .map(|params_list| {
-                params_list.apply_type_args_by_name(params, args)
+                params_list.apply_type_args(params, args)
             });
         
         Symbol {

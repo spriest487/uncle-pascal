@@ -126,7 +126,7 @@ impl<'m> Builder<'m> {
         if let Some(args_list) = &mut call_ty_args {
             *args_list = args_list
                 .clone()
-                .apply_type_args_by_name(&self.generic_context, &self.generic_context);
+                .apply_type_args(&self.generic_context, &self.generic_context);
         }
 
         self.module.translate_method_impl(self_ty, self_ty_method_index, call_ty_args)
@@ -141,7 +141,7 @@ impl<'m> Builder<'m> {
         if let Some(args_list) = &mut call_ty_args {
             *args_list = args_list
                 .clone()
-                .apply_type_args_by_name(&self.generic_context, &self.generic_context);
+                .apply_type_args(&self.generic_context, &self.generic_context);
         }
 
         let mut key = FunctionDefKey {

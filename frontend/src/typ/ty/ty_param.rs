@@ -28,20 +28,20 @@ impl TypeParam {
 pub type TypeArgList = ast::TypeArgList<Typed>;
 
 impl TypeArgList {
-    pub fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
-        self.map(|arg, _pos | arg.apply_type_args_by_name(params, args))
+    pub fn apply_type_args(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
+        self.map(|arg, _pos | arg.apply_type_args(params, args))
     }
 }
 
 pub type TypeParamList = ast::TypeList<TypeParam>;
 
 impl TypeParamList {
-    pub fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
+    pub fn apply_type_args(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         self
             .map(|ty_param, _pos| {
                 let constraint = ty_param.constraint
                     .map(|constraint| TypeConstraint {
-                        is_ty: constraint.is_ty.apply_type_args_by_name(params, args),
+                        is_ty: constraint.is_ty.apply_type_args(params, args),
                         ..constraint
                     });
 

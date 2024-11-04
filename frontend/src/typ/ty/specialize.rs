@@ -50,7 +50,7 @@ pub trait Specializable {
         }
     }
 
-    fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self;
+    fn apply_type_args(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self;
 }
 
 pub fn specialize_struct_def<'a>(
@@ -76,7 +76,7 @@ pub fn specialize_struct_def<'a>(
         .map(|generic_field| {
             let ty = generic_field.ty
                 .clone()
-                .apply_type_args_by_name(struct_ty_params, ty_args);
+                .apply_type_args(struct_ty_params, ty_args);
 
             Ok(ast::FieldDecl {
                 ty,
@@ -144,7 +144,7 @@ pub fn specialize_variant_def(
             let data_ty = match &case.data_ty {
                 None => None,
                 Some(ty) => {
-                    let ty = ty.clone().substitute_type_args(args);
+                    let ty = ty.clone().apply_type_args(variant_ty_params, args);
                     Some(ty)
                 },
             };
@@ -194,7 +194,7 @@ fn specialize_implements_clause(
         .map(|implements_ty| {
             implements_ty
                 .clone()
-                .apply_type_args_by_name(params, args)
+                .apply_type_args(params, args)
         })
         .collect()
 }

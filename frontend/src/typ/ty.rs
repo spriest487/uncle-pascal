@@ -908,51 +908,6 @@ impl Type {
         }
     }
 
-    // todo: error handling
-    pub fn substitute_type_args(self, args: &impl TypeArgResolver) -> Self {
-        if args.len() == 0 {
-            return self;
-        }
-
-        match self {
-            Type::GenericParam(param) => args.resolve(&param).into_owned(),
-
-            Type::Class(name) if name.type_params.is_some() => {
-                Type::Class(Rc::new((*name).clone().substitute_ty_args(args)))
-            },
-
-            Type::Record(name) if name.type_params.is_some() => {
-                Type::Record(Rc::new((*name).clone().substitute_ty_args(args)))
-            },
-
-            Type::Variant(name) if name.type_params.is_some() => {
-                Type::Variant(Rc::new((*name).clone().substitute_ty_args(args)))
-            },
-
-            Type::DynArray { element } => Type::DynArray {
-                element: (*element).clone().substitute_type_args(args).into(),
-            },
-
-            Type::Array(array_ty) => {
-                let array_ty = (*array_ty).clone();
-                ArrayType {
-                    element_ty: array_ty.element_ty.substitute_type_args(args).into(),
-                    dim: array_ty.dim,
-                }
-                .into()
-            },
-
-            Type::Pointer(base_ty) => (*base_ty).clone().substitute_type_args(args).ptr(),
-
-            Type::Function(sig) => {
-                let sig = sig.substitute_type_args(args);
-                Type::Function(Rc::new(sig))
-            },
-
-            other => other,
-        }
-    }
-
     pub fn specialize<'a, 'res>(
         &'a self,
         args: &'a TypeArgList,
@@ -1227,7 +1182,7 @@ impl Specializable for Type {
     /// which parameters we're providing matching arguments for.
     /// e.g. in the method `Class[A].Method[B](a: A, b: B)`, there are two separate parameter
     /// lists which a provided arg list of length 1 could satisfy
-    fn apply_type_args_by_name(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
+    fn apply_type_args(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         // callers should already have checked this
         assert_eq!(params.len(), args.len(), "apply_type_args: params and args counts did not match");
 
@@ -1243,19 +1198,19 @@ impl Specializable for Type {
             }
 
             Type::Record(name) => {
-                Type::record(name.as_ref().clone().apply_type_args_by_name(params, args))
+                Type::record(name.as_ref().clone().apply_type_args(params, args))
             }
 
             Type::Class(name) => {
-                Type::class(name.as_ref().clone().apply_type_args_by_name(params, args))
+                Type::class(name.as_ref().clone().apply_type_args(params, args))
             }
 
             Type::Variant(name) => {
-                Type::variant(name.as_ref().clone().apply_type_args_by_name(params, args))
+                Type::variant(name.as_ref().clone().apply_type_args(params, args))
             }
 
             Type::Function(sig) => {
-                let sig= sig.apply_ty_args(params, args);
+                let sig= sig.apply_type_args(params, args);
                 Type::Function(Rc::new(sig))
             }
 
@@ -1263,7 +1218,7 @@ impl Specializable for Type {
                 deref_ty
                     .as_ref()
                     .clone()
-                    .apply_type_args_by_name(params, args)
+                    .apply_type_args(params, args)
                     .ptr()
             }
             
@@ -1271,7 +1226,7 @@ impl Specializable for Type {
                 array_ty
                     .element_ty
                     .clone()
-                    .apply_type_args_by_name(params, args)
+                    .apply_type_args(params, args)
                     .array(array_ty.dim)
             }
             
@@ -1279,7 +1234,7 @@ impl Specializable for Type {
                 element
                     .as_ref()
                     .clone()
-                    .apply_type_args_by_name(params, args)
+                    .apply_type_args(params, args)
                     .dyn_array()
             }
             

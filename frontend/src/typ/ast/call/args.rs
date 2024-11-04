@@ -213,7 +213,7 @@ pub fn specialize_call_args(
 
     if let Some(explicit_ty_args) = explicit_ty_args {
         // we have explicit args, don't try to infer types
-        let call_sig = decl_sig.apply_ty_args(ty_params, &explicit_ty_args);
+        let call_sig = decl_sig.apply_type_args(ty_params, &explicit_ty_args);
         let actual_args = call::build_args_for_params(&call_sig.params, args, self_arg, span, ctx)?;
 
         Ok(SpecializedCallArgs {
