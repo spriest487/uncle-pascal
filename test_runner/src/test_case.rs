@@ -10,7 +10,6 @@ use std::ffi::OsString;
 use std::fs::DirEntry;
 use std::io;
 use std::io::BufRead;
-use std::io::BufWriter;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -92,11 +91,14 @@ impl TestCase {
                 &mut build_stdout,
                 &mut build_stderr
             )?;
-            
+
             if !build_status.success() {
-                let mut no_stdin: Vec<u8> = Vec::new();
-                run(&mut no_stdin.as_mut_slice(), &mut build_stdout.as_slice(), &mut build_stderr.as_slice());
-                return Ok(build_status)
+                let mut no_write = Vec::new();
+                run(&mut no_write, &mut build_stdout.as_slice(), &mut build_stderr.as_slice());
+
+                dump_output_buffers(&build_stdout, &build_stderr);
+
+                return Ok(build_status);
             }
         }
 
@@ -173,13 +175,13 @@ impl TestCase {
         let mut build_stdout = Vec::new();
         let mut build_stderr = Vec::new();
                 
-        if let Some(build_status) = self.build_clang(&exe_path, &mut build_stdout, &mut build_stderr, opts)? {
-            let mut no_write = BufWriter::new(Vec::new());
+        if let Some(err_status) = self.build_clang(&exe_path, &mut build_stdout, &mut build_stderr, opts)? {
+            let mut no_write = Vec::new();
             run(&mut no_write, &mut build_stdout.as_slice(), &mut build_stderr.as_slice());
             
             dump_output_buffers(&build_stdout, &build_stderr);
             
-            return Ok(build_status);
+            return Ok(err_status);
         }
 
         try_run_interactive(
