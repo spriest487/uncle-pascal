@@ -261,6 +261,9 @@ impl Context {
 
         path_parts.reverse();
 
+        // all unit scopes implicitly reference System
+        let system_unit = IdentPath::from(builtin_ident(SYSTEM_UNIT_NAME));
+
         for _ in 0..path_len {
             let part = path_parts.pop().unwrap();
             let part_span = part.span.clone();
@@ -273,6 +276,7 @@ impl Context {
                 None => {
                     // this part of the namespace is new, add a new scope for it
                     let scope = self.push_scope(Environment::Namespace { namespace: part_ns });
+                    self.use_unit(&system_unit);
                     unit_scopes.push(scope);
                 },
 
@@ -330,7 +334,7 @@ impl Context {
         self.loop_stack.last()
     }
 
-    pub fn use_unit(&mut self, unit: IdentPath) {
+    pub fn use_unit(&mut self, unit: &IdentPath) {
         let mut current_path = self.scopes.current_path_mut();
         current_path.top().add_use_unit(unit);
     }

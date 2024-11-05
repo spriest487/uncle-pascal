@@ -1,7 +1,5 @@
 unit Calculator;
-
 implementation
-uses System;
 
 const addCommand: Byte = 43; // '+'
     subCommand: Byte = 45; // '-'

@@ -1,5 +1,4 @@
 implementation
-uses System;
 
 const VAL1: Integer = 123765;
 

@@ -95,7 +95,6 @@ fn candidates_from_src(src: &'static str, unit_name: &str) -> (Vec<OverloadCandi
 fn resolves_overload_single() {
     let src = r"
         implementation
-        uses System;
         
         function X(i: Int32);
         begin
@@ -124,7 +123,6 @@ fn resolves_overload_single() {
 fn resolves_overload_by_arg_ty() {
     let src = r"
         implementation
-        uses System;
             
         function X(i: Int32); overload;
         begin
@@ -155,7 +153,6 @@ fn resolves_overload_by_arg_ty() {
 fn method_call_validates_too_many_args() {
     let src = r"
         implementation
-        uses System;
         
         type AClass = class
             function M1(a: Integer);
@@ -185,7 +182,6 @@ fn method_call_validates_too_many_args() {
 fn method_call_validates_too_few_args() {
     let src = r"
         implementation
-        uses System;
         
         type AClass = class
             function M1(a, b: Integer);
@@ -215,7 +211,7 @@ fn method_call_validates_too_few_args() {
 fn specializes_func_call_by_arg_ty() {
     let src = r"
         implementation
-        
+
         type B = class
         end;
         
@@ -259,7 +255,7 @@ fn specializes_func_call_by_arg_ty() {
 fn specializes_method_call_by_arg_ty() {
     let src = r"
         implementation
-        
+
         type C = class
             function A[T](arg: T);
         end;

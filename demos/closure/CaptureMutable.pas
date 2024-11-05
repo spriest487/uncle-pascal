@@ -1,5 +1,4 @@
 implementation
-    uses System;
     
 initialization
     var x := 1;

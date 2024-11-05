@@ -168,7 +168,6 @@ fn specialized_func_decl_checks_constraint() {
 fn duplicate_overload_is_error() {
     let result = try_module_from_src("Test", r"
     interface
-    uses System;
 
     function A(x: Boolean); overload;
     function A(x: Integer); overload;
@@ -195,7 +194,6 @@ fn duplicate_overload_is_error() {
 fn missing_overload_modifier_on_existing_is_error() {
     let result = try_module_from_src("Test", r"
     interface
-    uses System;
 
     function A(x: Boolean);
     function A(x: Integer); overload;
@@ -210,7 +208,6 @@ fn missing_overload_modifier_on_existing_is_error() {
 fn missing_overload_modifier_on_new_is_error() {
     let result = try_module_from_src("Test", r"
     interface
-    uses System;
     
     function A(x: Boolean); overload;
     function A(x: Integer);
@@ -241,7 +238,6 @@ fn expect_missing_overload<T>(result: TypeResult<T>) {
 fn mixed_visibility_overload_is_ok() {
     module_from_src("Test", r"
         interface
-        uses System;
         
         function A(x: Boolean); overload;
         
@@ -264,7 +260,6 @@ fn calling_invisible_function_from_outside_unit_is_err() {
     let srcs = [
         ("UnitA", r"
             interface
-            uses System;
             
             implementation
         
@@ -292,7 +287,6 @@ fn calling_less_visible_overload_from_outside_unit_is_err() {
     let srcs = [
         ("UnitA", r"
             interface
-            uses System;
             
             function A(x: Boolean); overload;
             

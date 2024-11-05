@@ -1,7 +1,5 @@
 { closure which captures nothing should create a static closure rather than allocating one instance per call }
-
 implementation
-    uses System;
 
 initialization
     var addToX := function(x: Integer): Integer;

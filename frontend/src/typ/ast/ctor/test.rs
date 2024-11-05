@@ -6,7 +6,6 @@ use crate::typ::TypeError;
 fn can_construct_imported_class_with_public_fields() {
     let src_a = r"
         interface
-        uses System;
         type
             AClass = class
             public
@@ -38,7 +37,6 @@ fn can_construct_imported_class_with_public_fields() {
 fn cannot_construct_imported_class_with_private_fields() {
     let src_a = r"
         interface
-        uses System;
         type
             AClass = class
             private

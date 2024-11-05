@@ -1,15 +1,12 @@
-unit Capture;
-
 implementation
-    uses System;
-    
-    function GetAdder(a: Integer): function(Integer): Integer;
+
+function GetAdder(a: Integer): function(Integer): Integer;
+begin
+    function(b: Integer): Integer;
     begin
-        function(b: Integer): Integer;
-        begin
-            a + b
-        end
-    end;
+        a + b
+    end
+end;
 
 initialization
     var add4 := GetAdder(4);

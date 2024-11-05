@@ -88,9 +88,9 @@ impl Scope {
         self.members.remove(key)
     }
 
-    pub fn add_use_unit(&mut self, use_unit: IdentPath) {
-        if !self.use_units.contains(&use_unit) {
-            self.use_units.push(use_unit);
+    pub fn add_use_unit(&mut self, use_unit: &IdentPath) {
+        if !self.use_units.contains(use_unit) {
+            self.use_units.push(use_unit.clone());
         }
     }
 
