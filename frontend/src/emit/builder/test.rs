@@ -63,9 +63,11 @@ fn break_cleans_up_loop_locals() {
     let expect = &[
         Instruction::Release {
             at: Ref::Local(LocalID(1)),
+            weak: false,
         },
         Instruction::Release {
             at: Ref::Local(LocalID(0)),
+            weak: false,
         },
         // and the final jmp for the break
         Instruction::Jump { dest: break_label },
