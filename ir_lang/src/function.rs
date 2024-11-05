@@ -52,7 +52,7 @@ impl fmt::Display for FunctionSig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "function")?;
         
-        if self.param_tys.len() > 0 {
+        if !self.param_tys.is_empty() {
             write!(f, "(")?;
 
             for (i, param_ty) in self.param_tys.iter().enumerate() {

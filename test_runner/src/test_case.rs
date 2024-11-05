@@ -71,10 +71,10 @@ impl TestCase {
                             .and_then(TestCase::find_from_entry)
                             .ok()
                     })
-                    .flat_map(|paths| paths)
+                    .flatten()
                     .collect()
             )
-            .unwrap_or_else(Vec::new)
+            .unwrap_or_default()
     }
     
     fn run_interpreted<RunFn>(&self, opts: &Opts, run: RunFn) -> io::Result<ExitStatus> 
@@ -152,7 +152,7 @@ impl TestCase {
         let clang_status = try_run_command(
             Command::new("clang")
                 .arg(c_file_path)
-                .arg("-o").arg(&exe_path)
+                .arg("-o").arg(exe_path)
                 .args(clang_args),
             build_stdout,
             build_stderr

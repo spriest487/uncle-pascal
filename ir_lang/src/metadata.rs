@@ -697,8 +697,7 @@ impl Metadata {
         let (el_ty, _) = self
             .dyn_array_structs()
             .iter()
-            .filter(|(_el_ty, struct_id)| array_class_id == **struct_id)
-            .next()?;
+            .find(|(_el_ty, struct_id)| array_class_id == **struct_id)?;
 
         Some(el_ty)
     }

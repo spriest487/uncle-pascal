@@ -24,7 +24,7 @@ pub struct Module {
 
 impl Module {
     pub fn new(metadata: Metadata) -> Self {
-        let module = Self {
+        Self {
             init: Vec::new(),
 
             functions: HashMap::new(),
@@ -34,9 +34,7 @@ impl Module {
             span: None,
 
             metadata,
-        };
-
-        module
+        }
     }
 
     pub fn closure_types(&self) -> impl Iterator<Item =crate::TypeDefID> + '_ {

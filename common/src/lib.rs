@@ -185,10 +185,7 @@ impl BuildOptions {
     }
 
     pub fn strict_switches(&self) -> bool {
-        match self.lang_mode {
-            LanguageMode::Default => true,
-            _ => false,
-        }
+        matches!(self.lang_mode, LanguageMode::Default)
     }
 
     pub fn link_lib(&mut self, _lib: String) {
@@ -222,7 +219,7 @@ pub fn path_relative_to_cwd(path: &Path) -> &Path {
         .ok()
         .and_then(|cwd| cwd.canonicalize().ok())
         .and_then(|cwd| path.strip_prefix(cwd).ok())
-        .unwrap_or_else(|| path)
+        .unwrap_or(path)
 }
 
 pub fn read_source_file(filename: &PathBuf) -> io::Result<String> {

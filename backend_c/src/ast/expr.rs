@@ -131,7 +131,7 @@ impl Expr {
             ir::Value::LiteralF32(f) => Expr::LitFloat(f64::from(*f)),
             ir::Value::Ref(r) => Expr::translate_ref(r, module),
             ir::Value::SizeOf(ty) => {
-                let ty = Type::from_metadata(&ty, module);
+                let ty = Type::from_metadata(ty, module);
                 Expr::SizeOf(ty)
             }
         }

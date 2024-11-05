@@ -69,7 +69,7 @@ impl Type {
 
     pub fn deref_ty(&self) -> Option<&Self> {
         match self {
-            Type::Pointer(target) => Some(&target),
+            Type::Pointer(target) => Some(target),
             _ => None,
         }
     }
@@ -104,18 +104,11 @@ impl Type {
     }
 
     pub fn is_rc(&self) -> bool {
-        match self {
-            Type::RcPointer(..) => true,
-            Type::RcWeakPointer(..) => true,
-            _ => false,
-        }
+        matches!(self, Type::RcPointer(..) | Type::RcWeakPointer(..))
     }
 
     pub fn is_complex(&self) -> bool {
-        match self {
-            Type::Variant(..) | Type::Array { .. } | Type::Struct(..) => true,
-            _ => false,
-        }
+        matches!(self, Type::Variant(..) | Type::Array { .. } | Type::Struct(..))
     }
 
     pub fn rc_resource_class_id(&self) -> Option<VirtualTypeID> {
