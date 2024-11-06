@@ -5,7 +5,6 @@
 * project files/don't auto load used units
 * why is the C backend generating packed decls for everything?
 * single-char string literals convert to Byte
-* "System" should always be implicitly used
 
 # features
 * proper function overloads (one declared name, multiple signatures)
