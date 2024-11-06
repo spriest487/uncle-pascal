@@ -152,7 +152,7 @@ where
 
 #[derive(Debug, Clone, Eq)]
 pub struct CaseBranch<A: Annotation, Item> {
-    pub value: Box<Expr<A>>,
+    pub case_values: Vec<Expr<A>>,
     pub item: Box<Item>,
     pub span: Span,
 }
@@ -163,7 +163,7 @@ where
     Item: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.value == other.value && self.item == other.item
+        self.case_values == other.case_values && self.item == other.item
     }
 }
 
@@ -173,7 +173,7 @@ where
     Item: Hash,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
+        self.case_values.hash(state);
         self.item.hash(state);
     }
 }
@@ -193,7 +193,14 @@ where
     Item: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.value, self.item)
+        for i in 0..self.case_values.len() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", self.case_values[i])?;
+        }
+
+        write!(f, ": {}", self.item)
     }
 }
 
@@ -202,14 +209,23 @@ where
     Item: Parse + Spanned,
 {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let value = Expr::parse(tokens)?;
+        let mut values = Vec::new();
+        loop {
+            let value = Expr::parse(tokens)?;
+            values.push(value);
+
+            if tokens.match_one_maybe(Separator::Comma).is_none() {
+                break;
+            }
+        }
+        
+        let span = values[0].span().to(values[values.len() - 1].span());
+
         tokens.match_one(Separator::Colon)?;
         let item = Item::parse(tokens)?;
 
-        let span = value.span().to(item.span());
-
         Ok(CaseBranch {
-            value: Box::new(value),
+            case_values: values,
             item: Box::new(item),
             span,
         })
@@ -225,7 +241,7 @@ impl CaseStmt<Span> {
         for branch in &self.branches {
             let item = (*branch.item).clone().to_expr()?;
             branches.push(CaseBranch {
-                value: branch.value.clone(),
+                case_values: branch.case_values.clone(),
                 span: branch.span.clone(),
                 item: Box::new(item),
             })

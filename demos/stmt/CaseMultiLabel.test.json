@@ -1,0 +1,14 @@
+{
+  "steps": [
+    { "output": "123" },
+    { "output": "123" },
+    { "output": "123" },
+    { "output": "456" },
+    { "output": "456" },
+    { "output": "456" },
+    { "output": "789" },
+    { "output": "789" },
+    { "output": "789" },
+    { "output": "10" }
+  ]
+}

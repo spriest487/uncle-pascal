@@ -5,11 +5,10 @@
 * project files/don't auto load used units
 * why is the C backend generating packed decls for everything?
 * single-char string literals convert to Byte
-* comma separated case lists (case CASE_ONE, CASE TWO:)
 
 # features
 * proper function overloads (one declared name, multiple signatures)
-* enums/sets/range types
+* enums/sets/range types (+ `in` operator)
 * generic interfaces
 * @-attributes - replace `external` etc with these (eventually make them available at runtime but not now)
 * reflection for published members

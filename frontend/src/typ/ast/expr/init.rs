@@ -258,7 +258,9 @@ fn expect_case_stmt_initialized(case: &CaseStmt, ctx: &Context) -> TypeResult<()
     expect_expr_initialized(&case.cond_expr, ctx)?;
 
     for branch in &case.branches {
-        expect_expr_initialized(&branch.value, ctx)?;
+        for case_value in &branch.case_values {
+            expect_expr_initialized(case_value, ctx)?;
+        }
         expect_stmt_initialized(&branch.item, ctx)?;
     }
 
@@ -273,7 +275,9 @@ fn expect_case_expr_initialized(case: &CaseExpr, ctx: &Context) -> TypeResult<()
     expect_expr_initialized(&case.cond_expr, ctx)?;
 
     for branch in &case.branches {
-        expect_expr_initialized(&branch.value, ctx)?;
+        for case_value in &branch.case_values {
+            expect_expr_initialized(case_value, ctx)?;
+        }
         expect_expr_initialized(&branch.item, ctx)?;
     }
 

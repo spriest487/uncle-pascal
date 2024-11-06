@@ -1,5 +1,6 @@
 use crate::emit::builder::jmp_exists;
-use crate::emit::expr::{call, expr_to_val};
+use crate::emit::expr::call;
+use crate::emit::expr::expr_to_val;
 use crate::emit::expr::translate_raise;
 use crate::emit::ir;
 use crate::emit::pattern::translate_pattern_match;
@@ -310,15 +311,15 @@ pub fn build_case_block<Item, ItemFn>(
             _ => None,
         };
 
-        // jump to the branch stmt where the actual value is equal to the branch value
+        // jump to the branch stmt where the actual value is equal to any of the branch values
         for (branch, branch_label) in case.branches.iter().zip(branch_labels.iter()) {
             builder.scope(|builder| {
-                let branch_val = expr_to_val(&branch.value, builder);
+                for case_expr in &branch.case_values {
+                    let branch_val = expr_to_val(case_expr, builder);
+                    let matches_cond = builder.eq_to_val(branch_val, cond_expr_val.clone());
 
-                let cond_eq = builder.local_temp(ir::Type::Bool);
-
-                builder.eq(cond_eq.clone(), branch_val, cond_expr_val.clone());
-                builder.jmp_if(*branch_label, cond_eq);
+                    builder.jmp_if(*branch_label, matches_cond);
+                }
             });
         }
 

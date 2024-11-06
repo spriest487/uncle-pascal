@@ -531,6 +531,19 @@ impl<'m> Builder<'m> {
             b: b.into(),
         }))
     }
+    
+    pub fn eq_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
+        let a = a.into();
+        let b = b.into();
+
+        if let (Some(a_val), Some(b_val)) = (a.to_literal_val(), b.to_literal_val()) {
+            Value::LiteralBool(a_val == b_val)
+        } else {
+            let result = self.local_temp(Type::Bool);
+            self.eq(result.clone(), a, b);
+            Value::Ref(result)
+        }
+    }
 
     pub fn gt(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Gt(BinOpInstruction {

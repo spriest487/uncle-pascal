@@ -1,4 +1,4 @@
-use crate::typ::ast::typecheck_expr;
+use crate::typ::ast::{typecheck_expr, Expr};
 use crate::typ::ast::typecheck_stmt;
 use crate::typ::TypedValue;
 use crate::typ::TypeResult;
@@ -25,13 +25,11 @@ pub fn typecheck_case_stmt(
 
     let mut branches = Vec::new();
     for branch in &case.branches {
-        let branch_value = typecheck_expr(&branch.value, &cond_ty, ctx)?;
-        branch_value.annotation().expect_value(&cond_ty)?;
-
+        let case_values = typecheck_case_values(&cond_ty, branch, ctx)?;
         let branch_stmt = typecheck_stmt(&branch.item, &expect_ty, ctx)?;
 
         branches.push(ast::CaseBranch {
-            value: Box::new(branch_value),
+            case_values,
             item: Box::new(branch_stmt),
             span: branch.span.clone(),
         })
@@ -78,8 +76,7 @@ pub fn typecheck_case_expr(
     let mut branch_expr_ty = None;
 
     for branch in &case.branches {
-        let branch_value = typecheck_expr(&branch.value, &cond_ty, ctx)?;
-        branch_value.annotation().expect_value(&cond_ty)?;
+        let case_values = typecheck_case_values(&cond_ty, branch, ctx)?;
 
         let branch_expr = typecheck_expr(&branch.item, &expect_ty, ctx)?;
 
@@ -90,7 +87,7 @@ pub fn typecheck_case_expr(
         }
 
         branches.push(ast::CaseBranch {
-            value: Box::new(branch_value),
+            case_values,
             item: Box::new(branch_expr),
             span: branch.span.clone(),
         })
@@ -126,4 +123,19 @@ pub fn typecheck_case_expr(
         else_branch: Some(Box::new(else_expr)),
         annotation,
     })
+}
+
+fn typecheck_case_values<Item>(
+    cond_ty: &Type,
+    branch: &ast::CaseBranch<Span, Item>,
+    ctx: &mut Context
+) -> TypeResult<Vec<Expr>>{
+    branch.case_values
+        .iter()
+        .map(|expr| {
+            let expr = typecheck_expr(expr, &cond_ty, ctx)?;
+            expr.annotation().expect_value(&cond_ty)?;
+            Ok(expr)
+        })
+        .collect::<TypeResult<_>>()
 }
