@@ -2,7 +2,7 @@ use crate::ast::{FunctionParamMod, TypeName};
 use crate::parse::{LookAheadTokenStream, Parse};
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
-use crate::Keyword;
+use crate::{Ident, Keyword};
 use crate::Separator;
 use crate::TokenStream;
 use common::span::Span;
@@ -34,14 +34,18 @@ impl Spanned for FunctionTypeName {
 
 impl fmt::Display for FunctionTypeName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function(")?;
-        for (i, param_ty) in self.params.iter().enumerate() {
-            if i > 0 {
-                write!(f, "; ")?;
+        write!(f, "function")?;
+        
+        if !self.params.is_empty() {
+            write!(f, "(")?;
+            for (i, param) in self.params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, "; ")?;
+                }
+                write!(f, "{}", param)?;
             }
-            write!(f, "{}", param_ty)?;
+            write!(f, ")")?;
         }
-        write!(f, ")")?;
 
         if let Some(return_ty) = &self.return_ty {
             write!(f, ": {}", return_ty)?;
@@ -53,6 +57,7 @@ impl fmt::Display for FunctionTypeName {
 
 #[derive(Clone, Debug, Eq)]
 pub struct FunctionTypeNameParam {
+    pub name: Option<Ident>,
     pub ty: TypeName,
     pub modifier: Option<FunctionParamMod>,
 }
@@ -76,9 +81,29 @@ impl ParseSeq for FunctionTypeNameParam {
             None => None,
         };
 
-        let ty = TypeName::parse(tokens)?;
+        let mut ty = TypeName::parse(tokens)?;
+        let mut param_name = None;
+        
+        // function types can have parameter names but they're optional and just for documentation
+        // purposes, so if the previous typename is a single ident, it might actually be a param
+        // name if there's a colon next
+        if tokens.look_ahead().match_one(Separator::Colon).is_some() {
+            match ty.into_single_ident() {
+                Ok(ident) => {
+                    // skip the colon we know is there
+                    tokens.advance(1);
 
-        Ok(FunctionTypeNameParam { ty, modifier })
+                    param_name = Some(ident);
+                    ty = TypeName::parse(tokens)?;
+                },
+
+                Err(actually_ty) => {
+                    ty = actually_ty;
+                },
+            };
+        };
+
+        Ok(FunctionTypeNameParam { name: param_name, ty, modifier })
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
@@ -101,6 +126,10 @@ impl Hash for FunctionTypeNameParam {
 
 impl fmt::Display for FunctionTypeNameParam {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{}: ", name)?;
+        }
+        
         if let Some(modifier) = &self.modifier {
             write!(f, "{} ", modifier)?;
         }
