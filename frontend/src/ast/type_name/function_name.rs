@@ -9,8 +9,6 @@ use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
 use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, Hash, PartialEq)]
@@ -55,17 +53,15 @@ impl fmt::Display for FunctionTypeName {
     }
 }
 
-#[derive(Clone, Debug, Eq)]
+#[derive(Debug, Clone, Eq, Derivative)]
+#[derivative(Hash, PartialEq)]
 pub struct FunctionTypeNameParam {
+    #[derivative(Hash = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     pub name: Option<Ident>,
+
     pub ty: TypeName,
     pub modifier: Option<FunctionParamMod>,
-}
-
-impl PartialEq for FunctionTypeNameParam {
-    fn eq(&self, other: &Self) -> bool {
-        self.ty == other.ty && self.modifier == other.modifier
-    }
 }
 
 impl ParseSeq for FunctionTypeNameParam {
@@ -114,13 +110,6 @@ impl ParseSeq for FunctionTypeNameParam {
         tokens
             .match_one(Keyword::Var | Keyword::Out | TypeName::start_matcher())
             .is_some()
-    }
-}
-
-impl Hash for FunctionTypeNameParam {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ty.hash(state);
-        self.modifier.hash(state);
     }
 }
 
