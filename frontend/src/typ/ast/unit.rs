@@ -83,7 +83,7 @@ fn typecheck_unit_uses_decl(use_item: &ast::UseDeclItem, ctx: &mut Context) -> T
         Some(ScopeMemberRef::Scope { path }) => {
             let unit_canon_ident = IdentPath::from_parts(path.keys().cloned());
 
-            ctx.use_unit(&unit_canon_ident);
+            ctx.use_namespace(&unit_canon_ident);
         },
 
         // path refers to some other decl

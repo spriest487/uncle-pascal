@@ -37,10 +37,7 @@ impl ScopeStack {
 
         if let Some(popped_key) = popped.key().cloned() {
             let current = self.scopes.last_mut().unwrap();
-            if current
-                .insert_member(popped_key, ScopeMember::Scope(popped.clone()))
-                .is_err()
-            {
+            if current.try_add_member(&popped_key, ScopeMember::Scope(popped.clone())).is_err() {
                 unreachable!(
                     "should never be possible to declare something with same key as current scope"
                 );
@@ -60,8 +57,22 @@ impl ScopeStack {
         // eprintln!("{}.{}: {} ", self.current_path().to_namespace(), member_key, decl.to_string());
 
         let top = self.current_mut();
+        
+        let new_key = member_key.clone();
+        let new_member = ScopeMember::Decl(decl);
 
-        top.insert_member(member_key.clone(), ScopeMember::Decl(decl))
+        if let Err((existing_key, existing_member)) = top.try_add_member(&new_key, new_member) {
+            let existing_path = self.current_path().to_namespace().child(existing_key.clone());
+
+            return Err(NameError::AlreadyDeclared {
+                new: new_key,
+                existing: existing_path,
+                existing_kind: existing_member.kind(),
+                conflict: DeclConflict::Name,
+            });
+        }
+        
+        Ok(())
     }
 
     // todo: different error codes for "not defined at all" vs "defined but not in the current scope"
@@ -245,7 +256,7 @@ impl ScopeStack {
             },
 
             Some(ScopeMemberRef::Scope { .. }) => {
-                let current_uses = current_path.all_used_units();
+                let current_uses = current_path.all_used_namespaces();
                 current_uses.contains(&name)
             }
 

@@ -11,8 +11,6 @@ use crate::ast::IdentPath;
 use crate::typ::Decl;
 use crate::typ::DeclConflict;
 use crate::typ::Environment;
-use crate::typ::NameError;
-use crate::typ::NameResult;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -29,7 +27,7 @@ pub struct Scope {
 
     members: HashMap<Ident, ScopeMember>,
 
-    use_units: Vec<IdentPath>,
+    use_namespaces: Vec<IdentPath>,
 }
 
 impl Scope {
@@ -39,7 +37,7 @@ impl Scope {
             env,
             members: HashMap::new(),
 
-            use_units: Vec::new(),
+            use_namespaces: Vec::new(),
         }
     }
 
@@ -62,18 +60,9 @@ impl Scope {
         self.members.get_mut(member_key)
     }
 
-    pub fn insert_member(&mut self, key: Ident, member_val: ScopeMember) -> NameResult<()> {
-        if let Some(existing) = self.members.get(&key) {
-            let kind = existing.kind();
-            let mut path = self.keys();
-            path.push(key.clone());
-
-            return Err(NameError::AlreadyDeclared {
-                new: key,
-                existing: IdentPath::from_parts(path),
-                existing_kind: kind,
-                conflict: DeclConflict::Name,
-            });
+    pub fn try_add_member(&mut self, key: &Ident, member_val: ScopeMember) -> Result<(), (Ident, ScopeMember)> {
+        if let Some((existing_key, existing_member)) = self.members.get_key_value(&key) {
+            return Err((existing_key.clone(), existing_member.clone()));
         }
 
         self.members.insert(key.clone(), member_val);
@@ -88,14 +77,14 @@ impl Scope {
         self.members.remove(key)
     }
 
-    pub fn add_use_unit(&mut self, use_unit: &IdentPath) {
-        if !self.use_units.contains(use_unit) {
-            self.use_units.push(use_unit.clone());
+    pub fn add_use_namespace(&mut self, use_unit: &IdentPath) {
+        if !self.use_namespaces.contains(use_unit) {
+            self.use_namespaces.push(use_unit.clone());
         }
     }
 
-    pub fn use_units(&self) -> &[IdentPath] {
-        &self.use_units
+    pub fn use_namespaces(&self) -> &[IdentPath] {
+        &self.use_namespaces
     }
 
     pub fn id(&self) -> ScopeID {

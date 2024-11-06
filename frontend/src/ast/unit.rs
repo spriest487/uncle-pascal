@@ -18,11 +18,14 @@ use crate::ast::Stmt;
 use crate::ast::TypeDecl;
 use crate::ast::TypeDeclItem;
 pub use crate::parse::MatchOneOf;
-use crate::parse::{Matcher, Parse};
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
+use crate::parse::{Matcher, Parse};
+use crate::typ::builtin_span;
+use crate::typ::SYSTEM_UNIT_NAME;
+use crate::Ident;
 use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
@@ -145,6 +148,7 @@ impl Unit<Span> {
             });
         } else {
             let has_interface = parse_decls_section(Keyword::Interface, &mut iface_decls, tokens)?;
+            
             let has_implementation =
                 parse_decls_section(Keyword::Implementation, &mut impl_decls, tokens)?;
 
@@ -171,6 +175,9 @@ impl Unit<Span> {
 
         // allow the traditional period after the final end
         tokens.match_one_maybe(Operator::Period);
+        
+        // add auto refs
+        add_auto_ref_paths(&ident, &mut iface_decls);
 
         Ok(Unit {
             kind: unit_kind,
@@ -319,5 +326,56 @@ impl<A: Annotation> fmt::Display for Unit<A> {
         writeln!(f, "end.")?;
 
         Ok(())
+    }
+}
+
+// auto-ref namespaces are implicitly used by every compiled unit (e.g. "System").
+// if a unit's interface section doesn't literally contain a using decl for these units, 
+// we synthesize new using decls and add them.
+// the parser does this (rather than adding implicit used units in the typechecking scope) because:
+// a) we look at parsed units to determine compilation order (until project is implemented)
+// b) they appear in the printed AST when outputting it this way, which is nice for debugging
+static AUTO_REF_NAMESPACES: [&str; 1] = [
+    SYSTEM_UNIT_NAME
+];
+
+fn auto_ref_namespaces() -> Vec<IdentPath> {
+    AUTO_REF_NAMESPACES
+        .iter()
+        .map(|auto_ref_name| {
+            IdentPath::from_parts(auto_ref_name
+                .split('.')
+                .map(|part| Ident::new(part, builtin_span())))
+        })
+        .collect()
+}
+
+fn add_auto_ref_paths(unit_namespace: &IdentPath, unit_decls: &mut Vec<UnitDecl<Span>>) {
+    let auto_ref_paths = auto_ref_namespaces();
+    for (i, auto_ref_path) in auto_ref_paths.into_iter().enumerate() {
+        if auto_ref_path == *unit_namespace {
+            continue;
+        }
+        
+        let has_using = unit_decls
+            .iter()
+            .flat_map(|decl| match decl {
+                UnitDecl::Uses { decl } => decl.units.as_slice(),
+                _ => &[],
+            })
+            .any(|use_decl| use_decl.ident == auto_ref_path);
+
+        if !has_using {
+            unit_decls.insert(i, UnitDecl::Uses {
+                decl: UseDecl {
+                    units: vec![UseDeclItem {
+                        ident: auto_ref_path,
+                        span: builtin_span(),
+                        path: None,
+                    }],
+                    span: builtin_span(),
+                }
+            })
+        }
     }
 }

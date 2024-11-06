@@ -67,13 +67,13 @@ pub fn parse(
     let unit_ident = file_span.file
         .with_extension("")
         .file_name()
-        .and_then(|file_name| {
+        .map(|file_name| {
             let unit_ident = IdentPath::from_parts(file_name
                 .to_string_lossy()
                 .split('.')
                 .map(|part| Ident::new(part, file_span.clone())));
 
-            Some(unit_ident)
+            unit_ident
         })
         .ok_or_else(|| {
             let err = ParseError::InvalidUnitFilename(file_span.clone());

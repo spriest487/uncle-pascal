@@ -261,9 +261,6 @@ impl Context {
 
         path_parts.reverse();
 
-        // all unit scopes implicitly reference System
-        let system_unit = IdentPath::from(builtin_ident(SYSTEM_UNIT_NAME));
-
         for _ in 0..path_len {
             let part = path_parts.pop().unwrap();
             let part_span = part.span.clone();
@@ -275,8 +272,9 @@ impl Context {
             match current_scope.remove_member(part_ns.last()) {
                 None => {
                     // this part of the namespace is new, add a new scope for it
-                    let scope = self.push_scope(Environment::Namespace { namespace: part_ns });
-                    self.use_unit(&system_unit);
+                    let scope = self.push_scope(Environment::Namespace { 
+                        namespace: part_ns 
+                    });
                     unit_scopes.push(scope);
                 },
 
@@ -300,7 +298,7 @@ impl Context {
 
                     // restore the previous state
                     current_scope
-                        .insert_member(part, ScopeMember::Decl(decl))
+                        .try_add_member(&part, ScopeMember::Decl(decl))
                         .unwrap();
                     for unit_scope in unit_scopes.into_iter().rev() {
                         self.pop_scope(unit_scope);
@@ -334,9 +332,9 @@ impl Context {
         self.loop_stack.last()
     }
 
-    pub fn use_unit(&mut self, unit: &IdentPath) {
+    pub fn use_namespace(&mut self, unit: &IdentPath) {
         let mut current_path = self.scopes.current_path_mut();
-        current_path.top().add_use_unit(unit);
+        current_path.top().add_use_namespace(unit);
     }
 
     pub fn find_decl(&self, name: &Ident) -> Option<&Ident> {
@@ -364,7 +362,9 @@ impl Context {
             }) => self.find_path(aliased),
 
             // matches a decl
-            decl_ref @ Some(ScopeMemberRef::Decl { .. }) => decl_ref,
+            decl_ref @ Some(ScopeMemberRef::Decl { .. }) => {
+                decl_ref
+            },
 
             // matches a scope - does any decl match from a used unit though?
             scope_ref @ Some(ScopeMemberRef::Scope { .. }) => {
@@ -399,7 +399,7 @@ impl Context {
         // there can be multiple used units that declare the same name - if there's one
         // result, we use that, otherwise it's ambiguous
         let results: Vec<_> = current_path
-            .all_used_units()
+            .all_used_namespaces()
             .into_iter()
             .filter_map(|use_unit| {
                 let mut path_in_unit = use_unit.clone();

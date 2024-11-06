@@ -156,7 +156,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         };
 
         let unit_ident = unit.ident.clone();
-        
+
         let uses_units: Vec<_> = unit
             .all_decls()
             .filter_map(|(_vis, decl)| match decl {
@@ -174,6 +174,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
             }
 
             compilation_order.add_dependency(used_unit.ident.clone(), unit_ident.clone());
+            
             if compilation_order.peek().is_none() {
                 return Err(CompileError::CircularDependency {
                     unit_ident,

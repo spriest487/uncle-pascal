@@ -13,8 +13,6 @@ pub use self::context::*;
 pub use self::result::*;
 pub use self::ty::*;
 use crate::ast as syn;
-use crate::ast::IdentPath;
-use crate::ast::UnitKind;
 use ast::typecheck_unit;
 use common::span::*;
 
@@ -46,24 +44,6 @@ impl Module {
 
         let mut root_ctx = Context::root(module_span);
         let mut typed_units = Vec::new();
-        
-        // if the System unit wasn't included in the compilation, add an empty version of it,
-        // mostly to ensure the usual checks for defined symbols run and fail as expected
-        let system_ident = builtin_ident(SYSTEM_UNIT_NAME);
-        let has_sys_unit = units
-            .iter()
-            .any(|unit| unit.ident.len() == 1 && *unit.ident.last() == system_ident);
-
-        if !has_sys_unit {
-            let system = syn::Unit {
-                kind: UnitKind::Unit,
-                ident: IdentPath::from(system_ident),
-                init: None,
-                iface_decls: Vec::new(),
-                impl_decls: Vec::new(),
-            };
-            typed_units.push(typecheck_unit(&system, &mut root_ctx)?);
-        }
 
         for unit in units {
             typed_units.push(typecheck_unit(&unit, &mut root_ctx)?);

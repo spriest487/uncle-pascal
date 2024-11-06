@@ -97,25 +97,25 @@ impl<'s> ScopePathRef<'s> {
         IdentPath::from_parts(namespace)
     }
 
-    pub fn all_used_units(&self) -> Vec<&IdentPath> {
-        let mut unit_paths = Vec::new();
+    pub fn all_used_namespaces(&self) -> Vec<&IdentPath> {
+        let mut namespaces = Vec::new();
 
         for scope in self.as_slice().iter().rev() {
-            for used_unit in scope.use_units() {
-                if !unit_paths.contains(&used_unit) {
-                    unit_paths.push(used_unit);
+            for used_ns in scope.use_namespaces() {
+                if !namespaces.contains(&used_ns) {
+                    namespaces.push(used_ns);
                 }
             }
         }
 
-        unit_paths
+        namespaces
     }
 
     pub fn is_used_unit(&self, unit_name: &IdentPath) -> bool {
         self.as_slice()
             .iter()
             .rev()
-            .flat_map(|scope| scope.use_units.iter())
+            .flat_map(|scope| scope.use_namespaces.iter())
             .any(|used_unit| used_unit == unit_name)
     }
 

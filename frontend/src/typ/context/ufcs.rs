@@ -79,7 +79,7 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
     let current_path = ctx.scopes.current_path();
 
     let mut search_namespaces = vec![&current_ns];
-    search_namespaces.extend(current_path.all_used_units());
+    search_namespaces.extend(current_path.all_used_namespaces());
 
     let mut methods = Vec::new();
 

@@ -1,16 +1,19 @@
-use crate::{
-    ast::{
-        Annotation, UnitBinding, FunctionDecl, FunctionDef, TypeDecl, UseDecl, unit::parse_unit_decl,
-    },
-    Keyword,
-    parse::{
-        LookAheadTokenStream, Matcher, MatchOneOf, ParseResult,
-        TokenStream,
-    }, Separator,
-};
-use common::{
-    span::{Span, Spanned},
-};
+use crate::ast::unit::parse_unit_decl;
+use crate::ast::Annotation;
+use crate::ast::FunctionDecl;
+use crate::ast::FunctionDef;
+use crate::ast::TypeDecl;
+use crate::ast::UnitBinding;
+use crate::ast::UseDecl;
+use crate::parse::LookAheadTokenStream;
+use crate::parse::MatchOneOf;
+use crate::parse::Matcher;
+use crate::parse::ParseResult;
+use crate::parse::TokenStream;
+use crate::Keyword;
+use crate::Separator;
+use common::span::Span;
+use common::span::Spanned;
 use std::fmt;
 use std::rc::Rc;
 
