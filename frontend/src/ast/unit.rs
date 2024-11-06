@@ -140,8 +140,9 @@ impl Unit<Span> {
 
             // instead of a separate init block, program units always have a "main" block
             // after any decls with the usual begin/end keywords
+
             let main_block = Block::parse(tokens)?;
-            
+
             init = Some(InitBlock {
                 keyword_span: main_block.begin.clone(),
                 body: vec![Stmt::Block(Box::new(main_block))],
@@ -169,9 +170,9 @@ impl Unit<Span> {
                     | Keyword::Implementation
                     | Keyword::Initialization)?;
             }
-        }
 
-        tokens.match_one(Keyword::End)?;
+            tokens.match_one(Keyword::End)?;
+        }
 
         // allow the traditional period after the final end
         tokens.match_one_maybe(Operator::Period);
