@@ -3,7 +3,7 @@ use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::ast::{Access, IdentPath};
 use crate::typ::{ast, FunctionSigParam, FunctionSig};
-use crate::typ::ast::MethodDecl;
+use crate::typ::ast::{Literal, MethodDecl};
 use crate::typ::ast::SELF_PARAM_NAME;
 use crate::typ::Context;
 use crate::typ::Environment;
@@ -11,7 +11,7 @@ use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeResult;
-use crate::Ident;
+use crate::{Ident, IntConstant};
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
 use std::rc::Rc;
@@ -34,6 +34,7 @@ pub const DISPLAYABLE_TOSTRING_METHOD: &str = "ToString";
 pub const STRING_TYPE_NAME: &str = "String";
 const STRING_CHARS_FIELD: &str = "chars";
 const STRING_LEN_FIELD: &str = "len";
+pub static STRING_CHAR_TYPE: Primitive = Primitive::UInt8;
 
 pub const STRING_CONCAT_FUNC_NAME: &str = "StringConcat";
 
@@ -123,6 +124,15 @@ pub fn builtin_string_class() -> ast::StructDef {
         kind: StructKind::Class,
         span: builtin_span,
     }
+}
+
+pub fn string_to_char_lit(string: &str) -> Option<Literal> {
+    if string.len() == 0 && string[..1].is_ascii() {
+        let char_byte = string.as_bytes()[0];
+        return Some(Literal::Integer(IntConstant::from(char_byte)));
+    }
+    
+    None
 }
 
 // builtin name of the dispose method of the builtin disposable interface

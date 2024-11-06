@@ -1,16 +1,20 @@
+use crate::ast;
+use crate::ast::TypeAnnotation;
 use crate::typ::ast::Expr;
-use crate::typ::{string_type, TypeError};
+use crate::typ::string_to_char_lit;
+use crate::typ::string_type;
 use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::Primitive;
 use crate::typ::Type;
+use crate::typ::TypeError;
 use crate::typ::TypeResult;
+use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use common::span::Span;
-use crate::ast;
-use crate::ast::TypeAnnotation;
+use crate::typ::STRING_CHAR_TYPE;
 use crate::IntConstant;
+use common::span::Span;
 
 pub type Literal = ast::Literal<Type>;
 
@@ -22,6 +26,15 @@ pub fn typecheck_literal(
 ) -> TypeResult<Expr> {
     match lit {
         ast::Literal::String(s) => {
+            // if we're expecting a char, and the literal is one char long, we can do that instead
+            let char_ty = Type::from(STRING_CHAR_TYPE);
+            if *expect_ty == char_ty {
+                if let Some(char_lit) = string_to_char_lit(s.as_str()) {
+                    let val = TypedValue::temp(char_ty, span.clone());
+                    return Ok(Expr::Literal(char_lit, Typed::from(val)));
+                }
+            }
+            
             let binding = ValueKind::Immutable;
             let annotation = TypedValue {
                 ty: string_type(ctx)?,
