@@ -1,10 +1,6 @@
 # critical
-* `Self` only works properly when used directly as a function param, not if it's contained in other types
-  * limit self to inferface method decls, don't allow it as a general alias for the current type now that forward
-    decls are working properly
 * project files/don't auto load used units
 * why is the C backend generating packed decls for everything?
-* single-char string literals convert to Byte
 
 # features
 * proper function overloads (one declared name, multiple signatures)
