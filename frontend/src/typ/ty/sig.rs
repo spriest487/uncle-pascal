@@ -14,12 +14,10 @@ use crate::typ::TypeArgResolver;
 use crate::typ::TypeParam;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeParamList;
-use crate::typ::TypeParamType;
 use crate::typ::Typed;
 use common::span::Span;
 use common::span::Spanned;
 use std::fmt;
-use std::mem;
 use std::rc::Rc;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -143,31 +141,40 @@ impl FunctionSig {
         
         Self::new(return_ty, param_sigs, decl.type_params.clone())
     }
-    
-    pub fn visit_generics<Visitor>(mut self, visitor: &Visitor) -> Self 
+
+    pub fn visit_types_ref<Visitor>(&self, visitor: Visitor)
     where
-        Visitor: Fn(TypeParamType) -> TypeParamType
+        Visitor: Copy + Fn(&Type) 
     {
-        self.return_ty = self.return_ty.visit_generics(visitor);
-        
-        for param in &mut self.params {
-            let mut param_ty = Type::Nothing;
-            mem::swap(&mut param_ty, &mut param.ty);
-            
-            param.ty = param_ty.visit_generics(visitor);
+        self.return_ty.visit_types(visitor);
+
+        for param in &self.params {
+            param.ty.visit_types(visitor);
+            visitor(&param.ty);
         }
-        
-        if let Some(mut type_params) = self.type_params.take() {
-            for param in &mut type_params.items {
-                let mut is_ty = Type::Nothing;
-                mem::swap(&mut is_ty, &mut param.is_ty);
-                param.is_ty = is_ty.visit_generics(visitor);
+
+        if let Some(type_params) = &self.type_params {
+            for param in &type_params.items {
+                param.is_ty.visit_types(visitor);
             }
-            
-            self.type_params = Some(type_params)
         }
-        
-        self
+    }
+
+    pub fn visit_types_mut<Visitor>(&mut self, visitor: Visitor)
+    where
+        Visitor: Copy + Fn(&mut Type)
+    {
+        self.return_ty.visit_types_mut(visitor);
+
+        for param in &mut self.params {
+            param.ty.visit_types_mut(visitor);
+        }
+
+        if let Some(type_params) = self.type_params.as_mut() {
+            for param in &mut type_params.items {
+                param.is_ty.visit_types_mut(visitor);
+            }
+        }
     }
 
     pub fn of_anonymous_func(func: &AnonymousFunctionDef) -> Rc<Self> {
@@ -193,46 +200,12 @@ impl FunctionSig {
     }
 
     pub fn apply_type_args(&self, ty_params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
-        let params = self
-            .params
-            .iter()
-            .map(|sig_param| {
-                let ty = sig_param.ty
-                    .clone()
-                    .apply_type_args(ty_params, args);
-
-                FunctionSigParam {
-                    ty,
-                    ..sig_param.clone()
-                }
-            })
-            .collect();
-
-        let return_ty = self.return_ty
-            .clone()
-            .apply_type_args(ty_params, args);
-
-        let sig_ty_params = match &self.type_params {
-            Some(type_params) => {
-                let mut items = Vec::with_capacity(type_params.len());
-                for item in &type_params.items {
-                    items.push(FunctionSigTypeParam {
-                        is_ty: item
-                            .is_ty.clone()
-                            .apply_type_args(ty_params, args),
-                    });
-                }
-                Some(ast::TypeList::new(items, type_params.span().clone()))
-            },
-            None => None,
-        };
-
-        let sig = FunctionSig {
-            return_ty,
-            params,
-            type_params: sig_ty_params,
-        };
-        sig
+        let mut new_sig = self.clone();
+        new_sig.visit_types_mut(|ty| {
+            *ty = ty.clone().apply_type_args(ty_params, args)
+        });
+        
+        new_sig
     }
 
     // todo: need a deep implementation of this
@@ -289,18 +262,14 @@ impl FunctionSig {
     /// replace all `Self`-typed args with `self_ty`
     // todo: need a deep implementation of this
     pub fn with_self(&self, self_ty: &Type) -> Self {
-        let mut result = self.clone();
-        for param in &mut result.params {
-            if param.ty == Type::MethodSelf {
-                param.ty = self_ty.clone();
-            }
-        }
+        let mut new_sig = self.clone();
+        new_sig.visit_types_mut(|ty| {
+            if matches!(ty, Type::MethodSelf) {
+                *ty = self_ty.clone();
+            } 
+        });
         
-        if result.return_ty == Type::MethodSelf {
-            result.return_ty = self_ty.clone();
-        }
-
-        result
+        new_sig
     }
 
     /// given that `self` is the sig of an interface method with one

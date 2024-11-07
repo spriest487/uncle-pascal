@@ -12,7 +12,6 @@ use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeParamList;
-use crate::typ::TypeParamType;
 use crate::typ::TypeResult;
 use crate::Ident;
 use common::span::Span;
@@ -120,26 +119,43 @@ impl Symbol {
     pub fn ident(&self) -> &Ident {
         self.full_path.last()
     }
-    
-    pub fn visit_generics<Visitor>(mut self, visitor: &Visitor) -> Self 
+
+    pub fn visit_types_ref<Visitor>(&self, visitor: Visitor)
     where
-        Visitor: Fn(TypeParamType) -> TypeParamType
+        Visitor: Fn(&Type) + Copy
+    {
+        if let Some(arg_list) = &self.type_args {
+            for ty_arg in &arg_list.items {
+                visitor(ty_arg);
+            }
+        }
+
+        if let Some(param_list) = &self.type_params {
+            for ty_param in &param_list.items {
+                if let Some(constraint) = &ty_param.constraint {
+                    visitor(&constraint.is_ty);
+                }
+            }
+        }
+    }
+    
+    pub fn visit_types_mut<Visitor>(&mut self, visitor: Visitor) 
+    where
+        Visitor: Fn(&mut Type) + Copy
     {
         if let Some(arg_list) = &mut self.type_args {
             for ty_arg in &mut arg_list.items {
-                *ty_arg = ty_arg.clone().visit_generics(visitor);
+                ty_arg.visit_types_mut(visitor);
             }
         }
 
         if let Some(param_list) = &mut self.type_params {
             for ty_param in &mut param_list.items {
                 if let Some(constraint) = &mut ty_param.constraint {
-                    constraint.is_ty = constraint.is_ty.clone().visit_generics(visitor);
+                    constraint.is_ty.visit_types_mut(visitor);
                 }
             }
         }
-        
-        self
     }
 }
 

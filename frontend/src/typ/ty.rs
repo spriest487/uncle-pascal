@@ -954,66 +954,134 @@ impl Type {
         Ok(specialized)
     }
 
-    pub fn visit_generics<Visitor>(self, visitor: &Visitor) -> Self
+    pub fn visit_generics<Visitor>(mut self, visitor: Visitor) -> Self
     where
-        Visitor: Fn(TypeParamType) -> TypeParamType
+        Visitor: Fn(TypeParamType) -> TypeParamType + Copy
     {
+        self.visit_types_mut(|ty| {
+            if let Type::GenericParam(type_param) = ty {
+                *type_param = Rc::new(visitor((**type_param).clone()));
+            }
+        });
+
+        self
+    }
+
+    pub fn visit_types<Visitor>(&self, visitor: Visitor)
+    where
+        Visitor: Copy + Fn(&Type),
+    {        
         match self {
-            Type::GenericParam(type_param) => {
-                Type::GenericParam(Rc::new(visitor((*type_param).clone())))
-            }
-
-            Type::Record(sym) => {
-                Type::Record(Rc::new((*sym).clone().visit_generics(visitor)))
+            Type::Record(sym) 
+            | Type::Class(sym)
+            | Type::Variant(sym)
+            | Type::Enum(sym) => {
+                sym.visit_types_ref(visitor);
             },
-
-            Type::Class(sym) => {
-                Type::Class(Rc::new((*sym).clone().visit_generics(visitor)))
-            },
-
-            Type::Variant(sym) => {
-                Type::Variant(Rc::new((*sym).clone().visit_generics(visitor)))
-            },
-
-            Type::Enum(sym) => {
-                Type::Enum(Rc::new((*sym).clone().visit_generics(visitor)))
-            }
+            
+            // todo: update this for generic interfaces decls
+            Type::Interface(..) => {}, 
 
             Type::Array(array_ty) => {
-                let element_ty = array_ty.element_ty.clone().visit_generics(visitor);
-                let arr_ty = ArrayType {
-                    element_ty,
-                    dim: array_ty.dim,
-                };
-                Type::from(arr_ty)
+                array_ty.element_ty.visit_types(visitor);
             },
 
             Type::DynArray { element } => {
-                let element_ty = (*element).clone().visit_generics(visitor);
-                Type::dyn_array(element_ty)
+                element.visit_types(visitor);
             },
 
             Type::Function(sig) => {
-                let sig = (*sig).clone().visit_generics(visitor);
-                Type::Function(Rc::new(sig))
+                sig.visit_types_ref(visitor);
             },
-            
+
             Type::Pointer(deref) => {
-                Type::Pointer(Rc::new((*deref).clone().visit_generics(visitor)))
-            }
-            
-            Type::Weak(weak_ty) => {
-                let weak_ty = (*weak_ty).clone().visit_generics(visitor);
-                Type::Weak(Rc::new(weak_ty))
+                deref.visit_types(visitor);
             }
 
+            Type::Weak(weak_ty) => {
+                weak_ty.visit_types(visitor);
+            }
+
+            | Type::GenericParam(param_ty) => {
+                param_ty.is_ty.visit_types(visitor);
+            }
+
+            | Type::Nothing
+            | Type::Nil
+            | Type::Primitive(_)
+            | Type::MethodSelf
+            | Type::Any => {},
+        }
+
+        visitor(self);
+    }
+    
+    pub fn visit_types_mut<Visitor>(&mut self, visitor: Visitor) 
+    where
+        Visitor: Copy + Fn(&mut Type),
+    {
+        match self {
+            Type::Record(sym)
+            | Type::Class(sym)
+            | Type::Variant(sym)
+            | Type::Enum(sym) => {
+                let mut new_sym = (**sym).clone();
+                new_sym.visit_types_mut(visitor);
+                *sym = Rc::new(new_sym)
+            },
+
+            // todo: update this for generic interfaces decls
+            Type::Interface(..) => {}
+
+            Type::Array(array_ty) => {
+                let mut element_ty = array_ty.element_ty.clone();
+                element_ty.visit_types_mut(visitor);
+
+                *array_ty = Rc::new(ArrayType {
+                    element_ty,
+                    dim: array_ty.dim,
+                });
+            },
+
+            Type::DynArray { element } => {
+                let mut new_element = (**element).clone();
+                new_element.visit_types_mut(visitor);
+
+                *element = Rc::new(new_element);
+            },
+
+            Type::Function(sig) => {
+                let mut new_sig = (**sig).clone();
+                new_sig.visit_types_mut(visitor);
+                *sig = Rc::new(new_sig);
+            },
+
+            Type::Pointer(deref) => {
+                let mut new_deref = (**deref).clone();
+                new_deref.visit_types_mut(visitor);
+                *deref = Rc::new(new_deref);
+            }
+
+            Type::Weak(weak_ty) => {
+                let mut new_deref = (**weak_ty).clone();
+                new_deref.visit_types_mut(visitor);
+                *weak_ty = Rc::new(new_deref);
+            }
+            
+            Type::GenericParam(param_ty) => {
+                let mut new_param_ty = (**param_ty).clone();
+                new_param_ty.is_ty.visit_types_mut(visitor);
+                *param_ty = Rc::new(new_param_ty);
+            }
+            
             Type::Nothing
             | Type::Nil
-            | Type::Primitive(..)
-            | Type::Interface(..)
+            | Type::Primitive(_)
             | Type::MethodSelf
-            | Type::Any => self,
+            | Type::Any => {},
         }
+
+        visitor(self);
     }
 }
 
@@ -1204,67 +1272,21 @@ impl Specializable for Type {
     /// which parameters we're providing matching arguments for.
     /// e.g. in the method `Class[A].Method[B](a: A, b: B)`, there are two separate parameter
     /// lists which a provided arg list of length 1 could satisfy
-    fn apply_type_args(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
+    fn apply_type_args(mut self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         // callers should already have checked this
         assert_eq!(params.len(), args.len(), "apply_type_args: params and args counts did not match");
-
-        let result = match self.clone() {
-            Type::GenericParam(param) => {                
-                // search by name is OK because in any scope where there's multiple levels of 
-                // generic params, the names of params must be unique between all param lists
-                params
+        
+        self.visit_types_mut(|ty| {
+            if let Type::GenericParam(param) = ty {
+                *ty = params
                     .find_position(param.name.name.as_str())
                     .and_then(|pos| args.get(pos))
                     .cloned()
-                    .unwrap_or_else(|| Type::GenericParam(param.clone()))
+                    .unwrap_or_else(|| Type::GenericParam(param.clone()));
             }
+        });
 
-            Type::Record(name) => {
-                Type::record(name.as_ref().clone().apply_type_args(params, args))
-            }
-
-            Type::Class(name) => {
-                Type::class(name.as_ref().clone().apply_type_args(params, args))
-            }
-
-            Type::Variant(name) => {
-                Type::variant(name.as_ref().clone().apply_type_args(params, args))
-            }
-
-            Type::Function(sig) => {
-                let sig= sig.apply_type_args(params, args);
-                Type::Function(Rc::new(sig))
-            }
-
-            Type::Pointer(deref_ty) => {
-                deref_ty
-                    .as_ref()
-                    .clone()
-                    .apply_type_args(params, args)
-                    .ptr()
-            }
-            
-            Type::Array(array_ty) => {
-                array_ty
-                    .element_ty
-                    .clone()
-                    .apply_type_args(params, args)
-                    .array(array_ty.dim)
-            }
-            
-            Type::DynArray { element, .. } => {
-                element
-                    .as_ref()
-                    .clone()
-                    .apply_type_args(params, args)
-                    .dyn_array()
-            }
-            
-            // non-generic types
-            other => other,
-        };
-
-        result
+        self
     }
 }
 

@@ -74,7 +74,6 @@ pub fn typecheck_struct_decl(
         }
     }
 
-    ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(
         struct_def.name.ident.clone(),
         self_ty.clone(),
@@ -271,7 +270,6 @@ pub fn typecheck_variant(
     
     let variant_ty = Type::variant(name.clone());
 
-    ctx.declare_self_ty(variant_ty.clone(), variant_def.name.span().clone())?;
     ctx.declare_type(
         variant_def.name.ident.clone(),
         variant_ty,
