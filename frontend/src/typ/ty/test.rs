@@ -106,7 +106,9 @@ fn specialized_class_has_correct_non_generic_method_types() {
 
     let tys = main_unit_structs(&module);
 
-    let generic_def = module.context.find_struct_def(&tys[0].name.full_path).unwrap();
+    let generic_def = module.context
+        .find_struct_def(&tys[0].name.full_path, StructKind::Class)
+        .unwrap();
 
     let methods: Vec<_> = generic_def.methods().collect();
     assert_eq!("test.A[T]", methods[0].func_decl.params[0].ty.to_string());
@@ -147,7 +149,9 @@ fn specialized_class_has_correct_method_types_using_class_ty_params() {
 
     let tys = main_unit_structs(&module);
     
-    let generic_def = module.context.find_struct_def(&tys[0].name.full_path).unwrap();
+    let generic_def = module.context
+        .find_struct_def(&tys[0].name.full_path, StructKind::Class)
+        .unwrap();
     
     let methods: Vec<_> = generic_def.methods().collect();
     assert_eq!("test.A[T]", methods[0].func_decl.params[0].ty.to_string());

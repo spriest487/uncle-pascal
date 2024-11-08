@@ -1,6 +1,6 @@
 use crate::ast::IdentPath;
 use crate::ast::TypeDeclName;
-use crate::typ::typecheck_type_params;
+use crate::typ::{typecheck_type_params, InvalidTypeParamsDeclKind, TypeError};
 use crate::typ::validate_generic_constraints;
 use crate::typ::Context;
 use crate::typ::GenericError;
@@ -114,6 +114,19 @@ impl Symbol {
         };
 
         Ok(Cow::Owned(name))
+    }
+    
+    pub fn expect_no_type_params(&self, invalid_kind: InvalidTypeParamsDeclKind) -> TypeResult<()> {
+        match &self.type_params {
+            None => Ok(()),
+
+            Some(params) => {
+                Err(TypeError::InvalidDeclWithTypeParams {
+                    span: params.span.clone(),
+                    kind: invalid_kind,
+                })
+            }
+        }
     }
     
     pub fn ident(&self) -> &Ident {

@@ -194,7 +194,7 @@ pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> P
                 Expr::from(Cast {
                     expr: operand,
                     annotation: span,
-                    ty,
+                    as_type: ty,
                 })
             })
         }

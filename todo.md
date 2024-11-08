@@ -1,10 +1,14 @@
 # critical
 * project files/don't auto load used units
 * why is the C backend generating packed decls for everything?
+* rename Any -> Object
+  * maybe it should be an interface?
+* take packed out of struct kind, into structdecl?
+* make set types a separate thing from set decls
+* enums/sets/range types (+ `in` operator)
 
 # features
 * proper function overloads (one declared name, multiple signatures)
-* enums/sets/range types (+ `in` operator)
 * generic interfaces
 * @-attributes - replace `external` etc with these (eventually make them available at runtime but not now)
 * reflection for published members

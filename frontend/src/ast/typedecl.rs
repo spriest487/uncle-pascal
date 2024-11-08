@@ -2,6 +2,7 @@ mod enum_decl;
 mod iface_decl;
 mod struct_decl;
 mod variant_decl;
+mod set_decl;
 mod access;
 
 pub use self::access::Access;
@@ -10,6 +11,7 @@ pub use self::enum_decl::*;
 pub use self::iface_decl::*;
 pub use self::struct_decl::*;
 pub use self::variant_decl::*;
+pub use self::set_decl::*;
 use crate::ast::unit::AliasDecl;
 use crate::ast::Annotation;
 use crate::ast::Ident;
@@ -92,6 +94,7 @@ pub enum TypeDeclItem<A: Annotation = Span> {
     Variant(Rc<VariantDecl<A>>),
     Alias(Rc<AliasDecl<A>>),
     Enum(Rc<EnumDecl<A>>),
+    Set(Rc<SetDecl<A>>),
 }
 
 impl<A: Annotation> TypeDeclItem<A> {
@@ -102,6 +105,7 @@ impl<A: Annotation> TypeDeclItem<A> {
             TypeDeclItem::Variant(variant) => &variant.name,
             TypeDeclItem::Alias(alias) => &alias.name,
             TypeDeclItem::Enum(enum_decl) => &enum_decl.name,
+            TypeDeclItem::Set(set_decl) => &set_decl.name,
         }
     }
 }
@@ -206,11 +210,11 @@ impl Parse for TypeDeclItem<Span> {
         let name = TypeDeclName::parse(tokens)?;
         tokens.match_one(Operator::Equals)?;
 
-        let composite_kw_matcher = StructDecl::match_kw();
-        let decl_start_matcher = composite_kw_matcher.clone().or(Keyword::Variant);
+        let struct_kw_matcher = StructDecl::match_kw();
+        let decl_start_matcher = struct_kw_matcher.clone().or(Keyword::Variant);
 
         match tokens.look_ahead().next() {
-            Some(ref tt) if composite_kw_matcher.is_match(tt) => {
+            Some(ref tt) if struct_kw_matcher.is_match(tt) => {
                 let composite_decl = StructDecl::parse(tokens, name)?;
                 Ok(TypeDeclItem::Struct(Rc::new(composite_decl)))
             },
@@ -224,11 +228,16 @@ impl Parse for TypeDeclItem<Span> {
                 let variant_decl = VariantDecl::parse(tokens, name)?;
                 Ok(TypeDeclItem::Variant(Rc::new(variant_decl)))
             },
-
+            
             Some(tt) if tt.is_delimited(DelimiterPair::Bracket) => {
                 let enum_decl = EnumDecl::parse(name, tokens)?;
                 Ok(TypeDeclItem::Enum(Rc::new(enum_decl)))
             },
+
+            Some(tt) if tt.is_keyword(Keyword::Set) => {
+                let set_decl = SetDecl::parse(name, tokens)?;
+                Ok(TypeDeclItem::Set(Rc::new(set_decl)))
+            }
 
             // if it isn't a type def keyword, then it must be the name of an existing type to
             // declare an alias
@@ -253,6 +262,7 @@ impl<A: Annotation> Spanned for TypeDeclItem<A> {
             TypeDeclItem::Variant(variant) => variant.span(),
             TypeDeclItem::Alias(alias) => alias.span(),
             TypeDeclItem::Enum(enum_decl) => enum_decl.span(),
+            TypeDeclItem::Set(set_decl) => set_decl.span(),
         }
     }
 }
@@ -265,6 +275,7 @@ impl<A: Annotation> fmt::Display for TypeDeclItem<A> {
             TypeDeclItem::Variant(variant) => write!(f, "{}", variant),
             TypeDeclItem::Alias(alias) => write!(f, "{}", alias),
             TypeDeclItem::Enum(enum_decl) => write!(f, "{}", enum_decl),
+            TypeDeclItem::Set(set_decl) => write!(f, "{}", set_decl),
         }
     }
 }

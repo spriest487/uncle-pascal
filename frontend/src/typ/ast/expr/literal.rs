@@ -1,4 +1,4 @@
-use crate::ast;
+use crate::{ast, RealConstant};
 use crate::ast::TypeAnnotation;
 use crate::typ::ast::Expr;
 use crate::typ::string_to_char_lit;
@@ -17,6 +17,58 @@ use crate::IntConstant;
 use common::span::Span;
 
 pub type Literal = ast::Literal<Type>;
+
+impl Literal {
+    pub fn cast_to_primitive(&self, to_primitive: Primitive) -> Option<Literal> {
+        match self {
+            Literal::Nil if to_primitive.is_pointer() => Some(Literal::Nil),
+
+            Literal::Integer(int_val) => match to_primitive {
+                p if p.is_integer() && !p.is_pointer() => {
+                    Some(self.clone())
+                }
+
+                p if p.is_real() => {
+                    let real_val = int_val.as_f64()?;
+                    Some(Literal::Real(RealConstant::from(real_val)))
+                }
+
+                _ => None,
+            }
+
+            Literal::Real(real_val) => match to_primitive {
+                p if p.is_real() => {
+                    Some(self.clone())
+                }
+
+                p if p.is_integer() && !p.is_pointer() => {
+                    let int_val = real_val.as_f64()?.round() as i128;
+                    Some(Literal::Integer(IntConstant::from(int_val)))
+                }
+
+                _ => None,
+            }
+            
+            Literal::Boolean(bool_val) => match to_primitive {
+                Primitive::Boolean => Some(self.clone()),
+                
+                p if p.is_integer() && !p.is_pointer() => {
+                    let int_val = if *bool_val { 1 } else { 0 };
+                    Some(Literal::Integer(IntConstant::from(int_val)))
+                }
+
+                p if p.is_real() => {
+                    let real_val = if *bool_val { 1.0 } else { 0.0 };
+                    Some(Literal::Real(RealConstant::from(real_val)))
+                }
+
+                _ => None,
+            }
+
+            _ => None,
+        }
+    }
+}
 
 pub fn typecheck_literal(
     lit: &ast::Literal<ast::TypeName>,

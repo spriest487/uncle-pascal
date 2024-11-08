@@ -127,7 +127,7 @@ pub fn builtin_string_class() -> ast::StructDef {
 }
 
 pub fn string_to_char_lit(string: &str) -> Option<Literal> {
-    if string.len() == 0 && string[..1].is_ascii() {
+    if string.len() == 1 && string[..1].is_ascii() {
         let char_byte = string.as_bytes()[0];
         return Some(Literal::Integer(IntConstant::from(char_byte)));
     }

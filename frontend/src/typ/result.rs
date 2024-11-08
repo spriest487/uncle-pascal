@@ -194,8 +194,17 @@ pub enum TypeError {
         expr: Box<Expr>,
     },
     InvalidStatement(InvalidStatement<Typed>),
+    
+    SetValuesMustBeNumeric {
+        actual: Type,
+        span: Span,
+    },
+    EmptySetDecl {
+        name: IdentPath,
+        span: Span,
+    },
 
-    EmptyVariant(Box<ast::VariantDecl<Span>>),
+    EmptyVariantDecl(Box<ast::VariantDecl<Span>>),
     EmptyVariantCaseBinding {
         variant: Box<VariantDef>,
         case_index: usize,
@@ -311,8 +320,9 @@ pub enum TypeError {
         span: Span,
     },
 
-    EnumDeclWithTypeParams {
+    InvalidDeclWithTypeParams {
         span: Span,
+        kind: InvalidTypeParamsDeclKind,
     },
     EnumValuesMustBeAscending {
         span: Span,
@@ -391,7 +401,9 @@ impl Spanned for TypeError {
             TypeError::InvalidRefExpression { expr } => expr.annotation().span(),
             TypeError::InvalidStatement(expr) => expr.0.annotation().span(),
             
-            TypeError::EmptyVariant(variant) => variant.span(),
+            TypeError::SetValuesMustBeNumeric { span, .. } => span,
+            TypeError::EmptySetDecl { span, .. } => span,
+            TypeError::EmptyVariantDecl(variant) => variant.span(),
             TypeError::EmptyVariantCaseBinding { span, .. } => span,
             TypeError::InvalidExplicitVariantCtorTypeArgs { span, .. } => span,
             
@@ -420,7 +432,7 @@ impl Spanned for TypeError {
             TypeError::InvalidExitWithValue { span, .. } => span,
             TypeError::ConstDeclWithNoValue { span, .. } => span,
             TypeError::InvalidLoopCounterType { span, .. } => span,
-            TypeError::EnumDeclWithTypeParams { span, .. } => span,
+            TypeError::InvalidDeclWithTypeParams { span, .. } => span,
             TypeError::EnumValuesMustBeAscending { span, .. } => span,
         }
     }
@@ -506,7 +518,11 @@ impl DiagnosticOutput for TypeError {
                 "Invalid reference expression"
             }
             TypeError::InvalidStatement(invalid_stmt) => return invalid_stmt.title(),
-            TypeError::EmptyVariant(..) => "Empty variant",
+            
+            TypeError::SetValuesMustBeNumeric { .. } => "Set values must have numeric types",
+            TypeError::EmptySetDecl { .. } => "Empty set declaration",
+
+            TypeError::EmptyVariantDecl(..) => "Empty variant declaration",
             TypeError::EmptyVariantCaseBinding { .. } => {
                 "Empty variant case binding"
             }
@@ -561,7 +577,7 @@ impl DiagnosticOutput for TypeError {
             TypeError::InvalidExitWithValue { .. } => "Invalid exit with value",
             TypeError::ConstDeclWithNoValue { .. } => "Constant declaration without a value",
             TypeError::InvalidLoopCounterType { .. } => "Invalid loop counter type",
-            TypeError::EnumDeclWithTypeParams { .. } => "Enumeration type declared with type params",
+            TypeError::InvalidDeclWithTypeParams { .. } => "Invalid type declared with type params",
             TypeError::EnumValuesMustBeAscending { .. } => "Enumeration values must be ascending",
         })
     }
@@ -988,9 +1004,17 @@ impl fmt::Display for TypeError {
             TypeError::InvalidStatement(invalid_stmt) => {
                 write!(f, "{}", invalid_stmt)
             }
+            
+            TypeError::SetValuesMustBeNumeric { actual: actual_ty, .. } => {
+                write!(f, "type `{}` is not valid as a set value", actual_ty)
+            }
+            
+            TypeError::EmptySetDecl { name, .. } => {
+                write!(f, "set declaration `{}` contains no values", name)
+            }
 
-            TypeError::EmptyVariant(variant) => {
-                write!(f, "variant `{}` has no cases", variant.name)
+            TypeError::EmptyVariantDecl(variant) => {
+                write!(f, "variant declaration `{}` has no cases", variant.name)
             }
 
             TypeError::InvalidExplicitVariantCtorTypeArgs { .. } => {
@@ -1135,8 +1159,8 @@ impl fmt::Display for TypeError {
                 write!(f, "type `{}` cannot be used as a loop counter", counter_ty)
             }
 
-            TypeError::EnumDeclWithTypeParams { .. } => {
-                write!(f, "enumeration types cannot have type parameters")
+            TypeError::InvalidDeclWithTypeParams { kind, .. } => {
+                write!(f, "{} types cannot have type parameters", kind)
             }
 
             TypeError::EnumValuesMustBeAscending { prev_ident, prev_val, next_ident, next_val, .. } => {
@@ -1176,6 +1200,21 @@ impl fmt::Display for InvalidOverloadKind {
             InvalidOverloadKind::Duplicate(..) => {
                 write!(f, "the declaration is a duplicate of a previous declaration")
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InvalidTypeParamsDeclKind {
+    Enum,
+    Set,
+}
+
+impl fmt::Display for InvalidTypeParamsDeclKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InvalidTypeParamsDeclKind::Enum => write!(f, "Enum"),
+            InvalidTypeParamsDeclKind::Set => write!(f, "Set"),
         }
     }
 }

@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Formatter;
 use crate::ast::Ident;
-use crate::typ::ast::EnumDecl;
+use crate::typ::ast::{EnumDecl, SetDecl};
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
@@ -17,10 +17,11 @@ use std::rc::Rc;
 pub enum Def {
     External(Rc<FunctionDecl>),
     Function(Rc<FunctionDef>),
-    Class(Rc<StructDef>),
+    Struct(Rc<StructDef>),
     Interface(Rc<InterfaceDecl>),
     Variant(Rc<VariantDef>),
     Enum(Rc<EnumDecl>),
+    Set(Rc<SetDecl>),
 }
 
 impl Def {
@@ -28,10 +29,11 @@ impl Def {
         match self {
             Def::External(func_decl) => &func_decl.name.ident,
             Def::Function(func_def) => &func_def.decl.name.ident,
-            Def::Class(class) => &class.name.ident(),
+            Def::Struct(class) => &class.name.ident(),
             Def::Interface(iface) => &iface.name.ident(),
             Def::Variant(variant) => &variant.name.ident(),
             Def::Enum(enum_decl) => &enum_decl.name.ident(),
+            Def::Set(set_decl) => &set_decl.name.ident(),
         }
     }
 }
@@ -41,10 +43,11 @@ impl Spanned for Def {
         match self {
             Def::External(decl) => decl.span(),
             Def::Function(def) => def.span(),
-            Def::Class(def) => def.span(),
+            Def::Struct(def) => def.span(),
             Def::Interface(def) => def.span(),
             Def::Variant(def) => def.span(),
             Def::Enum(decl) => decl.span(),
+            Def::Set(decl) => decl.span(),
         }
     }
 }

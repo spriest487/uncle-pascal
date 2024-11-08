@@ -1,18 +1,21 @@
-use std::ops::Shl;
-use std::ops::BitXor;
-use std::ops::BitOr;
-use std::ops::BitAnd;
-use std::ops::Shr;
-use std::rc::Rc;
 use crate::typ::ast::BinOp;
+use crate::typ::ast::Cast;
 use crate::typ::ast::Expr;
 use crate::typ::ast::IfCond;
 use crate::typ::ast::Literal;
 use crate::typ::ast::UnaryOp;
+use crate::typ::builtin_string_name;
 use crate::typ::Context;
+use crate::typ::Type;
 use crate::IntConstant;
 use crate::Operator;
 use crate::RealConstant;
+use std::ops::BitAnd;
+use std::ops::BitOr;
+use std::ops::BitXor;
+use std::ops::Shl;
+use std::ops::Shr;
+use std::rc::Rc;
 
 pub trait ConstEval {
     fn const_eval(&self, ctx: &Context) -> Option<Literal>;
@@ -31,6 +34,7 @@ impl ConstEval for Expr {
             Expr::BinOp(bin_op) => bin_op.const_eval(ctx),
             Expr::UnaryOp(op) => op.const_eval(ctx),
             Expr::IfCond(cond) => cond.const_eval(ctx),
+            Expr::Cast(cast) => cast.const_eval(ctx),
             _ => None,
         }
     }
@@ -226,5 +230,30 @@ impl ConstEval for IfCond<Expr> {
         } else {
             else_val
         })
+    }
+}
+
+impl ConstEval for Cast {
+    fn const_eval(&self, ctx: &Context) -> Option<Literal> {
+        let lit_value = self.expr.const_eval(ctx)?;
+
+        match &self.as_type {
+            Type::Primitive(primitive) => {
+                lit_value.cast_to_primitive(*primitive)
+            }
+            
+            Type::Class(class) => {
+                // can only cast to the String class, and can only (redundantly) 
+                // cast literal strings to it
+                if **class == builtin_string_name() 
+                    && *self.expr.annotation().ty().as_ref() == self.as_type {
+                    Some(lit_value)
+                } else {
+                    None
+                }
+            }
+            
+            _ => None,
+        }
     }
 }

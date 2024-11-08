@@ -63,7 +63,8 @@ pub enum Type {
     GenericParam(Rc<TypeParamType>),
     Weak(Rc<Type>),
     Any,
-    Enum(Rc<Symbol>),
+    Enum(Rc<IdentPath>),
+    Set(Rc<IdentPath>),
 }
 
 impl From<Primitive> for Type {
@@ -91,8 +92,12 @@ impl Type {
         Type::Variant(sym.into())
     }
 
-    pub fn enumeration(sym: impl Into<Symbol>) -> Self {
+    pub fn enumeration(sym: impl Into<IdentPath>) -> Self {
         Type::Enum(Rc::new(sym.into()))
+    }
+
+    pub fn set(sym: impl Into<IdentPath>) -> Self {
+        Type::Set(Rc::new(sym.into()))
     }
     
     pub fn interface(name: impl Into<IdentPath>) -> Self {
@@ -137,6 +142,16 @@ impl Type {
         }
     }
     
+    // todo: this doesn't reflect the declared type exactly since it loses the "packed" qualifier
+    // does "packed" actually need to be a separate struct kind or could it become a decl field?
+    pub fn struct_kind(&self) -> Option<StructKind> {
+        match self {
+            Type::Record(..) => Some(StructKind::Record),
+            Type::Class(..) => Some(StructKind::Class),
+            _ => None,
+        }
+    }
+    
     pub fn full_path(&self) -> Option<Cow<IdentPath>> {
         match self {
             Type::Nothing => Some(Cow::Owned(builtin_unit_path("Nothing"))),
@@ -165,6 +180,7 @@ impl Type {
             Type::Array { .. } => false,
             Type::GenericParam(_) => false,
             Type::Enum(..) => false,
+            Type::Set(..) => false,
 
             Type::Class(_) => true,
             Type::Interface(_) => true,
@@ -190,6 +206,7 @@ impl Type {
             | Type::Nothing
             | Type::GenericParam(_)
             | Type::Weak(..)
+            | Type::Set(..)
             | Type::Enum(_) => false,
 
             | Type::Variant(variant_name) => {
@@ -244,28 +261,42 @@ impl Type {
 
     pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>) -> Self {
         match type_decl {
-            ast::TypeDeclItem::Struct(class) if class.kind == StructKind::Record => {
+            ast::TypeDeclItem::Struct(class)
+            if class.kind == StructKind::Record => {
                 Type::Record(Rc::new(class.name.clone()))
             },
 
-            ast::TypeDeclItem::Struct(class) => Type::Class(Rc::new(class.name.clone())),
-
-            ast::TypeDeclItem::Variant(variant) => Type::Variant(variant.name.clone()),
-
-            ast::TypeDeclItem::Interface(iface) => {
-                Type::Interface(Rc::new(iface.name.full_path.clone()))
+            ast::TypeDeclItem::Struct(class) => {
+                Type::Class(Rc::new(class.name.clone()))
             },
 
-            ast::TypeDeclItem::Enum(enum_decl) => Type::Enum(Rc::new(enum_decl.name.clone())),
+            ast::TypeDeclItem::Variant(variant) => {
+                Type::Variant(variant.name.clone())
+            },
 
-            ast::TypeDeclItem::Alias(alias) => (*alias.ty).clone(),
+            ast::TypeDeclItem::Interface(iface) => {
+                Type::interface(iface.name.full_path.clone())
+            },
+
+            ast::TypeDeclItem::Enum(enum_decl) => {
+                Type::enumeration(enum_decl.name.full_path.clone())
+            },
+            
+            ast::TypeDeclItem::Set(set_decl) => {
+                Type::set(set_decl.name.full_path.clone())
+            }
+
+            ast::TypeDeclItem::Alias(alias) => {
+                (*alias.ty).clone()
+            },
         }
     }
 
     pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NameResult<Option<FieldDecl>> {
         match self {
             Type::Class(class_name) | Type::Record(class_name) => {
-                let def = ctx.instantiate_struct_def(class_name)?;
+                let struct_kind = self.struct_kind().unwrap();
+                let def = ctx.instantiate_struct_def(class_name, struct_kind)?;
 
                 Ok(def.find_field(member).cloned())
             },
@@ -277,7 +308,8 @@ impl Type {
     pub fn get_field(&self, index: usize, ctx: &Context) -> NameResult<Option<FieldDecl>> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                let class = ctx.instantiate_struct_def(class)?;
+                let struct_kind = self.struct_kind().unwrap();
+                let class = ctx.instantiate_struct_def(class, struct_kind)?;
                 let field = class.fields().nth(index).cloned();
                 
                 Ok(field)
@@ -290,7 +322,8 @@ impl Type {
     pub fn field_count(&self, ctx: &Context) -> NameResult<usize> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                let class = ctx.find_struct_def(&class.full_path)?;
+                let struct_kind = self.struct_kind().unwrap();
+                let class = ctx.find_struct_def(&class.full_path, struct_kind)?;
                 Ok(class.fields().count())
             },
 
@@ -600,10 +633,11 @@ impl Type {
             },
 
             Type::Record(name) | Type::Class(name) => {
+                let struct_kind = self.struct_kind().unwrap();
                 let struct_def = if name.is_unspecialized_generic() {
-                    ctx.find_struct_def(&name.full_path)?.clone()
+                    ctx.find_struct_def(&name.full_path, struct_kind)?.clone()
                 } else {
-                    ctx.instantiate_struct_def(&name)?
+                    ctx.instantiate_struct_def(&name, struct_kind)?
                 };
 
                 let methods = struct_def 
@@ -680,10 +714,11 @@ impl Type {
             }
 
             Type::Record(type_name) | Type::Class(type_name) => {
+                let struct_kind = self.struct_kind().unwrap();
                 let struct_def = if type_name.is_unspecialized_generic() {
-                    ctx.find_struct_def(&type_name.full_path)?.clone()
+                    ctx.find_struct_def(&type_name.full_path, struct_kind)?.clone()
                 } else {
-                    ctx.instantiate_struct_def(&type_name)?
+                    ctx.instantiate_struct_def(&type_name, struct_kind)?
                 };
 
                 Ok(find_in_method_decls(name, sig, struct_def.methods.iter()))
@@ -730,10 +765,11 @@ impl Type {
             },
 
             Type::Record(name) | Type::Class(name) => {
+                let struct_kind = self.struct_kind().unwrap();
                 let struct_def = if name.is_unspecialized_generic() {
-                    ctx.find_struct_def(&name.full_path)?.clone()
+                    ctx.find_struct_def(&name.full_path, struct_kind)?.clone()
                 } else {
-                    ctx.instantiate_struct_def(&name)?
+                    ctx.instantiate_struct_def(&name, struct_kind)?
                 };
 
                 let method = struct_def.methods.get(method_index);
@@ -805,7 +841,8 @@ impl Type {
             }
 
             Type::Record(name) | Type::Class(name) => {
-                let def = ctx.instantiate_struct_def(name)?;
+                let struct_kind = self.struct_kind().unwrap();
+                let def = ctx.instantiate_struct_def(name, struct_kind)?;
                 Ok(def.implements.clone())
             }
             
@@ -974,8 +1011,7 @@ impl Type {
         match self {
             Type::Record(sym) 
             | Type::Class(sym)
-            | Type::Variant(sym)
-            | Type::Enum(sym) => {
+            | Type::Variant(sym) => {
                 sym.visit_types_ref(visitor);
             },
             
@@ -1006,6 +1042,8 @@ impl Type {
                 param_ty.is_ty.visit_types(visitor);
             }
 
+            | Type::Enum(..)
+            | Type::Set(..)
             | Type::Nothing
             | Type::Nil
             | Type::Primitive(_)
@@ -1023,8 +1061,7 @@ impl Type {
         match self {
             Type::Record(sym)
             | Type::Class(sym)
-            | Type::Variant(sym)
-            | Type::Enum(sym) => {
+            | Type::Variant(sym) => {
                 let mut new_sym = (**sym).clone();
                 new_sym.visit_types_mut(visitor);
                 *sym = Rc::new(new_sym)
@@ -1075,6 +1112,8 @@ impl Type {
             }
             
             Type::Nothing
+            | Type::Enum(..)
+            | Type::Set(..)
             | Type::Nil
             | Type::Primitive(_)
             | Type::MethodSelf
@@ -1089,10 +1128,18 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Nil => write!(f, "nil"),
-            Type::Class(name) | Type::Record(name) | Type::Enum(name) => write!(f, "{}", name),
+
+            Type::Class(name) 
+            | Type::Record(name)  => write!(f, "{}", name),
+
+            Type::Enum(name)
+            | Type::Set(name) => write!(f, "{}", name),
+
             Type::Weak(weak_ty) => write!(f, "{} {}", Keyword::Weak, weak_ty),
-            Type::Interface(iface) => write!(f, "{}", iface),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
+            Type::Any => write!(f, "Any"),
+
+            Type::Interface(iface) => write!(f, "{}", iface),
             Type::Array(array_ty) => write!(f, "{}", array_ty),
             Type::DynArray { element } => write!(f, "array of {}", element),
             Type::GenericParam(ident) => write!(f, "{}", ident),
@@ -1100,7 +1147,6 @@ impl fmt::Display for Type {
             Type::Primitive(p) => write!(f, "{}.{}", SYSTEM_UNIT_NAME, p.name()),
             Type::Variant(variant) => write!(f, "{}", variant),
             Type::MethodSelf => write!(f, "Self"),
-            Type::Any => write!(f, "Any"),
             Type::Function(sig) => write!(f, "{}", sig),
         }
     }

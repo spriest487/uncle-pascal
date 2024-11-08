@@ -7,6 +7,7 @@ use crate::emit::stmt::*;
 use crate::ast as syn;
 use crate::typ as typ;
 pub use ir_lang as ir;
+use crate::ast::StructKind;
 
 mod builder;
 mod expr;
@@ -57,7 +58,9 @@ pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Module {
     // if String is defined it needs to be defined in the metadata even if it isn't used,
     // for the benefit of the stdlib (it's not defined in the type context with --no-stdlib)
     let string_name = typ::builtin_string_name();
-    if let Ok(string_class) = module.root_ctx.find_struct_def(&string_name.full_path) {
+    if let Ok(string_class) = module.root_ctx
+        .find_struct_def(&string_name.full_path, StructKind::Class) 
+    {
         let name = {
             let mut builder = Builder::new(&mut ir_module);
             let name = builder.translate_name(&string_name);

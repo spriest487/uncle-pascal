@@ -506,7 +506,7 @@ pub fn translate_raise(raise: &typ::ast::Raise, builder: &mut Builder) -> ir::Re
 
 fn translate_cast_expr(cast: &typ::ast::Cast, builder: &mut Builder) -> ir::Ref {
     let val = translate_expr(&cast.expr, builder);
-    let ty = builder.translate_type(&cast.ty);
+    let ty = builder.translate_type(&cast.as_type);
     let out_ref = builder.local_temp(ty.clone());
 
     builder.cast(out_ref.clone(), val, ty);

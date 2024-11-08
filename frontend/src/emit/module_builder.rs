@@ -779,6 +779,15 @@ impl ModuleBuilder {
 
             // TODO: enums may later be variably sized
             typ::Type::Enum(..) => ir::Type::ISize,
+            
+            // sets in IR translate directly to their item type
+            typ::Type::Set(name) => {
+                let decl = self.src_metadata
+                    .find_set(name)
+                    .unwrap_or_else(|err| panic!("missing set decl: {}", err));
+                
+                self.find_type(decl.value_type().as_ref())
+            }
 
             typ::Type::Any => ir::Type::RcPointer(ir::VirtualTypeID::Any),
         }
@@ -834,7 +843,8 @@ impl ModuleBuilder {
                     return string_ty;
                 }
 
-                let def = self.src_metadata.instantiate_struct_def(name).unwrap();
+                let kind = src_ty.struct_kind().unwrap();
+                let def = self.src_metadata.instantiate_struct_def(name, kind).unwrap();
 
                 let id = self.module.metadata.reserve_new_struct();
 

@@ -167,9 +167,11 @@ impl fmt::Display for GenericError {
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum ExpectedKind {
     AnyType,
+    Record,
     Class,
     Variant,
     Interface,
+    SetDecl,
     AnyBinding,
     Function,
     Namespace,
@@ -294,12 +296,14 @@ impl fmt::Display for NameError {
             } => {
                 let expected_desc = match expected {
                     ExpectedKind::Class => "class",
+                    ExpectedKind::Record => "record",
                     ExpectedKind::Variant => "variant",
                     ExpectedKind::Interface => "interface",
                     ExpectedKind::Function => "function",
                     ExpectedKind::AnyBinding => "value",
                     ExpectedKind::Namespace => "namespace",
                     ExpectedKind::AnyType => "type",
+                    ExpectedKind::SetDecl => "set",
                 };
 
                 write!(

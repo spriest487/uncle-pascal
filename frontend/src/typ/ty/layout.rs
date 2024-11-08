@@ -39,7 +39,7 @@ impl StructLayout {
                 Type::Array(array_ty) => self.align_of(&array_ty.element_ty, ctx)?,
 
                 Type::Record(record_sym) => {
-                    let struct_def = ctx.instantiate_struct_def(&record_sym)?;
+                    let struct_def = ctx.instantiate_struct_def(&record_sym, StructKind::Record)?;
 
                     let mut max_member_align = 1;
                     for field in struct_def.fields() {
@@ -65,6 +65,11 @@ impl StructLayout {
 
                     usize::max(tag_align, max_data_align)
                 },
+                
+                Type::Set(name) => {
+                    let set_def = ctx.find_set(name)?;
+                    self.align_of(set_def.value_type().as_ref(), ctx)?
+                }
                 
                 Type::Weak(weak_ty) => self.align_of(&weak_ty, ctx)?,
 
@@ -125,7 +130,7 @@ impl StructLayout {
             },
 
             Type::Record(struct_sym) => {
-                let struct_def = ctx.instantiate_struct_def(&struct_sym)?;
+                let struct_def = ctx.instantiate_struct_def(&struct_sym, StructKind::Record)?;
 
                 let mut total_size = 0;
                 for member in self.members_of(&struct_def, ctx)? {
@@ -142,6 +147,11 @@ impl StructLayout {
                     GenericError::IllegalUnspecialized { ty: ty.clone() },
                 ))
             },
+            
+            Type::Set(name) => {
+                let set_decl = ctx.find_set(name)?;
+                self.size_of(set_decl.value_type().as_ref(), ctx)?
+            }
         };
 
         Ok(size)

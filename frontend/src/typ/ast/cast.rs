@@ -143,10 +143,10 @@ pub fn check_explicit_cast(
 }
 
 pub fn typecheck_cast_expr(cast: &ast::Cast<Span>, ctx: &mut Context) -> TypeResult<Cast> {
-    let cast_ty = typecheck_type(&cast.ty, ctx)?;
+    let cast_ty = typecheck_type(&cast.as_type, ctx)?;
     let expr = typecheck_expr(&cast.expr, &cast_ty, ctx)?;
 
-    expr.annotation().expect_value(&Type::Nothing)?;
+    expr.annotation().expect_value(&cast_ty)?;
 
     check_explicit_cast(&expr.annotation().ty(), &cast_ty, &cast.annotation, ctx)?;
 
@@ -164,6 +164,6 @@ fn create_cast(expr: Expr, cast_ty: Type, span: Span) -> Cast {
     Cast {
         annotation: annotation.into(),
         expr,
-        ty: cast_ty,
+        as_type: cast_ty,
     }
 }

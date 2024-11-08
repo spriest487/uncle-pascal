@@ -19,13 +19,13 @@ pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
 use crate::ast as syn;
-use crate::ast::Access;
+use crate::ast::{Access, StructKind};
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::Visibility;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::EnumDecl;
+use crate::typ::ast::{EnumDecl, SetDecl};
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
@@ -666,7 +666,7 @@ impl Context {
             self.define(
                 name,
                 DefKey::Unique,
-                Def::Class(struct_def.clone()),
+                Def::Struct(struct_def.clone()),
                 DefDeclMatch::always_match,
                 map_unexpected,
             )?;
@@ -682,7 +682,7 @@ impl Context {
     ) -> TypeResult<()> {
         let name = enum_decl.name.ident().clone();
 
-        let enum_ty = Type::enumeration(enum_decl.name.clone());
+        let enum_ty = Type::enumeration(enum_decl.name.full_path.clone());
 
         self.declare_type(name.clone(), enum_ty.clone(), visibility, false)?;
 
@@ -891,20 +891,13 @@ impl Context {
 
                 self.insert_method_def_entry(iface_ty, def)
             },
+            
+            Type::Class(sym) => {
+                self.insert_struct_method_def(def, &sym, StructKind::Class)
+            }
 
-            Type::Record(sym) | Type::Class(sym) => {
-                let struct_def = self.find_struct_def(&sym.full_path)?;
-                let struct_ty = Type::from_struct_type((*sym).clone(), struct_def.kind);
-                
-                struct_def
-                    .find_methods(&method)
-                    .find(|m| m.func_decl.sig() == def.decl.sig())
-                    .ok_or_else(|| NameError::MemberNotFound {
-                        base: NameContainer::Type(struct_ty.clone()),
-                        member: method.clone(),
-                    })?;
-
-                self.insert_method_def_entry(struct_ty, def)
+            Type::Record(sym) => {
+                self.insert_struct_method_def(def, &sym, StructKind::Record)
             },
 
             Type::Variant(sym) => {
@@ -940,6 +933,27 @@ impl Context {
                 unreachable!("should only call this with types supporting methods")
             },
         }
+    }
+    
+    fn insert_struct_method_def(&mut self,
+        def: Rc<FunctionDef>,
+        struct_name: &Symbol,
+        struct_kind: StructKind
+    ) -> NameResult<()> {
+        let method = def.decl.ident();
+
+        let struct_def = self.find_struct_def(&struct_name.full_path, struct_kind)?;
+        let struct_ty = Type::from_struct_type((*struct_name).clone(), struct_def.kind);
+
+        struct_def
+            .find_methods(&method)
+            .find(|m| m.func_decl.sig() == def.decl.sig())
+            .ok_or_else(|| NameError::MemberNotFound {
+                base: NameContainer::Type(struct_ty.clone()),
+                member: method.clone(),
+            })?;
+
+        self.insert_method_def_entry(struct_ty, def)
     }
 
     fn insert_method_def_entry(&mut self, ty: Type, def: Rc<FunctionDef>) -> NameResult<()> {
@@ -1208,34 +1222,29 @@ impl Context {
         self.find_def(name, &DefKey::Sig(sig))
     }
 
-    pub fn find_struct_def(&self, name: &IdentPath) -> NameResult<&Rc<StructDef>> {
+    pub fn find_struct_def(&self, name: &IdentPath, kind: StructKind) -> NameResult<&Rc<StructDef>> {
         match self.find_type_def(name) {
-            Some(Def::Class(class_def)) => Ok(class_def),
+            Some(Def::Struct(struct_def)) if struct_def.kind == kind => {
+                Ok(struct_def)
+            }
 
             Some(..) => {
-                let decl = self.find_path(&name);
-                let unexpected = Named::Decl(
-                    decl.expect("found def so decl must exist")
-                        .as_value()
-                        .expect("if def exists it must be a value not a namespace")
-                        .clone(),
-                );
+                let expected = match kind {
+                    StructKind::Class => ExpectedKind::Class,
+                    StructKind::Record | StructKind::PackedRecord => ExpectedKind::Record,
+                };
 
-                Err(NameError::Unexpected {
-                    ident: name.clone(),
-                    actual: unexpected,
-                    expected: ExpectedKind::Class,
-                })
+                Err(self.unexpected_err_for_existing_def(name, expected))
             },
 
             None => Err(NameError::not_found(name.clone())),
         }
     }
 
-    pub fn instantiate_struct_def(&self, name: &Symbol) -> NameResult<Rc<StructDef>> {
+    pub fn instantiate_struct_def(&self, name: &Symbol, kind: StructKind) -> NameResult<Rc<StructDef>> {
         name.expect_not_unspecialized()?;
 
-        let generic_def = self.find_struct_def(&name.full_path)?;
+        let generic_def = self.find_struct_def(&name.full_path, kind)?;
 
         let specialized_def = match &name.type_args {
             Some(type_args) => specialize_struct_def(generic_def, type_args, self)?,
@@ -1250,19 +1259,7 @@ impl Context {
             Some(Def::Variant(variant_def)) => Ok(variant_def),
 
             Some(..) => {
-                let decl = self.find_path(&name);
-                let unexpected = Named::Decl(
-                    decl.expect("found def so decl must exist")
-                        .as_value()
-                        .expect("if def exists it must be a value not a namespace")
-                        .clone(),
-                );
-
-                Err(NameError::Unexpected {
-                    ident: name.clone(),
-                    actual: unexpected,
-                    expected: ExpectedKind::Variant,
-                })
+                Err(self.unexpected_err_for_existing_def(name, ExpectedKind::Variant))
             },
 
             None => Err(NameError::not_found(name.clone())),
@@ -1325,22 +1322,47 @@ impl Context {
             Some(Def::Interface(iface_def)) => Ok(iface_def),
 
             Some(..) => {
-                let decl = self.find_path(&name);
-                let unexpected = Named::Decl(
-                    decl.expect("found def so decl must exist")
-                        .as_value()
-                        .expect("if def exists it must be a value not a namespace")
-                        .clone(),
-                );
-
-                Err(NameError::Unexpected {
-                    ident: name.clone(),
-                    actual: unexpected,
-                    expected: ExpectedKind::Interface,
-                })
+                Err(self.unexpected_err_for_existing_def(name, ExpectedKind::Interface))
             },
 
             None => Err(NameError::not_found(name.clone())),
+        }
+    }
+    
+    pub fn find_set(&self, name: &IdentPath) -> NameResult<&Rc<SetDecl>> {
+        match self.find_type_def(name) {
+            Some(Def::Set(set_decl)) => {
+                Ok(set_decl)
+            },
+
+            Some(..) => {
+                Err(self.unexpected_err_for_existing_def(name, ExpectedKind::SetDecl))
+            }
+            
+            None => {
+                Err(NameError::not_found(name.clone()))
+            }
+        }
+    }
+    
+    fn unexpected_err_for_existing_def(
+        &self,
+        name: &IdentPath,
+        expected: ExpectedKind
+    ) -> NameError {
+        let decl = self
+            .find_path(&name)
+            .expect("found def so decl must exist")
+            .as_value()
+            .expect("if def exists it must be a value not a namespace")
+            .clone();
+
+        let unexpected = Named::Decl(decl);
+
+        NameError::Unexpected {
+            ident: name.clone(),
+            actual: unexpected,
+            expected,
         }
     }
 
@@ -1359,7 +1381,8 @@ impl Context {
             Type::Primitive(..) => Ok(self.primitive_implements.contains(iface_ty)),
 
             Type::Record(name) | Type::Class(name) => {
-                let def = self.instantiate_struct_def(name)?;
+                let struct_kind = self_ty.struct_kind().unwrap();
+                let def = self.instantiate_struct_def(name, struct_kind)?;
                 Ok(def.implements.contains(iface_ty))
             },
 
@@ -1489,10 +1512,12 @@ impl Context {
         match ty {
             Type::Nothing | Type::MethodSelf => Ok(true),
 
-            Type::Record(class) => match self.find_struct_def(&class.full_path) {
-                Ok(def) => Ok(def.forward),
-                Err(NameError::NotFound { .. }) => Ok(true),
-                Err(err) => Err(err),
+            Type::Record(class) => {
+                match self.find_struct_def(&class.full_path, StructKind::Record) {
+                    Ok(def) => Ok(def.forward),
+                    Err(NameError::NotFound { .. }) => Ok(true),
+                    Err(err) => Err(err),
+                }
             },
 
             Type::Variant(variant) => match self.find_variant_def(&variant.full_path) {
@@ -1514,7 +1539,8 @@ impl Context {
             | Type::Nil
             | Type::Function(..)
             | Type::DynArray { .. }
-            | Type::Enum(..) => Ok(false),
+            | Type::Enum(..)
+            | Type::Set(..) => Ok(false),
         }
     }
 
@@ -1558,10 +1584,12 @@ impl Context {
             },
 
             Type::Class(struct_name) | Type::Record(struct_name) => {
+                let struct_kind = ty.struct_kind().unwrap();
+
                 // start by looking for methods in the unspecialized struct def, if it's a 
                 // method call we might need to infer the struct's own type args from the call
                 let struct_def = self
-                    .find_struct_def(&struct_name.full_path)
+                    .find_struct_def(&struct_name.full_path, struct_kind)
                     .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
 
                 let methods: Vec<_> = struct_def
@@ -1595,7 +1623,7 @@ impl Context {
                         };
 
                         let spec_def = ctx
-                            .instantiate_struct_def(&spec_struct_name)
+                            .instantiate_struct_def(&spec_struct_name, struct_kind)
                             .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
 
                         let spec_method = spec_def.methods[method_index].clone();

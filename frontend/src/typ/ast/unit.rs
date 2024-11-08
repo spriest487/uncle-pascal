@@ -6,7 +6,7 @@ use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::expr::expect_stmt_initialized;
-use crate::typ::ast::{typecheck_alias, FunctionDecl};
+use crate::typ::ast::typecheck_alias;
 use crate::typ::ast::typecheck_enum_decl;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_func_def;
@@ -15,6 +15,9 @@ use crate::typ::ast::typecheck_stmt;
 use crate::typ::ast::typecheck_struct_decl;
 use crate::typ::ast::typecheck_variant;
 use crate::typ::ast::Expr;
+use crate::typ::ast::FunctionDecl;
+use crate::typ::ast::SetDecl;
+use crate::typ::typecheck_type;
 use crate::typ::Binding;
 use crate::typ::ConstTyped;
 use crate::typ::Context;
@@ -30,7 +33,6 @@ use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::ValueKind;
-use crate::typ::typecheck_type;
 use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
@@ -224,9 +226,13 @@ fn typecheck_type_decl_item(
             typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
         },
         ast::TypeDeclItem::Enum(_) => {
-            let ty = Type::enumeration(full_name.clone());
+            let ty = Type::enumeration(full_name.full_path.clone());
             typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
         },
+        ast::TypeDeclItem::Set(_) => {
+            let ty = Type::set(full_name.full_path.clone());
+            typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
+        }
     }
 }
 
@@ -268,7 +274,12 @@ fn typecheck_type_decl_item_with_def(
             ctx.declare_enum(enum_decl.clone(), visibility)?;
         }
 
-        _ => unreachable!(),
+        TypeDeclItem::Set(set_decl) => {
+            let set_type = Type::set(set_decl.name.full_path.clone());
+            ctx.declare_type(set_decl.name.ident().clone(), set_type, visibility, false)?;
+        }
+        
+        TypeDeclItem::Alias(_) => unreachable!()
     }
 
     Ok(type_decl)
@@ -304,6 +315,11 @@ fn typecheck_type_decl_body(
         ast::TypeDeclItem::Enum(enum_decl) => {
             let enum_decl = typecheck_enum_decl(name, enum_decl, ctx)?;
             ast::TypeDeclItem::Enum(Rc::new(enum_decl))
+        }
+
+        ast::TypeDeclItem::Set(set_decl) => {
+            let set_decl = SetDecl::typecheck(set_decl, name, ctx)?;
+            ast::TypeDeclItem::Set(Rc::new(set_decl))
         }
     };
 

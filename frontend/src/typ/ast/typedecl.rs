@@ -6,12 +6,17 @@ use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
+use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
+use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::InterfaceMethodDecl;
-use crate::typ::{typecheck_type, FunctionSig};
+use crate::typ::typecheck_type;
+use crate::typ::ConstTyped;
 use crate::typ::Context;
+use crate::typ::FunctionSig;
+use crate::typ::InvalidTypeParamsDeclKind;
 use crate::typ::MismatchedImplementation;
 use crate::typ::MissingImplementation;
 use crate::typ::NameError;
@@ -24,6 +29,7 @@ use crate::typ::Typed;
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
+use std::borrow::Cow;
 use std::rc::Rc;
 
 pub type StructDef = ast::StructDecl<Typed>;
@@ -35,12 +41,9 @@ pub type VariantDef = ast::VariantDecl<Typed>;
 pub type AliasDecl = ast::AliasDecl<Typed>;
 pub type EnumDecl = ast::EnumDecl<Typed>;
 pub type EnumDeclItem = ast::EnumDeclItem<Typed>;
+pub type SetDecl = ast::SetDecl<Typed>;
 
 pub const VARIANT_TAG_TYPE: Type = Type::Primitive(Primitive::Int32);
-
-impl StructDef {
-    
-}
 
 impl VariantDef {
     pub fn find_method<'a>(&'a self, name: &'a Ident, sig: &FunctionSig) -> Option<&'a MethodDecl> {
@@ -260,7 +263,7 @@ pub fn typecheck_variant(
     ctx: &mut Context,
 ) -> TypeResult<VariantDef> {
     if variant_def.cases.is_empty() {
-        return Err(TypeError::EmptyVariant(Box::new(variant_def.clone())));
+        return Err(TypeError::EmptyVariantDecl(Box::new(variant_def.clone())));
     }
     
     let mut implements = Vec::new();
@@ -329,11 +332,7 @@ pub fn typecheck_enum_decl(
     enum_decl: &ast::EnumDecl<Span>,
     ctx: &mut Context,
 ) -> TypeResult<EnumDecl> {
-    if name.type_params.is_some() {
-        return Err(TypeError::EnumDeclWithTypeParams {
-            span: name.span().clone(),
-        });
-    }
+    name.expect_no_type_params(InvalidTypeParamsDeclKind::Enum)?;
     assert!(name.type_args.is_none());
 
     let mut prev_item: Option<(Ident, i128)> = None;
@@ -383,4 +382,95 @@ pub fn typecheck_enum_decl(
         span: enum_decl.span.clone(),
     };
     Ok(enum_decl)
+}
+
+impl SetDecl {
+    pub fn typecheck(
+        set_decl: &ast::SetDecl<Span>,
+        name: Symbol,
+        ctx: &mut Context,
+    ) -> TypeResult<Self> {
+        name.expect_no_type_params(InvalidTypeParamsDeclKind::Set)?;
+        assert!(name.type_args.is_none());
+
+        if set_decl.items.is_empty() {
+            return Err(TypeError::EmptySetDecl {
+                name: name.full_path.clone(),
+                span: set_decl.span().clone(),
+            })
+        }
+
+        let mut items: Vec<Expr> = Vec::new();
+
+        for i in 0..set_decl.items.len() {
+            // default to expecting Integers
+            let expect_ty = match i {
+                0 => Cow::Owned(Type::Primitive(Primitive::Int32)),
+                _ => items[0].annotation().ty(),
+            };
+
+            let value_expr = typecheck_expr(&set_decl.items[i], &expect_ty, ctx)?;
+
+            let ty = match i {
+                // first item: check it's a numeric type
+                0 => {
+                    match value_expr.annotation().ty().into_owned() {
+                        Type::Primitive(primitive) if primitive.is_numeric() => {
+                            Type::Primitive(primitive)
+                        },
+
+                        enum_ty @ Type::Enum(..) => enum_ty,
+
+                        other_ty => {
+                            return Err(TypeError::SetValuesMustBeNumeric {
+                                actual: other_ty,
+                                span: value_expr.span().clone(),
+                            });
+                        }
+                    }
+                }
+
+                _ => {
+                    let value_ty = value_expr.annotation().ty();
+
+                    if value_ty != expect_ty {
+                        return Err(TypeError::TypeMismatch {
+                            expected: expect_ty.into_owned(),
+                            span: value_expr.span().clone(),
+                            actual: value_ty.into_owned(),
+                        });
+                    }
+
+                    expect_ty.into_owned()
+                }
+            };
+
+            let value_literal = value_expr
+                .const_eval(ctx)
+                .ok_or_else(|| {
+                    TypeError::InvalidConstExpr { expr: Box::new(value_expr.clone()) }
+                })?;
+
+            let const_val = ConstTyped {
+                value: value_literal.clone(),
+                ty,
+                span: value_expr.span().clone(),
+                decl: None,
+            };
+
+            items.push(Expr::Literal(value_literal, Typed::from(const_val)));
+        }
+
+        let set_decl = SetDecl {
+            span: set_decl.span.clone(),
+            items,
+            name,
+        };
+
+        Ok(set_decl)
+    }
+    
+    pub fn value_type(&self) -> Cow<Type> {
+        self.items[0].annotation().ty()
+    }
 }
