@@ -1,8 +1,18 @@
-use crate::{Function, Instruction};
+use crate::write_instruction_list;
+use crate::ExternalFunctionRef;
+use crate::FieldID;
+use crate::Function;
+use crate::FunctionDef;
 use crate::FunctionID;
+use crate::Instruction;
 use crate::InstructionFormatter;
 use crate::Metadata;
 use crate::StaticClosure;
+use crate::StructIdentity;
+use crate::Type;
+use crate::TypeDef;
+use crate::TypeDefID;
+use crate::VirtualTypeID;
 use common::span::Span;
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,7 +28,7 @@ pub struct Module {
     pub static_closures: Vec<StaticClosure>,
 
     pub init: Vec<Instruction>,
-    
+
     pub span: Option<Span>,
 }
 
@@ -30,38 +40,38 @@ impl Module {
             functions: HashMap::new(),
 
             static_closures: Vec::new(),
-            
+
             span: None,
 
             metadata,
         }
     }
 
-    pub fn closure_types(&self) -> impl Iterator<Item =crate::TypeDefID> + '_ {
+    pub fn closure_types(&self) -> impl Iterator<Item = TypeDefID> + '_ {
         self.metadata.closures().iter().cloned()
     }
 
-    pub fn static_closures(&self) -> &[crate::StaticClosure] {
+    pub fn static_closures(&self) -> &[StaticClosure] {
         &self.static_closures
     }
 
-    pub fn find_dyn_array_struct(&self, elem_ty: &crate::Type) -> Option<crate::TypeDefID> {
+    pub fn find_dyn_array_struct(&self, elem_ty: &Type) -> Option<TypeDefID> {
         self.metadata.find_dyn_array_struct(elem_ty)
     }
-    
+
     pub fn span(&self) -> Option<&Span> {
         self.span.as_ref()
     }
-    
-    pub fn init(&self) -> &[crate::Instruction] {
+
+    pub fn init(&self) -> &[Instruction] {
         self.init.as_slice()
     }
-    
+
     pub fn metadata(&self) -> &Metadata {
         &self.metadata
     }
-    
-    pub fn functions(&self) -> &HashMap<crate::FunctionID, crate::Function> {
+
+    pub fn functions(&self) -> &HashMap<FunctionID, Function> {
         &self.functions
     }
 }
@@ -74,18 +84,18 @@ impl fmt::Display for Module {
 
         for (id, def) in &defs {
             match def {
-                crate::TypeDef::Struct(s) => {
+                TypeDef::Struct(s) => {
                     write!(f, "{}: ", id.0)?;
 
                     match &s.identity {
-                        crate::StructIdentity::Class(name) | crate::StructIdentity::Record(name) => {
+                        StructIdentity::Class(name) | StructIdentity::Record(name) => {
                             self.metadata.format_name(name, f)?;
                         },
 
-                        crate::StructIdentity::Closure(identity) => {
+                        StructIdentity::Closure(identity) => {
                             let func_ty_name = self
                                 .metadata
-                                .pretty_ty_name(&crate::Type::Function(identity.virt_func_ty));
+                                .pretty_ty_name(&Type::Function(identity.virt_func_ty));
                             write!(
                                 f,
                                 "closure of {} @ {}:{}:{}",
@@ -93,20 +103,28 @@ impl fmt::Display for Module {
                             )?;
                         },
 
-                        crate::StructIdentity::Array(element, dim) => {
-                            write!(f, "array[{dim}] of {}", self.metadata.pretty_ty_name(element))?;
-                        }
+                        StructIdentity::Array(element, dim) => {
+                            write!(
+                                f,
+                                "array[{dim}] of {}",
+                                self.metadata.pretty_ty_name(element)
+                            )?;
+                        },
 
-                        crate::StructIdentity::DynArray(element) => {
+                        StructIdentity::DynArray(element) => {
                             write!(f, "array of {}", self.metadata.pretty_ty_name(element))?;
-                        }
+                        },
+
+                        StructIdentity::SetFlags256 => {
+                            write!(f, "set")?;
+                        },
                     }
 
                     writeln!(f)?;
 
-                    let max_field_id = s.fields.keys().max().cloned().unwrap_or(crate::FieldID(0));
+                    let max_field_id = s.fields.keys().max().cloned().unwrap_or(FieldID(0));
                     let fields = (0..=max_field_id.0).filter_map(|id| {
-                        let field = s.fields.get(&crate::FieldID(id))?;
+                        let field = s.fields.get(&FieldID(id))?;
                         Some((id, field))
                     });
 
@@ -121,8 +139,8 @@ impl fmt::Display for Module {
                         writeln!(f)?;
                     }
 
-                    let ty_as_struct = crate::Type::Struct(*id);
-                    let ty_as_class = crate::Type::RcPointer(crate::VirtualTypeID::Class(*id));
+                    let ty_as_struct = Type::Struct(*id);
+                    let ty_as_class = Type::RcPointer(VirtualTypeID::Class(*id));
                     let mut iface_impls = self.metadata.impls(&ty_as_struct);
                     iface_impls.extend(self.metadata.impls(&ty_as_class));
 
@@ -134,7 +152,7 @@ impl fmt::Display for Module {
                     }
                 },
 
-                crate::TypeDef::Variant(v) => {
+                TypeDef::Variant(v) => {
                     writeln!(f, "{}: {}", id, v.name)?;
                     for (i, case) in v.cases.iter().enumerate() {
                         write!(f, "{:8>} ({})", format!("  .{}", i), case.name,)?;
@@ -146,7 +164,7 @@ impl fmt::Display for Module {
                     }
                 },
 
-                crate::TypeDef::Function(def) => {
+                TypeDef::Function(def) => {
                     write!(f, "{}: {}", id.0, self.metadata.pretty_func_sig(def))?;
                 },
             }
@@ -200,11 +218,11 @@ impl fmt::Display for Module {
             }
 
             match func {
-                crate::Function::Local(crate::FunctionDef { body, .. }) => {
-                    crate::write_instruction_list(f, &self.metadata, body)?;
+                Function::Local(FunctionDef { body, .. }) => {
+                    write_instruction_list(f, &self.metadata, body)?;
                 },
 
-                crate::Function::External(crate::ExternalFunctionRef { symbol, src, .. }) => {
+                Function::External(ExternalFunctionRef { symbol, src, .. }) => {
                     writeln!(f, "<external function '{}' in module '{}'>", symbol, src)?;
                 },
             }
@@ -212,7 +230,7 @@ impl fmt::Display for Module {
         }
 
         writeln!(f, "* Init:")?;
-        crate::write_instruction_list(f, &self.metadata, &self.init)?;
+        write_instruction_list(f, &self.metadata, &self.init)?;
         Ok(())
     }
 }

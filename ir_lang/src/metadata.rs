@@ -72,7 +72,7 @@ pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
 pub const CLOSURE_PTR_FIELD: FieldID = FieldID(0);
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Metadata {
     type_decls: LinkedHashMap<TypeDefID, TypeDecl>,
     string_literals: LinkedHashMap<StringID, String>,
@@ -92,10 +92,12 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Self {        
+        let metadata = Self {
             ..Default::default()
-        }
+        };
+        
+        metadata
     }
 
     pub fn extend(&mut self, other: &Metadata) {

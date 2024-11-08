@@ -42,8 +42,13 @@ impl Struct {
 
     pub fn name(&self) -> Option<&NamePath> {
         match &self.identity {
-            StructIdentity::Class(name) | StructIdentity::Record(name) => Some(name),
-            StructIdentity::Closure(..) | StructIdentity::Array(..) | StructIdentity::DynArray(..) => None,
+            StructIdentity::Class(name) 
+            | StructIdentity::Record(name) => Some(name),
+            
+            StructIdentity::Closure(..) 
+            | StructIdentity::Array(..) 
+            | StructIdentity::DynArray(..) 
+            | StructIdentity::SetFlags256 => None,
         }
     }
 
@@ -79,6 +84,7 @@ impl fmt::Display for Struct {
             StructIdentity::Array(ty, dim) => write!(f, "array[{}] of {}", dim, ty),
             StructIdentity::DynArray(ty) => write!(f, "array of {}", ty),
             StructIdentity::Class(name) | StructIdentity::Record(name) => write!(f, "{}", name),
+            StructIdentity::SetFlags256 => write!(f, "set"),
             StructIdentity::Closure(identity) => write!(
                 f,
                 "closure of function type {} @ {}:{}:{}",

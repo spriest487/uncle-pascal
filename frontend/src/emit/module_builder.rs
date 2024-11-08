@@ -1,6 +1,6 @@
+use crate::ast::FunctionParamMod;
 use crate::ast::IdentPath;
 use crate::ast::StructKind;
-use crate::ast::FunctionParamMod;
 use crate::emit::build_closure_function_def;
 use crate::emit::build_func_def;
 use crate::emit::build_func_static_closure_def;
@@ -20,7 +20,8 @@ use crate::emit::typ;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::typ::ast::apply_func_decl_named_ty_args;
-use crate::typ::{builtin_ident, builtin_span};
+use crate::typ::builtin_ident;
+use crate::typ::builtin_span;
 use crate::typ::free_mem_sig;
 use crate::typ::get_mem_sig;
 use crate::typ::layout::StructLayout;
@@ -36,8 +37,8 @@ use common::span::Spanned;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fmt;
 use std::rc::Rc;
+use std::fmt;
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -46,6 +47,7 @@ pub struct ModuleBuilder {
     opts: IROptions,
     
     type_cache: LinkedHashMap<typ::Type, ir::Type>,
+    set_flags_type: ir::TypeDefID,
     
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
@@ -59,12 +61,27 @@ pub struct ModuleBuilder {
 }
 
 impl ModuleBuilder {
-    pub fn new(src_metadata: typ::Context, metadata: ir::Metadata, opts: IROptions) -> Self {
+    pub fn new(src_metadata: typ::Context, mut metadata: ir::Metadata, opts: IROptions) -> Self {
+        let set_flags_struct = ir::Struct {
+            identity: ir::StructIdentity::SetFlags256,
+            src_span: None,
+            fields: (0..4)
+                .map(|id| (ir::FieldID(id), ir::StructFieldDef {
+                    name: None,
+                    ty: ir::Type::U64,
+                    rc: false,
+                }))
+                .collect()
+        };
+        let set_flags_decl = ir::TypeDecl::Def(ir::TypeDef::Struct(set_flags_struct));
+        let set_flags_type_id = metadata.insert_type_decl(set_flags_decl);
+        
         ModuleBuilder {
             opts,
             src_metadata,
             
             type_cache: LinkedHashMap::new(),
+            set_flags_type: set_flags_type_id,
             
             translated_funcs: HashMap::new(),
             
@@ -780,14 +797,7 @@ impl ModuleBuilder {
             // TODO: enums may later be variably sized
             typ::Type::Enum(..) => ir::Type::ISize,
             
-            // sets in IR translate directly to their item type
-            typ::Type::Set(name) => {
-                let decl = self.src_metadata
-                    .find_set(name)
-                    .unwrap_or_else(|err| panic!("missing set decl: {}", err));
-                
-                self.find_type(decl.value_type().as_ref())
-            }
+            typ::Type::Set(..) => ir::Type::Struct(self.set_flags_type),
 
             typ::Type::Any => ir::Type::RcPointer(ir::VirtualTypeID::Any),
         }

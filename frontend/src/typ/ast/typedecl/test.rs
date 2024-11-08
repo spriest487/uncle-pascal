@@ -217,3 +217,23 @@ fn set_decl_with_characters_is_valid() {
         panic!("{}", err)
     }
 }
+
+
+#[test]
+fn set_decl_with_enum_members_is_valid() {
+    let result = try_module_from_src(
+        "test",
+        r"
+        implementation
+        
+        type MyEnum = (NumOne, NumTwo, NumThree);
+        type MySet = set of [NumOne, NumThree];
+
+        end.
+        "
+    );
+
+    if let Err(err) = result {
+        panic!("{}", err)
+    }
+}
