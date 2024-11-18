@@ -1,4 +1,5 @@
 # critical
+* rename type annotations again
 * project files/don't auto load used units
 * why is the C backend generating packed decls for everything?
 * rename Any -> Object

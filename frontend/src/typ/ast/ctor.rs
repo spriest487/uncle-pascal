@@ -6,7 +6,6 @@ use crate::typ::ast::cast::implicit_conversion;
 use crate::typ::ast::create_default_literal;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_type_args;
-use crate::typ::ArrayType;
 use crate::typ::Context;
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
@@ -21,6 +20,7 @@ use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
+use crate::typ::ArrayType;
 use common::span::Span;
 use common::span::Spanned;
 use linked_hash_map::LinkedHashMap;
@@ -245,27 +245,20 @@ pub fn typecheck_collection_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypeResult<CollectionCtor> {
-    let (mut elements, element_ty) = match expect_ty.element_ty() {
-        Some(elem_ty) if !elem_ty.contains_unresolved_params(ctx) => {
-            let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
-            (elements, elem_ty.clone())
+    let (collection_ty, elements) = match expect_ty {
+        // any dynamic array - creating a dynamic array
+        Type::DynArray { .. } => {
+            let (elements, element_ty) = array_ctor_elements(expect_ty, ctor, ctx)?;
+            let array_ty = Type::DynArray {
+                element: Rc::new(element_ty),
+            };
+
+            (array_ty, elements)
         },
 
-        _ => {
-            let elements = elements_for_inferred_ty(ctor, ctx)?;
-            let elem_ty = elements[0].value.annotation().ty().into_owned();
-            (elements, elem_ty)
-        },
-    };
-
-    let collection_ty = match expect_ty {
-        // known dyn array ty_def
-        Type::DynArray { .. } => Type::DynArray {
-            element: Rc::new(element_ty),
-        },
-
-        // known static array ty_def
-        Type::Array(array_ty) => {            
+        // any static array - creating a static array of known length
+        Type::Array(array_ty) => {
+            let (mut elements, element_ty) = array_ctor_elements(expect_ty, ctor, ctx)?;
             default_fill_elements(
                 array_ty.dim,
                 &element_ty,
@@ -274,11 +267,25 @@ pub fn typecheck_collection_ctor(
                 ctor.annotation.span()
             )?;
 
-            ArrayType::new(element_ty, elements.len()).into()
+            let array_ty = ArrayType::new(element_ty, elements.len()).into();
+
+            (array_ty, elements)
+        }
+        
+        // any set - creating that set
+        Type::Set(set_type) => {
+            let element_type = &set_type.item_type;
+            let elements = elements_for_expected_ty(ctor, &element_type, ctx)?;
+            (expect_ty.clone(), elements)
         }
 
-        // unknown ty_def - construct a static array of these elements
-        _ => ArrayType::new(element_ty, elements.len()).into(),
+        // unknown/no type hint - this ctor is creating a static array of exactly these elements
+        _ => {
+            let (elements, element_ty) = array_ctor_elements(expect_ty, ctor, ctx)?;
+            let array_ty = ArrayType::new(element_ty, elements.len()).into();
+
+            (array_ty, elements)
+        },
     };
 
     let annotation = TypedValue {
@@ -293,6 +300,27 @@ pub fn typecheck_collection_ctor(
         elements,
         annotation,
     })
+}
+
+fn array_ctor_elements(
+    expect_ty: &Type,
+    ctor: &ast::CollectionCtor<Span>,
+    ctx: &mut Context
+) -> TypeResult<(Vec<CollectionCtorElement>, Type)> {
+    let (elements, element_ty) = match expect_ty.element_ty() {
+        Some(elem_ty) if !elem_ty.contains_unresolved_params(ctx) => {
+            let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
+            (elements, elem_ty.clone())
+        },
+
+        _ => {
+            let elements = elements_for_inferred_ty(ctor, ctx)?;
+            let elem_ty = elements[0].value.annotation().ty().into_owned();
+            (elements, elem_ty)
+        },
+    };
+    
+    Ok((elements, element_ty))
 }
 
 fn elements_for_inferred_ty(

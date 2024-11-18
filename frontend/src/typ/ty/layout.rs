@@ -66,9 +66,8 @@ impl StructLayout {
                     usize::max(tag_align, max_data_align)
                 },
                 
-                Type::Set(name) => {
-                    let set_def = ctx.find_set(name)?;
-                    self.align_of(set_def.value_type().as_ref(), ctx)?
+                Type::Set(set) => {
+                    self.align_of(&set.item_type, ctx)?
                 }
                 
                 Type::Weak(weak_ty) => self.align_of(&weak_ty, ctx)?,
@@ -148,9 +147,8 @@ impl StructLayout {
                 ))
             },
             
-            Type::Set(name) => {
-                let set_decl = ctx.find_set(name)?;
-                self.size_of(set_decl.value_type().as_ref(), ctx)?
+            Type::Set(set) => {
+                self.size_of(&set.item_type, ctx)?
             }
         };
 

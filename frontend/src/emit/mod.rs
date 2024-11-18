@@ -1,4 +1,14 @@
+mod builder;
+mod expr;
+pub mod metadata;
+mod stmt;
+mod pattern;
+mod function;
+pub mod module_builder;
+mod set_flags;
+
 pub use self::function::*;
+pub use self::set_flags::*;
 use crate::emit::builder::Builder;
 use crate::emit::expr::*;
 use crate::emit::metadata::*;
@@ -8,14 +18,6 @@ use crate::ast as syn;
 use crate::typ as typ;
 pub use ir_lang as ir;
 use crate::ast::StructKind;
-
-mod builder;
-mod expr;
-pub mod metadata;
-mod stmt;
-mod pattern;
-mod function;
-pub mod module_builder;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct IROptions {

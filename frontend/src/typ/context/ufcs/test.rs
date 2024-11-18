@@ -19,7 +19,7 @@ fn finds_ufcs_func() {
     );
 
     let (_, target_decl) = unit.unit.type_decl_items().next().unwrap();
-    let target = Type::of_decl(target_decl);
+    let target = Type::of_decl(target_decl, &unit.context).unwrap();
     assert_eq!(target.full_path().unwrap().last().name.as_str(), "UFCSTarget");
 
     let methods = find_ufcs_free_functions(&target, &unit.context);
@@ -63,7 +63,7 @@ fn finds_exported_ufcs_func_from_other_unit() {
     let c = &units["C"];
 
     let (_, target_decl) = a.unit.type_decl_items().next().unwrap();
-    let target = Type::of_decl(target_decl);
+    let target = Type::of_decl(target_decl, &a.context).unwrap();
     let methods = find_ufcs_free_functions(&target, &c.context);
 
     assert_eq!(methods.len(), 1);
@@ -99,7 +99,7 @@ fn doesnt_find_private_ufcs_func_from_other_unit() {
     let a = &units["A"];
     let c = &units["C"];
 
-    let target = Type::of_decl(&a.unit.type_decl_items().next().unwrap().1);
+    let target = Type::of_decl(&a.unit.type_decl_items().next().unwrap().1, &c.context).unwrap();
     let methods = find_ufcs_free_functions(&target, &c.context);
 
     assert_eq!(methods.len(), 0);

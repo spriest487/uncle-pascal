@@ -240,6 +240,10 @@ impl RealConstant {
     pub fn as_f64(&self) -> Option<f64> {
         self.0.to_f64()
     }
+    
+    pub fn round(&self) -> Self {
+        RealConstant(self.0.round(0))
+    }
 }
 
 impl From<f64> for RealConstant {

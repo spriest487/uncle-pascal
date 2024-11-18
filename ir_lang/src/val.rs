@@ -1,5 +1,5 @@
 use std::fmt;
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use serde::{Deserialize, Serialize};
 use crate::{FunctionID, StaticClosureID};
 use crate::metadata::StringID;
@@ -90,6 +90,12 @@ impl From<GlobalRef> for Value {
     }
 }
 
+impl From<FunctionID> for Value {
+    fn from(id: FunctionID) -> Self {
+        Self::from(Ref::Global(GlobalRef::Function(id)))
+    }
+}
+
 impl From<bool> for Value {
     fn from(value: bool) -> Self {
         Self::LiteralBool(value)
@@ -105,16 +111,44 @@ impl Value {
         match self {
             Value::LiteralU8(x) => Some(BigDecimal::from(*x)),
             Value::LiteralI8(x) => Some(BigDecimal::from(*x)),
+            
             Value::LiteralI16(x) => Some(BigDecimal::from(*x)),
             Value::LiteralU16(x) => Some(BigDecimal::from(*x)),
+            
             Value::LiteralI32(x) => Some(BigDecimal::from(*x)),
             Value::LiteralU32(x) => Some(BigDecimal::from(*x)),
+            
             Value::LiteralI64(x) => Some(BigDecimal::from(*x)),
             Value::LiteralU64(x) => Some(BigDecimal::from(*x)),
+            
             Value::LiteralISize(x) => Some(BigDecimal::from(*x as i64)),
             Value::LiteralUSize(x) => Some(BigDecimal::from(*x as u64)),
+
             Value::LiteralF32(x) => Some(BigDecimal::from_f32(*x)
                 .expect("NaN/infinite constant values not supported yet")),
+            _ => None,
+        }
+    }
+    
+    pub fn from_literal_val(val: BigDecimal, as_type: &Type) -> Option<Self> {
+        match as_type {
+            Type::U8 => Some(Value::LiteralU8(val.to_u8()?)),
+            Type::I8 => Some(Value::LiteralI8(val.to_i8()?)),
+            
+            Type::U16 => Some(Value::LiteralU16(val.to_u16()?)),
+            Type::I16 => Some(Value::LiteralI16(val.to_i16()?)),
+
+            Type::U32 => Some(Value::LiteralU32(val.to_u32()?)),
+            Type::I32 => Some(Value::LiteralI32(val.to_i32()?)),
+            
+            Type::U64 => Some(Value::LiteralU64(val.to_u64()?)),
+            Type::I64 => Some(Value::LiteralI64(val.to_i64()?)),
+
+            Type::USize => Some(Value::LiteralUSize(val.to_usize()?)),
+            Type::ISize => Some(Value::LiteralISize(val.to_isize()?)),
+            
+            Type::F32 => Some(Value::LiteralF32(val.to_f32()?)),
+            
             _ => None,
         }
     }

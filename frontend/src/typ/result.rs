@@ -348,6 +348,10 @@ impl TypeError {
             span,
         }
     }
+    
+    pub fn name_not_found(name: impl Into<IdentPath>, span: impl Into<Span>) -> Self {
+        TypeError::from_name_err(NameError::NotFound { ident: name.into() }, span.into())
+    }
 }
 
 pub type TypeResult<T> = Result<T, TypeError>;

@@ -1,4 +1,4 @@
-use crate::{ast, RealConstant};
+use crate::ast;
 use crate::ast::TypeAnnotation;
 use crate::typ::ast::Expr;
 use crate::typ::string_to_char_lit;
@@ -14,7 +14,9 @@ use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::typ::STRING_CHAR_TYPE;
 use crate::IntConstant;
+use crate::RealConstant;
 use common::span::Span;
+use std::rc::Rc;
 
 pub type Literal = ast::Literal<Type>;
 
@@ -48,10 +50,10 @@ impl Literal {
 
                 _ => None,
             }
-            
+
             Literal::Boolean(bool_val) => match to_primitive {
                 Primitive::Boolean => Some(self.clone()),
-                
+
                 p if p.is_integer() && !p.is_pointer() => {
                     let int_val = if *bool_val { 1 } else { 0 };
                     Some(Literal::Integer(IntConstant::from(int_val)))
@@ -65,6 +67,172 @@ impl Literal {
                 _ => None,
             }
 
+            _ => None,
+        }
+    }
+
+    pub fn try_bitwise_not(self) -> Option<Self> {
+        match self {
+            Literal::Integer(i) => {
+                let operand_val = i.as_u64()?;
+                Some(Literal::Integer(IntConstant::from(!operand_val)))
+            }
+
+            _ => None
+        }
+    }
+
+    pub fn try_negate(self) -> Option<Self> {
+        match self {
+            Literal::Boolean(b) => Some(Literal::Boolean(!b)),
+
+            Literal::Integer(i) => {
+                let operand_val = i.as_i128();
+                Some(Literal::Integer(IntConstant::from(-operand_val)))
+            }
+
+            Literal::Real(r) => {
+                let operand_val = r.0;
+                Some(Literal::Real(RealConstant(-operand_val)))
+            }
+
+            _ => None
+        }
+    }
+
+    pub fn try_eq(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::String(a), Literal::String(b)) => {
+                Some(Literal::Boolean(a == b))
+            }
+
+            (Literal::Real(a), Literal::Real(b)) => {
+                Some(Literal::Boolean(a == b))
+            }
+            (Literal::Integer(a), Literal::Integer(b)) => {
+                Some(Literal::Boolean(a == b))
+            }
+            (Literal::Nil, Literal::Nil) => {
+                Some(Literal::Boolean(true))
+            }
+            (Literal::Boolean(a), Literal::Boolean(b)) => {
+                Some(Literal::Boolean(a == b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_add(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::String(a), Literal::String(b)) => {
+                let s = (*a).clone() + b.as_str();
+                Some(Literal::String(Rc::new(s)))
+            }
+            (Literal::Real(a), Literal::Real(b)) => {
+                Some(Literal::Real(a + b))
+            }
+            (Literal::Integer(a), Literal::Integer(b)) => {
+                Some(Literal::Integer(a + b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_sub(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::Real(a), Literal::Real(b)) => {
+                Some(Literal::Real(a - b))
+            }
+            (Literal::Integer(a), Literal::Integer(b)) => {
+                Some(Literal::Integer(a - b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_mul(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::Real(a), Literal::Real(b)) => {
+                Some(Literal::Real(a * b))
+            }
+            (Literal::Integer(a), Literal::Integer(b)) => {
+                Some(Literal::Integer(a * b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_div(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::Real(a), Literal::Real(b)) => {
+                Some(Literal::Real((a / b).round()))
+            }
+            (Literal::Integer(a), Literal::Integer(b)) => {
+                Some(Literal::Integer(a / b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_and(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::Boolean(a), Literal::Boolean(b)) => {
+                Some(Literal::Boolean(a && b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_or(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::Boolean(a), Literal::Boolean(b)) => {
+                Some(Literal::Boolean(a || b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_gt(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::Real(a), Literal::Real(b)) => {
+                Some(Literal::Boolean(a > b))
+            }
+            (Literal::Integer(a), Literal::Integer(b)) => {
+                Some(Literal::Boolean(a > b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_lt(self, b: Literal) -> Option<Literal> {
+        match (self, b) {
+            (Literal::Real(a), Literal::Real(b)) => {
+                Some(Literal::Boolean(a < b))
+            }
+            (Literal::Integer(a), Literal::Integer(b)) => {
+                Some(Literal::Boolean(a < b))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn try_bitwise<Op>(self, b: Literal, op: Op) -> Option<Literal>
+    where
+        Op: Fn(u64, u64) -> u64,
+    {
+        match (self, b) {
+            (Literal::Integer(a), Literal::Integer(b)) => {
+                let val = op(a.as_u64()?, b.as_u64()?);
+                Some(Literal::Integer(IntConstant::from(val)))
+            }
+
+            _ => None
+        }
+    }
+    
+    pub fn try_into_int(self) -> Option<IntConstant> {
+        match self {
+            Literal::Integer(int) => Some(int),
             _ => None,
         }
     }
@@ -86,7 +254,7 @@ pub fn typecheck_literal(
                     return Ok(Expr::Literal(char_lit, Typed::from(val)));
                 }
             }
-            
+
             let binding = ValueKind::Immutable;
             let annotation = TypedValue {
                 ty: string_type(ctx)?,
@@ -94,10 +262,10 @@ pub fn typecheck_literal(
                 span: span.clone(),
                 decl: None,
             }
-            .into();
+                .into();
 
             Ok(Expr::Literal(Literal::String(s.clone()), annotation))
-        },
+        }
 
         ast::Literal::Boolean(b) => {
             let annotation = TypedValue {
@@ -106,10 +274,10 @@ pub fn typecheck_literal(
                 span: span.clone(),
                 decl: None,
             }
-            .into();
+                .into();
 
             Ok(Expr::Literal(Literal::Boolean(*b), annotation))
-        },
+        }
 
         ast::Literal::Integer(i) => typecheck_literal_int(i, expect_ty, span.clone()),
 
@@ -126,13 +294,13 @@ pub fn typecheck_literal(
                 span: span.clone(),
                 decl: None,
             }
-            .into();
+                .into();
 
             Ok(ast::Expr::Literal(
                 ast::Literal::Real(x.clone()),
                 annotation,
             ))
-        },
+        }
 
         ast::Literal::Nil => {
             let ty = match expect_ty {
@@ -148,7 +316,7 @@ pub fn typecheck_literal(
             };
 
             Ok(ast::Expr::Literal(Literal::Nil, annotation.into()))
-        },
+        }
 
         ast::Literal::SizeOf(size_of_ty) => {
             let ty = typecheck_type(&size_of_ty, ctx)?;
@@ -163,14 +331,14 @@ pub fn typecheck_literal(
                 Literal::SizeOf(Box::new(ty)),
                 annotation.into(),
             ))
-        },
-        
+        }
+
         ast::Literal::DefaultValue(default_of_ty) => {
             let ty = if !default_of_ty.is_known() {
                 if *expect_ty == Type::Nothing {
                     return Err(TypeError::UnableToInferType {
                         expr: Box::new(ast::Expr::Literal(lit.clone(), span.clone())),
-                    })
+                    });
                 } else {
                     expect_ty.clone()
                 }
@@ -183,14 +351,14 @@ pub fn typecheck_literal(
             let has_default = ty
                 .has_default(ctx)
                 .map_err(|e| TypeError::from_name_err(e, span.clone()))?;
-            
+
             if !has_default {
                 return Err(TypeError::NotDefaultable {
                     ty,
                     span: span.clone(),
                 });
             }
-            
+
             Ok(create_default_literal(ty, span.clone()))
         }
     }
@@ -203,10 +371,10 @@ pub fn create_default_literal(ty: Type, span: Span) -> Expr {
         span: span.clone(),
         value_kind: ValueKind::Temporary,
     };
-    
+
     Expr::Literal(
         Literal::DefaultValue(Box::new(ty)),
-        annotation.into()
+        annotation.into(),
     )
 }
 
@@ -214,38 +382,38 @@ fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypeR
     let ty = match expect_ty {
         Type::Primitive(Primitive::UInt8) => {
             try_map_primitive_int(i, Primitive::UInt8, IntConstant::as_u8)
-        },
+        }
         Type::Primitive(Primitive::Int8) => {
             try_map_primitive_int(i, Primitive::Int8, IntConstant::as_i8)
-        },
+        }
         Type::Primitive(Primitive::Int16) => {
             try_map_primitive_int(i, Primitive::Int16, IntConstant::as_i16)
-        },
+        }
         Type::Primitive(Primitive::UInt16) => {
             try_map_primitive_int(i, Primitive::UInt16, IntConstant::as_u16)
-        },
+        }
         Type::Primitive(Primitive::Int32) => {
             try_map_primitive_int(i, Primitive::Int32, IntConstant::as_i32)
-        },
+        }
         Type::Primitive(Primitive::UInt32) => {
             try_map_primitive_int(i, Primitive::UInt32, IntConstant::as_u32)
-        },
+        }
         Type::Primitive(Primitive::Int64) => {
             try_map_primitive_int(i, Primitive::Int64, IntConstant::as_i64)
-        },
+        }
         Type::Primitive(Primitive::UInt64) => {
             try_map_primitive_int(i, Primitive::UInt64, IntConstant::as_u64)
-        },
+        }
         Type::Primitive(Primitive::NativeInt) => {
             try_map_primitive_int(i, Primitive::NativeInt, IntConstant::as_isize)
-        },
+        }
         Type::Primitive(Primitive::NativeUInt) => {
             try_map_primitive_int(i, Primitive::NativeUInt, IntConstant::as_usize)
-        },
+        }
 
         Type::Primitive(Primitive::Real32) => {
             try_map_primitive_int(i, Primitive::Real32, IntConstant::as_f32)
-        },
+        }
 
         _ => match i.as_i32() {
             Some(_) => Type::from(Primitive::Int32),
@@ -259,7 +427,7 @@ fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypeR
         span,
         decl: None,
     }
-    .into();
+        .into();
 
     Ok(ast::Expr::Literal(ast::Literal::Integer(*i), annotation))
 }

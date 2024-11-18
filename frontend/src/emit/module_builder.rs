@@ -19,6 +19,7 @@ use crate::emit::stmt::translate_stmt;
 use crate::emit::typ;
 use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
+use crate::emit::SetFlagsType;
 use crate::typ::ast::apply_func_decl_named_ty_args;
 use crate::typ::builtin_ident;
 use crate::typ::builtin_span;
@@ -36,9 +37,9 @@ use common::span::Span;
 use common::span::Spanned;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::rc::Rc;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -47,7 +48,9 @@ pub struct ModuleBuilder {
     opts: IROptions,
     
     type_cache: LinkedHashMap<typ::Type, ir::Type>,
-    set_flags_type: ir::TypeDefID,
+    
+    // key is size (bits)
+    set_flags_type_info: BTreeMap<usize, SetFlagsType>,
     
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
@@ -61,27 +64,13 @@ pub struct ModuleBuilder {
 }
 
 impl ModuleBuilder {
-    pub fn new(src_metadata: typ::Context, mut metadata: ir::Metadata, opts: IROptions) -> Self {
-        let set_flags_struct = ir::Struct {
-            identity: ir::StructIdentity::SetFlags256,
-            src_span: None,
-            fields: (0..4)
-                .map(|id| (ir::FieldID(id), ir::StructFieldDef {
-                    name: None,
-                    ty: ir::Type::U64,
-                    rc: false,
-                }))
-                .collect()
-        };
-        let set_flags_decl = ir::TypeDecl::Def(ir::TypeDef::Struct(set_flags_struct));
-        let set_flags_type_id = metadata.insert_type_decl(set_flags_decl);
-        
-        ModuleBuilder {
+    pub fn new(src_metadata: typ::Context, metadata: ir::Metadata, opts: IROptions) -> Self {        
+        let mut module_builder = ModuleBuilder {
             opts,
             src_metadata,
             
             type_cache: LinkedHashMap::new(),
-            set_flags_type: set_flags_type_id,
+            set_flags_type_info: BTreeMap::new(),
             
             translated_funcs: HashMap::new(),
             
@@ -92,7 +81,13 @@ impl ModuleBuilder {
             // placeholders
             free_mem_func: None,
             get_mem_func: None,
-        }
+        };
+
+        let set_flags_type = SetFlagsType::define_new(&mut module_builder, 256);
+
+        module_builder.set_flags_type_info.insert(typ::MAX_FLAGS_BITS, set_flags_type);
+        
+        module_builder
     }
 
     pub fn module_span(&self) -> &Span {
@@ -208,6 +203,10 @@ impl ModuleBuilder {
             .unwrap_or_else(|| panic!("method {} of type {} must exist", name, ty));
 
         index
+    }
+    
+    pub fn get_set_flags_type_info(&self, bits: usize) -> SetFlagsType {
+        self.set_flags_type_info[&bits]
     }
 
     fn instantiate_system_func(&mut self, name: &str, sig: Rc<typ::FunctionSig>) -> ir::FunctionID {
@@ -797,7 +796,10 @@ impl ModuleBuilder {
             // TODO: enums may later be variably sized
             typ::Type::Enum(..) => ir::Type::ISize,
             
-            typ::Type::Set(..) => ir::Type::Struct(self.set_flags_type),
+            // TODO: variable sized sets
+            // we could decide to use a smaller or larger set flags type here depending on the range
+            // of values, but for now all sets use the widest representation (256-bit)
+            typ::Type::Set(..) => ir::Type::Struct(self.set_flags_type_info[&256].struct_id),
 
             typ::Type::Any => ir::Type::RcPointer(ir::VirtualTypeID::Any),
         }
@@ -1516,8 +1518,8 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
 
     builder.label(init_break_label);
 
-    builder.set_field(arr.clone(), array_ref_ty.clone(), ir::DYNARRAY_LEN_FIELD, ir::Type::I32, len_arg);
-    builder.set_field(arr, array_ref_ty, ir::DYNARRAY_PTR_FIELD, el_ptr_ty, data);
+    builder.assign_field(arr.clone(), array_ref_ty.clone(), ir::DYNARRAY_LEN_FIELD, ir::Type::I32, len_arg);
+    builder.assign_field(arr, array_ref_ty, ir::DYNARRAY_PTR_FIELD, el_ptr_ty, data);
 }
 
 fn gen_dyn_array_length_func(builder: &mut Builder, struct_id: ir::TypeDefID) {

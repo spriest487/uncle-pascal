@@ -7,15 +7,12 @@ use crate::typ::ast::UnaryOp;
 use crate::typ::builtin_string_name;
 use crate::typ::Context;
 use crate::typ::Type;
-use crate::IntConstant;
 use crate::Operator;
-use crate::RealConstant;
 use std::ops::BitAnd;
 use std::ops::BitOr;
 use std::ops::BitXor;
 use std::ops::Shl;
 use std::ops::Shr;
-use std::rc::Rc;
 
 pub trait ConstEval {
     fn const_eval(&self, ctx: &Context) -> Option<Literal>;
@@ -47,123 +44,25 @@ impl ConstEval for BinOp {
 
         match self.op {
             Operator::Assignment => None,
-            Operator::Equals => const_eq(lhs, rhs),
-            Operator::NotEquals => const_eq(lhs, rhs).and_then(const_negate),
-            Operator::Add => const_add(lhs, rhs),
-            Operator::Sub => const_sub(lhs, rhs),
-            Operator::Mul => const_mul(lhs, rhs),
-            Operator::FDiv => const_div(lhs, rhs),
-            Operator::And => const_and(lhs, rhs),
-            Operator::Or => const_or(lhs, rhs),
-            Operator::Gt => const_gt(lhs, rhs),
-            Operator::Gte => const_lt(lhs, rhs).and_then(const_negate),
-            Operator::Lt => const_lt(lhs, rhs),
-            Operator::Lte => const_gt(lhs, rhs).and_then(const_negate),
-            Operator::Caret => const_bitwise(lhs, rhs, u64::bitxor),
-            Operator::BitAnd => const_bitwise(lhs, rhs, u64::bitand),
-            Operator::BitOr => const_bitwise(lhs, rhs, u64::bitor),
-            Operator::Shl => const_bitwise(lhs, rhs, u64::shl),
-            Operator::Shr => const_bitwise(lhs, rhs, u64::shr),
+            Operator::Equals => lhs.try_eq(rhs),
+            Operator::NotEquals => lhs.try_eq(rhs).and_then(Literal::try_negate),
+            Operator::Add => lhs.try_add(rhs),
+            Operator::Sub => lhs.try_sub(rhs),
+            Operator::Mul => lhs.try_mul(rhs),
+            Operator::FDiv => lhs.try_div(rhs),
+            Operator::And => lhs.try_and(rhs),
+            Operator::Or => lhs.try_or(rhs),
+            Operator::Gt => lhs.try_gt(rhs),
+            Operator::Gte => lhs.try_lt(rhs).and_then(Literal::try_negate),
+            Operator::Lt => lhs.try_lt(rhs),
+            Operator::Lte => lhs.try_gt(rhs).and_then(Literal::try_negate),
+            Operator::Caret => lhs.try_bitwise(rhs, u64::bitxor),
+            Operator::BitAnd => lhs.try_bitwise(rhs, u64::bitand),
+            Operator::BitOr => lhs.try_bitwise(rhs, u64::bitor),
+            Operator::Shl => lhs.try_bitwise(rhs, u64::shl),
+            Operator::Shr => lhs.try_bitwise(rhs, u64::shr),
             _ => None,
         }
-    }
-}
-
-fn const_negate(lit: Literal) -> Option<Literal> {
-    match lit {
-        Literal::Boolean(b) => Some(Literal::Boolean(!b)),
-        _ => None,
-    }
-}
-
-fn const_eq(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::String(a), Literal::String(b)) => Some(Literal::Boolean(a == b)),
-        (Literal::Real(a), Literal::Real(b)) => Some(Literal::Boolean(a == b)),
-        (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Boolean(a == b)),
-        (Literal::Nil, Literal::Nil) => Some(Literal::Boolean(true)),
-        (Literal::Boolean(a), Literal::Boolean(b)) => Some(Literal::Boolean(a == b)),
-        _ => None,
-    }
-}
-
-fn const_add(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::String(a), Literal::String(b)) => {
-            let s = (*a).clone() + b.as_str();
-            Some(Literal::String(Rc::new(s)))
-        },
-        (Literal::Real(a), Literal::Real(b)) => Some(Literal::Real(a + b)),
-        (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Integer(a + b)),
-        _ => None,
-    }
-}
-
-fn const_sub(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::Real(a), Literal::Real(b)) => Some(Literal::Real(a - b)),
-        (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Integer(a - b)),
-        _ => None,
-    }
-}
-
-fn const_mul(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::Real(a), Literal::Real(b)) => Some(Literal::Real(a * b)),
-        (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Integer(a * b)),
-        _ => None,
-    }
-}
-
-fn const_div(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::Real(a), Literal::Real(b)) => Some(Literal::Real(a / b)),
-        (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Integer(a / b)),
-        _ => None,
-    }
-}
-
-fn const_and(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::Boolean(a), Literal::Boolean(b)) => Some(Literal::Boolean(a && b)),
-        _ => None,
-    }
-}
-
-fn const_or(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::Boolean(a), Literal::Boolean(b)) => Some(Literal::Boolean(a || b)),
-        _ => None,
-    }
-}
-
-fn const_gt(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::Real(a), Literal::Real(b)) => Some(Literal::Boolean(a > b)),
-        (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Boolean(a > b)),
-        _ => None,
-    }
-}
-
-fn const_lt(a: Literal, b: Literal) -> Option<Literal> {
-    match (a, b) {
-        (Literal::Real(a), Literal::Real(b)) => Some(Literal::Boolean(a < b)),
-        (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Boolean(a < b)),
-        _ => None,
-    }
-}
-
-fn const_bitwise<Op>(a: Literal, b: Literal, op: Op) -> Option<Literal>
-where
-    Op: Fn(u64, u64) -> u64
-{
-    match (a, b) {
-        (Literal::Integer(a), Literal::Integer(b)) => {
-            let val = op(a.as_u64()?, b.as_u64()?);
-            Some(Literal::Integer(IntConstant::from(val)))
-        }
-
-        _ => None
     }
 }
 
@@ -171,14 +70,7 @@ impl ConstEval for UnaryOp {
     fn const_eval(&self, ctx: &Context) -> Option<Literal> {
         match self.op {
             Operator::BitNot => {
-                match self.operand.const_eval(ctx)? {
-                    Literal::Integer(i) => {
-                        let operand_val = i.as_u64()?;
-                        Some(Literal::Integer(IntConstant::from(!operand_val)))
-                    }
-
-                    _ => None
-                }
+                self.operand.const_eval(ctx)?.try_bitwise_not()
             }
 
             Operator::Add => {
@@ -193,19 +85,7 @@ impl ConstEval for UnaryOp {
 
             Operator::Sub => {
                 // unary negation for numeric constants
-                match self.operand.const_eval(ctx)? {
-                    Literal::Integer(i) => {
-                        let operand_val = i.as_i128();
-                        Some(Literal::Integer(IntConstant::from(-operand_val)))
-                    }
-
-                    Literal::Real(r) => {
-                        let operand_val = r.0;
-                        Some(Literal::Real(RealConstant(-operand_val)))
-                    }
-
-                    _ => None
-                }
+                self.operand.const_eval(ctx)?.try_negate()
             }
 
             _ => None,

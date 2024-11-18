@@ -405,6 +405,22 @@ impl<'m> Builder<'m> {
         }));
     }
 
+    pub fn sub_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>, as_type: &Type) -> Value {
+        let a = a.into();
+        let b = b.into();
+        
+        if let (Some(a_val), Some(b_val)) = (a.to_literal_val(), b.to_literal_val()) {
+            if let Some(result) = Value::from_literal_val(a_val - b_val, &as_type) {
+                return result;
+            }
+        }
+
+        let out = self.local_temp(as_type.clone());
+        self.sub(out.clone(), a, b);       
+        
+        Value::Ref(out)
+    }
+
     pub fn mul(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Mul(BinOpInstruction {
             out: out.into(),
@@ -504,6 +520,13 @@ impl<'m> Builder<'m> {
         self.append(Instruction::BitAnd(BinOpInstruction {
             a: a.into(),
             b: b.into(),
+            out: out.into(),
+        }));
+    }
+
+    pub fn bit_not(&mut self, out: impl Into<Ref>, a: impl Into<Value>) {
+        self.append(Instruction::BitNot(UnaryOpInstruction {
+            a: a.into(),
             out: out.into(),
         }));
     }
@@ -630,15 +653,13 @@ impl<'m> Builder<'m> {
         field: FieldID,
         field_ty: Type,
     ) {
-        self.scope(|builder| {
-            let field_ptr = builder.local_temp(field_ty.ptr());
-            builder.field(field_ptr.clone(), base, base_ty, field);
+        let field_ptr = self.local_temp(field_ty.ptr());
+        self.field(field_ptr.clone(), base, base_ty, field);
 
-            builder.mov(out, field_ptr.to_deref())
-        });
+        self.mov(out, field_ptr.to_deref());
     }
 
-    pub fn set_field(
+    pub fn assign_field(
         &mut self,
         base: impl Into<Ref>,
         base_ty: impl Into<Type>,
@@ -646,12 +667,49 @@ impl<'m> Builder<'m> {
         field_ty: Type,
         val: impl Into<Value>,
     ) {
-        self.scope(|builder| {
-            let field_ptr = builder.local_temp(field_ty.ptr());
-            builder.field(field_ptr.clone(), base, base_ty, field);
+        let field_ptr = self.local_temp(field_ty.ptr());
+        self.field(field_ptr.clone(), base, base_ty, field);
 
-            builder.mov(field_ptr.to_deref(), val);
-        });
+        self.mov(field_ptr.to_deref(), val);
+    }
+    
+    pub fn set_include(&mut self, set_ref: impl Into<Ref>, bit_val: impl Into<Value>, set_type: &typ::SetType) {
+        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type = Type::Struct(flags_type_info.struct_id);
+        
+        let flags_ptr = self.local_temp(flags_type.ptr());
+        self.addr_of(flags_ptr.clone(), set_ref);
+
+        self.call(flags_type_info.include_func, [
+            Value::from(flags_ptr),
+            bit_val.into(),
+        ], None);
+    }
+
+    pub fn set_exclude(&mut self, set_ref: impl Into<Ref>, bit_val: impl Into<Value>, set_type: &typ::SetType) {
+        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type = Type::Struct(flags_type_info.struct_id);
+
+        let flags_ptr = self.local_temp(flags_type.ptr());
+        self.addr_of(flags_ptr.clone(), set_ref);
+
+        self.call(flags_type_info.exclude_func, [
+            Value::from(flags_ptr),
+            bit_val.into(),
+        ], None);
+    }
+
+    pub fn set_contains(&mut self, set_ref: impl Into<Ref>, out: impl Into<Ref>, bit_val: impl Into<Value>, set_type: &typ::SetType) {
+        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type = Type::Struct(flags_type_info.struct_id);
+
+        let flags_ptr = self.local_temp(flags_type.ptr());
+        self.addr_of(flags_ptr.clone(), set_ref);
+
+        self.call(flags_type_info.exclude_func, [
+            Value::from(flags_ptr),
+            bit_val.into(),
+        ], Some(out.into()));
     }
 
     pub fn label(&mut self, label: Label) {

@@ -19,13 +19,12 @@ pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
 use crate::ast as syn;
-use crate::ast::{Access, StructKind};
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::Visibility;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::{EnumDecl, SetDecl};
+use crate::ast::{Access, StructKind};
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
@@ -35,6 +34,7 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::SELF_TY_NAME;
+use crate::typ::ast::{EnumDecl, SetDecl};
 use crate::typ::specialize_by_return_ty;
 use crate::typ::specialize_struct_def;
 use crate::typ::specialize_variant_def;
@@ -709,6 +709,16 @@ impl Context {
         }
 
         Ok(())
+    }
+    
+    pub fn declare_set(&mut self,
+        set_decl: &Rc<SetDecl>,
+        visibility: Visibility
+    ) -> TypeResult<()> {
+        let set_type = set_decl.to_set_type();
+        let decl_ty = Type::set(set_type);
+
+        self.declare_type(set_decl.name.ident().clone(), decl_ty, visibility, false)
     }
 
     /// declare the type params of a function in the local scope

@@ -115,9 +115,9 @@ impl fmt::Display for Module {
                             write!(f, "array of {}", self.metadata.pretty_ty_name(element))?;
                         },
 
-                        StructIdentity::SetFlags256 => {
+                        StructIdentity::SetFlags { .. } => {
                             write!(f, "set")?;
-                        },
+                        }
                     }
 
                     writeln!(f)?;

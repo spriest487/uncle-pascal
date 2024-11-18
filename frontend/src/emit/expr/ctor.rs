@@ -1,6 +1,8 @@
 use crate::emit::builder::Builder;
 use crate::emit::expr;
-use crate::emit::typ;
+use crate::emit::expr::translate_expr;
+use crate::typ;
+use bigdecimal::BigDecimal;
 use ir_lang::*;
 
 pub fn translate_object_ctor(ctor: &typ::ast::ObjectCtor, builder: &mut Builder) -> Ref {
@@ -75,8 +77,13 @@ pub fn translate_collection_ctor(ctor: &typ::ast::CollectionCtor, builder: &mut 
         },
 
         typ::Type::DynArray { element } => translate_dyn_array_ctor(ctor, element, builder),
+        
+        typ::Type::Set(set_type) => {
+            let flags_type = builder.translate_type(ctor_ty.as_ref());
+            translate_set_ctor(ctor, set_type, flags_type, builder)
+        }
 
-        unimpl => unimplemented!("IR for array constructor {} of type {}", ctor, unimpl),
+        unimpl => unimplemented!("IR for collection constructor {} of type {}", ctor, unimpl),
     }
 }
 
@@ -195,4 +202,32 @@ fn translate_dyn_array_ctor(
     });
 
     arr
+}
+
+fn translate_set_ctor(
+    ctor: &typ::ast::CollectionCtor,
+    set_type: &typ::SetType,
+    flags_type: Type,
+    builder: &mut Builder
+) -> Ref {    
+    let set_result = builder.local_temp(flags_type);
+    
+    let item_type = builder.translate_type(&set_type.item_type);
+
+    let set_min = BigDecimal::from(set_type.min.as_i128());
+    let min_val = Value::from_literal_val(set_min.clone(), &item_type)
+        .unwrap_or_else(|| panic!("set value type must be a valid numeric primitive, was: {} ({})", set_min, item_type));
+    
+    let bit = builder.local_temp(Type::U8);
+
+    for item in &ctor.elements {
+        let item_val = translate_expr(&item.value, builder);
+        let item_index = builder.sub_to_val(item_val, min_val.clone(), &item_type);
+        
+        builder.cast(bit.clone(), item_index, Type::U8);
+        
+        builder.set_include(set_result.clone(), bit.clone(), set_type);
+    }
+
+    set_result
 }

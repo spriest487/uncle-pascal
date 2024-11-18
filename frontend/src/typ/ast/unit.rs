@@ -229,14 +229,26 @@ fn typecheck_type_decl_item(
             let ty = Type::enumeration(full_name.full_path.clone());
             typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
         },
-        ast::TypeDeclItem::Set(_) => {
-            let ty = Type::set(full_name.full_path.clone());
-            typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
+        ast::TypeDeclItem::Set(set_decl) => {
+            typecheck_set_decl_item(set_decl, full_name, visibility, ctx)
         }
     }
 }
 
-// for all cases other than aliases
+fn typecheck_set_decl_item(
+    set_decl: &ast::SetDecl,
+    full_name: Symbol,
+    visibility: Visibility,
+    ctx: &mut Context
+) -> TypeResult<TypeDeclItem> {
+    let set_decl = Rc::new(SetDecl::typecheck(set_decl, full_name, ctx)?);
+    
+    ctx.declare_set(&set_decl, visibility)?;
+
+    Ok(TypeDeclItem::Set(set_decl))
+}
+
+// for all cases other than aliases and sets
 fn typecheck_type_decl_item_with_def(
     full_name: Symbol,
     ty: Type,
@@ -274,9 +286,8 @@ fn typecheck_type_decl_item_with_def(
             ctx.declare_enum(enum_decl.clone(), visibility)?;
         }
 
-        TypeDeclItem::Set(set_decl) => {
-            let set_type = Type::set(set_decl.name.full_path.clone());
-            ctx.declare_type(set_decl.name.ident().clone(), set_type, visibility, false)?;
+        TypeDeclItem::Set(..) => {
+            unreachable!("handled separately")
         }
         
         TypeDeclItem::Alias(_) => unreachable!()

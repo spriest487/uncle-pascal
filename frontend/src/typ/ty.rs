@@ -9,10 +9,12 @@ pub mod pattern;
 pub mod primitive;
 pub mod sig;
 pub mod ty_param;
+pub mod set;
 
 pub use self::array::*;
 pub use self::pattern::*;
 pub use self::primitive::*;
+pub use self::set::*;
 pub use self::sig::*;
 pub use self::specialize::*;
 pub use self::ty_param::*;
@@ -32,9 +34,11 @@ use crate::typ::builtin_unit_path;
 use crate::typ::context;
 use crate::typ::result::*;
 use crate::typ::Context;
+use crate::typ::Def;
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
+use crate::typ::NameError;
 use crate::typ::NameResult;
 use crate::typ::Symbol;
 use crate::typ::Typed;
@@ -64,7 +68,7 @@ pub enum Type {
     Weak(Rc<Type>),
     Any,
     Enum(Rc<IdentPath>),
-    Set(Rc<IdentPath>),
+    Set(Rc<SetType>),
 }
 
 impl From<Primitive> for Type {
@@ -96,8 +100,8 @@ impl Type {
         Type::Enum(Rc::new(sym.into()))
     }
 
-    pub fn set(sym: impl Into<IdentPath>) -> Self {
-        Type::Set(Rc::new(sym.into()))
+    pub fn set(set: impl Into<Rc<SetType>>) -> Self {
+        Type::Set(set.into())
     }
     
     pub fn interface(name: impl Into<IdentPath>) -> Self {
@@ -259,35 +263,46 @@ impl Type {
         Ok(result)
     }
 
-    pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>) -> Self {
+    pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>, ctx: &Context) -> NameResult<Self> {
         match type_decl {
             ast::TypeDeclItem::Struct(class)
             if class.kind == StructKind::Record => {
-                Type::Record(Rc::new(class.name.clone()))
+                Ok(Type::Record(Rc::new(class.name.clone())))
             },
 
             ast::TypeDeclItem::Struct(class) => {
-                Type::Class(Rc::new(class.name.clone()))
+                Ok(Type::Class(Rc::new(class.name.clone())))
             },
 
             ast::TypeDeclItem::Variant(variant) => {
-                Type::Variant(variant.name.clone())
+                Ok(Type::Variant(variant.name.clone()))
             },
 
             ast::TypeDeclItem::Interface(iface) => {
-                Type::interface(iface.name.full_path.clone())
+                Ok(Type::interface(iface.name.full_path.clone()))
             },
 
             ast::TypeDeclItem::Enum(enum_decl) => {
-                Type::enumeration(enum_decl.name.full_path.clone())
+                Ok(Type::enumeration(enum_decl.name.full_path.clone()))
             },
             
             ast::TypeDeclItem::Set(set_decl) => {
-                Type::set(set_decl.name.full_path.clone())
+                let name = &set_decl.name.full_path;
+                let set_decl = ctx
+                    .find_type_def(name)
+                    .and_then(|def| match def {
+                        Def::Set(set_decl) => Some(set_decl),
+                        _ => None,
+                    })
+                    .ok_or_else(|| NameError::not_found(name.clone()))?;
+                
+                let set_type = set_decl.to_set_type();
+
+                Ok(Type::set(set_type))
             }
 
             ast::TypeDeclItem::Alias(alias) => {
-                (*alias.ty).clone()
+                Ok((*alias.ty).clone())
             },
         }
     }
@@ -926,6 +941,13 @@ impl Type {
             other => Err(other),
         }
     }
+    
+    pub fn as_set(&self) -> Option<&Rc<SetType>> {
+        match self {
+            Type::Set(set_type) => Some(set_type),
+            _ => None,
+        }
+    }
 
     pub fn as_func(&self) -> Result<&Rc<FunctionSig>, &Self> {
         match self {
@@ -1132,8 +1154,9 @@ impl fmt::Display for Type {
             Type::Class(name) 
             | Type::Record(name)  => write!(f, "{}", name),
 
-            Type::Enum(name)
-            | Type::Set(name) => write!(f, "{}", name),
+            Type::Enum(name)  => write!(f, "{}", name),
+
+            Type::Set(set) => write!(f, "{}", set),
 
             Type::Weak(weak_ty) => write!(f, "{} {}", Keyword::Weak, weak_ty),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),

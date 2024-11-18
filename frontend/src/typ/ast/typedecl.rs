@@ -2,7 +2,7 @@
 mod test;
 
 use crate::ast;
-use crate::ast::FunctionName;
+use crate::ast::{FunctionName, Literal};
 use crate::ast::Ident;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
@@ -31,6 +31,7 @@ use common::span::Span;
 use common::span::Spanned;
 use std::borrow::Cow;
 use std::rc::Rc;
+use crate::typ::set::SetType;
 
 pub type StructDef = ast::StructDecl<Typed>;
 pub type StructMemberDecl = ast::StructMemberDecl<Typed>;
@@ -44,6 +45,7 @@ pub type EnumDeclItem = ast::EnumDeclItem<Typed>;
 pub type SetDecl = ast::SetDecl<Typed>;
 
 pub const VARIANT_TAG_TYPE: Type = Type::Primitive(Primitive::Int32);
+pub const SET_DEFAULT_VALUE_TYPE: Type = Type::Primitive(Primitive::UInt8);
 
 impl VariantDef {
     pub fn find_method<'a>(&'a self, name: &'a Ident, sig: &FunctionSig) -> Option<&'a MethodDecl> {
@@ -400,12 +402,12 @@ impl SetDecl {
             })
         }
 
+        let mut values: Vec<IntConstant> = Vec::new();
         let mut items: Vec<Expr> = Vec::new();
 
         for i in 0..set_decl.items.len() {
-            // default to expecting Integers
             let expect_ty = match i {
-                0 => Cow::Owned(Type::Primitive(Primitive::Int32)),
+                0 => Cow::Borrowed(&SET_DEFAULT_VALUE_TYPE),
                 _ => items[0].annotation().ty(),
             };
 
@@ -430,7 +432,7 @@ impl SetDecl {
                     }
                 }
 
-                _ => {
+                1.. => {
                     let value_ty = value_expr.annotation().ty();
 
                     if value_ty != expect_ty {
@@ -445,20 +447,23 @@ impl SetDecl {
                 }
             };
 
-            let value_literal = value_expr
+            let value = value_expr
                 .const_eval(ctx)
+                .and_then(|lit| lit.try_into_int())
                 .ok_or_else(|| {
                     TypeError::InvalidConstExpr { expr: Box::new(value_expr.clone()) }
                 })?;
 
+            values.push(value.clone());
+            
             let const_val = ConstTyped {
-                value: value_literal.clone(),
+                value: Literal::Integer(value),
                 ty,
                 span: value_expr.span().clone(),
                 decl: None,
             };
 
-            items.push(Expr::Literal(value_literal, Typed::from(const_val)));
+            items.push(Expr::Literal(const_val.value.clone(), Typed::from(const_val)));
         }
 
         let set_decl = SetDecl {
@@ -472,5 +477,34 @@ impl SetDecl {
     
     pub fn value_type(&self) -> Cow<Type> {
         self.items[0].annotation().ty()
+    }
+    
+    pub fn to_set_type(&self) -> SetType {
+        let values: Vec<_> = self.items
+            .iter()
+            .map(|item| {
+                match item {
+                    Expr::Literal(Literal::Integer(int), ..) => *int,
+                    _ => unreachable!("typechecking shouldn't allow any non-int literals"),
+                }
+            })
+            .collect();
+        
+        let mut max = i128::MIN;
+        let mut min = i128::MAX;
+        
+        for value in &values {
+            max = i128::max(max, value.as_i128());
+            min = i128::min(min, value.as_i128());
+        }
+        
+        assert!(min < max);
+        
+        SetType {
+            name: Some(self.name.full_path.clone()),
+            min: IntConstant::from(min),
+            max: IntConstant::from(max),
+            item_type: self.value_type().into_owned(),
+        }
     }
 }

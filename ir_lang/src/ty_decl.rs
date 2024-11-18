@@ -24,8 +24,8 @@ pub enum StructIdentity {
     DynArray(Type),
     Closure(ClosureIdentity),
     
-    // the 256-bit bitmask type for set flag collections
-    SetFlags256,
+    // bitmask type for set flag collections. value is the number of bits
+    SetFlags { bits: usize }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -51,7 +51,7 @@ impl StructIdentity {
         match self {
             StructIdentity::Array(..) 
             | StructIdentity::Record(..) 
-            | StructIdentity::SetFlags256 => false,
+            | StructIdentity::SetFlags { .. } => false,
 
             StructIdentity::Class(..)
             | StructIdentity::DynArray(..)
@@ -136,7 +136,7 @@ impl TypeDef {
                     let ty_name = ty_format(ty);
                     format!("array of {}", ty_name)
                 }
-                StructIdentity::SetFlags256 => {
+                StructIdentity::SetFlags { .. } => {
                     "set".to_string()
                 }
             },
