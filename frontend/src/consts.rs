@@ -24,6 +24,10 @@ impl IntConstant {
     pub fn is_zero(&self) -> bool {
         self.0 == 0
     }
+    
+    pub fn zero() -> Self {
+        Self(0)
+    }
 
     pub fn parse_str(s: &str) -> Option<Self> {
         let s = s.trim();

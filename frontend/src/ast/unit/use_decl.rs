@@ -6,11 +6,12 @@ use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
 use crate::Keyword;
+use crate::Operator;
 use crate::Separator;
-use derivative::*;
 use common::span::Span;
 use common::span::Spanned;
 use common::TracedError;
+use derivative::*;
 use std::fmt;
 
 #[derive(Clone, Debug)]
@@ -99,7 +100,7 @@ impl ParseSeq for UseDeclItem {
 
         let unit = IdentPath::parse(tokens)?;
 
-        let (path, span) = match tokens.match_one_maybe(Keyword::In) {
+        let (path, span) = match tokens.match_one_maybe(Operator::In) {
             Some(..) => {
                 let path_tt = tokens.match_one(Matcher::AnyLiteralString)?;
                 let path_string = path_tt.as_literal_string().unwrap().to_string();

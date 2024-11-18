@@ -516,6 +516,19 @@ impl<'m> Builder<'m> {
         }));
     }
 
+    pub fn or_to_value(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
+        let a = a.into();
+        let b = b.into();
+
+        if let (Some(a_val), Some(b_val)) = (a.to_literal_bool(), b.to_literal_bool()) {
+            Value::LiteralBool(a_val || b_val)
+        } else {
+            let result = self.local_temp(Type::Bool);
+            self.or(result.clone(), a, b);
+            Value::Ref(result)
+        }
+    }
+
     pub fn bit_and(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::BitAnd(BinOpInstruction {
             a: a.into(),
@@ -574,6 +587,19 @@ impl<'m> Builder<'m> {
             a: a.into(),
             b: b.into(),
         }))
+    }
+
+    pub fn gt_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
+        let a = a.into();
+        let b = b.into();
+
+        if let (Some(a_val), Some(b_val)) = (a.to_literal_val(), b.to_literal_val()) {
+            Value::LiteralBool(a_val > b_val)
+        } else {
+            let result = self.local_temp(Type::Bool);
+            self.gt(result.clone(), a, b);
+            Value::Ref(result)
+        }
     }
 
     pub fn gte(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
@@ -699,14 +725,19 @@ impl<'m> Builder<'m> {
         ], None);
     }
 
-    pub fn set_contains(&mut self, set_ref: impl Into<Ref>, out: impl Into<Ref>, bit_val: impl Into<Value>, set_type: &typ::SetType) {
+    pub fn set_contains(&mut self,
+        out: impl Into<Ref>,
+        set_ref: impl Into<Ref>,
+        bit_val: impl Into<Value>,
+        set_type: &typ::SetType
+    ) {
         let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
         let flags_type = Type::Struct(flags_type_info.struct_id);
 
         let flags_ptr = self.local_temp(flags_type.ptr());
         self.addr_of(flags_ptr.clone(), set_ref);
 
-        self.call(flags_type_info.exclude_func, [
+        self.call(flags_type_info.contains_func, [
             Value::from(flags_ptr),
             bit_val.into(),
         ], Some(out.into()));

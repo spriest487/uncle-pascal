@@ -106,6 +106,13 @@ impl Value {
     pub fn deref(self) -> Ref {
         Ref::Deref(Box::new(self))
     }
+    
+    pub fn to_literal_bool(&self) -> Option<bool> {
+        match self {
+            Value::LiteralBool(b) => Some(*b),
+            _ => None,
+        }
+    }
 
     pub fn to_literal_val(&self) -> Option<BigDecimal> {
         match self {

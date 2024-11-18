@@ -1,9 +1,12 @@
 use crate::emit::builder::Builder;
-use crate::emit::expr;
 use crate::emit::syn;
 use crate::emit::typ;
+use crate::emit::expr;
+use crate::IntConstant;
+use bigdecimal::BigDecimal;
 use ir_lang::*;
 use syn::Operator;
+use crate::emit::expr::translate_expr;
 
 pub fn translate_bin_op(
     bin_op: &typ::ast::BinOp,
@@ -201,6 +204,44 @@ pub fn translate_bin_op(
             let b = expr::expr_to_val(&bin_op.rhs, builder);
             builder.bit_xor(out_val.clone(), lhs_val, b);
         },
+        
+        syn::Operator::In => {
+            let break_label = builder.alloc_label();
+            let fail_label = builder.alloc_label();
+            
+            let item = expr::expr_to_val(&bin_op.lhs, builder);
+            
+            let set_val = translate_expr(&bin_op.rhs, builder);
+            let rhs_type = bin_op.rhs.annotation().ty();
+
+            let set_type = rhs_type
+                .as_set()
+                .expect("rhs of `in` expression must be a set type value");
+            
+            let value_type = builder.translate_type(&set_type.item_type);
+            
+            let min_lit = set_bound_to_literal(set_type.min, &value_type);
+            let max_lit = set_bound_to_literal(set_type.max, &value_type);
+
+            // if bit is not in range
+            let lt_min = builder.lt_to_val(item.clone(), min_lit.clone());
+            let gt_max = builder.gt_to_val(item.clone(), max_lit);
+            let out_of_range = builder.or_to_value(lt_min, gt_max);
+            builder.jmp_if(fail_label, out_of_range.clone());
+
+            // calc bit number
+            let bit_num = builder.sub_to_val(item, min_lit, &value_type);
+            let bit_num_byte = builder.local_temp(Type::U8);
+            builder.cast(bit_num_byte.clone(), bit_num, Type::U8);
+            
+            builder.set_contains(out_val.clone(), set_val, bit_num_byte, set_type.as_ref());
+            builder.jmp(break_label);
+
+            builder.label(fail_label);
+            builder.mov(out_val.clone(), Value::LiteralBool(false));
+
+            builder.label(break_label);
+        }
 
         _ => unimplemented!("IR for op {}", bin_op.op),
     };
@@ -216,6 +257,17 @@ pub fn translate_bin_op(
     } else {
         out_val
     }
+}
+
+fn set_bound_to_literal(value: IntConstant, value_type: &Type) -> Value {
+    let lit_val = BigDecimal::from(value.as_i128());
+
+    Value::from_literal_val(lit_val, &value_type)
+        .unwrap_or_else(|| panic!(
+            "couldn't create a literal value from set bound value {} of type {}",
+            value,
+            value_type,
+        ))
 }
 
 pub fn translate_unary_op(

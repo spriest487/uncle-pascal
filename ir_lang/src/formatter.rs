@@ -93,13 +93,13 @@ pub trait InstructionFormatter {
                 self.format_bin_op_instruction(f, "gt", op, ">")
             }
             Instruction::Gte(op) => {
-                self.format_bin_op_instruction(f, "gt", op, ">=")
+                self.format_bin_op_instruction(f, "gte", op, ">=")
             }
             Instruction::Lt(op) => {
-                self.format_bin_op_instruction(f, "gt", op, "<")
+                self.format_bin_op_instruction(f, "lt", op, "<")
             }
             Instruction::Lte(op) => {
-                self.format_bin_op_instruction(f, "gt", op, "<=")
+                self.format_bin_op_instruction(f, "lte", op, "<=")
             }
 
             Instruction::Not(op) => {

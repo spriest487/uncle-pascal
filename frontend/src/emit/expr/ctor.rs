@@ -1,8 +1,8 @@
 use crate::emit::builder::Builder;
-use crate::emit::expr;
+use crate::emit::{expr, set_word_count, WORD_TYPE};
 use crate::emit::expr::translate_expr;
 use crate::typ;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, Zero};
 use ir_lang::*;
 
 pub fn translate_object_ctor(ctor: &typ::ast::ObjectCtor, builder: &mut Builder) -> Ref {
@@ -210,7 +210,16 @@ fn translate_set_ctor(
     flags_type: Type,
     builder: &mut Builder
 ) -> Ref {    
-    let set_result = builder.local_temp(flags_type);
+    let set_result = builder.local_temp(flags_type.clone());
+
+    // zero-init the value
+    let word_ptr = builder.local_temp(WORD_TYPE.ptr());
+    let zero_word = Value::from_literal_val(BigDecimal::zero(), &WORD_TYPE).unwrap();
+
+    for word in 0..set_word_count(set_type.flags_type_bits()) {
+        builder.field(word_ptr.clone(), set_result.clone(), flags_type.clone(), FieldID(word));
+        builder.mov(word_ptr.clone().to_deref(), zero_word.clone());
+    }
     
     let item_type = builder.translate_type(&set_type.item_type);
 
@@ -223,7 +232,7 @@ fn translate_set_ctor(
     for item in &ctor.elements {
         let item_val = translate_expr(&item.value, builder);
         let item_index = builder.sub_to_val(item_val, min_val.clone(), &item_type);
-        
+
         builder.cast(bit.clone(), item_index, Type::U8);
         
         builder.set_include(set_result.clone(), bit.clone(), set_type);

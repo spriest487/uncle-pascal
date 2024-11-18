@@ -8,6 +8,9 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::ast::INTERFACE_METHOD_ACCESS;
+use crate::typ::ast::check_overload_visibility;
+use crate::typ::ast::const_eval_integer;
+use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
 use crate::typ::ast::overload_to_no_args_call;
 use crate::typ::ast::try_resolve_overload;
@@ -16,12 +19,8 @@ use crate::typ::ast::typecheck_object_ctor;
 use crate::typ::ast::Call;
 use crate::typ::ast::Expr;
 use crate::typ::ast::MethodCall;
-use crate::typ::ast::OverloadCandidate;
-use crate::typ::ast::check_overload_visibility;
-use crate::typ::ast::const_eval_integer;
-use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::MethodDecl;
-use crate::typ::builtin_displayable_name;
+use crate::typ::ast::OverloadCandidate;
 use crate::typ::string_type;
 use crate::typ::Context;
 use crate::typ::FunctionTyped;
@@ -43,6 +42,7 @@ use crate::typ::ValueKind;
 use crate::typ::DISPLAYABLE_TOSTRING_METHOD;
 use crate::typ::STRING_CONCAT_FUNC_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
+use crate::typ::{builtin_displayable_name, SetType};
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
@@ -72,6 +72,8 @@ pub fn typecheck_bin_op(
         Operator::Period => typecheck_member_of(&bin_op.lhs, &bin_op.rhs, span, expect_ty, ctx),
 
         Operator::Index => typecheck_indexer(&bin_op.lhs, &bin_op.rhs, &span, ctx),
+        
+        Operator::In => typecheck_set_contains(&bin_op.lhs, &bin_op.rhs, &span, ctx),
 
         Operator::And | Operator::Or => {
             let bin_op = typecheck_logical_op(bin_op, span, ctx)?;
@@ -1045,6 +1047,97 @@ pub fn typecheck_indexer(
         op: Operator::Index,
         annotation,
     }))
+}
+
+pub fn typecheck_set_contains(
+    lhs: &ast::Expr<Span>,
+    rhs: &ast::Expr<Span>,
+    span: &Span,
+    ctx: &mut Context,
+) -> TypeResult<Expr> {
+    // type inference can work both ways here:
+    // if the expression on the right is a collection constructor, we already know typechecking
+    // would normally fail, because without a hint, we will infer it as an array. in that case,
+    // check the item expr first and use its type to hint that a set is expected.
+    // in any other case, check the set expr first since it must refer to a known set type,
+    // which can be used to infer the item expr type if needed
+    let (item_expr, set_expr) = match rhs {
+        ast::Expr::CollectionCtor(..) => {
+            let item_expr = typecheck_expr(lhs, &Type::Nothing, ctx)?;
+            item_expr.annotation().expect_any_value()?;
+
+            let expect_set_type = Type::set(SetType {
+                item_type: item_expr.annotation().ty().into_owned(),
+
+                // we only care about the item type for inference 
+                min: IntConstant::zero(),
+                max: IntConstant::zero(),
+                name: None,
+            });
+
+            let set_expr = typecheck_expr(rhs, &expect_set_type, ctx)?;
+
+            match set_expr.annotation().ty().as_ref() {
+                Type::Set(set_type) => {
+                    if set_type.item_type != *item_expr.annotation().ty() {
+                        return Err(TypeError::InvalidBinOp {
+                            lhs: item_expr.annotation().ty().into_owned(),
+                            rhs: set_expr.annotation().ty().into_owned(),
+                            span: span.clone(),
+                            op: Operator::In,
+                        })
+                    }
+                }
+
+                invalid => {
+                    return Err(TypeError::InvalidBinOp {
+                        lhs: item_expr.annotation().ty().into_owned(),
+                        rhs: invalid.clone(),
+                        span: span.clone(),
+                        op: Operator::In,
+                    })
+                }
+            }
+
+            (item_expr, set_expr)
+        }
+        
+        _ => {
+            let set_expr = typecheck_expr(rhs, &Type::Nothing, ctx)?;
+            let set_expr_type = set_expr.annotation().ty();
+
+            let item_expect_ty = match set_expr_type.as_ref() {
+                Type::Set(set_type) => {
+                    &set_type.item_type
+                }
+
+                invalid => {
+                    let invalid_lhs = typecheck_expr(lhs, &Type::Nothing, ctx)?;
+                    return Err(TypeError::InvalidBinOp {
+                        lhs: invalid_lhs.annotation().ty().into_owned(),
+                        rhs: invalid.clone(),
+                        span: span.clone(),
+                        op: Operator::In,
+                    })
+                }
+            };
+            
+            let item_expr = typecheck_expr(lhs, item_expect_ty, ctx)?;
+
+            (item_expr, set_expr)
+        }
+    };
+    
+    let value = TypedValue::temp(Type::Primitive(Primitive::Boolean), span.clone());
+    
+    let bin_op = BinOp {
+        lhs: item_expr,
+        rhs: set_expr,
+        op: Operator::In,
+        annotation: Typed::from(value),
+    };
+    
+    Ok(Expr::BinOp(Box::new(bin_op)))
 }
 
 fn check_array_bound_static(base: &Expr, index: &Expr, ctx: &mut Context) -> TypeResult<()> {

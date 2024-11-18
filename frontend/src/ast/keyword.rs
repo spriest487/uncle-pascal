@@ -52,8 +52,7 @@ pub enum Keyword {
     Of,
     Const,
     Weak,
-    
-    In,
+
     Out,
     
     True,
@@ -128,7 +127,6 @@ impl Keyword {
             "const" => Some(Keyword::Const),
             "weak" => Some(Keyword::Weak),
 
-            "in" => Some(Keyword::In),
             "out" => Some(Keyword::Out),
 
             "true" => Some(Keyword::True),
@@ -216,7 +214,6 @@ impl fmt::Display for Keyword {
             Keyword::Weak => "weak",
             
             Keyword::Out => "out",
-            Keyword::In => "in",
             
             Keyword::True => "true",
             Keyword::False => "false",
