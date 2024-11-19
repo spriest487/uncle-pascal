@@ -115,8 +115,8 @@ impl fmt::Display for Module {
                             write!(f, "array of {}", self.metadata.pretty_ty_name(element))?;
                         },
 
-                        StructIdentity::SetFlags { .. } => {
-                            write!(f, "set")?;
+                        StructIdentity::SetFlags { bits } => {
+                            write!(f, "set<{}>", bits)?;
                         }
                     }
 
@@ -207,13 +207,13 @@ impl fmt::Display for Module {
 
         writeln!(f, "* Functions")?;
         for (id, func) in funcs {
-            write!(f, "{}: ", id.0)?;
+            write!(f, "{}: {}", id.0, func.sig().to_pretty_string(&self.metadata))?;
             match self.metadata.func_desc(*id) {
                 Some(desc_name) => {
-                    writeln!(f, "{}", desc_name)?;
+                    writeln!(f, " ({})", desc_name)?;
                 },
                 None => {
-                    writeln!(f, " /* {} */", func.debug_name())?;
+                    writeln!(f, " ({})", func.debug_name())?;
                 },
             }
 

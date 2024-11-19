@@ -84,7 +84,7 @@ impl fmt::Display for Struct {
             StructIdentity::Array(ty, dim) => write!(f, "array[{}] of {}", dim, ty),
             StructIdentity::DynArray(ty) => write!(f, "array of {}", ty),
             StructIdentity::Class(name) | StructIdentity::Record(name) => write!(f, "{}", name),
-            StructIdentity::SetFlags { .. } => write!(f, "set"),
+            StructIdentity::SetFlags { bits, .. } => write!(f, "set<{bits}>"),
             StructIdentity::Closure(identity) => write!(
                 f,
                 "closure of function type {} @ {}:{}:{}",

@@ -136,8 +136,8 @@ impl TypeDef {
                     let ty_name = ty_format(ty);
                     format!("array of {}", ty_name)
                 }
-                StructIdentity::SetFlags { .. } => {
-                    "set".to_string()
+                StructIdentity::SetFlags { bits } => {
+                    format!("set<{bits}>")
                 }
             },
             TypeDef::Variant(def) => def.name.to_pretty_string(ty_format),

@@ -2,7 +2,7 @@ use std::fmt;
 use serde::Deserialize;
 use serde::Serialize;
 use common::span::Span;
-use crate::Label;
+use crate::{InstructionFormatter, Label, RawInstructionFormatter};
 use crate::Type;
 use crate::Instruction;
 use crate::NamePath;
@@ -57,30 +57,36 @@ impl FunctionSig {
             param_tys: param_tys.into_iter().collect(),
         }
     }
+    
+    pub fn to_pretty_string(&self, formatter: &impl InstructionFormatter) -> String {
+        let mut result = String::from("function");
+
+        if !self.param_tys.is_empty() {
+            result.push_str("(");
+
+            for (i, param_ty) in self.param_tys.iter().enumerate() {
+                if i > 0 {
+                    result.push_str("; ");
+                }
+                
+                formatter.format_type(param_ty, &mut result).unwrap();
+            }
+
+            result.push_str(")");
+        }
+
+        if self.return_ty != Type::Nothing {
+            result.push_str(": ");
+            formatter.format_type(&self.return_ty, &mut result).unwrap();
+        }
+        
+        result
+    }
 }
 
 impl fmt::Display for FunctionSig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function")?;
-        
-        if !self.param_tys.is_empty() {
-            write!(f, "(")?;
-
-            for (i, param_ty) in self.param_tys.iter().enumerate() {
-                if i > 0 {
-                    write!(f, "; ")?;
-                }
-                write!(f, "{}", param_ty)?;
-            }
-            
-            write!(f, ")")?;
-        }
-        
-        if self.return_ty != Type::Nothing {
-            write!(f, ": {}", self.return_ty)?;
-        }
-
-        Ok(())
+        write!(f, "{}", self.to_pretty_string(&RawInstructionFormatter))
     }
 }
 
