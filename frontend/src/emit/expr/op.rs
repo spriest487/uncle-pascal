@@ -18,17 +18,17 @@ pub fn translate_bin_op(
         return expr::translate_expr(&bin_op.rhs, builder);
     }
 
-    let out_ty = builder.translate_type(out_ty);
+    let result_ty = builder.translate_type(out_ty);
 
     // the functions to translate IR and member operators return pointers to the value
     let (out_val, out_is_ptr) = match bin_op.op {
         Operator::Period | Operator::Index => {
-            let out_val = builder.local_new(out_ty.clone().ptr(), None);
+            let out_val = builder.local_new(result_ty.clone().ptr(), None);
             (out_val, true)
         },
 
         _ => {
-            let out_val = builder.local_new(out_ty.clone(), None);
+            let out_val = builder.local_new(result_ty.clone(), None);
             (out_val, false)
         },
     };
@@ -70,7 +70,7 @@ pub fn translate_bin_op(
         syn::Operator::Index => {
             let index_val = expr::expr_to_val(&bin_op.rhs, builder);
             let element_val = expr::translate_indexer(
-                &out_ty,
+                &result_ty,
                 lhs_val,
                 index_val,
                 &bin_op.lhs.annotation().ty(),
@@ -87,8 +87,17 @@ pub fn translate_bin_op(
         },
 
         syn::Operator::Equals => {
-            let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.eq(out_val.clone(), lhs_val, b);
+            match out_ty {
+                typ::Type::Set(set_type) => {
+                    let b = translate_expr(&bin_op.rhs, builder);
+                    builder.set_eq(out_val.clone(), lhs_val, b, set_type.as_ref())
+                }
+                
+                _ => {
+                    let b = expr::expr_to_val(&bin_op.rhs, builder);
+                    builder.eq(out_val.clone(), lhs_val, b);
+                }
+            }
         },
 
         syn::Operator::Add => {
@@ -191,18 +200,48 @@ pub fn translate_bin_op(
         },
 
         syn::Operator::BitAnd => {
-            let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.bit_and(out_val.clone(), lhs_val, b);
+            match out_ty {
+                typ::Type::Set(set_type) => {
+                    let b = translate_expr(&bin_op.rhs, builder);
+                    builder.mov(out_val.clone(), lhs_val);
+                    builder.set_bit_and(out_val.clone(), b, set_type.as_ref());
+                }
+
+                _ => {
+                    let b = expr::expr_to_val(&bin_op.rhs, builder);
+                    builder.bit_and(out_val.clone(), lhs_val, b);
+                }
+            }
         },
 
         syn::Operator::BitOr => {
-            let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.bit_or(out_val.clone(), lhs_val, b);
+            match out_ty {
+                typ::Type::Set(set_type) => {
+                    let b = translate_expr(&bin_op.rhs, builder);
+                    builder.mov(out_val.clone(), lhs_val);
+                    builder.set_bit_or(out_val.clone(), b, set_type.as_ref());
+                }
+
+                _ => {
+                    let b = expr::expr_to_val(&bin_op.rhs, builder);
+                    builder.bit_or(out_val.clone(), lhs_val, b);
+                }
+            }
         },
 
         syn::Operator::Caret => {
-            let b = expr::expr_to_val(&bin_op.rhs, builder);
-            builder.bit_xor(out_val.clone(), lhs_val, b);
+            match out_ty {
+                typ::Type::Set(set_type) => {
+                    let b = translate_expr(&bin_op.rhs, builder);
+                    builder.mov(out_val.clone(), lhs_val);
+                    builder.set_bit_xor(out_val.clone(), b, set_type.as_ref());
+                }
+
+                _ => {
+                    let b = expr::expr_to_val(&bin_op.rhs, builder);
+                    builder.bit_xor(out_val.clone(), lhs_val, b);
+                }
+            }
         },
         
         syn::Operator::In => {
@@ -247,7 +286,7 @@ pub fn translate_bin_op(
     };
 
     if !out_is_ptr {
-        builder.retain(out_val.clone(), &out_ty);
+        builder.retain(out_val.clone(), &result_ty);
     }
 
     builder.end_scope();
@@ -335,6 +374,24 @@ pub fn translate_unary_op(
 
             out_val
         },
+        
+        syn::Operator::BitNot => {
+            let result_ty = builder.translate_type(out_ty);
+            let result_val = builder.local_new(result_ty, None);
+            
+            match out_ty {
+                typ::Type::Set(set_type) => {
+                    builder.mov(result_val.clone(), operand_ref.clone());
+                    builder.set_bit_not(result_val.clone(), set_type.as_ref());
+                }
+                
+                _ => {
+                    builder.bit_not(result_val.clone(), operand_ref);
+                }
+            }
+            
+            result_val
+        }
 
         op => unimplemented!("IR translation of unary operator {}", op),
     }

@@ -626,6 +626,19 @@ impl Type {
                 | Operator::Caret,
                 Type::Primitive(rhs),
             ) if *lhs == *rhs => lhs.is_integer() && !lhs.is_signed(),
+            
+            // bitwise ops are valid for sets with the same element type
+            (
+                Type::Set(lhs_set), 
+                Operator::Shl
+                | Operator::Shr
+                | Operator::BitAnd
+                | Operator::BitOr
+                | Operator::Caret, 
+                Type::Set(rhs_set)
+            ) => {
+                lhs_set.item_type == rhs_set.item_type
+            }
 
             _ => false,
         }

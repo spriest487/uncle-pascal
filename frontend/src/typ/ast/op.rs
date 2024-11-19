@@ -264,26 +264,27 @@ fn typecheck_bitwise_op(
 
     let lhs = typecheck_expr(&bin_op.lhs, expect_ty, ctx)?;
     lhs.annotation().expect_any_value()?;
+    
+    let lhs_ty = lhs.annotation().ty();
 
     // for bitwise operations to make sense the lhs and rhs must be the exact same type so insert a
     // conversion here as necessary
     let rhs = implicit_conversion(
-        typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?,
-        &lhs.annotation().ty(),
+        typecheck_expr(&bin_op.rhs, lhs_ty.as_ref(), ctx)?,
+        lhs_ty.as_ref(),
         ctx,
     )?;
     rhs.annotation().expect_any_value()?;
 
-    let lhs_ty = lhs.annotation().ty();
     let rhs_ty = rhs.annotation().ty();
 
-    if !lhs_ty.valid_math_op(bin_op.op, &rhs_ty) {
+    if !lhs_ty.valid_math_op(bin_op.op, rhs_ty.as_ref()) {
         return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
     }
 
     Ok(BinOp {
         annotation: TypedValue {
-            ty: lhs.annotation().ty().into_owned(),
+            ty: lhs_ty.into_owned(),
             span: bin_op.span().clone(),
             value_kind: ValueKind::Temporary,
             decl: None,
@@ -840,6 +841,9 @@ pub fn typecheck_unary_op(
             _ => Type::Nothing,
         },
 
+        // always evaluates to the same type as its operand
+        Operator::BitNot => expect_ty.clone(),
+
         Operator::Caret => expect_ty.clone().ptr(),
         _ => Type::Nothing,
     };
@@ -956,6 +960,7 @@ pub fn typecheck_unary_op(
         Operator::BitNot => {
             let valid_ty = match operand.annotation().ty().as_ref() {
                 Type::Primitive(p) => p.is_integer() && !p.is_signed(),
+                Type::Set(..) => true,
                 _ => false,
             };
 
@@ -967,13 +972,8 @@ pub fn typecheck_unary_op(
                 });
             }
 
-            TypedValue {
-                ty: operand.annotation().ty().into_owned(),
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
-            }
-            .into()
+            let value = TypedValue::temp(operand.annotation().ty().into_owned(), span);
+            Typed::from(value)
         },
 
         _ => {

@@ -2,7 +2,8 @@ use std::fmt;
 use serde::Deserialize;
 use serde::Serialize;
 use common::span::Span;
-use crate::{Label, Type};
+use crate::Label;
+use crate::Type;
 use crate::Instruction;
 use crate::NamePath;
 use crate::TypeDefID;
@@ -11,7 +12,8 @@ use crate::Ref;
 
 pub const BUILTIN_SRC: &str = "rt";
 
-pub const RETURN_REF: Ref = Ref::Local(LocalID(0));
+pub const RETURN_LOCAL: LocalID = LocalID(0);
+pub const RETURN_REF: Ref = Ref::Local(RETURN_LOCAL);
 pub const EXIT_LABEL: Label = Label(0);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
@@ -44,8 +46,17 @@ pub struct StaticClosure {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct FunctionSig {
-    pub return_ty: crate::Type,
-    pub param_tys: Vec<crate::Type>,
+    pub return_ty: Type,
+    pub param_tys: Vec<Type>,
+}
+
+impl FunctionSig {
+    pub fn new(param_tys: impl IntoIterator<Item=Type>, return_ty: Type) -> Self {
+        Self {
+            return_ty,
+            param_tys: param_tys.into_iter().collect(),
+        }
+    }
 }
 
 impl fmt::Display for FunctionSig {

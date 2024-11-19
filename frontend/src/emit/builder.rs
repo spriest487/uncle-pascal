@@ -9,7 +9,7 @@ use crate::emit::metadata::*;
 use crate::emit::module_builder::FunctionDeclKey;
 use crate::emit::module_builder::FunctionDefKey;
 use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::FunctionInstance;
+use crate::emit::{FunctionInstance, SetFlagsType};
 use crate::emit::IROptions;
 use crate::typ as typ;
 use crate::typ::Symbol;
@@ -741,6 +741,85 @@ impl<'m> Builder<'m> {
             Value::from(flags_ptr),
             bit_val.into(),
         ], Some(out.into()));
+    }
+    
+    pub fn set_eq(&mut self,
+        out: impl Into<Ref>,
+        a: impl Into<Ref>,
+        b: impl Into<Ref>,
+        set_type: &typ::SetType
+    ) {
+        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type = Type::Struct(flags_type_info.struct_id);
+
+        let a_ptr = self.local_temp(flags_type.clone().ptr());
+        let b_ptr = self.local_temp(flags_type.ptr());
+        self.addr_of(a_ptr.clone(), a);
+        self.addr_of(b_ptr.clone(), b);
+
+        self.call(flags_type_info.eq_func, [
+            Value::from(a_ptr),
+            Value::from(b_ptr),
+        ], Some(out.into()));
+    }
+
+    pub fn set_bit_not(&mut self,
+        a: impl Into<Ref>,
+        set_type: &typ::SetType
+    ) {
+        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type = Type::Struct(flags_type_info.struct_id);
+
+        let a_ptr = self.local_temp(flags_type.clone().ptr());
+        self.addr_of(a_ptr.clone(), a);
+
+        self.call(flags_type_info.bit_not_func, [
+            Value::from(a_ptr),
+        ], None);
+    }
+
+    fn set_bitwise_op(&mut self,
+        a: impl Into<Ref>,
+        b: impl Into<Ref>,
+        set_type: &typ::SetType,
+        get_func_id: fn(&SetFlagsType) -> FunctionID,
+    ) {
+        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type = Type::Struct(flags_type_info.struct_id);
+
+        let a_ptr = self.local_temp(flags_type.clone().ptr());
+        let b_ptr = self.local_temp(flags_type.ptr());
+        self.addr_of(a_ptr.clone(), a);
+        self.addr_of(b_ptr.clone(), b);
+
+        self.call(get_func_id(&flags_type_info), [
+            Value::from(a_ptr),
+            Value::from(b_ptr),
+        ], None);
+    }
+
+    pub fn set_bit_and(&mut self,
+        a: impl Into<Ref>,
+        b: impl Into<Ref>,
+        set_type: &typ::SetType,
+    ) {
+        self.set_bitwise_op(a, b, set_type, |i| i.bit_and_func)
+    }
+
+    pub fn set_bit_or(&mut self,
+        a: impl Into<Ref>,
+        b: impl Into<Ref>,
+        set_type: &typ::SetType,
+    ) {
+        self.set_bitwise_op(a, b, set_type, |i| i.bit_or_func)
+    }
+
+    pub fn set_bit_xor(&mut self,
+        a: impl Into<Ref>,
+        b: impl Into<Ref>,
+        set_type: &typ::SetType,
+    ) {
+        self.set_bitwise_op(a, b, set_type, |i| i.bit_xor_func)
     }
 
     pub fn label(&mut self, label: Label) {

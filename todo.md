@@ -14,6 +14,7 @@
 * reflection for published members
 * property syntax
 * numeric compiler error codes
+* compound assignment bitwise ops
 
 # bugs
 * source spans shouldn't be included in module files in release mode

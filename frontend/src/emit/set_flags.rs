@@ -1,6 +1,6 @@
 use crate::emit::builder::Builder;
 use crate::emit::module_builder::ModuleBuilder;
-use crate::ir;
+use crate::{ir, Operator};
 use crate::typ::builtin_span;
 
 pub const WORD_TYPE: ir::Type = ir::Type::U64;
@@ -10,14 +10,27 @@ const WORD_BITS: usize = u64::BITS as usize;
 pub struct SetFlagsType {
     pub struct_id: ir::TypeDefID,
 
-    // procedure Include(self: ^Self; bit: UInt8);
+    // function (self: ^Self; bit: UInt8);
     pub include_func: ir::FunctionID,
 
-    // procedure Exclude(self: ^Self; bit: UInt8);
+    // function (self: ^Self; bit: UInt8);
     pub exclude_func: ir::FunctionID,
     
-    // function Contains(self: ^Self, bit: UInt8): Boolean;
+    // function (self: ^Self, bit: UInt8): Boolean;
     pub contains_func: ir::FunctionID,
+
+    // function Equals(self, other: ^Self): Boolean;
+    pub eq_func: ir::FunctionID,
+
+    // these functions all mutate "self" flags
+    
+    // function (self: ^Self);
+    pub bit_not_func: ir::FunctionID,
+    
+    // function (self, other: ^Self);
+    pub bit_and_func: ir::FunctionID,
+    pub bit_or_func: ir::FunctionID,
+    pub bit_xor_func: ir::FunctionID,
 }
 
 pub fn set_word_count(bit_count: usize) -> usize {
@@ -49,14 +62,68 @@ impl SetFlagsType {
         let exclude_func = Self::define_exclude(struct_id, word_count, module);
         let contains_func = Self::define_contains(struct_id, word_count, module);
         
+        let bit_and_func = Self::define_bitwise_bin_op(
+            struct_id,
+            word_count,
+            Operator::BitAnd,
+            module,
+            |builder, out, a, b| builder.bit_and(out, a, b)
+        );
+        let bit_or_func = Self::define_bitwise_bin_op(
+            struct_id,
+            word_count,
+            Operator::BitOr,
+            module,
+            |builder, out, a, b| builder.bit_or(out, a, b)
+        );
+        let bit_xor_func = Self::define_bitwise_bin_op(
+            struct_id,
+            word_count,
+            Operator::Caret,
+            module,
+            |builder, out, a, b| builder.bit_xor(out, a, b)
+        );
+        
+        let bit_not_func = Self::define_bit_not(struct_id, word_count, module);
+        
+        let eq_func = Self::define_eq(struct_id, word_count, module);
+        
         Self {
             struct_id,
             include_func,
             exclude_func,
             contains_func,
+
+            bit_not_func,
+
+            bit_and_func,
+            bit_or_func,
+            bit_xor_func,
+            
+            eq_func,
         }
     }
-    
+
+    fn define_func(
+        name: String,
+        body: Vec<ir::Instruction>,
+        sig: ir::FunctionSig,
+        module: &mut ModuleBuilder
+    ) -> ir::FunctionID {
+        let func = ir::Function::Local(ir::FunctionDef {
+            src_span: builtin_span(),
+
+            sig,
+            debug_name: name,
+            body,
+        });
+
+        let func_id = module.metadata_mut().insert_func(None);
+        module.insert_func(func_id, func);
+
+        func_id
+    }
+
     fn define_include(
         struct_id: ir::TypeDefID,
         word_count: usize,
@@ -77,25 +144,15 @@ impl SetFlagsType {
         builder.shl(word_mask.clone(), ir::Value::LiteralU64(1), word_mask.clone());
         builder.bit_or(word_ref.clone(), word_mask.clone(), word_ref);
         
-        let func = ir::Function::Local(ir::FunctionDef {
-            src_span: builtin_span(),
-            sig: ir::FunctionSig {
-                return_ty: ir::Type::Nothing,
-                param_tys: vec![
-                    ir::Type::Struct(struct_id).ptr(),
-                    ir::Type::U8,
-                ]
-            },
-            debug_name: format!("Include ({}-bit flags)", word_count * WORD_BITS),
-            body: builder.finish(),
-        });
+        let name = format!("operator include ({}-bit flags)", word_count * WORD_BITS);
+        let sig = ir::FunctionSig::new([
+            ir::Type::Struct(struct_id).ptr(),
+            ir::Type::U8,
+        ], ir::Type::Nothing);
         
-        let func_id = module.metadata_mut().insert_func(None);
-        module.insert_func(func_id, func);
-        
-        func_id
+        Self::define_func(name, builder.finish(), sig, module)
     }
-
+    
     fn define_exclude(struct_id: ir::TypeDefID, word_count: usize, module: &mut ModuleBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
@@ -112,24 +169,14 @@ impl SetFlagsType {
         builder.shl(word_mask.clone(), ir::Value::LiteralU64(1), word_mask.clone());
         builder.bit_not(word_mask.clone(), word_mask.clone());
         builder.bit_and(word_ref.clone(), word_mask.clone(), word_ref);
-
-        let func = ir::Function::Local(ir::FunctionDef {
-            src_span: builtin_span(),
-            sig: ir::FunctionSig {
-                return_ty: ir::Type::Nothing,
-                param_tys: vec![
-                    ir::Type::Struct(struct_id).ptr(),
-                    ir::Type::U8,
-                ]
-            },
-            debug_name: format!("Exclude ({}-bit flags)", word_count * WORD_BITS),
-            body: builder.finish(),
-        });
-
-        let func_id = module.metadata_mut().insert_func(None);
-        module.insert_func(func_id, func);
-
-        func_id
+        
+        let name = format!("operator exclude ({}-bit flags)", word_count * WORD_BITS);
+        let sig = ir::FunctionSig::new([
+            ir::Type::Struct(struct_id).ptr(),
+            ir::Type::U8,
+        ], ir::Type::Nothing);
+        
+        Self::define_func(name, builder.finish(), sig, module)
     }
 
     fn define_contains(struct_id: ir::TypeDefID, word_count: usize, module: &mut ModuleBuilder) -> ir::FunctionID {
@@ -152,26 +199,122 @@ impl SetFlagsType {
         let val_and_mask = builder.local_temp(WORD_TYPE);
         builder.bit_and(val_and_mask.clone(), word_mask.clone(), word_ref);
         builder.eq(ir::RETURN_REF, word_mask, val_and_mask.clone());
+        
+        let name = format!("operator in ({}-bit flags)", word_count * WORD_BITS);
+        
+        let sig = ir::FunctionSig::new([
+            ir::Type::Struct(struct_id).ptr(),
+            ir::Type::U8,
+        ], ir::Type::Bool);
 
-        let func = ir::Function::Local(ir::FunctionDef {
-            src_span: builtin_span(),
-            sig: ir::FunctionSig {
-                return_ty: ir::Type::Bool,
-                param_tys: vec![
-                    ir::Type::Struct(struct_id).ptr(),
-                    ir::Type::U8,
-                ]
-            },
-            debug_name: format!("Contains ({}-bit flags)", word_count * WORD_BITS),
-            body: builder.finish(),
-        });
-
-        let func_id = module.metadata_mut().insert_func(None);
-        module.insert_func(func_id, func);
-
-        func_id
+        Self::define_func(name, builder.finish(), sig, module)
     }
     
+    fn define_bitwise_bin_op(
+        struct_id: ir::TypeDefID,
+        word_count: usize,
+        op: Operator,
+        module: &mut ModuleBuilder,
+        build_op: impl Fn(&mut Builder, ir::Ref, ir::Value, ir::Value)
+    ) -> ir::FunctionID {
+        let struct_ty = ir::Type::Struct(struct_id);
+
+        let mut builder = Builder::new(module);
+        builder.bind_param(ir::LocalID(0), struct_ty.clone().ptr(), "flags", false);
+        builder.bind_param(ir::LocalID(1), struct_ty.clone().ptr(), "other", false);
+
+        let flags_ref = ir::Ref::Local(ir::LocalID(0)).to_deref();
+        let other_ref = ir::Ref::Local(ir::LocalID(1)).to_deref();
+        
+        let word_field = builder.local_temp(WORD_TYPE.ptr());
+        let other_word_field = builder.local_temp(WORD_TYPE.ptr());
+
+        for word in 0..word_count {
+            let field_id = ir::FieldID(word);
+            builder.field(word_field.clone(), flags_ref.clone(), struct_ty.clone(), field_id);
+            builder.field(other_word_field.clone(), other_ref.clone(), struct_ty.clone(), field_id);
+            
+            let word_ref = word_field.clone().to_deref();
+            let word_val = ir::Value::from(word_ref.clone());
+            let other_word_val = ir::Value::from(other_word_field.clone().to_deref());
+
+            build_op(&mut builder, word_ref, word_val, other_word_val);
+        }
+
+        let name = format!("operator {} ({}-bit flags)", op, word_count * WORD_BITS);
+        let sig = ir::FunctionSig::new([
+            ir::Type::Struct(struct_id).ptr(),
+            ir::Type::Struct(struct_id).ptr(),
+        ], ir::Type::Nothing);
+
+        Self::define_func(name, builder.finish(), sig, module)
+    }
+    
+    fn define_bit_not(struct_id: ir::TypeDefID, word_count: usize, module: &mut ModuleBuilder) -> ir::FunctionID {
+        let struct_ty = ir::Type::Struct(struct_id);
+
+        let mut builder = Builder::new(module);
+        builder.bind_param(ir::LocalID(0), struct_ty.clone().ptr(), "flags", false);
+
+        let flags_ref = ir::Ref::Local(ir::LocalID(0)).to_deref();
+        
+        let word_field = builder.local_temp(WORD_TYPE.ptr());
+        for word in 0..word_count {
+            let field_id = ir::FieldID(word);
+            builder.field(word_field.clone(), flags_ref.clone(), struct_ty.clone(), field_id);
+            
+            let word_ref = word_field.clone().to_deref();
+            builder.bit_not(word_ref.clone(), word_ref);
+        }
+        
+        let name = format!("operator ~ ({}-bit flags)", word_count * WORD_BITS);
+        let sig = ir::FunctionSig::new([
+            ir::Type::Struct(struct_id).ptr(),
+        ], ir::Type::Nothing);
+        
+        Self::define_func(name, builder.finish(), sig, module)
+    }
+
+    fn define_eq(struct_id: ir::TypeDefID, word_count: usize, module: &mut ModuleBuilder) -> ir::FunctionID {
+        let struct_ty = ir::Type::Struct(struct_id);
+        
+        let mut builder = Builder::new(module);
+        builder.bind_return();
+        builder.bind_param(ir::LocalID(1), struct_ty.clone().ptr(), "flags", false);
+        builder.bind_param(ir::LocalID(2), struct_ty.clone().ptr(), "other", false);
+
+        let flags_ref = ir::Ref::Local(ir::LocalID(1)).to_deref();
+        let other_ref = ir::Ref::Local(ir::LocalID(2)).to_deref();
+
+        let word_field = builder.local_temp(WORD_TYPE.ptr());
+        let other_word_field = builder.local_temp(WORD_TYPE.ptr());
+
+        builder.mov(ir::RETURN_REF, ir::Value::LiteralBool(true));
+        
+        let word_eq_var = builder.local_temp(ir::Type::Bool);
+
+        for word in 0..word_count {
+            let field_id = ir::FieldID(word);
+            builder.field(word_field.clone(), flags_ref.clone(), struct_ty.clone(), field_id);
+            builder.field(other_word_field.clone(), other_ref.clone(), struct_ty.clone(), field_id);
+
+            let word_ref = word_field.clone().to_deref();
+            let other_word_ref = other_word_field.clone().to_deref();
+
+            // result := result and (word = other_word)
+            builder.eq(word_eq_var.clone(), word_ref, other_word_ref);
+            builder.and(ir::RETURN_REF, ir::RETURN_REF, word_eq_var.clone());
+        }
+        
+        let name = format!("operator = ({}-bit flags)", word_count * WORD_BITS);
+        let sig = ir::FunctionSig::new([
+            ir::Type::Struct(struct_id).ptr(),
+            ir::Type::Struct(struct_id).ptr(),
+        ], ir::Type::Bool);
+
+        Self::define_func(name, builder.finish(), sig, module)
+    }
+
     // expected locals:
     // %0: pointer to a struct with fields of consecutive 64-bit words
     // %1: U8 bit number in the 0-255 range 
@@ -196,7 +339,7 @@ impl SetFlagsType {
         for word in 0..word_count {
             let skip_label = if word < word_count - 1 {
                 let skip_label = builder.alloc_label();
-                let next_word_start = ir::Value::LiteralU8(((word + 1) * WORD_BITS) as u8);;
+                let next_word_start = ir::Value::LiteralU8(((word + 1) * WORD_BITS) as u8);
 
                 builder.gte(skip_flag.clone(), bit_arg.clone(), next_word_start.clone());
                 builder.jmp_if(skip_label, skip_flag.clone());
