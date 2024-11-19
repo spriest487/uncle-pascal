@@ -712,6 +712,8 @@ impl<'m> Builder<'m> {
         ], None);
     }
 
+    // todo: what is this for
+    #[allow(unused)]
     pub fn set_exclude(&mut self, set_ref: impl Into<Ref>, bit_val: impl Into<Value>, set_type: &typ::SetType) {
         let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
         let flags_type = Type::Struct(flags_type_info.struct_id);
@@ -1129,17 +1131,19 @@ impl<'m> Builder<'m> {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
                 let rc_funcs = self.module.runtime_type(ty);
 
-                let at_ptr = self.local_temp(ty.clone().ptr());
-                self.append(Instruction::AddrOf {
-                    out: at_ptr.clone(),
-                    a: at,
-                });
+                if let Some(retain) = rc_funcs.retain {
+                    let at_ptr = self.local_temp(ty.clone().ptr());
+                    self.append(Instruction::AddrOf {
+                        out: at_ptr.clone(),
+                        a: at,
+                    });
 
-                self.append(Instruction::Call {
-                    function: Value::Ref(Ref::Global(GlobalRef::Function(rc_funcs.retain))),
-                    args: vec![Value::Ref(at_ptr)],
-                    out: None,
-                });
+                    self.append(Instruction::Call {
+                        function: Value::Ref(Ref::Global(GlobalRef::Function(retain))),
+                        args: vec![Value::Ref(at_ptr)],
+                        out: None,
+                    });
+                }
 
                 true
             },
@@ -1170,17 +1174,19 @@ impl<'m> Builder<'m> {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
                 let rc_funcs = self.module.runtime_type(ty);
 
-                let at_ptr = self.local_temp(ty.clone().ptr());
-                self.append(Instruction::AddrOf {
-                    out: at_ptr.clone(),
-                    a: at,
-                });
+                if let Some(release) = rc_funcs.release {
+                    let at_ptr = self.local_temp(ty.clone().ptr());
+                    self.append(Instruction::AddrOf {
+                        out: at_ptr.clone(),
+                        a: at,
+                    });
 
-                self.append(Instruction::Call {
-                    function: Value::Ref(Ref::Global(GlobalRef::Function(rc_funcs.release))),
-                    args: vec![Value::Ref(at_ptr)],
-                    out: None,
-                });
+                    self.append(Instruction::Call {
+                        function: Value::Ref(Ref::Global(GlobalRef::Function(release))),
+                        args: vec![Value::Ref(at_ptr)],
+                        out: None,
+                    });
+                }
 
                 true
             },

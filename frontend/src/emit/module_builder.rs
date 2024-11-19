@@ -40,6 +40,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::rc::Rc;
+use ir_lang::RuntimeType;
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -986,18 +987,14 @@ impl ModuleBuilder {
             return boilerplate.clone();
         }
 
-        // declare new func IDs then define them here
-        let funcs = self.module.metadata.declare_runtime_type(ty);
-
-        // special handling for System.String, which has magic cleanup behaviour for its
-        // allocated memory
-
         let release_body = {
             let mut release_builder = Builder::new(self);
             release_builder.bind_param(ir::LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = ir::Ref::Local(ir::LocalID(0)).to_deref();
 
             match ty {
+                // special handling for System.String, which has magic cleanup behaviour for its
+                // allocated memory
                 ir::Type::Struct(ir::STRING_ID) => {
                     let chars_field_ref = release_builder.local_temp(ir::Type::U8.ptr().ptr());
                     release_builder.field(chars_field_ref.clone(), target_ref, ty.clone(), ir::STRING_CHARS_FIELD);
@@ -1012,18 +1009,6 @@ impl ModuleBuilder {
             release_builder.finish()
         };
 
-        self.insert_func(
-            funcs.release,
-            ir::Function::Local(ir::FunctionDef {
-                body: release_body,
-                sig: ir::FunctionSig {
-                    return_ty: ir::Type::Nothing,
-                    param_tys: vec![ty.clone().ptr()],
-                },
-                debug_name: format!("<generated releaser for {}>", self.module.metadata.pretty_ty_name(ty)),
-                src_span: self.module_span().clone(),
-            }),
-        );
 
         let retain_body = {
             let mut retain_builder = Builder::new(self);
@@ -1035,20 +1020,57 @@ impl ModuleBuilder {
             retain_builder.finish()
         };
 
-        self.insert_func(
-            funcs.retain,
-            ir::Function::Local(ir::FunctionDef {
-                body: retain_body,
-                sig: ir::FunctionSig {
-                    return_ty: ir::Type::Nothing,
-                    param_tys: vec![ty.clone().ptr()],
-                },
-                debug_name: format!("generated RC retain func for {}", self.module.metadata.pretty_ty_name(ty)),
-                src_span: self.module_span().clone(),
-            }),
-        );
+        // declare new func IDs then define them here        
+        let retain_func = if retain_body.len() > 0 {
+            let func_id = self.metadata_mut().insert_func(None);
 
-        funcs
+            self.insert_func(
+                func_id,
+                ir::Function::Local(ir::FunctionDef {
+                    body: retain_body,
+                    sig: ir::FunctionSig {
+                        return_ty: ir::Type::Nothing,
+                        param_tys: vec![ty.clone().ptr()],
+                    },
+                    debug_name: format!("generated RC retain func for {}", self.module.metadata.pretty_ty_name(ty)),
+                    src_span: self.module_span().clone(),
+                }),
+            );
+
+            Some(func_id)
+        } else {
+            None
+        };
+        
+        let release_func = if release_body.len() > 0 {
+            let func_id = self.module.metadata.insert_func(None);
+
+            self.insert_func(
+                func_id,
+                ir::Function::Local(ir::FunctionDef {
+                    body: release_body,
+                    sig: ir::FunctionSig {
+                        return_ty: ir::Type::Nothing,
+                        param_tys: vec![ty.clone().ptr()],
+                    },
+                    debug_name: format!("<generated releaser for {}>", self.module.metadata.pretty_ty_name(ty)),
+                    src_span: self.module_span().clone(),
+                }),
+            );
+            
+            Some(func_id)
+        } else {
+            None
+        };
+
+        let rtt = RuntimeType {
+            retain: retain_func,
+            release: release_func,
+        };
+
+        self.module.metadata.declare_runtime_type(ty.clone(), rtt.clone());
+
+        rtt
     }
 
     pub fn translate_dyn_array_struct(
@@ -1542,7 +1564,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, 
     let array_ref_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
     let array_struct_ty = ir::Type::Struct(struct_id);
 
-    let rc_boilerplate = module
+    let runtime_type = module
         .metadata()
         .get_runtime_type(&array_struct_ty)
         .expect("rtti function ids for dynarray inner struct must exist");
@@ -1622,7 +1644,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, 
     let array_ref_ty_name = module.metadata().pretty_ty_name(&array_ref_ty).into_owned();
 
     module.insert_func(
-        rc_boilerplate.release,
+        runtime_type.release.expect("dynarray class object must have a release func id allocated"),
         ir::Function::Local(ir::FunctionDef {
             debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
             sig: ir::FunctionSig {
@@ -1631,20 +1653,6 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, 
             },
             body: releaser_body,
             src_span: module.module_span().clone(),
-        }),
-    );
-
-    // no custom retain behaviour (dynarrays can't be retained!)
-    module.insert_func(
-        rc_boilerplate.retain,
-        ir::Function::Local(ir::FunctionDef {
-            debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
-            sig: ir::FunctionSig {
-                return_ty: ir::Type::Nothing,
-                param_tys: vec![array_struct_ty.clone().ptr()],
-            },
-            body: Vec::new(),
-            src_span: module.module_span().clone()
         }),
     );
 }

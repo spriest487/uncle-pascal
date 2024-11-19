@@ -211,7 +211,9 @@ static void RcRelease(void* instance, bool weak) {
             rc->class->disposer(instance);
             
             // invoke structural release to release struct fields
-            rc->class->cleanup(instance);
+            if (rc->class->cleanup) {
+                rc->class->cleanup(instance);
+            }
             rc->class = NULL;
 
             if (rc->strong_count != 1) {

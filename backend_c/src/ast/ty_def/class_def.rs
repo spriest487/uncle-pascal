@@ -113,7 +113,7 @@ pub struct Class {
     impls: HashMap<ir::InterfaceID, InterfaceImpl>,
 
     disposer: Option<MethodImplFunc>,
-    cleanup_func: FunctionName,
+    release_func: Option<FunctionName>,
 
     // if this class is a dyn array, the RTTI for it
     dyn_array_type_info: Option<ir::DynArrayRuntimeType>,
@@ -170,15 +170,16 @@ impl Class {
             });
 
         let resource_ty = ir::Type::Struct(struct_id);
-        let cleanup_func = metadata
+        let release_func = metadata
             .get_runtime_type(&resource_ty)
-            .map(|funcs| FunctionName::ID(funcs.release))
             .unwrap_or_else(|| {
                 panic!(
                     "missing runtime type for resource struct of IR class {}",
                     metadata.pretty_ty_name(&resource_ty),
                 )
-            });
+            })
+            .release
+            .map(|id| FunctionName::ID(id));
 
         let dyn_array_type_info = metadata
             .dyn_array_structs()
@@ -197,7 +198,7 @@ impl Class {
             struct_id,
             impls,
             disposer,
-            cleanup_func,
+            release_func,
             dyn_array_type_info,
         }
     }
@@ -325,12 +326,13 @@ impl Class {
             writeln!(class_init, "  .disposer = NULL,").unwrap();
         };
 
-        writeln!(
-            class_init,
-            "  .cleanup = (RcCleanupFunc) &{},",
-            self.cleanup_func
-        )
-        .unwrap();
+        
+        writeln!(class_init, "  .cleanup = (RcCleanupFunc) ").unwrap();
+
+        match self.release_func {
+            Some(name) => write!(class_init, "&{},", name).unwrap(),
+            None => write!(class_init, "NULL,").unwrap(),
+        }
 
         if let Some((_, (first_iface_id, _))) = impls.get(0) {
             writeln!(

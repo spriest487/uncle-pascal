@@ -257,19 +257,12 @@ impl Metadata {
         self.bounds_check_functions.get(type_id).cloned()
     }
 
-    pub fn declare_runtime_type(&mut self, ty: &Type) -> RuntimeType {
-        if self.runtime_types.contains_key(ty) {
-            panic!("duplicate rc boilerplate declaration for type {}", self.pretty_ty_name(ty));
+    pub fn declare_runtime_type(&mut self, ty: Type, runtime_type: RuntimeType) {
+        if self.runtime_types.contains_key(&ty) {
+            panic!("duplicate rc boilerplate declaration for type {}", self.pretty_ty_name(&ty));
         }
 
-        let pair = RuntimeType {
-            retain: self.insert_func(None),
-            release: self.insert_func(None),
-        };
-
-        self.runtime_types.insert(ty.clone(), pair.clone());
-
-        pair
+        self.runtime_types.insert(ty, runtime_type);
     }
 
     pub fn declare_dynarray_runtime_type(&mut self, element_ty: &Type) -> DynArrayRuntimeType {
@@ -682,17 +675,13 @@ impl Metadata {
         // the rc boilerplate impls for a dynarray should be empty
         // dyn array structs are heap-allocated and don't need structural ref-counting
         // (but they do need custom finalization to clean up references they hold)
-        self.declare_runtime_type(&Type::Struct(struct_id));
+        let release_id = self.insert_func(None);
+        self.declare_runtime_type(Type::Struct(struct_id), RuntimeType {
+            release: Some(release_id),
+            retain: None,
+        });
+
         self.declare_dynarray_runtime_type(&element);
-
-        // we know it will have a disposer impl (and trust that the module
-        // will generate the code for it if we give it an ID here)
-        //        let disposer_id = self.next_function_id();
-        //        self.functions
-        //            .insert(disposer_id, FunctionDecl { global_name: None });
-
-        //        let array_ref_ty = Type::RcPointer(Some(ClassID::Class(struct_id)));
-        //        self.impl_method(DISPOSABLE_ID, array_ref_ty, "Dispose", disposer_id);
 
         struct_id
     }

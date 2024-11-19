@@ -204,8 +204,8 @@ impl fmt::Display for FieldID {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RuntimeType {
-    pub release: FunctionID,
-    pub retain: FunctionID,
+    pub release: Option<FunctionID>,
+    pub retain: Option<FunctionID>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

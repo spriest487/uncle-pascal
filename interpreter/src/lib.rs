@@ -545,12 +545,19 @@ impl Interpreter {
                 .metadata
                 .runtime_types()
                 .map(|(ty, funcs)| {
-                    format!(
-                        "  {}: release={}, retain={}",
-                        self.metadata.pretty_ty_name(ty),
-                        funcs.release,
-                        funcs.retain,
-                    )
+                    let ty_name = self.metadata.pretty_ty_name(ty);
+
+                    let release_func = match funcs.release {
+                        Some(id) => id.to_string(),
+                        None => "None".to_string(),
+                    };
+
+                    let retain_func = match funcs.retain {
+                        Some(id) => id.to_string(),
+                        None => "None".to_string(),
+                    };
+
+                    format!("  {}: release={}, retain={}", ty_name, release_func, retain_func)
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -640,7 +647,9 @@ impl Interpreter {
 
                 // Now release the fields of the struct as if it was a normal record
                 let rc_funcs = self.find_rc_boilerplate(&ir::Type::Struct(struct_val.type_id))?;
-                self.call(rc_funcs.release, &[val.clone()], None)?;
+                if let Some(release_func) = rc_funcs.release {
+                    self.call(release_func, &[val.clone()], None)?;
+                }
             }
 
             struct_rc.strong_count -= 1;
