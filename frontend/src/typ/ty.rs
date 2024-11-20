@@ -38,7 +38,6 @@ use crate::typ::Def;
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
-use crate::typ::NameError;
 use crate::typ::NameResult;
 use crate::typ::Symbol;
 use crate::typ::Typed;
@@ -263,7 +262,7 @@ impl Type {
         Ok(result)
     }
 
-    pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>, ctx: &Context) -> NameResult<Self> {
+    pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>, ctx: &Context) -> TypeResult<Self> {
         match type_decl {
             ast::TypeDeclItem::Struct(class)
             if class.kind == StructKind::Record => {
@@ -294,9 +293,9 @@ impl Type {
                         Def::Set(set_decl) => Some(set_decl),
                         _ => None,
                     })
-                    .ok_or_else(|| NameError::not_found(name.clone()))?;
+                    .ok_or_else(|| TypeError::name_not_found(name.clone(), name.path_span()))?;
                 
-                let set_type = set_decl.to_set_type();
+                let set_type = set_decl.to_set_type(ctx)?;
 
                 Ok(Type::set(set_type))
             }

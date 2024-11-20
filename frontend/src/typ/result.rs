@@ -12,7 +12,7 @@ use crate::typ::ast::Stmt;
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::ast::VariantDef;
 use crate::typ::context::NameError;
-use crate::typ::FunctionSig;
+use crate::typ::{FunctionSig, MAX_FLAGS_BITS};
 use crate::typ::GenericError;
 use crate::typ::Type;
 use crate::typ::ValueKind;
@@ -201,6 +201,10 @@ pub enum TypeError {
     },
     EmptySetDecl {
         name: IdentPath,
+        span: Span,
+    },
+    TooManySetValues {
+        count: usize,
         span: Span,
     },
 
@@ -406,6 +410,7 @@ impl Spanned for TypeError {
             TypeError::InvalidStatement(expr) => expr.0.annotation().span(),
             
             TypeError::SetValuesMustBeNumeric { span, .. } => span,
+            TypeError::TooManySetValues { span, .. } => span,
             TypeError::EmptySetDecl { span, .. } => span,
             TypeError::EmptyVariantDecl(variant) => variant.span(),
             TypeError::EmptyVariantCaseBinding { span, .. } => span,
@@ -525,6 +530,7 @@ impl DiagnosticOutput for TypeError {
             
             TypeError::SetValuesMustBeNumeric { .. } => "Set values must have numeric types",
             TypeError::EmptySetDecl { .. } => "Empty set declaration",
+            TypeError::TooManySetValues { .. } => "Set contains too many values",
 
             TypeError::EmptyVariantDecl(..) => "Empty variant declaration",
             TypeError::EmptyVariantCaseBinding { .. } => {
@@ -1015,6 +1021,10 @@ impl fmt::Display for TypeError {
             
             TypeError::EmptySetDecl { name, .. } => {
                 write!(f, "set declaration `{}` contains no values", name)
+            }
+            
+            TypeError::TooManySetValues { count, ..  } => {
+                write!(f, "set type contains {count} values, which is more than the maximum number of flag bits ({MAX_FLAGS_BITS})")
             }
 
             TypeError::EmptyVariantDecl(variant) => {

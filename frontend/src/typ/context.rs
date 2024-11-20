@@ -715,7 +715,7 @@ impl Context {
         set_decl: &Rc<SetDecl>,
         visibility: Visibility
     ) -> TypeResult<()> {
-        let set_type = set_decl.to_set_type();
+        let set_type = set_decl.to_set_type(self)?;
         let decl_ty = Type::set(set_type);
 
         self.declare_type(set_decl.name.ident().clone(), decl_ty, visibility, false)

@@ -18,7 +18,7 @@ initialization
 
     for var i := 1 to 10 do begin
         var inSet := i in evens;
-        
+
         WriteLn('is ' + i + ' even? ' + inSet);
     end;
 end.

@@ -8,7 +8,8 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::check_overload_visibility;
+use crate::typ::ast::{check_overload_visibility, SetDecl};
+use crate::typ::ast::collection_ctor_elements;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
@@ -21,6 +22,7 @@ use crate::typ::ast::Expr;
 use crate::typ::ast::MethodCall;
 use crate::typ::ast::MethodDecl;
 use crate::typ::ast::OverloadCandidate;
+use crate::typ::builtin_displayable_name;
 use crate::typ::string_type;
 use crate::typ::Context;
 use crate::typ::FunctionTyped;
@@ -42,7 +44,6 @@ use crate::typ::ValueKind;
 use crate::typ::DISPLAYABLE_TOSTRING_METHOD;
 use crate::typ::STRING_CONCAT_FUNC_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
-use crate::typ::{builtin_displayable_name, SetType};
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
@@ -73,7 +74,7 @@ pub fn typecheck_bin_op(
 
         Operator::Index => typecheck_indexer(&bin_op.lhs, &bin_op.rhs, &span, ctx),
         
-        Operator::In => typecheck_set_contains(&bin_op.lhs, &bin_op.rhs, &span, ctx),
+        Operator::In => typecheck_in_set_operator(&bin_op.lhs, &bin_op.rhs, &span, ctx),
 
         Operator::And | Operator::Or => {
             let bin_op = typecheck_logical_op(bin_op, span, ctx)?;
@@ -1049,7 +1050,7 @@ pub fn typecheck_indexer(
     }))
 }
 
-pub fn typecheck_set_contains(
+pub fn typecheck_in_set_operator(
     lhs: &ast::Expr<Span>,
     rhs: &ast::Expr<Span>,
     span: &Span,
@@ -1062,20 +1063,21 @@ pub fn typecheck_set_contains(
     // in any other case, check the set expr first since it must refer to a known set type,
     // which can be used to infer the item expr type if needed
     let (item_expr, set_expr) = match rhs {
-        ast::Expr::CollectionCtor(..) => {
+        ast::Expr::CollectionCtor(ctor) => {
             let item_expr = typecheck_expr(lhs, &Type::Nothing, ctx)?;
+            
             item_expr.annotation().expect_any_value()?;
+            let item_type = item_expr.annotation().ty().into_owned();
 
-            let expect_set_type = Type::set(SetType {
-                item_type: item_expr.annotation().ty().into_owned(),
+            let elements = collection_ctor_elements(ctor, &item_type, ctx)?;
+            
+            let item_exprs: Vec<_> = elements
+                .into_iter()
+                .map(|el| el.value)
+                .collect();
 
-                // we only care about the item type for inference 
-                min: IntConstant::zero(),
-                max: IntConstant::zero(),
-                name: None,
-            });
-
-            let set_expr = typecheck_expr(rhs, &expect_set_type, ctx)?;
+            let set_type = SetDecl::items_to_set_type(None, &item_exprs, ctx)?;
+            let set_expr = typecheck_expr(rhs, &Type::set(set_type), ctx)?;
 
             match set_expr.annotation().ty().as_ref() {
                 Type::Set(set_type) => {

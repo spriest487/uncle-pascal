@@ -6,7 +6,7 @@ use crate::typ::ast::cast::implicit_conversion;
 use crate::typ::ast::create_default_literal;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::typecheck_type_args;
-use crate::typ::Context;
+use crate::typ::ArrayType;
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
 use crate::typ::GenericTypeHint;
@@ -20,7 +20,7 @@ use crate::typ::TypeResult;
 use crate::typ::Typed;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
-use crate::typ::ArrayType;
+use crate::typ::Context;
 use common::span::Span;
 use common::span::Spanned;
 use linked_hash_map::LinkedHashMap;
@@ -275,7 +275,8 @@ pub fn typecheck_collection_ctor(
         // any set - creating that set
         Type::Set(set_type) => {
             let element_type = &set_type.item_type;
-            let elements = elements_for_expected_ty(ctor, &element_type, ctx)?;
+            let elements = collection_ctor_elements(ctor, &element_type, ctx)?;
+
             (expect_ty.clone(), elements)
         }
 
@@ -288,17 +289,11 @@ pub fn typecheck_collection_ctor(
         },
     };
 
-    let annotation = TypedValue {
-        ty: collection_ty,
-        span: ctor.annotation.clone(),
-        value_kind: ValueKind::Temporary,
-        decl: None,
-    }
-    .into();
+    let annotation = TypedValue::temp(collection_ty, ctor.annotation.clone());
 
     Ok(CollectionCtor {
         elements,
-        annotation,
+        annotation: Typed::from(annotation),
     })
 }
 
@@ -309,7 +304,7 @@ fn array_ctor_elements(
 ) -> TypeResult<(Vec<CollectionCtorElement>, Type)> {
     let (elements, element_ty) = match expect_ty.element_ty() {
         Some(elem_ty) if !elem_ty.contains_unresolved_params(ctx) => {
-            let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
+            let elements = collection_ctor_elements(ctor, elem_ty, ctx)?;
             (elements, elem_ty.clone())
         },
 
@@ -352,15 +347,15 @@ fn elements_for_inferred_ty(
     Ok(elements)
 }
 
-fn elements_for_expected_ty(
+pub fn collection_ctor_elements(
     ctor: &ast::CollectionCtor<Span>,
-    expected_ty: &Type,
+    expect_element_type: &Type,
     ctx: &mut Context,
 ) -> TypeResult<Vec<CollectionCtorElement>> {
     let mut elements = Vec::new();
     for e in &ctor.elements {
-        let value = typecheck_expr(&e.value, expected_ty, ctx)?;
-        value.annotation().expect_value(&expected_ty)?;
+        let value = typecheck_expr(&e.value, expect_element_type, ctx)?;
+        value.annotation().expect_value(&expect_element_type)?;
 
         elements.push(CollectionCtorElement { value });
     }

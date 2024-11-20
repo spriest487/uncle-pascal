@@ -2,7 +2,7 @@
 mod test;
 
 use crate::ast;
-use crate::ast::{FunctionName, Literal};
+use crate::ast::{FunctionName, IdentPath, Literal};
 use crate::ast::Ident;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
@@ -12,7 +12,7 @@ use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::InterfaceMethodDecl;
-use crate::typ::typecheck_type;
+use crate::typ::{typecheck_type, MAX_FLAGS_BITS};
 use crate::typ::ConstTyped;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
@@ -479,32 +479,34 @@ impl SetDecl {
         self.items[0].annotation().ty()
     }
     
-    pub fn to_set_type(&self) -> SetType {
-        let values: Vec<_> = self.items
-            .iter()
-            .map(|item| {
-                match item {
-                    Expr::Literal(Literal::Integer(int), ..) => *int,
-                    _ => unreachable!("typechecking shouldn't allow any non-int literals"),
-                }
-            })
-            .collect();
-        
-        let mut max = i128::MIN;
-        let mut min = i128::MAX;
-        
-        for value in &values {
-            max = i128::max(max, value.as_i128());
-            min = i128::min(min, value.as_i128());
+    pub fn to_set_type(&self, ctx: &Context) -> TypeResult<SetType> {
+        let name = self.name.full_path.clone();
+        Self::items_to_set_type(Some(name), &self.items, ctx)
+    }
+    
+    pub fn items_to_set_type(name: Option<IdentPath>, items: &[Expr], ctx: &Context) -> TypeResult<SetType> {
+        let mut max = 0;
+        let mut min = 0;
+
+        for item in items {
+            let int_val = const_eval_integer(item, ctx)?;
+
+            max = i128::max(max, int_val.as_i128());
+            min = i128::min(min, int_val.as_i128());
         }
         
-        assert!(min < max);
-        
-        SetType {
-            name: Some(self.name.full_path.clone()),
+        if max - min > (MAX_FLAGS_BITS as i128) {
+            return Err(TypeError::TooManySetValues {
+                count: (max - min) as usize,
+                span: items[0].span().to(items[items.len() - 1].span()),
+            })
+        }
+
+        Ok(SetType {
+            name,
             min: IntConstant::from(min),
             max: IntConstant::from(max),
-            item_type: self.value_type().into_owned(),
-        }
+            item_type: items[0].annotation().ty().into_owned(),
+        })
     }
 }
