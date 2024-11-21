@@ -1,13 +1,13 @@
 mod member;
 
+use crate::ast::parse_implements_clause;
+use crate::ast::Access;
 use crate::ast::Annotation;
 use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::TypeDeclName;
-use crate::ast::parse_implements_clause;
-use crate::ast::Access;
-use crate::parse::{Matcher, ParseResult};
 use crate::parse::TokenStream;
+use crate::parse::ParseResult;
 use crate::Keyword;
 use crate::Separator;
 use common::span::Span;
@@ -27,10 +27,6 @@ pub enum StructKind {
 
     /// locally-allocated value type. declared with the `record` keyword.
     Record,
-
-    /// locally-allocated value type with memory layout based on declared field order and no extra padding.
-    /// declared with the `packed record` keywords
-    PackedRecord,
 }
 
 #[derive(Clone, Eq, Derivative)]
@@ -38,6 +34,8 @@ pub enum StructKind {
 pub struct StructDecl<A: Annotation = Span> {
     pub kind: StructKind,
     pub name: A::Name,
+    
+    pub packed: bool,
     
     pub forward: bool,
 
@@ -72,30 +70,34 @@ impl<A: Annotation> StructDecl<A> {
 }
 
 impl StructDecl<Span> {
-    pub fn match_kw() -> Matcher {
-        Keyword::Class | Keyword::Record | Keyword::Packed
-    }
-
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
-        let kw_token = tokens.match_one(Self::match_kw())?;
+        let packed_kw = tokens.match_one_maybe(Keyword::Packed);
+        let packed = packed_kw.is_some();
+        
+        let kw_token = if packed {
+            tokens.match_one(Keyword::Record)?
+        } else {
+            tokens.match_one(Keyword::Record | Keyword::Class)?
+        };
+
         let kind = match &kw_token {
             tt if tt.is_keyword(Keyword::Class) => StructKind::Class,
             tt if tt.is_keyword(Keyword::Record) => StructKind::Record,
-            tt if tt.is_keyword(Keyword::Packed) => {
-                tokens.match_one(Keyword::Record)?;
-                StructKind::PackedRecord
-            },
             _ => unreachable!(),
         };
 
-        let span = kw_token.into_span();
-        
+        let span = match packed_kw {
+            Some(tt) => tt.span().to(kw_token.span()),
+            None => kw_token.into_span(),
+        };
+
         // the last type in a section can never be forward, so every legal forward declaration
         // will end with a semicolon
         if tokens.look_ahead().match_one(Separator::Semicolon).is_some() {
             Ok(StructDecl {
                 kind,
                 name,
+                packed,
                 forward: true,
                 implements: Vec::new(),
                 
@@ -108,7 +110,7 @@ impl StructDecl<Span> {
             
             let default_access = match kind {
                 StructKind::Class => Access::Private,
-                StructKind::Record | StructKind::PackedRecord => Access::Public,
+                StructKind::Record => Access::Public,
             };
 
             let members = parse_struct_members(tokens, default_access)?;
@@ -127,6 +129,7 @@ impl StructDecl<Span> {
             Ok(StructDecl {
                 kind,
                 name,
+                packed,
                 forward: false,
                 implements,
                 fields,
@@ -145,9 +148,12 @@ impl<A: Annotation> Spanned for StructDecl<A> {
 
 impl<A: Annotation> fmt::Display for StructDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.packed {
+            write!(f, "packed ")?;
+        }
+
         let kind = match self.kind {
             StructKind::Record => "record",
-            StructKind::PackedRecord => "packed record",
             StructKind::Class => "class",
         };
         writeln!(f, "{}", kind)?;

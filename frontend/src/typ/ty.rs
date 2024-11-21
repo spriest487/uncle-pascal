@@ -141,7 +141,7 @@ impl Type {
         
         match kind {
             StructKind::Class => Type::Class(sym),
-            StructKind::Record | StructKind::PackedRecord => Type::Record(sym),
+            StructKind::Record => Type::Record(sym),
         }
     }
     

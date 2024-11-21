@@ -87,7 +87,8 @@ impl ModuleBuilder {
         let set_flags_type = SetFlagsType::define_new(&mut module_builder, 256);
 
         module_builder.set_flags_type_info.insert(typ::MAX_FLAGS_BITS, set_flags_type);
-        
+        module_builder.runtime_type(&ir::Type::Struct(set_flags_type.struct_id));
+
         module_builder
     }
 
@@ -865,7 +866,7 @@ impl ModuleBuilder {
                     StructKind::Class => {
                         ir::Type::RcPointer(ir::VirtualTypeID::Class(id))
                     },
-                    StructKind::Record | StructKind::PackedRecord => {
+                    StructKind::Record => {
                         ir::Type::Struct(id)
                     },
                 };
@@ -1149,9 +1150,10 @@ impl ModuleBuilder {
     }
 
     pub fn aligned_struct_members<'a>(&self, struct_def: &'a typ::ast::StructDef) -> Vec<StructLayoutMember<'a>> {
-        let layout = match struct_def.kind {
-            StructKind::Class | StructKind::Record => StructLayout::Auto,
-            StructKind::PackedRecord => StructLayout::Packed,
+        let layout = if struct_def.packed {
+            StructLayout::Packed
+        } else {
+            StructLayout::Auto
         };
 
         layout.members_of(&struct_def, &self.src_metadata).unwrap()

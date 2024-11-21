@@ -649,9 +649,7 @@ impl Context {
 
         let class_ty = match struct_def.kind {
             syn::StructKind::Class => Type::class(struct_def.name.clone()),
-            syn::StructKind::Record | syn::StructKind::PackedRecord => {
-                Type::record(struct_def.name.clone())
-            },
+            syn::StructKind::Record => Type::record(struct_def.name.clone()),
         };
 
         self.declare_type(
@@ -1241,7 +1239,7 @@ impl Context {
             Some(..) => {
                 let expected = match kind {
                     StructKind::Class => ExpectedKind::Class,
-                    StructKind::Record | StructKind::PackedRecord => ExpectedKind::Record,
+                    StructKind::Record => ExpectedKind::Record,
                 };
 
                 Err(self.unexpected_err_for_existing_def(name, expected))

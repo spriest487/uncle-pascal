@@ -210,7 +210,7 @@ impl Parse for TypeDeclItem<Span> {
         let name = TypeDeclName::parse(tokens)?;
         tokens.match_one(Operator::Equals)?;
 
-        let struct_kw_matcher = StructDecl::match_kw();
+        let struct_kw_matcher = Keyword::Packed | Keyword::Class | Keyword::Record;
         let decl_start_matcher = struct_kw_matcher.clone().or(Keyword::Variant);
 
         match tokens.look_ahead().next() {

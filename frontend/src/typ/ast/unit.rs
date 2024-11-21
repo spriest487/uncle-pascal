@@ -211,7 +211,7 @@ fn typecheck_type_decl_item(
                 let ty = Type::class(full_name.clone());
                 typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
             },
-            StructKind::Record | StructKind::PackedRecord => {
+            StructKind::Record => {
                 let ty = Type::record(full_name.clone());
                 typecheck_type_decl_item_with_def(full_name, ty, type_decl, visibility, ctx)
             },

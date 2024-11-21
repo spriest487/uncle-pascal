@@ -101,6 +101,7 @@ pub fn builtin_string_class() -> ast::StructDef {
 
     ast::StructDef {
         name: builtin_string_name(),
+        packed: false,
         fields: vec![
             ast::FieldDecl {
                 ident: Ident::new(STRING_CHARS_FIELD, builtin_span.clone()),

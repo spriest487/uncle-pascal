@@ -53,9 +53,7 @@ pub fn translate_struct_def(
 
     let identity = match struct_def.kind {
         StructKind::Class => StructIdentity::Class(name_path),
-        StructKind::Record | StructKind::PackedRecord => {
-            StructIdentity::Record(name_path)
-        },
+        StructKind::Record => StructIdentity::Record(name_path),
     };
 
     Struct::new(identity, Some(src_span)).with_fields(fields)

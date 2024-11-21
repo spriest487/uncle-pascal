@@ -110,6 +110,7 @@ pub fn specialize_struct_def<'a>(
 
     Ok(Rc::new(StructDef {
         name: specialized_name,
+        packed: generic_def.packed,
         implements,
         fields,
         methods,

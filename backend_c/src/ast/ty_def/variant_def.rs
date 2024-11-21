@@ -109,6 +109,6 @@ impl fmt::Display for VariantDef {
             writeln!(f, "  }} {};", FieldName::VariantData)?;
         }
 
-        write!(f, "}};")
+        write!(f, "}}")
     }
 }

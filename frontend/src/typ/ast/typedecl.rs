@@ -61,7 +61,7 @@ pub fn typecheck_struct_decl(
     ctx: &mut Context,
 ) -> TypeResult<StructDef> {
     let self_ty = match struct_def.kind {
-        StructKind::Record | StructKind::PackedRecord => Type::record(name.clone()),
+        StructKind::Record => Type::record(name.clone()),
         StructKind::Class => Type::class(name.clone()),
     };
 
@@ -177,6 +177,7 @@ pub fn typecheck_struct_decl(
 
     Ok(StructDef {
         kind: struct_def.kind,
+        packed: struct_def.packed,
         name,
         span: struct_def.span.clone(),
         implements,
