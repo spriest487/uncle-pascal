@@ -12,7 +12,7 @@ use crate::typ::Context;
 use crate::typ::Module;
 use crate::typ::Symbol;
 use crate::typ::TypeError;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::TokenTree;
 use common::span::Span;
 use common::BuildOptions;
@@ -235,7 +235,7 @@ fn specializes_func_call_by_arg_ty() {
             assert_eq!("Test.B", func_call.args[0].annotation().ty().to_string());
             
             match func_call.target.annotation() {
-                Typed::Function(func) => {
+                Value::Function(func) => {
                     assert_eq!("Test.B", func.name.type_args.as_ref().unwrap()[0].to_string());
                     assert_eq!("Test.A[Test.B]",  func.name.to_string());
                     

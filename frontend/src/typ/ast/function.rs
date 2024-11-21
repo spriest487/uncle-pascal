@@ -36,7 +36,7 @@ use crate::typ::TypeArgResolver;
 use crate::typ::TypeError;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::typ::{typecheck_type, InvalidOverloadKind};
@@ -52,12 +52,12 @@ use std::rc::Rc;
 pub const SELF_PARAM_NAME: &str = "self";
 pub const SELF_TY_NAME: &str = "Self";
 
-pub type FunctionDecl = ast::FunctionDecl<Typed>;
-pub type FunctionDef = ast::FunctionDef<Typed>;
-pub type FunctionParam = ast::FunctionParam<Typed>;
-pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Typed>;
-pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<Typed>;
-pub type FunctionLocalBinding = ast::FunctionLocalBinding<Typed>;
+pub type FunctionDecl = ast::FunctionDecl<Value>;
+pub type FunctionDef = ast::FunctionDef<Value>;
+pub type FunctionParam = ast::FunctionParam<Value>;
+pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<Value>;
+pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<Value>;
+pub type FunctionLocalBinding = ast::FunctionLocalBinding<Value>;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]

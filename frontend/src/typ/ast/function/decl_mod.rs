@@ -5,11 +5,11 @@ use crate::typ::string_type;
 use crate::typ::Context;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use common::span::Span;
 use common::span::Spanned;
 
-pub type DeclMod = ast::DeclMod<Typed>;
+pub type DeclMod = ast::DeclMod<Value>;
 
 impl DeclMod {
     pub fn typecheck_mods(decl: &ast::FunctionDecl, is_method: bool, ctx: &mut Context) -> TypeResult<Vec<Self>> {

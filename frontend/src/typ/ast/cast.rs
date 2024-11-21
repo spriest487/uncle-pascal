@@ -7,13 +7,13 @@ use crate::typ::Primitive;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use common::span::Span;
 use common::span::Spanned;
 
-pub type Cast = ast::Cast<Typed>;
+pub type Cast = ast::Cast<Value>;
 
 enum Conversion {
     Blittable,

@@ -1,7 +1,5 @@
 # critical
-* rename type annotations again
 * project files/don't auto load used units
-* don't generate RC boilerplate for non-RC types
 * why is the C backend generating packed decls for everything?
 * rename Any -> Object
   * maybe it should be an interface?

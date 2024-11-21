@@ -25,21 +25,21 @@ use crate::typ::ast::OverloadCandidate;
 use crate::typ::builtin_displayable_name;
 use crate::typ::string_type;
 use crate::typ::Context;
-use crate::typ::FunctionTyped;
+use crate::typ::FunctionValue;
 use crate::typ::InstanceMember;
-use crate::typ::MethodTyped;
+use crate::typ::MethodValue;
 use crate::typ::NameContainer;
 use crate::typ::NameError;
-use crate::typ::OverloadTyped;
+use crate::typ::OverloadValue;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeMember;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
-use crate::typ::UfcsTyped;
+use crate::typ::UfcsValue;
 use crate::typ::ValueKind;
 use crate::typ::DISPLAYABLE_TOSTRING_METHOD;
 use crate::typ::STRING_CONCAT_FUNC_NAME;
@@ -51,7 +51,7 @@ use std::rc::Rc;
 use variant_case::try_expr_into_noargs_variant_ctor;
 use variant_case::typecheck_variant_case;
 
-pub type BinOp = ast::BinOp<Typed>;
+pub type BinOp = ast::BinOp<Value>;
 
 fn invalid_bin_op(bin_op: &ast::BinOp<Span>, lhs: &Expr, rhs: &Expr) -> TypeError {
     TypeError::InvalidBinOp {
@@ -141,7 +141,7 @@ pub fn typecheck_bin_op(
             let result_ty = lhs.annotation().ty().into_owned();
 
             let annotation = match result_ty {
-                Type::Nothing => Typed::Untyped(span.clone()),
+                Type::Nothing => Value::Untyped(span.clone()),
                 ty => TypedValue {
                     ty,
                     value_kind: ValueKind::Temporary,
@@ -349,7 +349,7 @@ fn desugar_displayable_to_string(expr: &Expr, span: &Span, ctx: &Context) -> Opt
         type_args: None,
         args_span: span.clone(),
         func_type: Type::Function(to_string_sig.clone()),
-        annotation: MethodTyped::new(
+        annotation: MethodValue::new(
             displayable_ty,
             to_string_index,
             to_string_method,
@@ -397,7 +397,7 @@ fn desugar_string_concat(
 
             let concat_sym = Symbol::from(concat_path.clone());
 
-            let concat_typed = FunctionTyped::new(
+            let concat_typed = FunctionValue::new(
                 concat_sym.clone(),
                 concat_decls[0].visiblity(),
                 concat_decls[0].decl().clone(),
@@ -435,23 +435,23 @@ fn typecheck_member_of(
 
             let annotation = match lhs.annotation() {
                 // x is the name of a variant type - we are constructing that variant
-                Typed::Type(Type::Variant(variant_name), ..) => {
+                Value::Type(Type::Variant(variant_name), ..) => {
                     let case = typecheck_variant_case(variant_name, &member_ident, &span, ctx)?;
                     if let Some(ctor) = try_expr_into_noargs_variant_ctor(&case, expect_ty, &span, ctx)? {
                         return Ok(ctor);
                     }
                     
-                    Typed::from(case)
+                    Value::from(case)
                 },
 
                 // x is a non-variant typename - we are accessing a member of that type
                 // e.g. calling an interface method by its type-qualified name
-                Typed::Type(ty, _) => {
+                Value::Type(ty, _) => {
                     typecheck_type_member(ty, &member_ident, expect_ty, span.clone(), ctx)?
                 },
 
                 // x is a value - we are accessing a member of that value
-                Typed::TypedValue(base_val) => {
+                Value::Typed(base_val) => {
                     typecheck_member_value(
                         &lhs,
                         &base_val.ty,
@@ -462,7 +462,7 @@ fn typecheck_member_of(
                     )?
                 },
 
-                Typed::Namespace(path, _) => {
+                Value::Namespace(path, _) => {
                     let mut full_path = path.clone();
                     full_path.push(member_ident.clone());
 
@@ -489,7 +489,7 @@ fn typecheck_member_of(
                 },
             };
 
-            let rhs_value = Typed::Untyped(member_ident.span.clone());
+            let rhs_value = Value::Untyped(member_ident.span.clone());
             let rhs = Expr::Ident(member_ident, rhs_value);
 
             let member_op = BinOp {
@@ -504,7 +504,7 @@ fn typecheck_member_of(
             // member operations that reference function values with no params automatically turn into a
             // no-args call to that function, except in contexts where we expect a matching function value
             match &member_op.annotation {
-                Typed::Function(func_val) => {
+                Value::Function(func_val) => {
                     let no_args_call = if !func_val.should_call_noargs_in_expr(expect_ty) {
                         None 
                     } else {
@@ -525,7 +525,7 @@ fn typecheck_member_of(
                     }
                 }
 
-                Typed::UfcsFunction(ufcs_val) => {
+                Value::UfcsFunction(ufcs_val) => {
                     let no_args_call = if !ufcs_val.should_call_noargs_in_expr(expect_ty) {
                         None
                     } else {
@@ -546,7 +546,7 @@ fn typecheck_member_of(
                     }
                 }
 
-                Typed::Method(method) => {
+                Value::Method(method) => {
                     let no_args_call = if method.should_call_noargs_in_expr(expect_ty, lhs_ty.as_ref()) {
                         let overload_candidate = &[
                             OverloadCandidate::Method {
@@ -569,7 +569,7 @@ fn typecheck_member_of(
                     }
                 }
 
-                Typed::Overload(overloaded) => {
+                Value::Overload(overloaded) => {
                     // if any of the possible overloads can be called with no args, assume this expression
                     // is a no-args call - if arguments are applied later we'll re-resolve the overload
                     let self_arg = overloaded.self_arg
@@ -603,7 +603,7 @@ fn typecheck_member_of(
         ast::Expr::ObjectCtor(ctor) => {
             match lhs.annotation() {
                 // a must be a namespace qualifier before the constructed object name
-                Typed::Namespace(ns_path, ..) => {
+                Value::Namespace(ns_path, ..) => {
                     assert_eq!(
                         1,
                         ctor.ident.as_ref().unwrap().as_slice().len(),
@@ -686,7 +686,7 @@ fn typecheck_type_member(
     expect_return_ty: &Type,
     span: Span,
     ctx: &mut Context,
-) -> TypeResult<Typed> {
+) -> TypeResult<Value> {
     let type_member = ctx
         .find_type_member(ty, member_ident, expect_return_ty, &span, ctx)?;
     
@@ -712,7 +712,7 @@ fn typecheck_type_member(
             }
 
             // this is a reference to the method itself, args list to follow presumably
-            MethodTyped::new(candidate.iface_ty, candidate.index, candidate.method, span).into()
+            MethodValue::new(candidate.iface_ty, candidate.index, candidate.method, span).into()
         },
         
         TypeMember::MethodGroup(group) => {
@@ -729,7 +729,7 @@ fn typecheck_type_member(
                 })
                 .collect();
 
-            OverloadTyped::new(candidates, None, span).into()
+            OverloadValue::new(candidates, None, span).into()
         }
     };
 
@@ -743,7 +743,7 @@ pub fn typecheck_member_value(
     member_ident: &Ident,
     span: Span,
     ctx: &mut Context,
-) -> TypeResult<Typed> {
+) -> TypeResult<Value> {
     let member = ctx
         .find_instance_member(&lhs.annotation().ty(), &member_ident)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
@@ -765,7 +765,7 @@ pub fn typecheck_member_value(
                     )
                 });
 
-            let method = OverloadTyped::method(
+            let method = OverloadValue::method(
                 self_ty,
                 iface_ty,
                 method_index,
@@ -774,12 +774,12 @@ pub fn typecheck_member_value(
                 span.clone(),
             );
 
-            Typed::from(method)
+            Value::from(method)
         },
 
         InstanceMember::UFCSCall { func_name, decl, visibility } => {
             // to be resolved later, presumably in a subsequent call
-            UfcsTyped::new(
+            UfcsValue::new(
                 func_name,
                 visibility,
                 lhs.clone(),
@@ -789,7 +789,7 @@ pub fn typecheck_member_value(
         },
 
         InstanceMember::Overloaded { candidates } => {
-            OverloadTyped::new(
+            OverloadValue::new(
                 candidates,
                 Some(Box::new(lhs.clone())),
                 span.clone(),
@@ -826,7 +826,7 @@ pub fn typecheck_member_value(
     Ok(annotation)
 }
 
-pub type UnaryOp = ast::UnaryOp<Typed>;
+pub type UnaryOp = ast::UnaryOp<Value>;
 
 pub fn typecheck_unary_op(
     unary_op: &ast::UnaryOp<Span>,
@@ -974,7 +974,7 @@ pub fn typecheck_unary_op(
             }
 
             let value = TypedValue::temp(operand.annotation().ty().into_owned(), span);
-            Typed::from(value)
+            Value::from(value)
         },
 
         _ => {
@@ -1136,7 +1136,7 @@ pub fn typecheck_in_set_operator(
         lhs: item_expr,
         rhs: set_expr,
         op: Operator::In,
-        annotation: Typed::from(value),
+        annotation: Value::from(value),
     };
     
     Ok(Expr::BinOp(Box::new(bin_op)))

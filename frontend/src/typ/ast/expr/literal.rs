@@ -9,7 +9,7 @@ use crate::typ::Primitive;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::typ::STRING_CHAR_TYPE;
@@ -251,7 +251,7 @@ pub fn typecheck_literal(
             if *expect_ty == char_ty {
                 if let Some(char_lit) = string_to_char_lit(s.as_str()) {
                     let val = TypedValue::temp(char_ty, span.clone());
-                    return Ok(Expr::Literal(char_lit, Typed::from(val)));
+                    return Ok(Expr::Literal(char_lit, Value::from(val)));
                 }
             }
 

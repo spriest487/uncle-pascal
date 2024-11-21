@@ -8,18 +8,18 @@ use crate::typ::Primitive;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use common::span::Span;
 use common::span::Spanned;
 
-pub type ForLoop = ast::ForLoop<Typed>;
-pub type WhileLoop = ast::WhileLoop<Typed>;
+pub type ForLoop = ast::ForLoop<Value>;
+pub type WhileLoop = ast::WhileLoop<Value>;
 
 pub fn typecheck_for_loop(
     for_loop: &ast::ForLoop<Span>,
     ctx: &mut Context,
 ) -> TypeResult<ForLoop> {
-    let annotation = Typed::Untyped(for_loop.annotation.clone());
+    let annotation = Value::Untyped(for_loop.annotation.clone());
 
     let inner_scope = ctx.push_scope(Environment::Block {
         allow_unsafe: false,
@@ -88,7 +88,7 @@ pub fn typecheck_while_loop(
     while_loop: &ast::WhileLoop<Span>,
     ctx: &mut Context,
 ) -> TypeResult<WhileLoop> {
-    let annotation = Typed::Untyped(while_loop.span().clone());
+    let annotation = Value::Untyped(while_loop.span().clone());
 
     let bool_ty = Type::Primitive(Primitive::Boolean);
     let condition = typecheck_expr(&while_loop.condition, &bool_ty, ctx)?;

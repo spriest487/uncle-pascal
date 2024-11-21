@@ -2,7 +2,7 @@ use crate::typ::ast::typecheck_expr;
 use crate::typ::string_type;
 use crate::typ::Context;
 use crate::typ::Type;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypeResult;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
@@ -10,7 +10,7 @@ use common::span::Span;
 use common::span::Spanned;
 use crate::ast;
 
-pub type Raise = ast::Raise<Typed>;
+pub type Raise = ast::Raise<Value>;
 
 pub fn typecheck_raise(
     raise: &ast::Raise<Span>,

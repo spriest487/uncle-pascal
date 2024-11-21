@@ -28,15 +28,15 @@ use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use common::span::Span;
 use common::span::Spanned;
 
-pub type VarBinding = ast::LocalBinding<Typed>;
-pub type Stmt = ast::Stmt<Typed>;
-pub type Exit = ast::Exit<Typed>;
+pub type VarBinding = ast::LocalBinding<Value>;
+pub type Stmt = ast::Stmt<Value>;
+pub type Exit = ast::Exit<Value>;
 
 pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
@@ -124,7 +124,7 @@ pub fn typecheck_local_binding(
 
     ctx.declare_binding(name.clone(), binding)?;
 
-    let annotation = Typed::Untyped(span);
+    let annotation = Value::Untyped(span);
 
     let local_binding = VarBinding {
         name,
@@ -189,13 +189,13 @@ pub fn typecheck_stmt(
 
         ast::Stmt::Break(span) => {
             expect_in_loop(stmt, ctx)?;
-            let annotation = Typed::Untyped(span.clone());
+            let annotation = Value::Untyped(span.clone());
             Ok(ast::Stmt::Break(annotation))
         },
 
         ast::Stmt::Continue(span) => {
             expect_in_loop(stmt, ctx)?;
-            let annotation = Typed::Untyped(span.clone());
+            let annotation = Value::Untyped(span.clone());
             Ok(ast::Stmt::Continue(annotation))
         },
 
@@ -262,7 +262,7 @@ pub fn typecheck_exit(
     // `let x := if true then 1 else exit;`
     // since no value will ever be assigned to `x` if the exit expr is reached
     let make_annotation = |span: &Span| match expect_ty {
-        Type::Nothing => Typed::Untyped(span.clone()),
+        Type::Nothing => Value::Untyped(span.clone()),
         _ => TypedValue {
             span: span.clone(),
             value_kind: ValueKind::Temporary,

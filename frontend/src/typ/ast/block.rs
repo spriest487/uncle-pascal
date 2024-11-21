@@ -9,12 +9,12 @@ use crate::typ::Environment;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use common::span::{Span, Spanned};
 
-pub type Block = ast::Block<Typed>;
+pub type Block = ast::Block<Value>;
 
 pub fn typecheck_block(
     block: &ast::Block<Span>,
@@ -105,7 +105,7 @@ pub fn typecheck_block(
         let annotation = match &output {
             Some(out_expr) => {
                 if *out_expr.annotation().ty() == Type::Nothing {
-                    Typed::Untyped(span)
+                    Value::Untyped(span)
                 } else {
                     let out_ty = out_expr.annotation().ty().into_owned();
                     TypedValue {
@@ -117,7 +117,7 @@ pub fn typecheck_block(
                         .into()
                 }
             },
-            None => Typed::Untyped(span),
+            None => Value::Untyped(span),
         };
 
         let block = Block {

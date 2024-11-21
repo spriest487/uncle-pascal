@@ -27,15 +27,15 @@ use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::OverloadCandidate;
 use crate::typ::Context;
 use crate::typ::Decl;
-use crate::typ::FunctionTyped;
+use crate::typ::FunctionValue;
 use crate::typ::NameError;
-use crate::typ::OverloadTyped;
+use crate::typ::OverloadValue;
 use crate::typ::ScopeMemberRef;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::IntConstant;
@@ -43,7 +43,7 @@ use common::span::*;
 pub use init::*;
 pub use literal::*;
 
-pub type Expr = ast::Expr<Typed>;
+pub type Expr = ast::Expr<Value>;
 
 pub fn const_eval_string(expr: &Expr, ctx: &Context) -> TypeResult<String> {
     match expr.const_eval(ctx) {
@@ -222,7 +222,7 @@ fn typecheck_ident(
                     Some(overload) => {
                         check_overload_visibility(&overload, &candidates, span, ctx)?;
                         
-                        let func_annotation = FunctionTyped::new(
+                        let func_annotation = FunctionValue::new(
                             func_sym,
                             func_vis,
                             func_decl,
@@ -262,7 +262,7 @@ fn typecheck_ident(
 }
 
 fn member_ident_expr(
-    member_val: Typed,
+    member_val: Value,
     ident: &Ident,
     ctx: &mut Context
 ) -> Result<Expr, TypeError> {
@@ -284,7 +284,7 @@ fn should_call_noargs_in_expr(decl: &FunctionDecl, expect_ty: &Type, self_arg_ty
     decl.sig().should_call_noargs_in_expr(expect_ty, self_arg_ty)
 }
 
-pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> Typed {
+pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> Value {
     match member {
         ScopeMemberRef::Decl {
             value: Decl::Alias(aliased),
@@ -324,7 +324,7 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
                 let func_sym = Symbol::from(func_path)
                     .with_ty_params(decl.type_params.clone());
 
-                FunctionTyped::new(
+                FunctionValue::new(
                     func_sym,
                     *visibility,
                     decl.clone(),
@@ -345,7 +345,7 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
                     })
                     .collect();
 
-                OverloadTyped {
+                OverloadValue {
                     span,
                     candidates,
                     self_arg: None,
@@ -364,15 +364,15 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
         },
 
         ScopeMemberRef::Decl { value: Decl::Type { ty, .. }, .. } => {
-            Typed::Type(ty.clone(), span)
+            Value::Type(ty.clone(), span)
         },
 
         ScopeMemberRef::Decl { value: Decl::Namespace(path), .. } => {
-            Typed::Namespace(path.clone(), span)
+            Value::Namespace(path.clone(), span)
         },
 
         ScopeMemberRef::Scope { path } => {
-            Typed::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
+            Value::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
         },
     }
 }

@@ -4,7 +4,7 @@ use crate::ast::TypeConstraint;
 use crate::typ::typecheck_type;
 use crate::typ::Type;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::GenericError;
 use crate::typ::Context;
 use crate::typ::GenericResult;
@@ -28,7 +28,7 @@ impl TypeParam {
     }
 }
 
-pub type TypeArgList = ast::TypeArgList<Typed>;
+pub type TypeArgList = ast::TypeArgList<Value>;
 
 impl TypeArgList {
     pub fn apply_type_args(self, params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {

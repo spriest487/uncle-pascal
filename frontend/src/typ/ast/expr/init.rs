@@ -17,7 +17,7 @@ use crate::typ::FunctionSigParam;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::ValueKind;
 
 pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypeResult<()> {
@@ -78,7 +78,7 @@ pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypeResult<()> {
 
 fn expect_ident_initialized(
     ident: &Ident,
-    annotation: &Typed,
+    annotation: &Value,
     ctx: &Context,
 ) -> TypeResult<()> {
     match annotation.value_kind() {

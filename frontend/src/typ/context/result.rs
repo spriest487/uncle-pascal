@@ -4,7 +4,7 @@ use crate::typ::context::Decl;
 use crate::typ::{FunctionSig, TypeParamList};
 use crate::typ::ScopeMemberKind;
 use crate::typ::Type;
-use crate::typ::Typed;
+use crate::typ::Value;
 use common::span::*;
 use std::fmt;
 use std::fmt::Debug;
@@ -205,9 +205,9 @@ pub enum NameContainer {
 }
 
 impl NameContainer {
-    pub fn for_annotated(a: &Typed) -> Self {
+    pub fn for_annotated(a: &Value) -> Self {
         match a {
-            Typed::Namespace(ns, ..) => NameContainer::Namespace(ns.clone()),
+            Value::Namespace(ns, ..) => NameContainer::Namespace(ns.clone()),
             _ => NameContainer::Type(a.ty().into_owned()),
         }
     }

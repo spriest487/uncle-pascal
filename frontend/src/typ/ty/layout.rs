@@ -8,7 +8,7 @@ use crate::typ::NameError;
 use crate::typ::NameResult;
 use crate::typ::Primitive;
 use crate::typ::Type;
-use crate::typ::Typed;
+use crate::typ::Value;
 use std::mem::size_of;
 
 const WORD_SIZE: usize = size_of::<usize>();
@@ -218,7 +218,7 @@ impl StructLayout {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StructLayoutMember<'a> {
     Data {
-        member: &'a FieldDecl<Typed>,
+        member: &'a FieldDecl<Value>,
         size: usize,
     },
     PaddingByte,

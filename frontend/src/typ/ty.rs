@@ -40,7 +40,7 @@ use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
 use crate::typ::NameResult;
 use crate::typ::Symbol;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Keyword;
 use crate::Operator;
@@ -262,7 +262,7 @@ impl Type {
         Ok(result)
     }
 
-    pub fn of_decl(type_decl: &ast::TypeDeclItem<Typed>, ctx: &Context) -> TypeResult<Self> {
+    pub fn of_decl(type_decl: &ast::TypeDeclItem<Value>, ctx: &Context) -> TypeResult<Self> {
         match type_decl {
             ast::TypeDeclItem::Struct(class)
             if class.kind == StructKind::Record => {

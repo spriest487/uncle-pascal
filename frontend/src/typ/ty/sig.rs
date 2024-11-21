@@ -14,7 +14,7 @@ use crate::typ::TypeArgResolver;
 use crate::typ::TypeParam;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeParamList;
-use crate::typ::Typed;
+use crate::typ::Value;
 use common::span::Span;
 use common::span::Spanned;
 use std::fmt;
@@ -380,8 +380,8 @@ impl FunctionSig {
         type_args: Option<TypeArgList>,
     ) -> FunctionCall {
         let func_val_annotation = match &self.return_ty {
-            Type::Nothing => Typed::Untyped(span),
-            return_ty => Typed::new_temp_val(return_ty.clone(), span),
+            Type::Nothing => Value::Untyped(span),
+            return_ty => Value::new_temp_val(return_ty.clone(), span),
         };
 
         FunctionCall {
@@ -401,8 +401,8 @@ impl FunctionSig {
     ) -> MethodCallNoArgs {
         let span = target.span().clone();
         let func_val_annotation = match &self.return_ty {
-            Type::Nothing => Typed::Untyped(span),
-            return_ty => Typed::new_temp_val(return_ty.clone(), span),
+            Type::Nothing => Value::Untyped(span),
+            return_ty => Value::new_temp_val(return_ty.clone(), span),
         };
         
         MethodCallNoArgs {

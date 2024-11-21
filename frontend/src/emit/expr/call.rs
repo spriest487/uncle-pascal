@@ -157,7 +157,7 @@ fn build_func_call(
 ) -> Option<Ref> {
     match target.annotation() {
         // calling a function directly
-        typ::Typed::Function(func) => {
+        typ::Value::Function(func) => {
             let func = builder.translate_func(&func.name, &func.sig, call_ty_args);
 
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
@@ -167,7 +167,7 @@ fn build_func_call(
             translate_call_with_args(call_target, args, &func.sig, builder)
         },
 
-        typ::Typed::UfcsFunction(func) => {
+        typ::Value::UfcsFunction(func) => {
             let func_instance = builder.translate_func(&func.function_name, &func.sig, None);
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func_instance.id)));
 
@@ -181,7 +181,7 @@ fn build_func_call(
         },
 
         // invoking a closure value that refers to a function
-        typ::Typed::TypedValue(val) => {
+        typ::Value::Typed(val) => {
             // it's impossible to invoke a closure with type args, so the typechecker should
             // ensure this never happens
             assert!(

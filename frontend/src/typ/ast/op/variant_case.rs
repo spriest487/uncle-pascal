@@ -13,7 +13,7 @@ use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::TypedValue;
-use crate::typ::VariantCaseTyped;
+use crate::typ::VariantCaseValue;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
@@ -24,7 +24,7 @@ pub fn typecheck_variant_case(
     member_ident: &Ident,
     span: &Span,
     ctx: &mut Context,
-) -> TypeResult<VariantCaseTyped> {
+) -> TypeResult<VariantCaseValue> {
     if let Some(args_list) = &variant_name.type_args {
         return Err(TypeError::InvalidExplicitVariantCtorTypeArgs {
             span: args_list.span.clone(),
@@ -54,7 +54,7 @@ pub fn typecheck_variant_case(
         ));
     }
 
-    let ctor_annotation = VariantCaseTyped {
+    let ctor_annotation = VariantCaseValue {
         variant_name: Rc::new(variant_name.clone()),
         case: member_ident.clone(),
         span: member_ident.span().clone(),
@@ -64,7 +64,7 @@ pub fn typecheck_variant_case(
 }
 
 pub fn try_expr_into_noargs_variant_ctor(
-    case_annotation: &VariantCaseTyped,
+    case_annotation: &VariantCaseValue,
     expect_ty: &Type,
     span: &Span,
     ctx: &Context

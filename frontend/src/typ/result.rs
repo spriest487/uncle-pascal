@@ -3,7 +3,7 @@ use crate::ast::Ident;
 use crate::ast::Operator;
 use crate::ast::{Access, IdentPath};
 use crate::parse::InvalidStatement;
-use crate::typ::annotation::Typed;
+use crate::typ::annotation::Value;
 use crate::typ::ast::Call;
 use crate::typ::ast::DeclMod;
 use crate::typ::ast::Expr;
@@ -55,7 +55,7 @@ pub enum TypeError {
     },
     NotValueExpr {
         expected: Type,
-        actual: Typed,
+        actual: Value,
     },
     NotMutable {
         expr: Box<Expr>,
@@ -193,7 +193,7 @@ pub enum TypeError {
     InvalidRefExpression {
         expr: Box<Expr>,
     },
-    InvalidStatement(InvalidStatement<Typed>),
+    InvalidStatement(InvalidStatement<Value>),
     
     SetValuesMustBeNumeric {
         actual: Type,

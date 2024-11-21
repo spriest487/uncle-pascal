@@ -17,7 +17,7 @@ use crate::typ::Type;
 use crate::typ::TypeArgList;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use crate::typ::Context;
@@ -27,11 +27,11 @@ use linked_hash_map::LinkedHashMap;
 use std::iter;
 use std::rc::Rc;
 
-pub type ObjectCtor = ast::ObjectCtor<Typed>;
-pub type ObjectCtorMember = ast::ObjectCtorMember<Typed>;
-pub type ObjectCtorArgs = ast::ObjectCtorArgs<Typed>;
-pub type CollectionCtor = ast::CollectionCtor<Typed>;
-pub type CollectionCtorElement = ast::CollectionCtorElement<Typed>;
+pub type ObjectCtor = ast::ObjectCtor<Value>;
+pub type ObjectCtorMember = ast::ObjectCtorMember<Value>;
+pub type ObjectCtorArgs = ast::ObjectCtorArgs<Value>;
+pub type CollectionCtor = ast::CollectionCtor<Value>;
+pub type CollectionCtorElement = ast::CollectionCtorElement<Value>;
 
 pub fn typecheck_object_ctor(
     ctor: &ast::ObjectCtor<Span>,
@@ -293,7 +293,7 @@ pub fn typecheck_collection_ctor(
 
     Ok(CollectionCtor {
         elements,
-        annotation: Typed::from(annotation),
+        annotation: Value::from(annotation),
     })
 }
 

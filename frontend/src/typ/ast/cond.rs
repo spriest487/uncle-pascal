@@ -11,16 +11,16 @@ use crate::typ::Type;
 use crate::typ::TypePattern;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::ValueKind;
 use common::span::Span;
 use common::span::Spanned;
 use std::borrow::Cow;
 
-pub type IfCond<B> = ast::IfCond<Typed, B>;
-pub type IfCondExpression = ast::IfCond<Typed, Expr>;
-pub type IfCondStatement = ast::IfCond<Typed, Stmt>;
+pub type IfCond<B> = ast::IfCond<Value, B>;
+pub type IfCondExpression = ast::IfCond<Value, Expr>;
+pub type IfCondStatement = ast::IfCond<Value, Stmt>;
 
 fn typecheck_cond_expr<B>(
     if_cond: &ast::IfCond<Span, B>,
@@ -116,7 +116,7 @@ pub fn typecheck_if_cond_stmt(
         },
     };
 
-    let annotation = Typed::Untyped(if_cond.span().clone());
+    let annotation = Value::Untyped(if_cond.span().clone());
 
     Ok(IfCond {
         cond,
@@ -169,7 +169,7 @@ pub fn typecheck_if_cond_expr(
 
     let annotation = match (then_branch.annotation().ty(), else_branch.as_ref()) {
         (Cow::Owned(Type::Nothing) | Cow::Borrowed(Type::Nothing), _) | (_, None) => {
-            Typed::Untyped(span)
+            Value::Untyped(span)
         },
 
         (then_ty, Some(_else_branch)) => TypedValue {

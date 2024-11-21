@@ -16,23 +16,23 @@ use crate::typ::ast::ObjectCtor;
 use crate::typ::typecheck_type;
 use crate::typ::Context;
 use crate::typ::FunctionSigParam;
-use crate::typ::FunctionTyped;
+use crate::typ::FunctionValue;
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
 use crate::typ::GenericTypeHint;
-use crate::typ::MethodTyped;
+use crate::typ::MethodValue;
 use crate::typ::NameContainer;
 use crate::typ::NameError;
-use crate::typ::OverloadTyped;
+use crate::typ::OverloadValue;
 use crate::typ::Specializable;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeArgList;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypedValue;
-use crate::typ::UfcsTyped;
+use crate::typ::UfcsValue;
 use crate::typ::ValueKind;
 use crate::typ::FunctionSig;
 pub use args::*;
@@ -43,17 +43,17 @@ use std::borrow::Cow;
 use std::iter;
 use std::rc::Rc;
 
-pub type MethodCall = ast::MethodCall<Typed>;
-pub type FunctionCall = ast::FunctionCall<Typed>;
-pub type FunctionCallNoArgs = ast::FunctionCallNoArgs<Typed>;
-pub type MethodCallNoArgs = ast::MethodCallNoArgs<Typed>;
-pub type VariantCtorCall = ast::VariantCtorCall<Typed>;
-pub type Call = ast::Call<Typed>;
+pub type MethodCall = ast::MethodCall<Value>;
+pub type FunctionCall = ast::FunctionCall<Value>;
+pub type FunctionCallNoArgs = ast::FunctionCallNoArgs<Value>;
+pub type MethodCallNoArgs = ast::MethodCallNoArgs<Value>;
+pub type VariantCtorCall = ast::VariantCtorCall<Value>;
+pub type Call = ast::Call<Value>;
 
 impl MethodCallNoArgs {
-    pub fn method(&self) -> &MethodTyped {
+    pub fn method(&self) -> &MethodValue {
         match self.target.annotation() {
-            Typed::Method(method) => method.as_ref(),
+            Value::Method(method) => method.as_ref(),
             other => panic!("method call target can only be a method, got: {other}"),
         }
     }
@@ -243,7 +243,7 @@ fn typecheck_func_call(
     };
 
     let expr = match target.annotation() {
-        Typed::TypedValue(val) => match &val.ty {
+        Value::Typed(val) => match &val.ty {
             Type::Function(sig) => {
                 let sig = sig.clone();
 
@@ -267,7 +267,7 @@ fn typecheck_func_call(
             },
         },
 
-        Typed::Function(func) => {
+        Value::Function(func) => {
             func.check_visible(func_call.span(), ctx)?;
             let decl = func.decl.clone();
             
@@ -276,7 +276,7 @@ fn typecheck_func_call(
                 .map(Invocation::Call)?
         },
 
-        Typed::UfcsFunction(ufcs_call) => {
+        Value::UfcsFunction(ufcs_call) => {
             let typecheck_call = typecheck_ufcs_call(
                 &ufcs_call,
                 &func_call.args,
@@ -288,19 +288,19 @@ fn typecheck_func_call(
             typecheck_call.map(Box::new).map(Invocation::Call)?
         },
 
-        Typed::Overload(overloaded) => {
+        Value::Overload(overloaded) => {
             typecheck_func_overload(ctx, func_call, &target, &overloaded)
                 .map(Box::new)
                 .map(Invocation::Call)?
         },
 
-        Typed::Method(method) => {
+        Value::Method(method) => {
             typecheck_method_call(method, func_call, self_arg, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
         }
 
-        Typed::Type(..) => {
+        Value::Type(..) => {
             if let Some(ctor) = func_call.clone().try_into_empty_object_ctor() {
                 typecheck_object_ctor(&ctor, ctor.span().clone(), expect_ty, ctx)
                     .map(Box::new)
@@ -310,7 +310,7 @@ fn typecheck_func_call(
             }
         },
 
-        Typed::VariantCase(variant, ..) => {
+        Value::VariantCase(variant, ..) => {
             if let Some(args_list) = &func_call.type_args {
                 return Err(TypeError::InvalidExplicitVariantCtorTypeArgs {
                     span: args_list.span.clone(),
@@ -341,7 +341,7 @@ fn typecheck_func_overload(
     ctx: &mut Context,
     func_call: &ast::FunctionCall<Span>,
     target: &Expr,
-    overloaded: &OverloadTyped,
+    overloaded: &OverloadValue,
 ) -> TypeResult<Call> {
     let type_args = match &func_call.type_args {
         Some(args) => Some(typecheck_type_args(args, ctx)?),
@@ -381,8 +381,8 @@ fn typecheck_func_overload(
             // of the expression and should update it accordingly
             let mut target = target.clone();
             match target.annotation_mut() {
-                annotation @ Typed::Overload(..) => {
-                    *annotation = Typed::from(FunctionTyped::new(
+                annotation @ Value::Overload(..) => {
+                    *annotation = Value::from(FunctionValue::new(
                         decl_name.clone(),
                         *visibility,
                         decl.clone(),
@@ -519,7 +519,7 @@ pub fn overload_to_no_args_call(
         OverloadCandidate::Function { decl_name, visibility, .. } => {
             let return_value = TypedValue::temp(call_decl.return_ty.clone(), span.clone());
 
-            *target.annotation_mut() = Typed::from(FunctionTyped::new(
+            *target.annotation_mut() = Value::from(FunctionValue::new(
                 decl_name.clone(),
                 *visibility,
                 decl.clone(),
@@ -530,14 +530,14 @@ pub fn overload_to_no_args_call(
                 target: Expr::from(target),
                 self_arg,
                 type_args: overload.type_args,
-                annotation: Typed::from(return_value),
+                annotation: Value::from(return_value),
             })
         }
 
         OverloadCandidate::Method { self_ty, index, decl, .. } => {
             let return_value = TypedValue::temp(call_decl.return_ty.clone(), span.clone());
 
-            *target.annotation_mut() = Typed::from(MethodTyped {
+            *target.annotation_mut() = Value::from(MethodValue {
                 self_ty: self_ty.clone(),
                 index: *index,
                 decl: decl.clone(),
@@ -566,7 +566,7 @@ pub fn overload_to_no_args_call(
 ///     call expression, so needs to be provided separately
 /// * `ctx` - current typechecking context
 fn typecheck_method_call(
-    method: &MethodTyped,
+    method: &MethodValue,
     func_call: &ast::FunctionCall<Span>,
     with_self_arg: Option<Expr>,
     ctx: &mut Context,
@@ -674,7 +674,7 @@ fn typecheck_method_call(
 }
 
 fn typecheck_ufcs_call(
-    ufcs_call: &UfcsTyped,
+    ufcs_call: &UfcsValue,
     rest_args: &[ast::Expr<Span>],
     span: &Span,
     args_span: &Span,
@@ -707,7 +707,7 @@ fn typecheck_ufcs_call(
         .clone()
         .with_ty_args(specialized_call_args.type_args.clone());
 
-    let func_annotation = FunctionTyped::new(
+    let func_annotation = FunctionValue::new(
         func_sym,
         ufcs_call.visibility,
         ufcs_call.decl.clone(),
@@ -768,8 +768,8 @@ fn typecheck_func_value_call(
 
     let span = func_call.span().clone();
     let annotation = match &sig.return_ty {
-        Type::Nothing => Typed::Untyped(span.clone()),
-        return_ty => Typed::from(TypedValue::temp(return_ty.clone(), span.clone()))
+        Type::Nothing => Value::Untyped(span.clone()),
+        return_ty => Value::from(TypedValue::temp(return_ty.clone(), span.clone()))
     };
 
     Ok(ast::Call::Function(FunctionCall {
@@ -814,11 +814,11 @@ fn typecheck_free_func_call(
     let return_ty = specialized_call_args.sig.return_ty.clone();
 
     let annotation = match return_ty {
-        Type::Nothing => Typed::Untyped(span.clone()),
-        return_ty => Typed::from(TypedValue::temp(return_ty, span.clone()))
+        Type::Nothing => Value::Untyped(span.clone()),
+        return_ty => Value::from(TypedValue::temp(return_ty, span.clone()))
     };
 
-    if let Typed::Function(func_type) = target.annotation_mut() {
+    if let Value::Function(func_type) = target.annotation_mut() {
         func_type.check_visible(func_call.span(), ctx)?;
 
         if let Some(ty_args) = &specialized_call_args.type_args {
@@ -826,7 +826,7 @@ fn typecheck_free_func_call(
                 .map_err(|e| TypeError::from_generic_err(e, span.clone()))?
                 .into_owned();
 
-            let specialized_func_type = FunctionTyped::new(
+            let specialized_func_type = FunctionValue::new(
                 call_name,
                 func_type.visibility,
                 func_type.decl.clone(),

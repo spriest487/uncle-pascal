@@ -5,14 +5,14 @@ use crate::typ::Context;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use common::span::Span;
 use common::span::Spanned;
 use crate::ast;
 use crate::Operator;
 
-pub type Assignment = ast::Assignment<Typed>;
-pub type CompoundAssignment = ast::CompoundAssignment<Typed>;
+pub type Assignment = ast::Assignment<Value>;
+pub type CompoundAssignment = ast::CompoundAssignment<Value>;
 
 pub fn typecheck_assignment(
     assignment: &ast::Assignment<Span>,
@@ -29,7 +29,7 @@ pub fn typecheck_assignment(
     Ok(Assignment {
         lhs,
         rhs,
-        annotation: Typed::Untyped(assignment.annotation.clone()),
+        annotation: Value::Untyped(assignment.annotation.clone()),
     })
 }
 
@@ -51,7 +51,7 @@ pub fn typecheck_compound_assignment(
     Ok(CompoundAssignment {
         lhs,
         rhs,
-        annotation: Typed::Untyped(assignment.annotation.clone()),
+        annotation: Value::Untyped(assignment.annotation.clone()),
         op: assignment.op,
     })
 }
@@ -65,7 +65,7 @@ fn typecheck_operands(
 
     // lhs must evaluate to a mutable typed value
     match lhs.annotation() {
-        Typed::TypedValue(val) => {
+        Value::Typed(val) => {
             if !val.value_kind.mutable() {
                 return Err(TypeError::NotMutable {
                     decl: val.decl.clone(),

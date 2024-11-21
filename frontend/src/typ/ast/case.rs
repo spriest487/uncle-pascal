@@ -3,17 +3,17 @@ use crate::typ::ast::typecheck_stmt;
 use crate::typ::TypedValue;
 use crate::typ::TypeResult;
 use crate::typ::TypeError;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::Type;
 use crate::typ::Context;
 use crate::typ::ValueKind;
 use common::span::{Span, Spanned};
 use crate::ast;
 
-pub type CaseBranch<Item> = ast::CaseBranch<Typed, Item>;
-pub type CaseBlock<Item> = ast::CaseBlock<Typed, Item>;
-pub type CaseExpr = ast::CaseExpr<Typed>;
-pub type CaseStmt = ast::CaseStmt<Typed>;
+pub type CaseBranch<Item> = ast::CaseBranch<Value, Item>;
+pub type CaseBlock<Item> = ast::CaseBlock<Value, Item>;
+pub type CaseExpr = ast::CaseExpr<Value>;
+pub type CaseStmt = ast::CaseStmt<Value>;
 
 pub fn typecheck_case_stmt(
     case: &ast::CaseStmt<Span>,
@@ -44,7 +44,7 @@ pub fn typecheck_case_stmt(
         None => None,
     };
 
-    let annotation = Typed::Untyped(case.span().clone());
+    let annotation = Value::Untyped(case.span().clone());
 
     Ok(CaseStmt {
         cond_expr: Box::new(cond_expr),

@@ -19,7 +19,7 @@ use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::SetDecl;
 use crate::typ::typecheck_type;
 use crate::typ::Binding;
-use crate::typ::ConstTyped;
+use crate::typ::ConstValue;
 use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::ExpectedKind;
@@ -31,19 +31,19 @@ use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::ValueKind;
 use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
 
-pub type Unit = ast::Unit<Typed>;
-pub type UnitDecl = ast::UnitDecl<Typed>;
-pub type GlobalBinding = ast::UnitBinding<Typed>;
-pub type GlobalBindingItem = ast::UnitBindingItem<Typed>;
-pub type TypeDecl = ast::TypeDecl<Typed>;
-pub type TypeDeclItem = ast::TypeDeclItem<Typed>;
-pub type InitBlock = ast::InitBlock<Typed>;
+pub type Unit = ast::Unit<Value>;
+pub type UnitDecl = ast::UnitDecl<Value>;
+pub type GlobalBinding = ast::UnitBinding<Value>;
+pub type GlobalBindingItem = ast::UnitBindingItem<Value>;
+pub type TypeDecl = ast::TypeDecl<Value>;
+pub type TypeDeclItem = ast::TypeDeclItem<Value>;
+pub type InitBlock = ast::InitBlock<Value>;
 
 fn typecheck_unit_decl(
     decl: &ast::UnitDecl<Span>,
@@ -401,7 +401,7 @@ fn typecheck_global_binding_item(
                 span.clone(),
             )?;
 
-            let annotation = ConstTyped {
+            let annotation = ConstValue {
                 value: const_val_literal.clone(),
                 span: span.clone(),
                 decl: Some(item.ident.clone()),

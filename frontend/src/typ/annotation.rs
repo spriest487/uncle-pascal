@@ -25,7 +25,7 @@ use std::rc::Rc;
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
-pub struct VariantCaseTyped {
+pub struct VariantCaseValue {
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -37,15 +37,15 @@ pub struct VariantCaseTyped {
     pub case: Ident,
 }
 
-impl From<VariantCaseTyped> for Typed {
-    fn from(a: VariantCaseTyped) -> Self {
-        Typed::VariantCase(Rc::new(a))
+impl From<VariantCaseValue> for Value {
+    fn from(a: VariantCaseValue) -> Self {
+        Value::VariantCase(Rc::new(a))
     }
 }
 
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Hash, Debug, PartialEq)]
-pub struct OverloadTyped {
+pub struct OverloadValue {
     #[derivative(Debug = "ignore")]
     #[derivative(Hash = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -57,7 +57,7 @@ pub struct OverloadTyped {
     pub self_arg: Option<Box<Expr>>,
 }
 
-impl OverloadTyped {
+impl OverloadValue {
     pub fn method(
         self_ty: Type,
         iface_ty: Type,
@@ -109,15 +109,15 @@ impl OverloadTyped {
     }
 }
 
-impl From<OverloadTyped> for Typed {
-    fn from(a: OverloadTyped) -> Self {
-        Typed::Overload(Rc::new(a))
+impl From<OverloadValue> for Value {
+    fn from(a: OverloadValue) -> Self {
+        Value::Overload(Rc::new(a))
     }
 }
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, PartialEq, Hash)]
-pub struct MethodTyped {
+pub struct MethodValue {
     /// the type via which this method is being referred to. we don't distinguish here between
     /// an interface method (implemented on a type other than the self type) and a direct method
     /// call (known to be implemented on the self type used here)
@@ -139,7 +139,7 @@ pub struct MethodTyped {
     pub decl: MethodDecl,
 }
 
-impl MethodTyped {
+impl MethodValue {
     pub fn new(self_ty: Type, index: usize, decl: MethodDecl, span: Span) -> Self {
         Self {
             self_ty,
@@ -158,15 +158,15 @@ impl MethodTyped {
     }
 }
 
-impl From<MethodTyped> for Typed {
-    fn from(a: MethodTyped) -> Self {
-        Typed::Method(Rc::new(a))
+impl From<MethodValue> for Value {
+    fn from(a: MethodValue) -> Self {
+        Value::Method(Rc::new(a))
     }
 }
 
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Hash, Debug, PartialEq)]
-pub struct FunctionTyped {
+pub struct FunctionValue {
     pub name: Symbol,
     pub visibility: Visibility,
 
@@ -179,7 +179,7 @@ pub struct FunctionTyped {
     pub span: Span,
 }
 
-impl FunctionTyped {
+impl FunctionValue {
     pub fn new(name: Symbol, visibility: Visibility, decl: Rc<FunctionDecl>, span: Span) -> Self {
         Self {
             name,
@@ -211,9 +211,9 @@ impl FunctionTyped {
     }
 }
 
-impl From<FunctionTyped> for Typed {
-    fn from(a: FunctionTyped) -> Self {
-        Typed::Function(Rc::new(a))
+impl From<FunctionValue> for Value {
+    fn from(a: FunctionValue) -> Self {
+        Value::Function(Rc::new(a))
     }
 }
 
@@ -241,15 +241,15 @@ impl TypedValue {
     }
 }
 
-impl From<TypedValue> for Typed {
+impl From<TypedValue> for Value {
     fn from(a: TypedValue) -> Self {
-        Typed::TypedValue(Rc::new(a))
+        Value::Typed(Rc::new(a))
     }
 }
 
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Hash, Debug, PartialEq)]
-pub struct ConstTyped {
+pub struct ConstValue {
     pub decl: Option<Ident>,
     pub ty: Type,
 
@@ -261,15 +261,15 @@ pub struct ConstTyped {
     pub span: Span,
 }
 
-impl From<ConstTyped> for Typed {
-    fn from(a: ConstTyped) -> Self {
-        Typed::Const(Rc::new(a))
+impl From<ConstValue> for Value {
+    fn from(a: ConstValue) -> Self {
+        Value::Const(Rc::new(a))
     }
 }
 
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Hash, Debug, PartialEq)]
-pub struct UfcsTyped {
+pub struct UfcsValue {
     pub function_name: Symbol,
     pub visibility: Visibility,
     
@@ -284,7 +284,7 @@ pub struct UfcsTyped {
     pub span: Span,
 }
 
-impl UfcsTyped {
+impl UfcsValue {
     pub fn new(
         function_name: Symbol,
         visibility: Visibility,
@@ -313,28 +313,28 @@ impl UfcsTyped {
     }
 }
 
-impl From<UfcsTyped> for Typed {
-    fn from(a: UfcsTyped) -> Self {
-        Typed::UfcsFunction(Rc::new(a))
+impl From<UfcsValue> for Value {
+    fn from(a: UfcsValue) -> Self {
+        Value::UfcsFunction(Rc::new(a))
     }
 }
 
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Debug, Hash, PartialEq)]
-pub enum Typed {
+pub enum Value {
     Untyped(
         #[derivative(Debug = "ignore")]
         #[derivative(PartialEq = "ignore")]
         #[derivative(Hash = "ignore")]
         Span
     ),
-    TypedValue(Rc<TypedValue>),
+    Typed(Rc<TypedValue>),
 
-    Function(Rc<FunctionTyped>),
-    UfcsFunction(Rc<UfcsTyped>),
+    Function(Rc<FunctionValue>),
+    UfcsFunction(Rc<UfcsValue>),
 
     // direct method reference e.g. `Interface.Method`
-    Method(Rc<MethodTyped>),
+    Method(Rc<MethodValue>),
     Type(
         Type,
         #[derivative(Debug = "ignore")]
@@ -349,33 +349,33 @@ pub enum Typed {
         #[derivative(Hash = "ignore")]
         Span
     ),
-    VariantCase(Rc<VariantCaseTyped>),
+    VariantCase(Rc<VariantCaseValue>),
 
     // as-yet unresolved function that may refer to 1+ functions (interface methods, ufcs functions,
     // or free functions)
-    Overload(Rc<OverloadTyped>),
+    Overload(Rc<OverloadValue>),
 
-    Const(Rc<ConstTyped>),
+    Const(Rc<ConstValue>),
 }
 
-impl Typed {
+impl Value {
     pub fn expect_any_value(&self) -> TypeResult<()> {
         self.expect_value(&Type::Nothing)
     }
     
     pub fn expect_value(&self, expect_ty: &Type) -> TypeResult<()> {
         let (actual_ty, span) = match self {
-            Typed::Method(method) => (method.func_ty(), &method.span),
-            Typed::TypedValue(val) => (val.ty.clone(), &val.span),
-            Typed::Const(const_val) => (const_val.ty.clone(), &const_val.span),
-            Typed::Function(func) => (func.func_ty(), &func.span),
+            Value::Method(method) => (method.func_ty(), &method.span),
+            Value::Typed(val) => (val.ty.clone(), &val.span),
+            Value::Const(const_val) => (const_val.ty.clone(), &const_val.span),
+            Value::Function(func) => (func.func_ty(), &func.span),
 
-            Typed::Overload(..)
-            | Typed::UfcsFunction(..)
-            | Typed::Untyped(..)
-            | Typed::Namespace(..)
-            | Typed::Type(..)
-            | Typed::VariantCase(..) => {
+            Value::Overload(..)
+            | Value::UfcsFunction(..)
+            | Value::Untyped(..)
+            | Value::Namespace(..)
+            | Value::Type(..)
+            | Value::VariantCase(..) => {
                 return Err(TypeError::NotValueExpr { 
                     expected: expect_ty.clone(),
                     actual: self.clone(),
@@ -413,90 +413,90 @@ impl Typed {
 
     pub fn ty(&self) -> Cow<Type> {
         match self {
-            Typed::Namespace(_, _)
-            | Typed::Untyped(_)
-            | Typed::Type(_, _)
-            | Typed::VariantCase(..) => Cow::Owned(Type::Nothing),
+            Value::Namespace(_, _)
+            | Value::Untyped(_)
+            | Value::Type(_, _)
+            | Value::VariantCase(..) => Cow::Owned(Type::Nothing),
 
-            Typed::Function(func) => Cow::Owned(func.func_ty()),
-            Typed::UfcsFunction(call) => Cow::Owned(call.func_ty()),
-            Typed::Method(method) => Cow::Owned(method.func_ty()),
-            Typed::Overload(overload) => Cow::Owned(overload.func_ty()),
+            Value::Function(func) => Cow::Owned(func.func_ty()),
+            Value::UfcsFunction(call) => Cow::Owned(call.func_ty()),
+            Value::Method(method) => Cow::Owned(method.func_ty()),
+            Value::Overload(overload) => Cow::Owned(overload.func_ty()),
 
-            Typed::Const(const_val) => Cow::Borrowed(&const_val.ty),
-            Typed::TypedValue(val) => Cow::Borrowed(&val.ty),
+            Value::Const(const_val) => Cow::Borrowed(&const_val.ty),
+            Value::Typed(val) => Cow::Borrowed(&val.ty),
         }
     }
 
     pub fn decl(&self) -> Option<&Ident> {
         match self {
-            Typed::Type(..) => None,
-            Typed::Function { .. } => None, // TODO
-            Typed::Method(..) => None, // TODO
-            Typed::UfcsFunction { .. } => None, // TODO
-            Typed::Overload { .. } => None, // TODO
+            Value::Type(..) => None,
+            Value::Function { .. } => None, // TODO
+            Value::Method(..) => None, // TODO
+            Value::UfcsFunction { .. } => None, // TODO
+            Value::Overload { .. } => None, // TODO
 
-            Typed::TypedValue(val) => val.decl.as_ref(),
-            Typed::Untyped(..) => None,
-            Typed::Namespace(ident, ..) => Some(ident.last()),
+            Value::Typed(val) => val.decl.as_ref(),
+            Value::Untyped(..) => None,
+            Value::Namespace(ident, ..) => Some(ident.last()),
 
-            Typed::Const(const_val) => const_val.decl.as_ref(),
+            Value::Const(const_val) => const_val.decl.as_ref(),
 
-            Typed::VariantCase(ctor) => Some(ctor.variant_name.ident()),
+            Value::VariantCase(ctor) => Some(ctor.variant_name.ident()),
         }
     }
 
     pub fn value_kind(&self) -> Option<ValueKind> {
         match self {
-            Typed::TypedValue(val) => Some(val.value_kind),
-            Typed::Const { .. } => Some(ValueKind::Immutable),
+            Value::Typed(val) => Some(val.value_kind),
+            Value::Const { .. } => Some(ValueKind::Immutable),
             _ => None,
         }
     }
 
     pub fn is_namespace(&self) -> bool {
         match self {
-            Typed::Namespace(_, _) => true,
+            Value::Namespace(_, _) => true,
             _ => false,
         }
     }
 }
 
-impl fmt::Display for Typed {
+impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Typed::Untyped(_) => { 
+            Value::Untyped(_) => { 
                 write!(f, "untyped value") 
             },
-            Typed::TypedValue(val) => { 
+            Value::Typed(val) => { 
                 write!(f, "{} of type {}", val.value_kind, val.ty) 
             },
-            Typed::Function(func) => { 
+            Value::Function(func) => { 
                 write!(f, "function {}", func.name) 
             },
-            Typed::UfcsFunction(func) => { 
+            Value::UfcsFunction(func) => { 
                 write!(f, "function {}", func.function_name) 
             },
-            Typed::Method(method) => { 
+            Value::Method(method) => { 
                 write!(f, "method {}.{}", method.self_ty, method.decl.func_decl.ident()) 
             },
-            Typed::Type(ty, ..) => { 
+            Value::Type(ty, ..) => { 
                 write!(f, "type {}", ty) 
             },
-            Typed::Namespace(ns, ..) => { 
+            Value::Namespace(ns, ..) => { 
                 write!(f, "namespace {}", ns) 
             },
-            Typed::VariantCase(case) => { 
+            Value::VariantCase(case) => { 
                 write!(f, "variant case {}.{}", case.variant_name, case.case) 
             },
-            Typed::Overload(overload) => { 
+            Value::Overload(overload) => { 
                 write!(f, "overloaded function")?;
                 if let Some(sig) = &overload.sig {
                     write!(f, " with signature {}", sig)?;
                 }
                 Ok(())
             },
-            Typed::Const(const_val) => { 
+            Value::Const(const_val) => { 
                 write!(f, "constant")?;
                 if let Some(decl) = &const_val.decl {
                     write!(f, " {}", decl)?;
@@ -507,25 +507,25 @@ impl fmt::Display for Typed {
     }
 }
 
-impl Spanned for Typed {
+impl Spanned for Value {
     fn span(&self) -> &Span {
         match self {
-            Typed::Method(method) => &method.span,
-            Typed::VariantCase(ctor) => &ctor.span,
-            Typed::Overload(overload) => &overload.span,
-            Typed::TypedValue(val) => &val.span,
-            Typed::Const(const_val) => &const_val.span,
-            Typed::Function(func) => &func.span,
-            Typed::UfcsFunction(call) => &call.span,
+            Value::Method(method) => &method.span,
+            Value::VariantCase(ctor) => &ctor.span,
+            Value::Overload(overload) => &overload.span,
+            Value::Typed(val) => &val.span,
+            Value::Const(const_val) => &const_val.span,
+            Value::Function(func) => &func.span,
+            Value::UfcsFunction(call) => &call.span,
 
-            Typed::Untyped(span)
-            | Typed::Type(_, span)
-            | Typed::Namespace(_, span) => span,
+            Value::Untyped(span)
+            | Value::Type(_, span)
+            | Value::Namespace(_, span) => span,
         }
     }
 }
 
-impl Annotation for Typed {
+impl Annotation for Value {
     type Type = Type;
     type Name = Symbol;
     type Pattern = TypePattern;

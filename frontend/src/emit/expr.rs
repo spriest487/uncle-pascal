@@ -405,9 +405,9 @@ fn gen_fill_byte(at: ir::Ref, at_ty: ir::Type, count: ir::Value, byte_val: ir::V
     builder.label(break_label);
 }
 
-fn translate_ident(ident: &Ident, annotation: &typ::Typed, builder: &mut Builder) -> ir::Ref {
+fn translate_ident(ident: &Ident, annotation: &typ::Value, builder: &mut Builder) -> ir::Ref {
     match annotation {
-        typ::Typed::Function(func) => {
+        typ::Value::Function(func) => {
             let func = builder.translate_func(&func.name, &func.sig, None);
             
             // references to functions by value are turned into references to the static
@@ -415,7 +415,7 @@ fn translate_ident(ident: &Ident, annotation: &typ::Typed, builder: &mut Builder
             builder.build_function_closure(&func)
         },
 
-        typ::Typed::TypedValue(val) => {
+        typ::Value::Typed(val) => {
             let local_ref = builder
                 .find_local(&ident.to_string())
                 .map(|local| {

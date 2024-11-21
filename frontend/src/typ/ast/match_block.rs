@@ -7,7 +7,7 @@ use crate::typ::Binding;
 use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::Type;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::typ::TypePattern;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
@@ -17,10 +17,10 @@ use common::span::Span;
 use common::span::Spanned;
 use crate::ast;
 
-pub type MatchBlock<B> = ast::MatchBlock<Typed, B>;
+pub type MatchBlock<B> = ast::MatchBlock<Value, B>;
 pub type MatchExpr = MatchBlock<Expr>;
 pub type MatchStmt = MatchBlock<Stmt>;
-pub type MatchBlockBranch<B> = ast::MatchBlockBranch<Typed, B>;
+pub type MatchBlockBranch<B> = ast::MatchBlockBranch<Value, B>;
 
 fn typecheck_match_cond<B>(
     match_block: &ast::MatchBlock<Span, B>,
@@ -128,7 +128,7 @@ pub fn typecheck_match_stmt(
             None => None,
         };
 
-        let annotation = Typed::Untyped(match_stmt.span().clone());
+        let annotation = Value::Untyped(match_stmt.span().clone());
 
         Ok(MatchStmt {
             cond_expr,

@@ -13,7 +13,7 @@ use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::InterfaceMethodDecl;
 use crate::typ::{typecheck_type, MAX_FLAGS_BITS};
-use crate::typ::ConstTyped;
+use crate::typ::ConstValue;
 use crate::typ::Context;
 use crate::typ::FunctionSig;
 use crate::typ::InvalidTypeParamsDeclKind;
@@ -25,7 +25,7 @@ use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Typed;
+use crate::typ::Value;
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
@@ -33,16 +33,16 @@ use std::borrow::Cow;
 use std::rc::Rc;
 use crate::typ::set::SetType;
 
-pub type StructDef = ast::StructDecl<Typed>;
-pub type StructMemberDecl = ast::StructMemberDecl<Typed>;
-pub type FieldDecl = ast::FieldDecl<Typed>;
-pub type MethodDecl = ast::MethodDecl<Typed>;
-pub type InterfaceDecl = ast::InterfaceDecl<Typed>;
-pub type VariantDef = ast::VariantDecl<Typed>;
-pub type AliasDecl = ast::AliasDecl<Typed>;
-pub type EnumDecl = ast::EnumDecl<Typed>;
-pub type EnumDeclItem = ast::EnumDeclItem<Typed>;
-pub type SetDecl = ast::SetDecl<Typed>;
+pub type StructDef = ast::StructDecl<Value>;
+pub type StructMemberDecl = ast::StructMemberDecl<Value>;
+pub type FieldDecl = ast::FieldDecl<Value>;
+pub type MethodDecl = ast::MethodDecl<Value>;
+pub type InterfaceDecl = ast::InterfaceDecl<Value>;
+pub type VariantDef = ast::VariantDecl<Value>;
+pub type AliasDecl = ast::AliasDecl<Value>;
+pub type EnumDecl = ast::EnumDecl<Value>;
+pub type EnumDeclItem = ast::EnumDeclItem<Value>;
+pub type SetDecl = ast::SetDecl<Value>;
 
 pub const VARIANT_TAG_TYPE: Type = Type::Primitive(Primitive::Int32);
 pub const SET_DEFAULT_VALUE_TYPE: Type = Type::Primitive(Primitive::UInt8);
@@ -456,14 +456,14 @@ impl SetDecl {
 
             values.push(value.clone());
             
-            let const_val = ConstTyped {
+            let const_val = ConstValue {
                 value: Literal::Integer(value),
                 ty,
                 span: value_expr.span().clone(),
                 decl: None,
             };
 
-            items.push(Expr::Literal(const_val.value.clone(), Typed::from(const_val)));
+            items.push(Expr::Literal(const_val.value.clone(), Value::from(const_val)));
         }
 
         let set_decl = SetDecl {
