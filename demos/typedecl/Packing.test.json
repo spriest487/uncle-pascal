@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "output": "offset of a.member1: 16" },
+    { "output": "offset of a.member2: 17" },
+    { "output": "offset of a.member3: 20" },
+    { "output": "offset of a.member4: 24" },
+    { "output": "" },
+    { "output": "offset of a.member1: 0" },
+    { "output": "offset of a.member2: 1" },
+    { "output": "offset of a.member3: 4" },
+    { "output": "offset of a.member4: 8" },
+    { "output": "size of B: 12" },
+    { "output": "" },
+    { "output": "offset of a.member1: 0" },
+    { "output": "offset of a.member2: 1" },
+    { "output": "offset of a.member3: 2" },
+    { "output": "offset of a.member4: 6" },
+    { "output": "size of C: 7" }
+  ]
+}

@@ -30,7 +30,7 @@ procedure WriteOffset(name: String; base, member: Pointer);
 begin
     var baseBytes := base as ^Byte;
     var memberBytes := member as ^Byte;
-    var diff := (memberBytes - baseBytes) as NativeInt;
+    var diff: NativeInt := memberBytes - baseBytes;
 
     WriteLn('offset of ' + name + ': ' + diff);
 end;
@@ -39,6 +39,8 @@ initialization
 
 unsafe begin
     var a := A(member1: 1; member2: 2; member3: 3; member4: 4);
+    
+    { the offsets for A's members should one class pointer and two i32s for reference counting }
     WriteOffset('a.member1', a as Pointer, @a.member1);
     WriteOffset('a.member2', a as Pointer, @a.member2);
     WriteOffset('a.member3', a as Pointer, @a.member3);
