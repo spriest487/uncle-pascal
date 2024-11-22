@@ -554,8 +554,21 @@ impl Type {
         }
     }
 
-    pub fn valid_math_op(&self, op: Operator, rhs: &Self) -> bool {
-        match (self, op, rhs) {            
+    pub fn arithmetic_op_result(&self, op: Operator, rhs: &Self) -> Option<Cow<Self>> {
+        match (self, op, rhs) {
+            // pointer-pointer subtraction - returns an isize offset
+            (
+                Type::Pointer(..) | Type::Primitive(Primitive::Pointer),
+                Operator::Sub,
+                Type::Pointer(..) | Type::Primitive(Primitive::Pointer),
+            ) => {
+                if self.deref_ty() != rhs.deref_ty() {
+                    return None;
+                }
+
+                Some(Cow::Owned(Type::Primitive(Primitive::NativeInt)))
+            }
+            
             // pointer arithmetic:
             // - lhs is any pointer
             // - operator is +, - or any bitwise operator
@@ -571,11 +584,15 @@ impl Type {
             ) => {
                 // can't offset untyped pointers
                 if (op == Operator::Add || op == Operator::Sub) && self.deref_ty().is_none() {
-                    return false;
+                    return None;
                 }
                 
                 let rhs_valid = rhs_primitive.is_integer() || rhs_primitive.is_pointer();
-                rhs_valid && rhs_primitive.native_size() <= Primitive::Pointer.native_size()
+                if !rhs_valid || rhs_primitive.native_size() > Primitive::Pointer.native_size() {
+                    return None;
+                }
+
+                Some(Cow::Borrowed(self))
             },
 
             // (typed) pointer arithmetic:
@@ -585,7 +602,6 @@ impl Type {
             (
                 Type::Pointer(_),
                 Operator::Add
-                | Operator::Sub
                 | Operator::BitAnd
                 | Operator::BitOr
                 | Operator::Caret,
@@ -593,27 +609,47 @@ impl Type {
             ) => {
                 // can't offset untyped pointers
                 if (op == Operator::Add || op == Operator::Sub) && self.deref_ty().is_none() {
-                    return false;
+                    return None;
                 }
 
-                *self == *rhs
+                if *self != *rhs {
+                    return None;
+                }
+
+                Some(Cow::Owned(Type::Primitive(Primitive::NativeInt)))
             },
 
             // integer division is valid for two of the same primitive integer type
             (Type::Primitive(a), Operator::IDiv, Type::Primitive(b)) => {
                 let a_valid = a.is_integer() || a.is_pointer();
-                a_valid && *a == *b
+                if !a_valid || *a != *b {
+                    return None;
+                }
+
+                Some(Cow::Borrowed(self))
             },
 
             // real division is valid for two of the same primitive real type
-            (Type::Primitive(a), Operator::FDiv, Type::Primitive(b)) => a.is_real() && *a == *b,
+            (Type::Primitive(a), Operator::FDiv, Type::Primitive(b)) => {
+                if !a.is_real() || *a != *b {
+                    return None;
+                }
+
+                Some(Cow::Borrowed(self))
+            },
 
             // all maths ops except division are valid for primitives of the same type
             (
                 Type::Primitive(a),
                 Operator::Add | Operator::Sub | Operator::Mul | Operator::Mod,
                 Type::Primitive(b),
-            ) => a.is_numeric() && *a == *b,
+            ) => {
+                if !a.is_numeric() || *a != *b {
+                    return None;
+                }
+                
+                Some(Cow::Borrowed(self))
+            },
 
             // bitwise ops are valid for two identical unsigned primitive types
             (
@@ -624,8 +660,14 @@ impl Type {
                 | Operator::BitOr
                 | Operator::Caret,
                 Type::Primitive(rhs),
-            ) if *lhs == *rhs => lhs.is_integer() && !lhs.is_signed(),
-            
+            ) if *lhs == *rhs => {
+                if !lhs.is_integer() || lhs.is_signed() {
+                    return None;
+                }
+
+                Some(Cow::Borrowed(self))
+            },
+
             // bitwise ops are valid for sets with the same element type
             (
                 Type::Set(lhs_set), 
@@ -636,10 +678,14 @@ impl Type {
                 | Operator::Caret, 
                 Type::Set(rhs_set)
             ) => {
-                lhs_set.item_type == rhs_set.item_type
+                if lhs_set.item_type != rhs_set.item_type {
+                    return None;
+                }
+
+                Some(Cow::Borrowed(self))
             }
 
-            _ => false,
+            _ => None,
         }
     }
     

@@ -175,7 +175,8 @@ impl DynValue {
             (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a - b)),
             (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a - b)),
             (DynValue::Pointer(a), DynValue::Pointer(b)) => {
-                Some(DynValue::Pointer(a.addr_sub(b.addr)))
+                let ptr_diff = a.addr_sub(b.addr).addr as isize;
+                Some(DynValue::ISize(ptr_diff))
             },
             (DynValue::Pointer(ptr), DynValue::ISize(offset)) => {
                 Some(DynValue::Pointer(ptr.addr_sub(*offset as usize)))

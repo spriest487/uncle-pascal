@@ -128,27 +128,18 @@ pub fn typecheck_bin_op(
                 }
             }
 
-            let valid_math = lhs
-                .annotation()
-                .ty()
-                .valid_math_op(bin_op.op, &rhs.annotation().ty());
-
-            if !valid_math {
-                return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
-            }
-
             // check valid ops etc, result type etc
-            let result_ty = lhs.annotation().ty().into_owned();
+            let lhs_ty = lhs.annotation().ty();
 
-            let annotation = match result_ty {
+            let result_ty = lhs_ty
+                .arithmetic_op_result(bin_op.op, rhs.annotation().ty().as_ref())
+                .ok_or_else(|| {
+                    invalid_bin_op(&bin_op, &lhs, &rhs)
+                })?;
+
+            let annotation = match result_ty.as_ref() {
                 Type::Nothing => Value::Untyped(span.clone()),
-                ty => TypedValue {
-                    ty,
-                    value_kind: ValueKind::Temporary,
-                    span,
-                    decl: None,
-                }
-                .into(),
+                _ => Value::from(TypedValue::temp(result_ty.into_owned(), span)),
             };
 
             Ok(Expr::from(ast::BinOp {
@@ -279,18 +270,14 @@ fn typecheck_bitwise_op(
 
     let rhs_ty = rhs.annotation().ty();
 
-    if !lhs_ty.valid_math_op(bin_op.op, rhs_ty.as_ref()) {
-        return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
-    }
+    let result_ty = lhs_ty
+        .arithmetic_op_result(bin_op.op, &rhs_ty)
+        .ok_or_else(|| invalid_bin_op(&bin_op, &lhs, &rhs))?;
+    
+    let val = TypedValue::temp(result_ty.into_owned(), bin_op.span().clone());
 
     Ok(BinOp {
-        annotation: TypedValue {
-            ty: lhs_ty.into_owned(),
-            span: bin_op.span().clone(),
-            value_kind: ValueKind::Temporary,
-            decl: None,
-        }
-        .into(),
+        annotation: Value::from(val),
         lhs,
         rhs,
         op: bin_op.op,
@@ -853,21 +840,23 @@ pub fn typecheck_unary_op(
     let operand = typecheck_expr(&unary_op.operand, &operand_expect_ty, ctx)?;
     let operand_ty = operand.annotation().ty();
 
-    let annotation = match unary_op.op {
+    let typed_val = match unary_op.op {
         Operator::AddressOf => {
             let ty = operand.annotation().ty();
             let value_kind = operand.annotation().value_kind();
 
             let kind_addressable = match operand.annotation().value_kind() {
                 None
-                | Some(ValueKind::Temporary | ValueKind::Immutable | ValueKind::Uninitialized) => {
+                | Some(ValueKind::Temporary)
+                | Some(ValueKind::Immutable) 
+                | Some(ValueKind::Uninitialized) => {
                     false
                 },
 
                 Some(ValueKind::Mutable) => true,
             };
 
-            match (kind_addressable, ty.as_ref()) {
+            let val = match (kind_addressable, ty.as_ref()) {
                 (false, _) | (true, Type::Nothing | Type::Nil | Type::Function(..)) => {
                     Err(TypeError::NotAddressable {
                         ty: ty.into_owned(),
@@ -889,37 +878,19 @@ pub fn typecheck_unary_op(
                     ty: ty.into_owned(),
                     span,
                 }),
-
-                _ => Ok(TypedValue {
-                    ty: ty.into_owned().ptr(),
-                    value_kind: ValueKind::Temporary,
-                    span,
-                    decl: None,
-                }
-                .into()),
-            }?
+                
+                _ => Ok(TypedValue::temp(ty.into_owned().ptr(), span)),
+            }?;
+            
+            Some(val)
         },
 
-        // unary +, is this always a no-op?
-        Operator::Add if operand_ty.valid_math_op(Operator::Add, &operand_ty) => {
-            TypedValue {
-                ty: operand_ty.into_owned(),
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
+        Operator::Add | Operator::Sub => {
+            if let Some(result_ty) = operand_ty.arithmetic_op_result(unary_op.op, &operand_ty) {
+                Some(TypedValue::temp(result_ty.into_owned(), span))
+            } else {
+                None
             }
-            .into()
-        },
-
-        // unary negation - should this be disallowed for unsigned types?
-        Operator::Sub if operand_ty.valid_math_op(Operator::Sub, &operand_ty) => {
-            TypedValue {
-                ty: operand_ty.into_owned(),
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
-            }
-            .into()
         },
 
         Operator::Caret => {
@@ -935,13 +906,12 @@ pub fn typecheck_unary_op(
 
             let value_kind = ValueKind::Mutable;
 
-            TypedValue {
+            Some(TypedValue {
                 ty: deref_ty,
                 value_kind,
                 span,
                 decl: operand.annotation().decl().cloned(),
-            }
-            .into()
+            })
         },
 
         Operator::Not => {
@@ -949,13 +919,12 @@ pub fn typecheck_unary_op(
                 .annotation()
                 .expect_value(&Type::Primitive(Primitive::Boolean))?;
 
-            TypedValue {
+            Some(TypedValue {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: operand.annotation().decl().cloned(),
-            }
-            .into()
+            })
         },
 
         Operator::BitNot => {
@@ -966,30 +935,29 @@ pub fn typecheck_unary_op(
             };
 
             if !valid_ty {
-                return Err(TypeError::InvalidUnaryOp {
-                    operand: operand.annotation().ty().into_owned(),
-                    op: unary_op.op,
-                    span,
-                });
+                None
+            } else {
+                Some(TypedValue::temp(operand.annotation().ty().into_owned(), span))
             }
-
-            let value = TypedValue::temp(operand.annotation().ty().into_owned(), span);
-            Value::from(value)
         },
 
         _ => {
-            return Err(TypeError::InvalidUnaryOp {
-                op: unary_op.op,
-                operand: operand.annotation().ty().into_owned(),
-                span: unary_op.annotation.clone(),
-            });
+            None
         },
     };
+    
+    let annotation = typed_val.ok_or_else(|| {
+        TypeError::InvalidUnaryOp {
+            op: unary_op.op,
+            operand: operand.annotation().ty().into_owned(),
+            span: unary_op.annotation.clone(),
+        }
+    })?;
 
     Ok(UnaryOp {
         operand,
         op: unary_op.op,
-        annotation,
+        annotation: Value::from(annotation),
     })
 }
 

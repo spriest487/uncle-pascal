@@ -39,13 +39,29 @@ pub fn typecheck_compound_assignment(
 ) -> TypeResult<CompoundAssignment> {
     let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, ctx)?;
 
-    if !lhs.annotation().ty().valid_math_op(assignment.op.binary_operator(), &rhs.annotation().ty()) {
-        return Err(TypeError::InvalidBinOp {
-            lhs: lhs.annotation().ty().into_owned(),
-            rhs: rhs.annotation().ty().into_owned(),
-            op: assignment.op.binary_operator(),
+    let lhs_ty = lhs.annotation().ty();
+    let rhs_ty = rhs.annotation().ty();
+
+    let result_ty = match lhs_ty.arithmetic_op_result(assignment.op.binary_operator(), &rhs_ty) {
+        Some(ty) => ty,
+        None => {
+            return Err(TypeError::InvalidBinOp {
+                lhs: lhs_ty.into_owned(),
+                rhs: rhs_ty.into_owned(),
+                op: assignment.op.binary_operator(),
+                span: assignment.span().clone(),
+            });
+        }
+    };
+    
+    // compound assignment operator naturally has to return the type of the lhs, since it's
+    // being assigned back to the same location
+    if *result_ty != *lhs_ty {
+        return Err(TypeError::TypeMismatch {
+            actual: result_ty.into_owned(),
+            expected: lhs_ty.into_owned(),
             span: assignment.span().clone(),
-        })
+        });
     }
 
     Ok(CompoundAssignment {
