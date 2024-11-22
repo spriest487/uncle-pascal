@@ -1,10 +1,8 @@
 # critical
 * project files/don't auto load used units
-* why is the C backend generating packed decls for everything?
 * rename Any -> Object
   * maybe it should be an interface?
-* take packed out of struct kind, into structdecl?
-* enums/sets/range types (+ `in` operator)
+* range types/`for var x in 0..123`
 
 # features
 * generic interfaces
