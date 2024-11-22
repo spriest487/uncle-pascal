@@ -1,4 +1,4 @@
-unit AnyRef;
+unit ObjectRef;
 
 implementation
 
@@ -13,7 +13,7 @@ end;
 
 initialization
 
-var animal: Any := Dog(name: 'Rover');
+var animal: Object := Dog(name: 'Rover');
 
 if animal is not Cat then
     WriteLn('not a cat');
@@ -21,7 +21,7 @@ if animal is not Cat then
 if animal is Dog d then
     WriteLn(d.name);
 
-// can't assign Integer to Any
-// var a: Any := 1;
+// can't assign Integer to Object
+// var a: Object := 1;
 
 end.

@@ -1,7 +1,6 @@
 # critical
 * project files/don't auto load used units
-* rename Any -> Object
-  * maybe it should be an interface?
+~~~~  * maybe it should be an interface?
 * range types/`for var x in 0..123`
 
 # features

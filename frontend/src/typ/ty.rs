@@ -29,6 +29,7 @@ use crate::ast::TypeAnnotation;
 use crate::ast::INTERFACE_METHOD_ACCESS;
 use crate::typ::ast::FieldDecl;
 use crate::typ::ast::MethodDecl;
+use crate::typ::ast::SELF_TY_NAME;
 use crate::typ::builtin_span;
 use crate::typ::builtin_unit_path;
 use crate::typ::context;
@@ -41,6 +42,9 @@ use crate::typ::GenericTarget;
 use crate::typ::NameResult;
 use crate::typ::Symbol;
 use crate::typ::Value;
+use crate::typ::ANY_TYPE_NAME;
+use crate::typ::NIL_NAME;
+use crate::typ::NOTHING_TYPE_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Keyword;
 use crate::Operator;
@@ -157,9 +161,9 @@ impl Type {
     
     pub fn full_path(&self) -> Option<Cow<IdentPath>> {
         match self {
-            Type::Nothing => Some(Cow::Owned(builtin_unit_path("Nothing"))),
-            Type::Any => Some(Cow::Owned(builtin_unit_path("Any"))),
-            Type::MethodSelf => Some(Cow::Owned(IdentPath::from(Ident::new("Self", builtin_span())))),
+            Type::Nothing => Some(Cow::Owned(builtin_unit_path(NOTHING_TYPE_NAME))),
+            Type::Any => Some(Cow::Owned(builtin_unit_path(ANY_TYPE_NAME))),
+            Type::MethodSelf => Some(Cow::Owned(IdentPath::from(Ident::new(SELF_TY_NAME, builtin_span())))),
             Type::Primitive(p) => Some(Cow::Owned(builtin_unit_path(p.name()))),
             Type::Interface(iface) => Some(Cow::Borrowed(iface.as_ref())),
             
@@ -1207,7 +1211,7 @@ impl Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Type::Nil => write!(f, "nil"),
+            Type::Nil => write!(f, "{NIL_NAME}"),
 
             Type::Class(name) 
             | Type::Record(name)  => write!(f, "{}", name),
@@ -1218,16 +1222,16 @@ impl fmt::Display for Type {
 
             Type::Weak(weak_ty) => write!(f, "{} {}", Keyword::Weak, weak_ty),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
-            Type::Any => write!(f, "Any"),
+            Type::Any => write!(f, "{ANY_TYPE_NAME}"),
 
             Type::Interface(iface) => write!(f, "{}", iface),
             Type::Array(array_ty) => write!(f, "{}", array_ty),
             Type::DynArray { element } => write!(f, "array of {}", element),
             Type::GenericParam(ident) => write!(f, "{}", ident),
-            Type::Nothing => write!(f, "Nothing"),
+            Type::Nothing => write!(f, "{NOTHING_TYPE_NAME}"),
             Type::Primitive(p) => write!(f, "{}.{}", SYSTEM_UNIT_NAME, p.name()),
             Type::Variant(variant) => write!(f, "{}", variant),
-            Type::MethodSelf => write!(f, "Self"),
+            Type::MethodSelf => write!(f, "{SELF_TY_NAME}"),
             Type::Function(sig) => write!(f, "{}", sig),
         }
     }

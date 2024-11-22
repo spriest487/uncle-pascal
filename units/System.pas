@@ -112,7 +112,7 @@ function CompareStr(a, b: String): Integer;
 function Max[T](a, b: T): T where T is Comparable;
 function Min[T](a, b: T): T where T is Comparable;
 
-function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer): Any; external 'rt';
+function ArraySetLengthInternal(arr: Object; len: Integer; defaultVal: Pointer): Object; external 'rt';
 
 function Length[T](arr: array of T): Integer;
 function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);

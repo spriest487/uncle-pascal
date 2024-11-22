@@ -16,9 +16,11 @@ use common::span::*;
 use linked_hash_map::LinkedHashMap;
 use std::rc::Rc;
 
+pub const NIL_NAME: &str = "nil";
+
 pub const SYSTEM_UNIT_NAME: &str = "System";
 pub const NOTHING_TYPE_NAME: &str = "Nothing";
-pub const ANY_TYPE_NAME: &str = "Any";
+pub const ANY_TYPE_NAME: &str = "Object";
 
 pub const DISPOSABLE_IFACE_NAME: &str = "Disposable";
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
