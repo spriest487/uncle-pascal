@@ -8,6 +8,7 @@ use crate::emit::syn;
 use crate::emit::translate_stmt;
 use crate::emit::typ;
 use crate::emit::Builder;
+use crate::typ::TypedValue;
 use crate::typ::STRING_TYPE_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
 use common::span::*;
@@ -416,21 +417,13 @@ fn translate_ident(ident: &Ident, annotation: &typ::Value, builder: &mut Builder
         },
 
         typ::Value::Typed(val) => {
-            let local_ref = builder
-                .find_local(&ident.to_string())
-                .map(|local| {
-                    let value_ref = ir::Ref::Local(local.id());
-                    if local.by_ref() {
-                        value_ref.to_deref()
-                    } else {
-                        value_ref
-                    }
-                })
+            let val_ref = find_local_ref(ident, builder)
+                .or_else(|| find_global_ref(val, builder))
                 .unwrap_or_else(|| {
                     panic!(
-                        "identifier not found in local scope @ {}: {}",
+                        "identifier not found in local or global scope @ {}: {}",
                         annotation.span(),
-                        ident
+                        ident,
                     )
                 });
 
@@ -444,18 +437,41 @@ fn translate_ident(ident: &Ident, annotation: &typ::Value, builder: &mut Builder
 
                     builder.append(ir::Instruction::AddrOf {
                         out: ref_temp.clone(),
-                        a: local_ref,
+                        a: val_ref,
                     });
                     ref_temp.to_deref()
                 },
 
                 // ident rvalue - just evaluate it
-                typ::ValueKind::Temporary => local_ref,
+                typ::ValueKind::Temporary => val_ref,
             }
         },
 
         _ => panic!("wrong kind of node annotation for ident: {:?}", ident),
     }
+}
+
+fn find_local_ref(ident: &Ident, builder: &Builder) -> Option<ir::Ref> {
+    let local = builder
+        .find_local(&ident.to_string())?;
+    
+    let value_ref = ir::Ref::Local(local.id());
+    if local.by_ref() {
+        Some(value_ref.to_deref())
+    } else {
+        Some(value_ref)
+    }
+}
+
+fn find_global_ref(value: &TypedValue, builder: &Builder) -> Option<ir::Ref> {
+    // direct references to global variables by their ident will have the qualified name stored
+    // in their "decl" property
+    let decl_path = value.decl.as_ref()?;
+
+    let var_id = builder.find_global_var(&decl_path)?;
+    let global_ref = ir::Ref::from(ir::GlobalRef::Variable(var_id));
+    
+    Some(global_ref)
 }
 
 pub fn translate_block(block: &typ::ast::Block, out_ref: ir::Ref, builder: &mut Builder) {

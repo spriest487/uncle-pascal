@@ -12,18 +12,21 @@ use crate::StructIdentity;
 use crate::Type;
 use crate::TypeDef;
 use crate::TypeDefID;
+use crate::VariableID;
 use crate::VirtualTypeID;
 use common::span::Span;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Module {
     pub metadata: Metadata,
 
-    pub functions: HashMap<FunctionID, Function>,
+    pub functions: BTreeMap<FunctionID, Function>,
+    
+    pub variables: BTreeMap<VariableID, Type>,
 
     pub static_closures: Vec<StaticClosure>,
 
@@ -37,7 +40,9 @@ impl Module {
         Self {
             init: Vec::new(),
 
-            functions: HashMap::new(),
+            functions: BTreeMap::new(),
+            
+            variables: BTreeMap::new(),
 
             static_closures: Vec::new(),
 
@@ -71,8 +76,12 @@ impl Module {
         &self.metadata
     }
 
-    pub fn functions(&self) -> &HashMap<FunctionID, Function> {
+    pub fn functions(&self) -> &BTreeMap<FunctionID, Function> {
         &self.functions
+    }
+    
+    pub fn variables(&self) -> &BTreeMap<VariableID, Type> {
+        &self.variables
     }
 }
 

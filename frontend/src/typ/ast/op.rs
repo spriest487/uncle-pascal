@@ -8,7 +8,7 @@ use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::typ::ast::{check_overload_visibility, SetDecl};
+use crate::typ::ast::check_overload_visibility;
 use crate::typ::ast::collection_ctor_elements;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::implicit_conversion;
@@ -22,6 +22,7 @@ use crate::typ::ast::Expr;
 use crate::typ::ast::MethodCall;
 use crate::typ::ast::MethodDecl;
 use crate::typ::ast::OverloadCandidate;
+use crate::typ::ast::SetDecl;
 use crate::typ::builtin_displayable_name;
 use crate::typ::string_type;
 use crate::typ::Context;
@@ -37,9 +38,9 @@ use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeMember;
 use crate::typ::TypeResult;
-use crate::typ::Value;
 use crate::typ::TypedValue;
 use crate::typ::UfcsValue;
+use crate::typ::Value;
 use crate::typ::ValueKind;
 use crate::typ::DISPLAYABLE_TOSTRING_METHOD;
 use crate::typ::STRING_CONCAT_FUNC_NAME;
@@ -910,7 +911,7 @@ pub fn typecheck_unary_op(
                 ty: deref_ty,
                 value_kind,
                 span,
-                decl: operand.annotation().decl().cloned(),
+                decl: None,
             })
         },
 
@@ -919,12 +920,7 @@ pub fn typecheck_unary_op(
                 .annotation()
                 .expect_value(&Type::Primitive(Primitive::Boolean))?;
 
-            Some(TypedValue {
-                ty: Type::Primitive(Primitive::Boolean),
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: operand.annotation().decl().cloned(),
-            })
+            Some(TypedValue::temp(Type::Primitive(Primitive::Boolean), span))
         },
 
         Operator::BitNot => {

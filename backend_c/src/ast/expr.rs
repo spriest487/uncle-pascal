@@ -156,6 +156,10 @@ impl Expr {
                 let name = GlobalName::StaticClosure(*id);
                 Expr::Global(name)
             },
+            ir::Ref::Global(ir::GlobalRef::Variable(id)) => {
+                let name = GlobalName::Variable(*id);
+                Expr::Global(name)
+            }
         }
     }
 

@@ -1,9 +1,14 @@
-use std::fmt;
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
-use serde::{Deserialize, Serialize};
-use crate::{FunctionID, StaticClosureID};
 use crate::metadata::StringID;
 use crate::ty::Type;
+use crate::FunctionID;
+use crate::StaticClosureID;
+use crate::VariableID;
+use bigdecimal::BigDecimal;
+use bigdecimal::FromPrimitive;
+use bigdecimal::ToPrimitive;
+use serde::Deserialize;
+use serde::Serialize;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Ref {
@@ -17,6 +22,18 @@ pub enum Ref {
 impl Ref {
     pub fn to_deref(self) -> Self {
         Ref::Deref(Box::new(Value::Ref(self)))
+    }
+}
+
+impl From<GlobalRef> for Ref {
+    fn from(value: GlobalRef) -> Self {
+        Ref::Global(value)
+    }
+}
+
+impl From<LocalID> for Ref {
+    fn from(value: LocalID) -> Self {
+        Ref::Local(value)
     }
 }
 
@@ -166,6 +183,7 @@ pub enum GlobalRef {
     Function(FunctionID),
     StringLiteral(StringID),
     StaticClosure(StaticClosureID),
+    Variable(VariableID),
 }
 
 impl fmt::Display for GlobalRef {
@@ -174,6 +192,7 @@ impl fmt::Display for GlobalRef {
             GlobalRef::Function(func_id) => write!(f, "{}", func_id),
             GlobalRef::StringLiteral(id) => write!(f, "{}", id),
             GlobalRef::StaticClosure(id) => write!(f, "{}", id),
+            GlobalRef::Variable(id) => write!(f, "{}", id),
         }
     }
 }

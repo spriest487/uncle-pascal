@@ -61,6 +61,15 @@ impl fmt::Display for InterfaceID {
     }
 }
 
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct VariableID(pub usize);
+
+impl fmt::Display for VariableID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 // builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";

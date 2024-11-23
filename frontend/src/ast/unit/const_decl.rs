@@ -1,23 +1,21 @@
 use crate::ast::type_name::TypeName;
-use crate::ast::Annotation;
+use crate::ast::{Annotation, TypeAnnotation};
 use crate::ast::BindingDeclKind;
 use crate::ast::Expr;
 use crate::ast::Ident;
-use crate::parse::LookAheadTokenStream;
 use crate::parse::MatchOneOf;
 use crate::parse::Matcher;
 use crate::parse::Parse;
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
-use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
 use crate::Keyword;
 use crate::Operator;
 use crate::Separator;
-use derivative::*;
 use common::span::Span;
 use common::span::Spanned;
 use common::TracedError;
+use derivative::*;
 use std::fmt;
 
 /// var or const binding (depending on the keyword)
@@ -49,10 +47,59 @@ impl Parse for UnitBinding<Span> {
             Some(Keyword::Var) => BindingDeclKind::Var,
             _ => unreachable!(),
         };
+        
+        let mut items = Vec::new();
+        
+        loop {
+            let mut idents = Vec::new();
+            idents.push(Ident::parse(tokens)?);
+            
+            let mut idents_span = idents[0].span().clone();
 
-        let items = UnitBindingItem::parse_seq(tokens)?;
+            while tokens.match_one_maybe(Separator::Comma).is_some() {
+                let next_ident = Ident::parse(tokens)?;
+                
+                idents_span = idents_span.to(next_ident.span());
+                idents.push(next_ident);
+            }
+
+            let ty = match tokens.match_one_maybe(Separator::Colon) {
+                Some(..) => TypeName::parse(tokens)?,
+                None => TypeName::Unspecified(idents_span),
+            };
+
+            let val = if tokens.match_one_maybe(Operator::Equals).is_some() {
+                let val = Expr::parse(tokens)?;
+                Some(Box::new(val))
+            } else {
+                None
+            };
+
+            if let (Some(val_expr), 2..) = (&val, idents.len()) { 
+                return Err(TracedError::trace(ParseError::MultiVarDeclHasInitExpr {
+                    span: idents[0].span().to(val_expr.span()),
+                }));
+            }
+            
+            for ident in idents {
+                items.push(UnitBindingItem {
+                    ty: ty.clone(),
+                    val: val.clone(),
+                    span: ident.span.clone(),
+                    ident,
+                })
+            }
+
+            let match_more = Separator::Semicolon + Matcher::AnyIdent;
+            if tokens.look_ahead().match_sequence(match_more).is_none() {
+                break;
+            }
+
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
         let last_item = items.last().ok_or_else(|| {
-            TracedError::trace(ParseError::EmptyConstDecl {
+            TracedError::trace(ParseError::EmptyConstOrVarDecl {
                 span: kw_token.clone().into_span(),
             })
         })?;
@@ -85,7 +132,7 @@ impl<A: Annotation> fmt::Display for UnitBinding<A> {
 #[derivative(PartialEq, Hash, Debug)]
 pub struct UnitBindingItem<A: Annotation> {
     pub ident: Ident,
-    pub ty: Option<A::Type>,
+    pub ty: A::Type,
 
     pub val: Option<Box<Expr<A>>>,
 
@@ -104,8 +151,8 @@ impl<A: Annotation> Spanned for UnitBindingItem<A> {
 impl<A: Annotation> fmt::Display for UnitBindingItem<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.ident)?;
-        if let Some(ty) = &self.ty {
-            write!(f, ": {}", ty)?;
+        if self.ty.is_known() {
+            write!(f, ": {}", self.ty)?;
         }
 
         if let Some(val) = &self.val {
@@ -113,48 +160,5 @@ impl<A: Annotation> fmt::Display for UnitBindingItem<A> {
         }
 
         Ok(())
-    }
-}
-
-impl ParseSeq for UnitBindingItem<Span> {
-    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
-        if !prev.is_empty() {
-            tokens.match_one(Separator::Semicolon)?;
-        }
-
-        let ident = Ident::parse(tokens)?;
-        let mut span = ident.span.clone();
-
-        let ty = match tokens.match_one_maybe(Separator::Colon) {
-            Some(..) => {
-                let ty_name = TypeName::parse(tokens)?;
-                span = span.to(&ty_name);
-                Some(ty_name)
-            }
-            None => None,
-        };
-
-        let val = if tokens.match_one_maybe(Operator::Equals).is_some() {
-            let val = Expr::parse(tokens)?;
-            span = span.to(&val);
-            Some(Box::new(val))
-        } else {
-            None
-        };
-
-        Ok(UnitBindingItem {
-            ty,
-            span,
-            val,
-            ident,
-        })
-    }
-
-    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
-            return false;
-        }
-
-        tokens.match_one(Matcher::AnyIdent).is_some()
     }
 }

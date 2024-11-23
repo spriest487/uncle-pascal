@@ -5,12 +5,13 @@ mod test;
 
 use self::scope::*;
 use crate::ast as syn;
+use crate::ast::IdentPath;
 use crate::emit::metadata::*;
 use crate::emit::module_builder::FunctionDeclKey;
 use crate::emit::module_builder::FunctionDefKey;
 use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::{FunctionInstance, SetFlagsType};
 use crate::emit::IROptions;
+use crate::emit::{FunctionInstance, SetFlagsType};
 use crate::typ as typ;
 use crate::typ::Symbol;
 use common::span::Span;
@@ -250,7 +251,7 @@ impl<'m> Builder<'m> {
                 let capture_field = capture_field_ptr.to_deref();
 
                 let captured_local_id = builder.find_local(field_name).unwrap().id();
-                builder.mov(capture_field.clone(), Ref::Local(captured_local_id));
+                builder.mov(capture_field.clone(), captured_local_id);
 
                 builder.retain(capture_field.clone(), &field_def.ty);
             }
@@ -972,6 +973,10 @@ impl<'m> Builder<'m> {
             .rev()
             .find_map(|scope| scope.local_by_name(name))
     }
+    
+    pub fn find_global_var(&self, name_path: &IdentPath) -> Option<VariableID> {
+        self.module.find_global_var(name_path)
+    }
 
     pub fn local_closure_capture(&mut self, ty: Type, name: String) -> Ref {
         assert_ne!(Type::Nothing, ty);
@@ -1165,7 +1170,9 @@ impl<'m> Builder<'m> {
         }
     }
 
-    pub fn release(&mut self, at: Ref, ty: &Type) -> bool {
+    pub fn release(&mut self, at: impl Into<Ref>, ty: &Type) -> bool {
+        let at = at.into();
+
         if self.opts().annotate_rc {
             self.comment(&format!("release: {}", self.pretty_ty_name(ty)));
         }
@@ -1331,7 +1338,7 @@ impl<'m> Builder<'m> {
             match local {
                 Local::Param { id, ty, by_ref, .. } => {
                     if !by_ref {
-                        self.release(Ref::Local(id), &ty);
+                        self.release(id, &ty);
                     }
                 },
 

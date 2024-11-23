@@ -15,6 +15,8 @@ pub enum GlobalName {
     StringLiteral(ir::StringID),
 
     StaticClosure(ir::StaticClosureID),
+    
+    Variable(ir::VariableID),
 }
 
 impl fmt::Display for GlobalName {
@@ -23,6 +25,7 @@ impl fmt::Display for GlobalName {
             GlobalName::ClassInstance(id) => write!(f, "Class_{}", id.0),
             GlobalName::StringLiteral(id) => write!(f, "String_{}", id.0),
             GlobalName::StaticClosure(id) => write!(f, "StaticClosure_{}", id.0),
+            GlobalName::Variable(id) => write!(f, "Variable_{}", id.0),
         }
     }
 }

@@ -25,7 +25,6 @@ use crate::typ::ast::typecheck_raise;
 use crate::typ::ast::typecheck_unary_op;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::OverloadCandidate;
-use crate::typ::Context;
 use crate::typ::Decl;
 use crate::typ::FunctionValue;
 use crate::typ::NameError;
@@ -35,9 +34,10 @@ use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
-use crate::typ::Value;
 use crate::typ::TypedValue;
+use crate::typ::Value;
 use crate::typ::ValueKind;
+use crate::typ::Context;
 use crate::IntConstant;
 use common::span::*;
 pub use init::*;
@@ -166,18 +166,33 @@ fn typecheck_ident(
         // const values from any scope can be transformed directly into literals
         ScopeMemberRef::Decl {
             value: Decl::Const { ty, val, .. },
+            parent_path,
             key,
             ..
         } => {
-            let annotation = TypedValue {
-                ty: ty.clone(),
-                decl: Some((*key).clone()),
+            let name = parent_path.to_namespace().child((**key).clone());
+            let value = TypedValue::unit_const(ty.clone(), name, span.clone());
+            
+            Ok(ast::Expr::Literal(val.clone(), Value::from(value)))
+        },
+        
+        ScopeMemberRef::Decl {
+            value: Decl::BoundValue(binding),
+            parent_path,
+            key,
+            ..
+        } => {
+            let decl_name = parent_path.to_namespace().child((**key).clone());
+
+            let value = TypedValue {
                 span: span.clone(),
-                value_kind: ValueKind::Temporary,
+                ty: binding.ty.clone(),
+                value_kind: binding.kind,
+                decl: Some(decl_name),
             };
             
-            Ok(ast::Expr::Literal(val.clone(), annotation.into()))
-        },
+            Ok(ast::Expr::Ident(ident.clone(), Value::from(value)))
+        }
 
         ScopeMemberRef::Decl {
             value: Decl::Function { overloads, .. },
@@ -266,18 +281,29 @@ fn member_ident_expr(
     ident: &Ident,
     ctx: &mut Context
 ) -> Result<Expr, TypeError> {
-    if let Some(decl_name) = member_val.decl() {
-        if let Some(decl_scope) = ctx.get_decl_scope(decl_name) {
-            let decl_scope_id = decl_scope.id();
-            if let Some(closure_scope_id) = ctx.get_closure_scope().map(|s| s.id()) {
-                if decl_scope_id < closure_scope_id {
-                    ctx.add_closure_capture(decl_name, &member_val.ty());
-                }
-            }
-        }
-    }
+    add_ident_closure_capture(&member_val, ctx);
 
     Ok(ast::Expr::Ident(ident.clone(), member_val))
+}
+
+// if a value references a local ident, and it comes from a scope above the current
+// closure scope if any, then add it to the closure captures
+fn add_ident_closure_capture(value: &Value, ctx: &mut Context) {
+    let decl_name = match value.decl() {
+        Some(path) if path.len() == 1 => path,
+        _ => return,
+    };
+    
+    let Some(decl_scope) = ctx.get_decl_scope(decl_name.last()) else {
+        return;
+    };
+
+    let decl_scope_id = decl_scope.id();
+    if let Some(closure_scope_id) = ctx.get_closure_scope().map(|s| s.id()) {
+        if decl_scope_id < closure_scope_id {
+            ctx.add_closure_capture(decl_name.last(), value.ty().as_ref());
+        }
+    }
 }
 
 fn should_call_noargs_in_expr(decl: &FunctionDecl, expect_ty: &Type, self_arg_ty: &Type) -> bool {
@@ -297,13 +323,16 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
             member_annotation(&alias_ref, span, ctx)
         },
 
-        ScopeMemberRef::Decl { value: Decl::BoundValue(binding), .. } => TypedValue {
-            span,
-            ty: binding.ty.clone(),
-            value_kind: binding.kind,
-            decl: binding.def.clone(),
+        ScopeMemberRef::Decl { key, value: Decl::BoundValue(binding), parent_path, .. } => {
+            let decl_path = parent_path.to_namespace().child((**key).clone());
+            
+            Value::from(TypedValue {
+                span,
+                ty: binding.ty.clone(),
+                value_kind: binding.kind,
+                decl: Some(decl_path),
+            })
         }
-        .into(),
 
         ScopeMemberRef::Decl {
             value: Decl::Function { overloads, visibility, .. },
@@ -354,10 +383,11 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
             }
         },
 
-        ScopeMemberRef::Decl { value: Decl::Const { ty, .. }, key, .. } => {
+        ScopeMemberRef::Decl { value: Decl::Const { ty, .. }, parent_path, key, .. } => {
+            let name = parent_path.to_namespace().child((**key).clone());
             TypedValue {
                 ty: ty.clone(),
-                decl: Some((*key).clone()),
+                decl: Some(name),
                 span,
                 value_kind: ValueKind::Immutable,
             }.into()

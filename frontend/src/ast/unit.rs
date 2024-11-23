@@ -9,7 +9,7 @@ pub use self::const_decl::*;
 pub use self::decl_mod::*;
 pub use self::unit_decl::*;
 pub use self::use_decl::*;
-use crate::ast::Annotation;
+use crate::ast::{Annotation, BindingDeclKind};
 use crate::ast::Block;
 use crate::ast::FunctionDecl;
 use crate::ast::FunctionDef;
@@ -22,7 +22,8 @@ use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
-use crate::parse::{Matcher, Parse};
+use crate::parse::Matcher;
+use crate::parse::Parse;
 use crate::typ::builtin_span;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
@@ -97,6 +98,22 @@ impl<A: Annotation> Unit<A> {
     pub fn type_decl_items(&self) -> impl Iterator<Item = (Visibility, &TypeDeclItem<A>)> {
         self.type_decls()
             .flat_map(|(vis, decl)| decl.items.iter().map(move |item| (vis, item)))
+    }
+    
+    pub fn var_decl_items(&self) -> impl Iterator<Item = (Visibility, &UnitBindingItem<A>)> {
+        self.all_decls()
+            .filter_map(|(vis, decl)| match decl {
+                UnitDecl::Binding { 
+                    decl: binding @ UnitBinding { kind: BindingDeclKind::Var, .. }
+                } => {
+                    Some((vis, binding))
+                }
+                
+                _ => None,
+            })
+            .flat_map(|(vis, binding)| binding.items
+                .iter()
+                .map(move |item| (vis, item)))
     }
 }
 

@@ -369,13 +369,10 @@ fn typecheck_func_overload(
                 });
             }
             
-            let return_annotation = TypedValue {
-                span: overloaded.span.clone(),
-                ty: decl.return_ty.clone(),
-                decl: Some(decl_name.ident().clone()),
-                value_kind: ValueKind::Temporary,
-            }
-            .into();
+            let return_annotation = Value::from(TypedValue::temp(
+                decl.return_ty.clone(), 
+                overloaded.span.clone()
+            ));
             
             // the original target expr must have overload type, but we now know the function type
             // of the expression and should update it accordingly
@@ -441,12 +438,10 @@ fn typecheck_func_overload(
 
             let sig = Rc::new(sig.with_self(&self_ty));
 
-            let return_annotation = TypedValue {
-                span: overloaded.span.clone(),
-                ty: sig.return_ty.clone(),
-                decl: Some(decl.func_decl.ident().clone()),
-                value_kind: ValueKind::Temporary,
-            }.into();
+            let return_annotation = Value::from(TypedValue::temp(
+                sig.return_ty.clone(),
+                overloaded.span.clone(),
+            ));
 
             // eprintln!("method call (overload) {} = ({}){}.{} -> {} ({})", func_call, iface_ty, self_ty, ident, index, sig);
 

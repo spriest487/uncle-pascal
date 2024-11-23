@@ -259,9 +259,27 @@ impl IdentPath {
     pub fn path_span(&self) -> Span {
         match self.parts.len() {
             1 => self.parts[0].span.clone(),
-            _ => self.parts[0]
-                .span
-                .to(&self.parts[self.parts.len() - 1].span),
+            
+            _ => {
+                // the relevant span is the most specific part of the path, e.g. the last.
+                // if any previous part is directly contiguous (ending on the previous character on
+                // the same line) as the part following it, include that part too
+                // e.g. for A.B.C where B.C is an expression in namespace A (declared elsewhere),
+                // the span of the path should be the usage of B.C.
+                let mut span = self.last().span.clone();
+                for part in self.parts.iter().rev().skip(1) {
+                    let prev_span = &part.span;
+                    if prev_span.file == span.file 
+                        && prev_span.end.line == span.start.line
+                        && span.start.col > 1
+                        && prev_span.end.col == span.start.col - 2
+                    {
+                        span = prev_span.to(&span);
+                    }
+                }
+                
+                span
+            }
         }
     }
 

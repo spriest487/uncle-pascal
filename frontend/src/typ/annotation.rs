@@ -222,7 +222,7 @@ impl From<FunctionValue> for Value {
 pub struct TypedValue {
     pub ty: Type,
     pub value_kind: ValueKind,
-    pub decl: Option<Ident>,
+    pub decl: Option<IdentPath>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -239,6 +239,24 @@ impl TypedValue {
             decl: None,
         }
     }
+
+    pub fn unit_const(ty: Type, decl: IdentPath, span: Span) -> Self {
+        TypedValue {
+            ty,
+            span,
+            value_kind: ValueKind::Immutable,
+            decl: Some(decl),
+        }
+    }
+
+    pub fn unit_var(ty: Type, decl: IdentPath, span: Span) -> Self {
+        TypedValue {
+            ty,
+            span,
+            value_kind: ValueKind::Mutable,
+            decl: Some(decl),
+        }
+    }
 }
 
 impl From<TypedValue> for Value {
@@ -250,7 +268,7 @@ impl From<TypedValue> for Value {
 #[derive(Eq, Clone, Derivative)]
 #[derivative(Hash, Debug, PartialEq)]
 pub struct ConstValue {
-    pub decl: Option<Ident>,
+    pub decl: Option<IdentPath>,
     pub ty: Type,
 
     pub value: Literal,
@@ -428,7 +446,7 @@ impl Value {
         }
     }
 
-    pub fn decl(&self) -> Option<&Ident> {
+    pub fn decl(&self) -> Option<Cow<IdentPath>> {
         match self {
             Value::Type(..) => None,
             Value::Function { .. } => None, // TODO
@@ -436,13 +454,22 @@ impl Value {
             Value::UfcsFunction { .. } => None, // TODO
             Value::Overload { .. } => None, // TODO
 
-            Value::Typed(val) => val.decl.as_ref(),
+            Value::Typed(val) => val.decl.as_ref().map(Cow::Borrowed),
             Value::Untyped(..) => None,
-            Value::Namespace(ident, ..) => Some(ident.last()),
+            Value::Namespace(path, ..) => Some(Cow::Borrowed(path)),
 
-            Value::Const(const_val) => const_val.decl.as_ref(),
+            Value::Const(const_val) => const_val.decl
+                .as_ref()
+                .map(Cow::Borrowed),
 
-            Value::VariantCase(ctor) => Some(ctor.variant_name.ident()),
+            Value::VariantCase(ctor) => {
+                let case_path = ctor.variant_name
+                    .full_path
+                    .clone()
+                    .child(ctor.case.clone());
+
+                Some(Cow::Owned(case_path))
+            },
         }
     }
 

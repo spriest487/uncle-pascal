@@ -62,7 +62,9 @@ pub enum ParseError {
     NoMatchingParamForTypeConstraint(TypeConstraint<TypeName>),
     
     InvalidFunctionImplType(TypeName),
-    EmptyConstDecl { span: Span },
+    EmptyConstOrVarDecl { span: Span },
+    MultiVarDeclHasInitExpr { span: Span },
+    
     EmptyTypeDecl { span: Span },
 }
 
@@ -91,7 +93,8 @@ impl Spanned for ParseError {
             ParseError::UnterminatedStatement { span } => span,
             ParseError::InvalidFunctionImplType(tn) => tn.span(),
             ParseError::InvalidAssignmentExpr { span } => span,
-            ParseError::EmptyConstDecl { span, .. } => span,
+            ParseError::EmptyConstOrVarDecl { span, .. } => span,
+            ParseError::MultiVarDeclHasInitExpr { span, .. } => span,
             ParseError::EmptyTypeDecl { span, .. } => span,
             ParseError::InvalidForLoopInit(stmt) => stmt.span(),
             ParseError::InvalidTypeParamName(span) => span,
@@ -127,7 +130,8 @@ impl fmt::Display for ParseError {
 
             ParseError::InvalidFunctionImplType(..) => write!(f, "Invalid interface type for method"),
             ParseError::InvalidAssignmentExpr { .. } => write!(f, "Illegal assignment"),
-            ParseError::EmptyConstDecl { .. } => write!(f, "Empty const declaration"),
+            ParseError::EmptyConstOrVarDecl { .. } => write!(f, "Empty const or variable declaration"),
+            ParseError::MultiVarDeclHasInitExpr { .. } => write!(f, "Multiple const or variable declaration has initialization expression"),
             ParseError::EmptyTypeDecl { .. } => write!(f, "Empty type declaration"),
         }
     }
@@ -206,8 +210,12 @@ impl DiagnosticOutput for ParseError {
                 Some("type declaration must contain one or more types".to_string())
             }
 
-            ParseError::EmptyConstDecl { .. } => {
-                Some("const declaration must contain one or more constants".to_string())
+            ParseError::EmptyConstOrVarDecl { .. } => {
+                Some("declaration must contain one or more constants".to_string())
+            }
+            
+            ParseError::MultiVarDeclHasInitExpr { .. } => {
+                Some("declaration with an initialization expression may only declare a single name".to_string())
             }
 
             ParseError::InvalidForLoopInit(stmt) => {

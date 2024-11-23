@@ -59,7 +59,7 @@ pub enum TypeError {
     },
     NotMutable {
         expr: Box<Expr>,
-        decl: Option<Ident>,
+        decl: Option<IdentPath>,
     },
     NotAddressable {
         ty: Type,

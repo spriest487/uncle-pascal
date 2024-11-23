@@ -6,6 +6,7 @@ use crate::emit::build_func_def;
 use crate::emit::build_func_static_closure_def;
 use crate::emit::build_static_closure_impl;
 use crate::emit::builder::Builder;
+use crate::emit::expr::expr_to_val;
 use crate::emit::ir;
 use crate::emit::metadata::translate_closure_struct;
 use crate::emit::metadata::translate_iface;
@@ -35,12 +36,13 @@ use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
 use common::span::Spanned;
+use ir_lang::RuntimeType;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use ir_lang::RuntimeType;
 
 #[derive(Debug)]
 pub struct ModuleBuilder {
@@ -56,6 +58,9 @@ pub struct ModuleBuilder {
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
     function_types_by_sig: HashMap<typ::FunctionSig, ir::TypeDefID>,
+
+    variables: HashMap<IdentPath, ir::VariableID>,
+    next_variable_id: usize,
 
     // looked up on first use
     free_mem_func: Option<ir::FunctionID>,
@@ -76,6 +81,9 @@ impl ModuleBuilder {
             translated_funcs: HashMap::new(),
             
             function_types_by_sig: HashMap::new(),
+            
+            next_variable_id: 0,
+            variables: HashMap::new(),
 
             module: ir::Module::new(metadata),
             
@@ -128,7 +136,25 @@ impl ModuleBuilder {
         &mut self.module.metadata
     }
 
-    pub fn translate_unit_init(&mut self, unit: &typ::ast::Unit) {
+    pub fn translate_unit(&mut self, unit: &typ::ast::Unit) {
+        for (_, var) in unit.var_decl_items() {
+            let id = ir::VariableID(self.next_variable_id);
+            self.next_variable_id += 1;
+
+            let var_name = unit.ident.clone().child(var.ident.clone());
+
+            self.variables.insert(var_name, id);
+            if let Some(val_expr) = &var.val {
+                let mut var_init_builder = Builder::new(self);
+
+                let expr = expr_to_val(val_expr, &mut var_init_builder);
+                var_init_builder.mov(ir::GlobalRef::Variable(id), expr);
+
+                let init_body = &mut var_init_builder.finish();
+                self.module.init.append(init_body);
+            }
+        }
+        
         if let Some(init_block) = &unit.init {
             let mut init_builder = Builder::new(self);
             
@@ -979,6 +1005,10 @@ impl ModuleBuilder {
         self.function_types_by_sig.insert(sig, id);
 
         id
+    }
+
+    pub fn find_global_var(&self, name_path: &IdentPath) -> Option<ir::VariableID> {
+        self.variables.get(name_path).cloned()
     }
 
     // get or generate runtime type for a given type, which contains the function IDs etc
