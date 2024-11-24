@@ -22,7 +22,7 @@ use crate::emit::FunctionInstance;
 use crate::emit::IROptions;
 use crate::emit::SetFlagsType;
 use crate::typ::ast::apply_func_decl_named_ty_args;
-use crate::typ::builtin_ident;
+use crate::typ::{builtin_ident, GenericContext};
 use crate::typ::builtin_span;
 use crate::typ::free_mem_sig;
 use crate::typ::get_mem_sig;
@@ -59,7 +59,7 @@ pub struct ModuleBuilder {
 
     function_types_by_sig: HashMap<typ::FunctionSig, ir::TypeDefID>,
 
-    variables: HashMap<IdentPath, ir::VariableID>,
+    variables_by_name: HashMap<IdentPath, ir::VariableID>,
     next_variable_id: usize,
 
     // looked up on first use
@@ -83,7 +83,7 @@ impl ModuleBuilder {
             function_types_by_sig: HashMap::new(),
             
             next_variable_id: 0,
-            variables: HashMap::new(),
+            variables_by_name: HashMap::new(),
 
             module: ir::Module::new(metadata),
             
@@ -104,7 +104,7 @@ impl ModuleBuilder {
         self.src_metadata.module_span()
     }
 
-    pub fn build(mut self) -> ir::Module {
+    pub fn finish(mut self) -> ir::Module {
         self.gen_static_closure_init();
 
         self.gen_iface_impls();
@@ -142,8 +142,10 @@ impl ModuleBuilder {
             self.next_variable_id += 1;
 
             let var_name = unit.ident.clone().child(var.ident.clone());
+            let var_ty = self.translate_type(&var.ty, &GenericContext::empty());
 
-            self.variables.insert(var_name, id);
+            self.variables_by_name.insert(var_name, id);
+            self.module.variables.insert(id, var_ty);
             if let Some(val_expr) = &var.val {
                 let mut var_init_builder = Builder::new(self);
 
@@ -1008,7 +1010,7 @@ impl ModuleBuilder {
     }
 
     pub fn find_global_var(&self, name_path: &IdentPath) -> Option<ir::VariableID> {
-        self.variables.get(name_path).cloned()
+        self.variables_by_name.get(name_path).cloned()
     }
 
     // get or generate runtime type for a given type, which contains the function IDs etc

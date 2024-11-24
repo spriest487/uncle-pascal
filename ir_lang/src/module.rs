@@ -204,7 +204,13 @@ impl fmt::Display for Module {
             writeln!(f)?;
         }
         writeln!(f)?;
-
+        
+        writeln!(f, "* Global Variables")?;
+        for (var_id, var_type) in &self.variables {
+            writeln!(f, "{}: {}", var_id.0, self.metadata.pretty_ty_name(var_type))?;
+        }
+        writeln!(f)?;
+        
         writeln!(f, "* String literals")?;
         for (id, lit) in self.metadata.strings() {
             writeln!(f, "{}: '{}'", id.0, lit)?;

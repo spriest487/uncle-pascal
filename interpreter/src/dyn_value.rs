@@ -89,7 +89,7 @@ impl DynValue {
             },
 
             Type::Variant(id) => match self {
-                DynValue::Variant(v) if v.id == *id => Some(self.clone()),
+                DynValue::Variant(v) if v.type_id == *id => Some(self.clone()),
                 _ => None,
             },
 
@@ -419,7 +419,7 @@ impl DynValue {
 
     pub fn as_variant(&self, struct_id: TypeDefID) -> Option<&VariantValue> {
         match self {
-            DynValue::Variant(var_val) if struct_id == var_val.id => Some(var_val),
+            DynValue::Variant(var_val) if struct_id == var_val.type_id => Some(var_val),
             _ => None,
         }
     }
@@ -601,14 +601,14 @@ pub struct RcState {
 
 #[derive(Debug, Clone)]
 pub struct VariantValue {
-    pub id: TypeDefID,
+    pub type_id: TypeDefID,
     pub tag: Box<DynValue>,
     pub data: Box<DynValue>,
 }
 
 impl VariantValue {
     pub fn variant_ty(&self) -> Type {
-        Type::Variant(self.id)
+        Type::Variant(self.type_id)
     }
 }
 

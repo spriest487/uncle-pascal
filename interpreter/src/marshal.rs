@@ -567,6 +567,42 @@ impl Marshaller {
 
         Ok(size)
     }
+    
+    pub fn marshal_to_vec(&self, val: &DynValue) -> MarshalResult<Vec<u8>> {
+        // have to calculate the size before writing
+        let capacity = match &val {
+            DynValue::Bool(..) => 1,
+            DynValue::I8(..) | DynValue::U8(..) => 1,
+            DynValue::I16(..) | DynValue::U16(..) => 2,
+            DynValue::I32(..) | DynValue::U32(..) | DynValue::F32(..) => 4,
+            DynValue::I64(..) | DynValue::U64(..) => 8,
+
+            DynValue::Pointer(..) 
+            | DynValue::Function(..)
+            | DynValue::ISize(..) 
+            | DynValue::USize(..) => size_of::<usize>(),
+    
+            DynValue::Structure(structure) => {
+                let ty = self.get_ty(&ir::Type::Struct(structure.type_id))?;
+                ty.size()
+            }
+
+            DynValue::Variant(variant) => {
+                let ty = self.get_ty(&ir::Type::Struct(variant.type_id))?;
+                ty.size()
+            }
+
+            DynValue::Array(array) => {
+                let el_size = self.get_ty(&array.el_ty)?.size();
+                array.elements.len() * el_size
+            }
+        };
+        
+        let mut bytes = vec![0u8; capacity];
+        self.marshal(val, &mut bytes)?;
+        
+        Ok(bytes)
+    } 
 
     fn marshal_ptr(&self, ptr: &Pointer, out_bytes: &mut [u8]) -> MarshalResult<usize> {
         let ptr_bytes = ptr.addr.to_ne_bytes();
@@ -821,8 +857,8 @@ impl Marshaller {
     ) -> MarshalResult<usize> {
         let case_tys = self
             .variant_case_types
-            .get(&variant_val.id)
-            .ok_or_else(|| MarshalError::UnsupportedType(ir::Type::Variant(variant_val.id)))?;
+            .get(&variant_val.type_id)
+            .ok_or_else(|| MarshalError::UnsupportedType(ir::Type::Variant(variant_val.type_id)))?;
 
         let tag = variant_val
             .tag
@@ -835,7 +871,7 @@ impl Marshaller {
 
         // we still need to refer to the type size, because we always always marshal/unmarshal
         // the entire size of the variant regardless of which case is active
-        let variant_size = self.get_ty(&ir::Type::Variant(variant_val.id))?.size();
+        let variant_size = self.get_ty(&ir::Type::Variant(variant_val.type_id))?.size();
 
         let tag_size = self.marshal(&variant_val.tag, out_bytes)?;
 
@@ -857,7 +893,7 @@ impl Marshaller {
             "marshalled size {} <= type size {} for variant {}",
             marshalled_size,
             variant_size,
-            ir::Type::Variant(variant_val.id)
+            ir::Type::Variant(variant_val.type_id)
         );
 
         Ok(variant_size)
@@ -904,7 +940,7 @@ impl Marshaller {
         Ok(UnmarshalledValue {
             byte_count: variant_size,
             value: VariantValue {
-                id: variant_id,
+                type_id: variant_id,
                 tag: Box::new(DynValue::I32(tag as i32)),
                 data: Box::new(data_val.value),
             },

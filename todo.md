@@ -2,6 +2,7 @@
 * project files/don't auto load used units
 * sets should only allow ranges and contiguous values (OR we should handle sparse sets somehow)
 * range types/`for var x in 0..123`
+* move strings to module (out of metadata)
 
 # features
 * generic interfaces 

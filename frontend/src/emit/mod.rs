@@ -88,5 +88,5 @@ pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Module {
         ir_module.translate_unit(&unit.unit);
     }
 
-    ir_module.build()
+    ir_module.finish()
 }

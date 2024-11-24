@@ -1,17 +1,16 @@
+use crate::ir;
 use crate::DynValue;
 use crate::ExecError;
 use crate::ExecResult;
 use crate::Interpreter;
 use crate::Pointer;
-use crate::ir;
-use std::borrow::Cow;
+use ir_lang::*;
+use rand::Rng;
 use std::env::consts::OS;
 use std::fmt;
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
-use rand::Rng;
-use ir_lang::*;
 
 fn primitive_to_str<T, UnwrapFn>(state: &mut Interpreter, unwrap_fn: UnwrapFn) -> ExecResult<()>
 where
@@ -179,7 +178,7 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
 pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(0));
 
-    let ptr_val = state.load(&arg_0)?.into_owned();
+    let ptr_val = state.load(&arg_0)?;
 
     let ptr = ptr_val
         .as_pointer()
@@ -194,14 +193,13 @@ pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
 
 fn get_ref_type_id(state: &Interpreter, at: &Ref) -> ExecResult<TypeDefID> {
     let ptr = state.load(at)?
-        .into_owned()
         .as_pointer()
         .cloned()
         .ok_or_else(|| ExecError::illegal_state("get_ref_type_id: argument val must be pointer"))?;
 
     match state.load_indirect(&ptr)? {
-        Cow::Borrowed(DynValue::Structure(struct_val)) => Ok(struct_val.type_id),
-        Cow::Owned(DynValue::Structure(struct_val)) => Ok(struct_val.type_id),
+        DynValue::Structure(struct_val) => Ok(struct_val.type_id),
+
         _ => Err(ExecError::illegal_state(
             "value pointed to by dynarray pointer is not a dynarray",
         )),

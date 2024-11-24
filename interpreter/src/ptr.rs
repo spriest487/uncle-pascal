@@ -1,10 +1,9 @@
 use crate::dyn_value::DynValue;
+use crate::ir;
 use crate::{ExecResult, Interpreter};
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
-use crate::ir;
 
 /// pointer to native memory that is marshalled to/from value cells when accessed
 #[derive(Debug, Clone, Eq)]
@@ -31,7 +30,7 @@ impl Pointer {
         self.addr == 0
     }
 
-    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<Cow<'a, DynValue>> {
+    pub fn deref_ptr(&self, state: &Interpreter) -> ExecResult<DynValue> {
         state.load_indirect(self)
     }
 

@@ -24,7 +24,6 @@ use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
 use ir_lang::InstructionFormatter as _;
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::BitAnd;
@@ -204,7 +203,7 @@ impl Interpreter {
                 };
 
                 DynValue::Variant(Box::new(VariantValue {
-                    id: *id,
+                    type_id: *id,
                     tag: Box::new(DynValue::I32(default_tag)),
                     data: Box::new(default_val),
                 }))
@@ -221,9 +220,9 @@ impl Interpreter {
         Ok(val)
     }
 
-    fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<DynValue>> {
+    fn load_indirect(&self, ptr: &Pointer) -> ExecResult<DynValue> {
         let val = self.native_heap.load(ptr)?;
-        Ok(Cow::Owned(val))
+        Ok(val)
     }
 
     /// dereference a pointer and set the value it points to
@@ -264,21 +263,21 @@ impl Interpreter {
             ir::Ref::Local(id) => self.store_local(*id, val),
 
             ir::Ref::Global(name) => {
-                if self.globals.contains_key(name) {
-                    return Err(ExecError::illegal_state(format!(
-                        "global `{}` is already allocated",
-                        name
-                    )));
-                }
+                let global=  self.globals
+                    .get_mut(name)
+                    .unwrap_or_else(|| panic!("global `{}` is not allocated", name));
+                
+                match global {
+                    GlobalValue::Variable { value, .. } => {
+                        let byte_count = self.marshaller.marshal(&val, value.as_mut())?;
+                        assert_eq!(byte_count, value.len());
+                    }
 
-                self.globals.insert(
-                    name.clone(),
-                    GlobalValue {
-                        value: val,
-                        // todo: for the moment this means no RC for global vals stored after init
-                        ty: ir::Type::Nothing,
-                    },
-                );
+                    GlobalValue::Function(..) => {
+                        let msg = "global function value cannot be assigned to";
+                        return Err(ExecError::illegal_state(msg))
+                    }
+                }
 
                 Ok(())
             },
@@ -298,17 +297,27 @@ impl Interpreter {
         }
     }
 
-    fn load(&self, at: &ir::Ref) -> ExecResult<Cow<DynValue>> {
+    fn load(&self, at: &ir::Ref) -> ExecResult<DynValue> {
         match at {
             ir::Ref::Discard => {
                 let msg = "can't read value from discard ref";
                 Err(ExecError::illegal_state(msg))
             },
 
-            ir::Ref::Local(id) => self.load_local(*id).map(Cow::Owned),
+            ir::Ref::Local(id) => {
+                self.load_local(*id)
+            },
 
             ir::Ref::Global(name) => match self.globals.get(name) {
-                Some(global_val) => Ok(Cow::Borrowed(&global_val.value)),
+                Some(GlobalValue::Function(id)) => {
+                    Ok(DynValue::Function(*id))
+                }
+
+                Some(GlobalValue::Variable { value, ty}) => {
+                    let val = self.marshaller.unmarshal(value, ty)?;
+                    Ok(val.value)
+                }
+
                 None => {
                     let msg = format!("global val `{}` is not allocated", name);
                     Err(ExecError::illegal_state(msg))
@@ -329,7 +338,7 @@ impl Interpreter {
         match val {
             ir::Value::Ref(r) => {
                 let ref_val = self.load(r)?;
-                Ok(ref_val.into_owned())
+                Ok(ref_val)
             },
 
             ir::Value::SizeOf(ty) => {
@@ -401,7 +410,7 @@ impl Interpreter {
         })?;
 
         let self_val = self.load_indirect(self_ptr)?;
-        let self_class_id = match self_val.as_ref() {
+        let self_class_id = match &self_val {
             DynValue::Structure(struct_val) => Ok(struct_val.type_id),
             _ => {
                 let msg = format!(
@@ -570,7 +579,7 @@ impl Interpreter {
     // load a pointer, expected to point to an RC struct
     // guarantees that the struct value returned has some value for its rc field
     fn load_rc_struct_ptr(&self, ptr: &Pointer) -> ExecResult<(Box<StructValue>, RcState)> {
-        let struct_val = match self.load_indirect(&ptr)?.into_owned() {
+        let struct_val = match self.load_indirect(&ptr)? {
             DynValue::Structure(struct_val) => struct_val,
             other => {
                 let msg = format!("released val was not a structure, found: {:?}", other);
@@ -782,8 +791,28 @@ impl Interpreter {
                 ExecError::illegal_state(msg)
             }),
 
-            ir::Ref::Global(global) => {
-                let msg = format!("can't take address of global ref {:?}", global);
+            ir::Ref::Global(var_ref @ ir::GlobalRef::Variable(..)) => {
+                match self.globals.get(var_ref) {
+                    Some(GlobalValue::Variable { value, ty }) => {
+                        let ptr = Pointer {
+                            addr: value.as_ptr() as usize,
+                            ty: ty.clone(),
+                        };
+                        
+                        Ok(ptr)
+                    }
+
+                    other => {
+                        assert!(other.is_none(), "should never store anything other than a variable with a variable key");
+
+                        let msg = format!("missing global ref found in address instruction ({})", var_ref);
+                        Err(ExecError::illegal_state(msg))
+                    }
+                }
+            },
+
+            ir::Ref::Global(global_ref) => {
+                let msg = format!("can't take address of global ref ({})", global_ref);
                 Err(ExecError::illegal_state(msg))
             },
         }
@@ -1066,14 +1095,14 @@ impl Interpreter {
     }
 
     fn exec_retain(&mut self, at: &ir::Ref, weak: bool) -> ExecResult<()> {
-        let val = self.load(at)?.into_owned();
+        let val = self.load(at)?;
         self.retain_dyn_val(&val, weak)?;
 
         Ok(())
     }
 
     fn exec_release(&mut self, at: &ir::Ref, weak: bool) -> ExecResult<()> {
-        let val = self.load(at)?.into_owned();
+        let val = self.load(at)?;
 
         // to aid with debugging, set freed RC pointers to a recognizable value
         if self.release_dyn_val(&val, weak)? {
@@ -1516,7 +1545,7 @@ impl Interpreter {
             ExecError::illegal_state(msg)
         })?;
 
-        let a_val = match self.load_indirect(&a_ptr)?.into_owned() {
+        let a_val = match self.load_indirect(&a_ptr)? {
             DynValue::Structure(struct_val) => Ok(struct_val),
             _ => {
                 let msg = "pointer target of ClassIs instruction must point to a class type";
@@ -1591,8 +1620,8 @@ impl Interpreter {
                 let val_ptr = self.addr_of_ref(&a.clone().to_deref())?;
 
                 let val = self.load_indirect(&val_ptr)?;
-                let struct_val = match val.as_ref() {
-                    DynValue::Structure(struct_val) => struct_val,
+                let struct_val = match &val {
+                    DynValue::Structure(struct_val) => struct_val.as_ref(),
                     val => {
                         let msg = format!("trying to read field pointer of rc type but target wasn't an rc value @ {} (target was: {:?}", a, val);
                         return Err(ExecError::illegal_state(msg));
@@ -1636,25 +1665,26 @@ impl Interpreter {
         func: BuiltinFn,
         ret: ir::Type,
         params: Vec<ir::Type>,
-    ) {
-        if let Some(func_id) = self.metadata.find_function(&name) {
-            self.globals.insert(
-                ir::GlobalRef::Function(func_id),
-                GlobalValue {
-                    value: DynValue::Function(func_id),
-                    ty: ir::Type::Nothing,
-                },
-            );
+    ) -> ExecResult<()> {
+        let Some(func_id) = self.metadata.find_function(&name) else {
+            return Ok(());
+        };
 
-            let func = Function::Builtin(BuiltinFunction {
-                func,
-                return_ty: ret,
-                param_tys: params,
-                debug_name: name.to_string(),
-            });
+        self.globals.insert(
+            ir::GlobalRef::Function(func_id),
+            GlobalValue::Function(func_id),
+        );
 
-            self.functions.insert(func_id, Rc::new(func));
-        }
+        let func = Function::Builtin(BuiltinFunction {
+            func,
+            return_ty: ret,
+            param_tys: params,
+            debug_name: name.to_string(),
+        });
+
+        self.functions.insert(func_id, Rc::new(func));
+
+        Ok(())
     }
 
     fn rc_alloc(&mut self, mut value: StructValue) -> ExecResult<Pointer> {
@@ -1670,7 +1700,7 @@ impl Interpreter {
         Ok(res_ptr)
     }
 
-    fn init_stdlib_globals(&mut self) {
+    fn init_stdlib_globals(&mut self) -> ExecResult<()> {
         let system_funcs: &[(&str, BuiltinFn, ir::Type, Vec<ir::Type>)] = &[
             (
                 "Int8ToStr",
@@ -1875,8 +1905,10 @@ impl Interpreter {
 
         for (ident, func, ret, params) in system_funcs {
             let name = ir::NamePath::new(vec!["System".to_string()], ident.to_string());
-            self.define_builtin(name, *func, ret.clone(), params.to_vec());
+            self.define_builtin(name, *func, ret.clone(), params.to_vec())?;
         }
+        
+        Ok(())
     }
 
     pub fn load_module(&mut self, module: &ir::Module) -> ExecResult<()> {
@@ -1902,8 +1934,6 @@ impl Interpreter {
         }
 
         for (func_id, ir_func) in module.functions() {
-            let func_ref = ir::GlobalRef::Function(*func_id);
-
             let func = match ir_func {
                 ir::Function::Local(ir_func_def) => {
                     let ir_func = Function::IR(ir_func_def.clone());
@@ -1924,11 +1954,8 @@ impl Interpreter {
 
             if let Some(func) = func {
                 self.globals.insert(
-                    func_ref,
-                    GlobalValue {
-                        value: DynValue::Function(*func_id),
-                        ty: ir::Type::Nothing,
-                    },
+                    ir::GlobalRef::Function(*func_id),
+                    GlobalValue::Function(*func_id),
                 );
 
                 self.functions.insert(*func_id, Rc::new(func));
@@ -1950,14 +1977,25 @@ impl Interpreter {
 
             self.globals.insert(
                 str_ref,
-                GlobalValue {
-                    value: str_val,
+                GlobalValue::Variable {
+                    value: self.marshaller.marshal_to_vec(&str_val)?.into_boxed_slice(),
                     ty: ir::Type::RcPointer(ir::VirtualTypeID::Class(ir::STRING_ID)),
                 },
             );
         }
+        
+        for (var_id, var_ty) in &module.variables {
+            // global variables start zero-initialized
+            let marshal_ty = self.marshaller.get_ty(var_ty)?;
+            let zero_val = vec![0u8; marshal_ty.size()];
 
-        self.init_stdlib_globals();
+            self.globals.insert(ir::GlobalRef::Variable(*var_id), GlobalValue::Variable {
+                value: zero_val.into_boxed_slice(),
+                ty: var_ty.clone(),
+            });
+        }
+
+        self.init_stdlib_globals()?;
 
         let init_stack_size = self
             .marshaller
@@ -2068,15 +2106,21 @@ impl Interpreter {
     pub fn shutdown(mut self) -> ExecResult<()> {
         let globals: Vec<_> = self.globals.values().cloned().collect();
 
-        for GlobalValue { value, ty } in globals {
+        for global_val in globals {
+            let GlobalValue::Variable { value, ty } = global_val else {
+                continue;
+            };
+
             let ref_weak = match ty {
                 ir::Type::RcPointer(..) => Some(false),
                 ir::Type::RcWeakPointer(..) => Some(false),
                 _ => None,
             };
+            
+            let dyn_val = self.marshaller.unmarshal(&value, &ty)?;
 
             if let Some(weak) = ref_weak {
-                self.release_dyn_val(&value, weak)?;
+                self.release_dyn_val(&dyn_val.value, weak)?;
             }
         }
 
@@ -2102,9 +2146,12 @@ pub struct InterpreterOpts {
 }
 
 #[derive(Debug, Clone)]
-pub struct GlobalValue {
-    pub value: DynValue,
-    ty: ir::Type,
+enum GlobalValue {
+    Variable {
+        value: Box<[u8]>,
+        ty: ir::Type,
+    },
+    Function(ir::FunctionID),
 }
 
 struct LabelLocation {
