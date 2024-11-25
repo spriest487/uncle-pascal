@@ -11,17 +11,19 @@ pub use self::ty_def::*;
 use crate::ast::string_lit::StringLiteral;
 use crate::ir;
 use crate::Options;
+use ir_lang::NamePath;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
 use std::fmt;
 use topological_sort::TopologicalSort;
-use ir_lang::NamePath;
 
 pub struct CompilationUnit {
     functions: Vec<FunctionDef>,
     ffi_funcs: Vec<FfiFunction>,
     builtin_funcs: HashMap<ir::FunctionID, FunctionName>,
+    
+    global_vars: Vec<GlobalVar>,
 
     static_array_types: HashMap<ArraySig, Type>,
 
@@ -283,6 +285,8 @@ impl CompilationUnit {
             type_defs_order: TopologicalSort::new(),
 
             static_array_types: HashMap::new(),
+            
+            global_vars: Vec::new(),
 
             string_literals,
             static_closures: Vec::new(),
@@ -372,10 +376,10 @@ impl CompilationUnit {
         }
     }
 
-    pub fn add_lib(&mut self, module: &ir::Library) {
+    pub fn add_lib(&mut self, library: &ir::Library) {
         let mut module_type_defs = Vec::new();
 
-        for (id, type_def) in module.metadata().type_defs() {
+        for (id, type_def) in library.metadata().type_defs() {
             let mut member_deps = Vec::new();
 
             let c_type_def = match type_def {
@@ -439,11 +443,11 @@ impl CompilationUnit {
             }
         }
 
-        for static_closure in module.static_closures() {
+        for static_closure in library.static_closures() {
             self.static_closures.push(static_closure.clone());
         }
 
-        for (id, func) in module.functions() {
+        for (id, func) in library.functions() {
             match func {
                 ir::Function::Local(func_def) => {
                     let c_func = FunctionDef::translate(*id, func_def, self);
@@ -495,9 +499,19 @@ impl CompilationUnit {
 
         init_builder.stmts.extend(ffi_init_stmts);
 
-        init_builder.translate_instructions(module.init());
+        init_builder.translate_instructions(library.init());
 
         init_func.body.extend(init_builder.stmts);
+        
+        for (var_id, var_ty) in library.variables() {
+            let name = GlobalName::Variable(*var_id);
+            let ty = Type::from_metadata(var_ty, self);
+            
+            self.global_vars.push(GlobalVar {
+                name,
+                ty,
+            });
+        }
 
         self.functions.push(init_func);
     }
@@ -604,6 +618,10 @@ impl fmt::Display for CompilationUnit {
             writeln!(f, "{};", decl_string)?;
         }
         writeln!(f)?;
+        
+        for global_var in &self.global_vars {
+            writeln!(f, "static {};", global_var.ty.to_decl_string(&global_var.name))?;
+        }
 
         for func in &self.functions {
             writeln!(f, "{}", func)?;
@@ -620,4 +638,10 @@ impl fmt::Display for CompilationUnit {
 struct ArraySig {
     element: Type,
     dim: usize,
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct GlobalVar {
+    pub name: GlobalName,
+    pub ty: Type,
 }

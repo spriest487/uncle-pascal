@@ -66,7 +66,7 @@ pub struct LibraryBuilder {
     free_mem_func: Option<ir::FunctionID>,
     get_mem_func: Option<ir::FunctionID>,
     
-    module: ir::Library,
+    library: ir::Library,
 }
 
 impl LibraryBuilder {
@@ -85,7 +85,7 @@ impl LibraryBuilder {
             next_variable_id: 0,
             variables_by_name: HashMap::new(),
 
-            module: ir::Library::new(metadata),
+            library: ir::Library::new(metadata),
             
             // placeholders
             free_mem_func: None,
@@ -115,13 +115,13 @@ impl LibraryBuilder {
         for class_ty in self.class_types().cloned().collect::<Vec<_>>() {
             gen_class_rc_boilerplate(&mut self, &class_ty);
         }
-        for closure_id in self.module.closure_types().collect::<Vec<_>>() {
+        for closure_id in self.library.closure_types().collect::<Vec<_>>() {
             self.runtime_type(&ir::Type::Struct(closure_id));
         }
 
-        self.module.metadata.sort_type_defs_by_deps();
+        self.library.metadata.sort_type_defs_by_deps();
 
-        self.module
+        self.library
     }
     
     pub fn opts(&self) -> &IROptions {
@@ -129,11 +129,11 @@ impl LibraryBuilder {
     }
 
     pub fn metadata(&self) -> &ir::Metadata {
-        &self.module.metadata
+        &self.library.metadata
     }    
     
     pub fn metadata_mut(&mut self) -> &mut ir::Metadata {
-        &mut self.module.metadata
+        &mut self.library.metadata
     }
 
     pub fn translate_unit(&mut self, unit: &typ::ast::Unit) {
@@ -145,7 +145,7 @@ impl LibraryBuilder {
             let var_ty = self.translate_type(&var.ty, &GenericContext::empty());
 
             self.variables_by_name.insert(var_name, id);
-            self.module.variables.insert(id, var_ty);
+            self.library.variables.insert(id, var_ty);
             if let Some(val_expr) = &var.val {
                 let mut var_init_builder = Builder::new(self);
 
@@ -153,7 +153,7 @@ impl LibraryBuilder {
                 var_init_builder.mov(ir::GlobalRef::Variable(id), expr);
 
                 let init_body = &mut var_init_builder.finish();
-                self.module.init.append(init_body);
+                self.library.init.append(init_body);
             }
         }
         
@@ -176,10 +176,10 @@ impl LibraryBuilder {
                 debug_name: format!("{}.<init>", unit.ident),
             };
 
-            let init_func_id = self.module.metadata.insert_func(None);
-            self.module.functions.insert(init_func_id, ir::Function::Local(init_func));
+            let init_func_id = self.library.metadata.insert_func(None);
+            self.library.functions.insert(init_func_id, ir::Function::Local(init_func));
 
-            self.module.init.push(ir::Instruction::Call {
+            self.library.init.push(ir::Instruction::Call {
                 function: ir::Ref::Global(ir::GlobalRef::Function(init_func_id)).into(),
                 args: Vec::new(),
                 out: None,
@@ -326,7 +326,7 @@ impl LibraryBuilder {
             debug_name,
         );
 
-        self.module.functions.insert(id, ir::Function::Local(ir_func));
+        self.library.functions.insert(id, ir::Function::Local(ir_func));
 
         cached_func
     }
@@ -369,7 +369,7 @@ impl LibraryBuilder {
             .external_src()
             .expect("function with external def must have an extern src");
 
-        self.module.functions.insert(
+        self.library.functions.insert(
             id,
             ir::Function::External(ir::ExternalFunctionRef {
                 src: extern_src.to_string(),
@@ -506,7 +506,7 @@ impl LibraryBuilder {
             generic_method_def.span().clone(),
             debug_name,
         );
-        self.module.functions.insert(id, ir::Function::Local(ir_func));
+        self.library.functions.insert(id, ir::Function::Local(ir_func));
 
         cached_func
     }
@@ -545,7 +545,7 @@ impl LibraryBuilder {
 
                 let mut builder = Builder::new(self);
                 let iface_meta = builder.translate_iface(&src_iface_def);
-                self.module.metadata.define_iface(iface_meta)
+                self.library.metadata.define_iface(iface_meta)
             });
         
         // virtual methods can't be generic
@@ -553,7 +553,7 @@ impl LibraryBuilder {
 
         let self_ty = self.translate_type(&impl_method.self_ty, &generic_ctx);
 
-        self.module.metadata.impl_method(iface_id, self_ty, method_name, impl_func.id);
+        self.library.metadata.impl_method(iface_id, self_ty, method_name, impl_func.id);
 
         let key = FunctionDefKey {
             decl_key: FunctionDeclKey::VirtualMethod(virtual_key.clone()),
@@ -622,7 +622,7 @@ impl LibraryBuilder {
             },
         };
 
-        self.module.metadata.insert_func(global_name)
+        self.library.metadata.insert_func(global_name)
     }
 
     pub fn translate_func(
@@ -641,11 +641,11 @@ impl LibraryBuilder {
 
     pub fn insert_func(&mut self, id: ir::FunctionID, function: ir::Function) {
         assert!(
-            self.module.metadata.get_function(id).is_some(),
+            self.library.metadata.get_function(id).is_some(),
             "function passed to insert_func must have been previously registered in metadata"
         );
 
-        self.module.functions.insert(id, function);
+        self.library.functions.insert(id, function);
     }
 
     pub fn find_iface_decl(&self, iface_ident: &IdentPath) -> Option<ir::InterfaceID> {
@@ -653,7 +653,7 @@ impl LibraryBuilder {
             .iter()
             .map(Ident::to_string));
 
-        self.module.metadata
+        self.library.metadata
             .ifaces()
             .find_map(|(id, decl)| {
                 if decl.name == name {
@@ -862,16 +862,16 @@ impl LibraryBuilder {
             typ::Type::Variant(variant) => {
                 let variant_def = self.src_metadata.instantiate_variant_def(variant).unwrap();
 
-                let id = self.module.metadata.reserve_new_struct();
+                let id = self.library.metadata.reserve_new_struct();
                 let ty = ir::Type::Variant(id);
                 self.type_cache.insert(src_ty.clone(), ty.clone());
 
                 let name_path = translate_name(&variant, generic_ctx, self);
-                self.module.metadata.declare_struct(id, &name_path);
+                self.library.metadata.declare_struct(id, &name_path);
 
                 let variant_meta = translate_variant_def(&variant_def, generic_ctx, self);
 
-                self.module.metadata.define_variant(id, variant_meta);
+                self.library.metadata.define_variant(id, variant_meta);
                 ty
             },
 
@@ -888,7 +888,7 @@ impl LibraryBuilder {
                 let kind = src_ty.struct_kind().unwrap();
                 let def = self.src_metadata.instantiate_struct_def(name, kind).unwrap();
 
-                let id = self.module.metadata.reserve_new_struct();
+                let id = self.library.metadata.reserve_new_struct();
 
                 let ty = match def.kind {
                     StructKind::Class => {
@@ -903,10 +903,10 @@ impl LibraryBuilder {
 
                 let name_path = translate_name(&name, generic_ctx, self);
 
-                self.module.metadata.declare_struct(id, &name_path);
+                self.library.metadata.declare_struct(id, &name_path);
 
                 let struct_meta = translate_struct_def(&def, generic_ctx, self);
-                self.module.metadata.define_struct(id, struct_meta);
+                self.library.metadata.define_struct(id, struct_meta);
 
                 ty
             },
@@ -925,13 +925,13 @@ impl LibraryBuilder {
                     .unwrap();
 
                 let iface_name = translate_name(&iface_def.name, generic_ctx, self);
-                let id = self.module.metadata.declare_iface(&iface_name);
+                let id = self.library.metadata.declare_iface(&iface_name);
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Interface(id));
 
                 self.type_cache.insert(src_ty, ty.clone());
 
                 let iface_meta = translate_iface(&iface_def, generic_ctx, self);
-                let def_id = self.module.metadata.define_iface(iface_meta);
+                let def_id = self.library.metadata.define_iface(iface_meta);
                 assert_eq!(def_id, id);
 
                 ty
@@ -1016,7 +1016,7 @@ impl LibraryBuilder {
     // get or generate runtime type for a given type, which contains the function IDs etc
     // used for RC operations at runtime
     pub fn runtime_type(&mut self, ty: &ir::Type) -> ir::RuntimeType {
-        if let Some(boilerplate) = self.module.metadata.get_runtime_type(ty) {
+        if let Some(boilerplate) = self.library.metadata.get_runtime_type(ty) {
             return boilerplate.clone();
         }
 
@@ -1065,7 +1065,7 @@ impl LibraryBuilder {
                         return_ty: ir::Type::Nothing,
                         param_tys: vec![ty.clone().ptr()],
                     },
-                    debug_name: format!("generated RC retain func for {}", self.module.metadata.pretty_ty_name(ty)),
+                    debug_name: format!("generated RC retain func for {}", self.library.metadata.pretty_ty_name(ty)),
                     src_span: self.module_span().clone(),
                 }),
             );
@@ -1076,7 +1076,7 @@ impl LibraryBuilder {
         };
         
         let release_func = if release_body.len() > 0 {
-            let func_id = self.module.metadata.insert_func(None);
+            let func_id = self.library.metadata.insert_func(None);
 
             self.insert_func(
                 func_id,
@@ -1086,7 +1086,7 @@ impl LibraryBuilder {
                         return_ty: ir::Type::Nothing,
                         param_tys: vec![ty.clone().ptr()],
                     },
-                    debug_name: format!("<generated releaser for {}>", self.module.metadata.pretty_ty_name(ty)),
+                    debug_name: format!("<generated releaser for {}>", self.library.metadata.pretty_ty_name(ty)),
                     src_span: self.module_span().clone(),
                 }),
             );
@@ -1101,7 +1101,7 @@ impl LibraryBuilder {
             release: release_func,
         };
 
-        self.module.metadata.declare_runtime_type(ty.clone(), rtt.clone());
+        self.library.metadata.declare_runtime_type(ty.clone(), rtt.clone());
 
         rtt
     }
@@ -1113,9 +1113,9 @@ impl LibraryBuilder {
     ) -> ir::TypeDefID {
         let element_ty = self.translate_type(element_ty, generic_ctx);
 
-        match self.module.metadata.find_dyn_array_struct(&element_ty) {
+        match self.library.metadata.find_dyn_array_struct(&element_ty) {
             Some(id) => id,
-            None => self.module.metadata.define_dyn_array_struct(element_ty),
+            None => self.library.metadata.define_dyn_array_struct(element_ty),
         }
     }
 
@@ -1222,7 +1222,7 @@ impl LibraryBuilder {
         func: &typ::ast::AnonymousFunctionDef,
         generic_ctx: &typ::GenericContext,
     ) -> ClosureInstance {
-        let id = self.module.metadata.insert_func(None);
+        let id = self.library.metadata.insert_func(None);
 
         // this is the signature of the *function type* of the closure, not the signature of
         // the real method implementing the closure, which has an extra type-erased parameter
@@ -1251,7 +1251,7 @@ impl LibraryBuilder {
         let src_span = func.span().clone();
         let ir_func = build_closure_function_def(self, &func, closure_id, src_span, debug_name);
 
-        self.module.functions.insert(id, ir::Function::Local(ir_func));
+        self.library.functions.insert(id, ir::Function::Local(ir_func));
 
         ClosureInstance {
             func_instance: cached_func,
@@ -1264,8 +1264,8 @@ impl LibraryBuilder {
         func: &FunctionInstance,
         generic_ctx: &typ::GenericContext
     ) -> &ir::StaticClosure {
-        if let Some(existing) = self.module.metadata.get_static_closure(func.id) {
-            return &self.module.static_closures[existing.0];
+        if let Some(existing) = self.library.metadata.get_static_closure(func.id) {
+            return &self.library.static_closures[existing.0];
         }
 
         // function reference closures can never have a capture list or type args
@@ -1273,7 +1273,7 @@ impl LibraryBuilder {
 
         let func_ty_id = self.translate_func_ty(func.sig.as_ref(), generic_ctx);
 
-        let ir_func = self.module.functions.get(&func.id)
+        let ir_func = self.library.functions.get(&func.id)
             .expect("function passed to build_function_closure_instance must have been previously translated")
             .clone();
 
@@ -1296,10 +1296,10 @@ impl LibraryBuilder {
         );
 
         // build the closure function, which is a thunk that just calls the global function
-        let thunk_id = self.module.metadata.insert_func(None);
+        let thunk_id = self.library.metadata.insert_func(None);
         let thunk_def = build_func_static_closure_def(self, func, &ir_func);
 
-        self.module.functions.insert(thunk_id, ir::Function::Local(thunk_def));
+        self.library.functions.insert(thunk_id, ir::Function::Local(thunk_def));
 
         let closure = ClosureInstance {
             closure_id,
@@ -1311,13 +1311,13 @@ impl LibraryBuilder {
         };
 
         let static_closure_id = self.build_static_closure_instance(closure).id;
-        self.module.metadata.insert_static_closure(func.id, static_closure_id);
+        self.library.metadata.insert_static_closure(func.id, static_closure_id);
 
-        &self.module.static_closures[static_closure_id.0]
+        &self.library.static_closures[static_closure_id.0]
     }
 
     pub fn build_static_closure_instance(&mut self, closure: ClosureInstance) -> &ir::StaticClosure {
-        let existing_index = self.module.static_closures.iter()
+        let existing_index = self.library.static_closures.iter()
             .enumerate()
             .filter_map(|(i, static_closure)| {
                 if static_closure.closure_id == closure.closure_id {
@@ -1329,29 +1329,29 @@ impl LibraryBuilder {
             .next();
 
         if let Some(existing_index) = existing_index {
-            return &self.module.static_closures[existing_index];
+            return &self.library.static_closures[existing_index];
         }
 
-        let id = ir::StaticClosureID(self.module.static_closures.len());
+        let id = ir::StaticClosureID(self.library.static_closures.len());
         let instance = build_static_closure_impl(closure, id, self);
 
-        self.module.static_closures.push(instance);
+        self.library.static_closures.push(instance);
 
-        &self.module.static_closures[self.module.static_closures.len() - 1]
+        &self.library.static_closures[self.library.static_closures.len() - 1]
     }
 
     /// Add static closure init function calls at top of init block
     fn gen_static_closure_init(&mut self) {
         let mut static_closures_init = Vec::new();
-        for static_closure in &self.module.static_closures {
+        for static_closure in &self.library.static_closures {
             static_closures_init.push(ir::Instruction::Call {
                 function: ir::Value::Ref(ir::Ref::Global(ir::GlobalRef::Function(static_closure.init_func))),
                 args: Vec::new(),
                 out: None,
             });
         }
-        static_closures_init.append(&mut self.module.init);
-        self.module.init = static_closures_init;
+        static_closures_init.append(&mut self.library.init);
+        self.library.init = static_closures_init;
     }
 }
 

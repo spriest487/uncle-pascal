@@ -72,7 +72,7 @@ pub fn build_func_def(
 }
 
 pub fn build_func_static_closure_def(
-    module: &mut LibraryBuilder,
+    library: &mut LibraryBuilder,
     target_func: &FunctionInstance,
     target_ir_func: &Function,
 ) -> FunctionDef {
@@ -94,7 +94,7 @@ pub fn build_func_static_closure_def(
     let debug_name = format!("static closure def ({})", target_ir_func.debug_name());
     
     let generic_ctx = typ::GenericContext::empty();
-    let mut body_builder = create_function_body_builder(module, generic_ctx, &debug_name);
+    let mut body_builder = create_function_body_builder(library, generic_ctx, &debug_name);
 
     let return_ty = bind_function_return(&target_func.sig.return_ty, &mut body_builder);
 

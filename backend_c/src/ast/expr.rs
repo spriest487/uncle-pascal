@@ -8,7 +8,7 @@ use crate::ir;
 use std::fmt;
 
 #[allow(unused)]
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum InfixOp {
     Eq,
     Assign,
@@ -55,7 +55,7 @@ impl fmt::Display for InfixOp {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum PrefixOp {
     Not,
     BitNot,
@@ -71,7 +71,7 @@ impl fmt::Display for PrefixOp {
 }
 
 #[allow(unused)]
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
     Local(ir::LocalID),
     Function(FunctionName),

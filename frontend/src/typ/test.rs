@@ -1,10 +1,11 @@
 use crate::ast;
-use crate::typ::{FunctionSigParam, TypeResult};
 use crate::typ::FunctionSig;
+use crate::typ::FunctionSigParam;
 use crate::typ::Module;
 use crate::typ::ModuleUnit;
 use crate::typ::Primitive;
 use crate::typ::Type;
+use crate::typ::TypeResult;
 use common::read_source_file;
 use std::collections::HashMap;
 use std::iter;

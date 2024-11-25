@@ -41,21 +41,21 @@ impl Default for IROptions {
 
 pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Library {
     let metadata = ir::Metadata::new();
-    let mut ir_module = LibraryBuilder::new((*module.root_ctx).clone(), metadata, opts);
+    let mut ir_lib = LibraryBuilder::new((*module.root_ctx).clone(), metadata, opts);
 
     let builtin_disposable = typ::builtin_disposable_iface();
 
     // make sure frontend builtin types are defined e.g. dynamic array types add implementations
     // to Disposable so need that interface to be defined
     let disposable_iface = {
-        let mut builder = Builder::new(&mut ir_module);
+        let mut builder = Builder::new(&mut ir_lib);
         let disposable_iface = builder.translate_iface(&builtin_disposable);
         builder.finish();
 
         disposable_iface
     };
 
-    ir_module.metadata_mut().define_iface(disposable_iface);
+    ir_lib.metadata_mut().define_iface(disposable_iface);
 
     // if String is defined it needs to be defined in the metadata even if it isn't used,
     // for the benefit of the stdlib (it's not defined in the type context with --no-stdlib)
@@ -64,29 +64,29 @@ pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Library {
         .find_struct_def(&string_name.full_path, StructKind::Class) 
     {
         let name = {
-            let mut builder = Builder::new(&mut ir_module);
+            let mut builder = Builder::new(&mut ir_lib);
             let name = builder.translate_name(&string_name);
             builder.finish();
             name
         };
 
-        ir_module.metadata_mut().reserve_struct(ir::STRING_ID);
-        ir_module.metadata_mut().declare_struct(ir::STRING_ID, &name);
+        ir_lib.metadata_mut().reserve_struct(ir::STRING_ID);
+        ir_lib.metadata_mut().declare_struct(ir::STRING_ID, &name);
 
         let string_def = {
-            let mut builder = Builder::new(&mut ir_module);
+            let mut builder = Builder::new(&mut ir_lib);
             let string_def = builder.translate_class(&string_class);
             builder.finish();
             string_def
         };
 
-        ir_module.metadata_mut().define_struct(ir::STRING_ID, string_def);
-        ir_module.runtime_type(&ir::Type::Struct(ir::STRING_ID));
+        ir_lib.metadata_mut().define_struct(ir::STRING_ID, string_def);
+        ir_lib.runtime_type(&ir::Type::Struct(ir::STRING_ID));
     }
 
     for unit in &module.units {
-        ir_module.translate_unit(&unit.unit);
+        ir_lib.translate_unit(&unit.unit);
     }
 
-    ir_module.finish()
+    ir_lib.finish()
 }

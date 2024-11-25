@@ -8,7 +8,7 @@ use crate::ast::Type;
 use ir_lang as ir;
 use std::fmt;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum GlobalName {
     ClassInstance(ir::TypeDefID),
 
