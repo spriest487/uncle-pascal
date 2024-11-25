@@ -1,8 +1,8 @@
-use crate::emit::ir;
-use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::syn;
-use crate::emit::typ;
-use crate::emit::FunctionInstance;
+use crate::codegen::ir;
+use crate::codegen::library_builder::LibraryBuilder;
+use crate::codegen::syn;
+use crate::codegen::typ;
+use crate::codegen::FunctionInstance;
 use ir_lang::FunctionSig;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
@@ -40,7 +40,7 @@ pub fn translate_closure_struct(
     identity: ir::ClosureIdentity,
     captures: &LinkedHashMap<Ident, typ::Type>,
     generic_ctx: &typ::GenericContext,
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
 ) -> ir::TypeDefID {
     let id = module.metadata_mut().reserve_new_struct();
     
@@ -88,7 +88,7 @@ pub fn translate_closure_struct(
 pub fn translate_sig(
     sig: &typ::FunctionSig,
     generic_ctx: &typ::GenericContext,
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
 ) -> FunctionSig {
     assert!(
         sig.type_params.is_none(),

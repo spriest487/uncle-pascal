@@ -1,5 +1,5 @@
-use crate::emit::translate;
-use crate::emit::IROptions;
+use crate::codegen::translate;
+use crate::codegen::IROptions;
 use crate::typ;
 use ir_lang::dep_sort::find_deps;
 use ir_lang::dep_sort::sort_defs;

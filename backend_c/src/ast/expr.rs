@@ -1,7 +1,7 @@
 use crate::ast::FieldName;
 use crate::ast::FunctionName;
 use crate::ast::GlobalName;
-use crate::ast::Module;
+use crate::ast::CompilationUnit;
 use crate::ast::Type;
 use crate::ast::TypeDefName;
 use crate::ir;
@@ -114,7 +114,7 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn translate_val(v: &ir::Value, module: &mut Module) -> Self {
+    pub fn translate_val(v: &ir::Value, module: &mut CompilationUnit) -> Self {
         match v {
             ir::Value::LiteralBool(b) => Expr::LitBool(*b),
             ir::Value::LiteralNull => Expr::Null,
@@ -137,7 +137,7 @@ impl Expr {
         }
     }
 
-    pub fn translate_ref(r: &ir::Ref, module: &mut Module) -> Self {
+    pub fn translate_ref(r: &ir::Ref, module: &mut CompilationUnit) -> Self {
         match r {
             ir::Ref::Discard => {
                 panic!("can't translate a discard ref, it should only be used in assignments")
@@ -223,7 +223,7 @@ impl Expr {
         lhs: &ir::Value,
         op: InfixOp,
         rhs: &ir::Value,
-        module: &mut Module,
+        module: &mut CompilationUnit,
     ) -> Self {
         let lhs_expr = Expr::translate_val(lhs, module);
         let rhs_expr = Expr::translate_val(rhs, module);
@@ -231,7 +231,7 @@ impl Expr {
         Self::infix_op(lhs_expr, op, rhs_expr)
     }
 
-    pub fn translate_assign(out: &ir::Ref, val: Self, module: &mut Module) -> Self {
+    pub fn translate_assign(out: &ir::Ref, val: Self, module: &mut CompilationUnit) -> Self {
         match out {
             ir::Ref::Discard => val,
             _ => {
@@ -241,7 +241,7 @@ impl Expr {
         }
     }
 
-    pub fn translate_element(arr: &ir::Ref, index: &ir::Value, module: &mut Module) -> Self {
+    pub fn translate_element(arr: &ir::Ref, index: &ir::Value, module: &mut CompilationUnit) -> Self {
         let array_expr = Expr::translate_ref(arr, module);
         let elements_expr = Expr::Field {
             base: Box::new(array_expr),
@@ -261,7 +261,7 @@ impl Expr {
         a: &ir::Ref,
         of_ty: &ir::Type,
         field_id: ir::FieldID,
-        module: &mut Module,
+        module: &mut CompilationUnit,
     ) -> Self {
         let a_expr = Expr::translate_ref(a, module);
 

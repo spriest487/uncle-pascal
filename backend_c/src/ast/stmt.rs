@@ -3,7 +3,7 @@ use crate::ast::expr::InfixOp;
 use crate::ast::expr::PrefixOp;
 use crate::ast::ty_def::FieldName;
 use crate::ast::FunctionName;
-use crate::ast::Module;
+use crate::ast::CompilationUnit;
 use crate::ast::Type;
 use ir_lang as ir;
 use std::fmt;
@@ -126,12 +126,12 @@ impl fmt::Display for Statement {
 }
 
 pub struct Builder<'a> {
-    module: &'a mut Module,
+    module: &'a mut CompilationUnit,
     pub stmts: Vec<Statement>,
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(module: &'a mut Module) -> Self {
+    pub fn new(module: &'a mut CompilationUnit) -> Self {
         Self {
             module,
             stmts: Vec::new(),

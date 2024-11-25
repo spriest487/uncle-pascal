@@ -1,4 +1,4 @@
-use crate::emit::ir;
+use crate::codegen::ir;
 
 #[derive(Clone, Debug)]
 pub enum Local {

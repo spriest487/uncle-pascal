@@ -4,16 +4,16 @@ pub mod metadata;
 mod stmt;
 mod pattern;
 mod function;
-pub mod module_builder;
+pub mod library_builder;
 mod set_flags;
 
 pub use self::function::*;
 pub use self::set_flags::*;
-use crate::emit::builder::Builder;
-use crate::emit::expr::*;
-use crate::emit::metadata::*;
-use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::stmt::*;
+use crate::codegen::builder::Builder;
+use crate::codegen::expr::*;
+use crate::codegen::metadata::*;
+use crate::codegen::library_builder::LibraryBuilder;
+use crate::codegen::stmt::*;
 use crate::ast as syn;
 use crate::typ as typ;
 pub use ir_lang as ir;
@@ -39,9 +39,9 @@ impl Default for IROptions {
     }
 }
 
-pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Module {
+pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Library {
     let metadata = ir::Metadata::new();
-    let mut ir_module = ModuleBuilder::new((*module.root_ctx).clone(), metadata, opts);
+    let mut ir_module = LibraryBuilder::new((*module.root_ctx).clone(), metadata, opts);
 
     let builtin_disposable = typ::builtin_disposable_iface();
 

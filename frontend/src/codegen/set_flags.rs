@@ -1,5 +1,5 @@
-use crate::emit::builder::Builder;
-use crate::emit::module_builder::ModuleBuilder;
+use crate::codegen::builder::Builder;
+use crate::codegen::library_builder::LibraryBuilder;
 use crate::{ir, Operator};
 use crate::typ::builtin_span;
 
@@ -40,7 +40,7 @@ pub fn set_word_count(bit_count: usize) -> usize {
 impl SetFlagsType {
     // full-size 256-bit flag struct, the max number of values supported by
     // delphi/FPC sets
-    pub fn define_new(module: &mut ModuleBuilder, bit_count: usize) -> Self {
+    pub fn define_new(module: &mut LibraryBuilder, bit_count: usize) -> Self {
         let word_count = set_word_count(bit_count);
 
         let set_flags_struct = ir::Struct {
@@ -108,7 +108,7 @@ impl SetFlagsType {
         name: String,
         body: Vec<ir::Instruction>,
         sig: ir::FunctionSig,
-        module: &mut ModuleBuilder
+        module: &mut LibraryBuilder
     ) -> ir::FunctionID {
         let func = ir::Function::Local(ir::FunctionDef {
             src_span: builtin_span(),
@@ -127,7 +127,7 @@ impl SetFlagsType {
     fn define_include(
         struct_id: ir::TypeDefID,
         word_count: usize,
-        module: &mut ModuleBuilder
+        module: &mut LibraryBuilder
     ) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
@@ -153,7 +153,7 @@ impl SetFlagsType {
         Self::define_func(name, builder.finish(), sig, module)
     }
     
-    fn define_exclude(struct_id: ir::TypeDefID, word_count: usize, module: &mut ModuleBuilder) -> ir::FunctionID {
+    fn define_exclude(struct_id: ir::TypeDefID, word_count: usize, module: &mut LibraryBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
         let mut builder = Builder::new(module);
@@ -179,7 +179,7 @@ impl SetFlagsType {
         Self::define_func(name, builder.finish(), sig, module)
     }
 
-    fn define_contains(struct_id: ir::TypeDefID, word_count: usize, module: &mut ModuleBuilder) -> ir::FunctionID {
+    fn define_contains(struct_id: ir::TypeDefID, word_count: usize, module: &mut LibraryBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
         let mut builder = Builder::new(module);
@@ -214,7 +214,7 @@ impl SetFlagsType {
         struct_id: ir::TypeDefID,
         word_count: usize,
         op: Operator,
-        module: &mut ModuleBuilder,
+        module: &mut LibraryBuilder,
         build_op: impl Fn(&mut Builder, ir::Ref, ir::Value, ir::Value)
     ) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
@@ -250,7 +250,7 @@ impl SetFlagsType {
         Self::define_func(name, builder.finish(), sig, module)
     }
     
-    fn define_bit_not(struct_id: ir::TypeDefID, word_count: usize, module: &mut ModuleBuilder) -> ir::FunctionID {
+    fn define_bit_not(struct_id: ir::TypeDefID, word_count: usize, module: &mut LibraryBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
         let mut builder = Builder::new(module);
@@ -275,7 +275,7 @@ impl SetFlagsType {
         Self::define_func(name, builder.finish(), sig, module)
     }
 
-    fn define_eq(struct_id: ir::TypeDefID, word_count: usize, module: &mut ModuleBuilder) -> ir::FunctionID {
+    fn define_eq(struct_id: ir::TypeDefID, word_count: usize, module: &mut LibraryBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
         
         let mut builder = Builder::new(module);

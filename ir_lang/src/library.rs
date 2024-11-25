@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Module {
+pub struct Library {
     pub metadata: Metadata,
 
     pub functions: BTreeMap<FunctionID, Function>,
@@ -35,7 +35,7 @@ pub struct Module {
     pub span: Option<Span>,
 }
 
-impl Module {
+impl Library {
     pub fn new(metadata: Metadata) -> Self {
         Self {
             init: Vec::new(),
@@ -85,7 +85,7 @@ impl Module {
     }
 }
 
-impl fmt::Display for Module {
+impl fmt::Display for Library {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "* Type Definitions")?;
         let mut defs: Vec<_> = self.metadata.type_defs().collect();

@@ -1,26 +1,26 @@
 use crate::ast::FunctionParamMod;
 use crate::ast::IdentPath;
 use crate::ast::StructKind;
-use crate::emit::build_closure_function_def;
-use crate::emit::build_func_def;
-use crate::emit::build_func_static_closure_def;
-use crate::emit::build_static_closure_impl;
-use crate::emit::builder::Builder;
-use crate::emit::expr::expr_to_val;
-use crate::emit::ir;
-use crate::emit::metadata::translate_closure_struct;
-use crate::emit::metadata::translate_iface;
-use crate::emit::metadata::translate_name;
-use crate::emit::metadata::translate_sig;
-use crate::emit::metadata::translate_struct_def;
-use crate::emit::metadata::translate_variant_def;
-use crate::emit::metadata::ClosureInstance;
-use crate::emit::metadata::NamePathExt;
-use crate::emit::stmt::translate_stmt;
-use crate::emit::typ;
-use crate::emit::FunctionInstance;
-use crate::emit::IROptions;
-use crate::emit::SetFlagsType;
+use crate::codegen::build_closure_function_def;
+use crate::codegen::build_func_def;
+use crate::codegen::build_func_static_closure_def;
+use crate::codegen::build_static_closure_impl;
+use crate::codegen::builder::Builder;
+use crate::codegen::expr::expr_to_val;
+use crate::codegen::ir;
+use crate::codegen::metadata::translate_closure_struct;
+use crate::codegen::metadata::translate_iface;
+use crate::codegen::metadata::translate_name;
+use crate::codegen::metadata::translate_sig;
+use crate::codegen::metadata::translate_struct_def;
+use crate::codegen::metadata::translate_variant_def;
+use crate::codegen::metadata::ClosureInstance;
+use crate::codegen::metadata::NamePathExt;
+use crate::codegen::stmt::translate_stmt;
+use crate::codegen::typ;
+use crate::codegen::FunctionInstance;
+use crate::codegen::IROptions;
+use crate::codegen::SetFlagsType;
 use crate::typ::ast::apply_func_decl_named_ty_args;
 use crate::typ::{builtin_ident, GenericContext};
 use crate::typ::builtin_span;
@@ -45,7 +45,7 @@ use std::fmt;
 use std::rc::Rc;
 
 #[derive(Debug)]
-pub struct ModuleBuilder {
+pub struct LibraryBuilder {
     src_metadata: typ::Context,
     
     opts: IROptions,
@@ -66,12 +66,12 @@ pub struct ModuleBuilder {
     free_mem_func: Option<ir::FunctionID>,
     get_mem_func: Option<ir::FunctionID>,
     
-    module: ir::Module,
+    module: ir::Library,
 }
 
-impl ModuleBuilder {
+impl LibraryBuilder {
     pub fn new(src_metadata: typ::Context, metadata: ir::Metadata, opts: IROptions) -> Self {        
-        let mut module_builder = ModuleBuilder {
+        let mut builder = LibraryBuilder {
             opts,
             src_metadata,
             
@@ -85,26 +85,26 @@ impl ModuleBuilder {
             next_variable_id: 0,
             variables_by_name: HashMap::new(),
 
-            module: ir::Module::new(metadata),
+            module: ir::Library::new(metadata),
             
             // placeholders
             free_mem_func: None,
             get_mem_func: None,
         };
 
-        let set_flags_type = SetFlagsType::define_new(&mut module_builder, 256);
+        let set_flags_type = SetFlagsType::define_new(&mut builder, 256);
 
-        module_builder.set_flags_type_info.insert(typ::MAX_FLAGS_BITS, set_flags_type);
-        module_builder.runtime_type(&ir::Type::Struct(set_flags_type.struct_id));
+        builder.set_flags_type_info.insert(typ::MAX_FLAGS_BITS, set_flags_type);
+        builder.runtime_type(&ir::Type::Struct(set_flags_type.struct_id));
 
-        module_builder
+        builder
     }
 
     pub fn module_span(&self) -> &Span {
         self.src_metadata.module_span()
     }
 
-    pub fn finish(mut self) -> ir::Module {
+    pub fn finish(mut self) -> ir::Library {
         self.gen_static_closure_init();
 
         self.gen_iface_impls();
@@ -1403,7 +1403,7 @@ pub(crate) struct FunctionDefKey {
     pub type_args: Option<typ::TypeArgList>,
 }
 
-fn gen_dyn_array_funcs(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
+fn gen_dyn_array_funcs(module: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
     let mut alloc_builder = Builder::new(module);
     gen_dyn_array_alloc_func(&mut alloc_builder, elem_ty, struct_id);
     let alloc_body = alloc_builder.finish();
@@ -1594,7 +1594,7 @@ fn gen_dyn_array_length_func(builder: &mut Builder, struct_id: ir::TypeDefID) {
     builder.field_val(ir::RETURN_REF, arr, array_ref_ty, ir::DYNARRAY_LEN_FIELD, ir::Type::I32);
 }
 
-fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
+fn gen_dyn_array_rc_boilerplate(module: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
     let array_ref_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
     let array_struct_ty = ir::Type::Struct(struct_id);
 
@@ -1697,7 +1697,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut ModuleBuilder, elem_ty: &ir::Type, 
 // for example, a class instance maybe be stored behind an `Any` reference,
 // at which point rc instructions must discover the actual class type
 // dynamically from the rc cell's class pointer/class ID
-fn gen_class_rc_boilerplate(module: &mut ModuleBuilder, class_ty: &ir::Type) {
+fn gen_class_rc_boilerplate(module: &mut LibraryBuilder, class_ty: &ir::Type) {
     let resource_struct = class_ty
         .rc_resource_class_id()
         .and_then(|class_id| class_id.as_class())

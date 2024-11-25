@@ -4,26 +4,27 @@ pub mod scope;
 mod test;
 
 use self::scope::*;
-use crate::ast as syn;
+use crate::ast as ast;
 use crate::ast::IdentPath;
-use crate::emit::metadata::*;
-use crate::emit::module_builder::FunctionDeclKey;
-use crate::emit::module_builder::FunctionDefKey;
-use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::IROptions;
-use crate::emit::{FunctionInstance, SetFlagsType};
+use crate::codegen::library_builder::FunctionDeclKey;
+use crate::codegen::library_builder::FunctionDefKey;
+use crate::codegen::library_builder::LibraryBuilder;
+use crate::codegen::metadata::*;
+use crate::codegen::FunctionInstance;
+use crate::codegen::IROptions;
+use crate::codegen::SetFlagsType;
 use crate::typ as typ;
 use crate::typ::Symbol;
+use ast::Ident;
 use common::span::Span;
 use ir_lang::*;
 use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
-use syn::Ident;
 
 #[derive(Debug)]
 pub struct Builder<'m> {
-    module: &'m mut ModuleBuilder,
+    library: &'m mut LibraryBuilder,
 
     // positional list of type args that can be used to reify types in the current context
     // during this stage we only need to be able to substitute args, we don't need to validate
@@ -38,7 +39,7 @@ pub struct Builder<'m> {
 }
 
 impl<'m> Builder<'m> {
-    pub fn new(module: &'m mut ModuleBuilder) -> Self {
+    pub fn new(module: &'m mut LibraryBuilder) -> Self {
         let module_span = module.module_span().clone();
 
         let mut instructions = Vec::new();
@@ -48,7 +49,7 @@ impl<'m> Builder<'m> {
         instructions.push(Instruction::LocalBegin);
 
         Self {
-            module,
+            library: module,
             
             instructions,
 
@@ -63,7 +64,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn opts(&self) -> &IROptions {
-        &self.module.opts()
+        &self.library.opts()
     }
     
     pub fn with_generic_ctx(mut self, ctx: typ::GenericContext) -> Self {
@@ -82,7 +83,7 @@ impl<'m> Builder<'m> {
     ) -> (TypeDefID, usize, Option<&'ty Type>) {
         let name_path = self.translate_name(variant);
 
-        let (id, variant_struct) = match self.module.metadata().find_variant_def(&name_path) {
+        let (id, variant_struct) = match self.library.metadata().find_variant_def(&name_path) {
             Some((id, variant_struct)) => (id, variant_struct),
             None => panic!("missing IR metadata definition for variant {}", variant),
         };
@@ -99,23 +100,23 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_name(&mut self, name: &typ::Symbol) -> NamePath {
-        translate_name(name, &self.generic_context, self.module)
+        translate_name(name, &self.generic_context, self.library)
     }
 
     pub fn translate_class(&mut self, class_def: &typ::ast::StructDef) -> Struct {
-        translate_struct_def(class_def, &self.generic_context, self.module)
+        translate_struct_def(class_def, &self.generic_context, self.library)
     }
 
     pub fn translate_iface(&mut self, iface_def: &typ::ast::InterfaceDecl) -> Interface {
-        translate_iface(iface_def, &self.generic_context, self.module)
+        translate_iface(iface_def, &self.generic_context, self.library)
     }
 
     pub fn translate_type(&mut self, src_ty: &typ::Type) -> Type {
-        self.module.translate_type(src_ty, &self.generic_context)
+        self.library.translate_type(src_ty, &self.generic_context)
     }
 
     pub fn translate_dyn_array_struct(&mut self, element_ty: &typ::Type) -> TypeDefID {
-        self.module.translate_dyn_array_struct(element_ty, &self.generic_context)
+        self.library.translate_dyn_array_struct(element_ty, &self.generic_context)
     }
 
     pub fn translate_method(
@@ -130,7 +131,7 @@ impl<'m> Builder<'m> {
                 .apply_type_args(&self.generic_context, &self.generic_context);
         }
 
-        self.module.translate_method_impl(self_ty, self_ty_method_index, call_ty_args)
+        self.library.translate_method_impl(self_ty, self_ty_method_index, call_ty_args)
     }
 
     pub fn translate_func(
@@ -153,21 +154,21 @@ impl<'m> Builder<'m> {
             },
         };
 
-        self.module.instantiate_func(&mut key)
+        self.library.instantiate_func(&mut key)
     }
 
     pub fn translate_func_ty(&mut self, func_sig: &typ::FunctionSig) -> TypeDefID {
-        self.module
+        self.library
             .translate_func_ty(func_sig, &self.generic_context)
     }
 
     pub fn build_closure_expr(&mut self, func: &typ::ast::AnonymousFunctionDef) -> Ref {
         let closure = self
-            .module
+            .library
             .build_closure_instance(func, &self.generic_context);
 
         if func.captures.len() == 0 {
-            let static_closure = self.module.build_static_closure_instance(closure);
+            let static_closure = self.library.build_static_closure_instance(closure);
 
             Ref::Global(GlobalRef::StaticClosure(static_closure.id))
         } else {
@@ -177,7 +178,7 @@ impl<'m> Builder<'m> {
     
     pub fn build_function_closure(&mut self, func: &FunctionInstance) -> Ref {
         let static_closure = self
-            .module
+            .library
             .build_func_static_closure_instance(func, &self.generic_context);
 
         Ref::Global(GlobalRef::StaticClosure(static_closure.id))
@@ -185,7 +186,7 @@ impl<'m> Builder<'m> {
 
     pub fn build_closure_instance(&mut self, closure: ClosureInstance) -> Ref {
         let closure_def = self
-            .module
+            .library
             .metadata()
             .get_struct_def(closure.closure_id)
             .cloned()
@@ -261,7 +262,7 @@ impl<'m> Builder<'m> {
     }
     
     pub fn get_method(&self, self_ty: &typ::Type, index: usize) -> typ::ast::MethodDecl {
-        self.module.get_method(self_ty, index)
+        self.library.get_method(self_ty, index)
     }
 
     // for a given interface type and method index, get the method index from the self-type that
@@ -283,24 +284,24 @@ impl<'m> Builder<'m> {
 
         let impl_sig = iface_method.func_decl.sig().with_self(&self_ty);
         
-        self.module.find_method_index(self_ty, method_name, &impl_sig)
+        self.library.find_method_index(self_ty, method_name, &impl_sig)
     }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
-        self.module.metadata().pretty_ty_name(ty)
+        self.library.metadata().pretty_ty_name(ty)
     }
 
     pub fn find_or_insert_string(&mut self, s: &str) -> StringID {
-        self.module.metadata_mut().find_or_insert_string(s)
+        self.library.metadata_mut().find_or_insert_string(s)
     }
 
     pub fn get_struct(&self, id: TypeDefID) -> Option<&Struct> {
-        self.module.metadata().get_struct_def(id)
+        self.library.metadata().get_struct_def(id)
     }
 
     #[allow(unused)]
     pub fn get_iface(&self, id: InterfaceID) -> Option<&Interface> {
-        self.module.metadata().get_iface_def(id)
+        self.library.metadata().get_iface_def(id)
     }
 
     pub fn finish(mut self) -> Vec<Instruction> {
@@ -325,7 +326,7 @@ impl<'m> Builder<'m> {
             self.instructions.remove(pos);
         }
 
-        if self.module.opts().debug {
+        if self.library.opts().debug {
             self.append(Instruction::DebugPop);
         }
 
@@ -701,7 +702,7 @@ impl<'m> Builder<'m> {
     }
     
     pub fn set_include(&mut self, set_ref: impl Into<Ref>, bit_val: impl Into<Value>, set_type: &typ::SetType) {
-        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type_info = self.library.get_set_flags_type_info(set_type.flags_type_bits());
         let flags_type = Type::Struct(flags_type_info.struct_id);
         
         let flags_ptr = self.local_temp(flags_type.ptr());
@@ -716,7 +717,7 @@ impl<'m> Builder<'m> {
     // todo: what is this for
     #[allow(unused)]
     pub fn set_exclude(&mut self, set_ref: impl Into<Ref>, bit_val: impl Into<Value>, set_type: &typ::SetType) {
-        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type_info = self.library.get_set_flags_type_info(set_type.flags_type_bits());
         let flags_type = Type::Struct(flags_type_info.struct_id);
 
         let flags_ptr = self.local_temp(flags_type.ptr());
@@ -734,7 +735,7 @@ impl<'m> Builder<'m> {
         bit_val: impl Into<Value>,
         set_type: &typ::SetType
     ) {
-        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type_info = self.library.get_set_flags_type_info(set_type.flags_type_bits());
         let flags_type = Type::Struct(flags_type_info.struct_id);
 
         let flags_ptr = self.local_temp(flags_type.ptr());
@@ -752,7 +753,7 @@ impl<'m> Builder<'m> {
         b: impl Into<Ref>,
         set_type: &typ::SetType
     ) {
-        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type_info = self.library.get_set_flags_type_info(set_type.flags_type_bits());
         let flags_type = Type::Struct(flags_type_info.struct_id);
 
         let a_ptr = self.local_temp(flags_type.clone().ptr());
@@ -770,7 +771,7 @@ impl<'m> Builder<'m> {
         a: impl Into<Ref>,
         set_type: &typ::SetType
     ) {
-        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type_info = self.library.get_set_flags_type_info(set_type.flags_type_bits());
         let flags_type = Type::Struct(flags_type_info.struct_id);
 
         let a_ptr = self.local_temp(flags_type.clone().ptr());
@@ -787,7 +788,7 @@ impl<'m> Builder<'m> {
         set_type: &typ::SetType,
         get_func_id: fn(&SetFlagsType) -> FunctionID,
     ) {
-        let flags_type_info = self.module.get_set_flags_type_info(set_type.flags_type_bits());
+        let flags_type_info = self.library.get_set_flags_type_info(set_type.flags_type_bits());
         let flags_type = Type::Struct(flags_type_info.struct_id);
 
         let a_ptr = self.local_temp(flags_type.clone().ptr());
@@ -854,12 +855,12 @@ impl<'m> Builder<'m> {
     }
 
     pub fn get_mem(&mut self, count: impl Into<Value>, out: Ref) {
-        let function_ref = Ref::Global(GlobalRef::Function(self.module.instantiate_get_mem_func()));
+        let function_ref = Ref::Global(GlobalRef::Function(self.library.instantiate_get_mem_func()));
         self.call(function_ref, [count.into()], Some(out));
     }
 
     pub fn free_mem(&mut self, at: impl Into<Value>) {
-        let function_ref = Ref::Global(GlobalRef::Function(self.module.instantiate_free_mem_func()));
+        let function_ref = Ref::Global(GlobalRef::Function(self.library.instantiate_free_mem_func()));
         self.call(function_ref, [at.into()], None);
     }
 
@@ -975,7 +976,7 @@ impl<'m> Builder<'m> {
     }
     
     pub fn find_global_var(&self, name_path: &IdentPath) -> Option<VariableID> {
-        self.module.find_global_var(name_path)
+        self.library.find_global_var(name_path)
     }
 
     pub fn local_closure_capture(&mut self, ty: Type, name: String) -> Ref {
@@ -1000,7 +1001,7 @@ impl<'m> Builder<'m> {
     {
         match ty {
             Type::Struct(struct_id) => {
-                let struct_def = self.module.metadata().get_struct_def(*struct_id).unwrap();
+                let struct_def = self.library.metadata().get_struct_def(*struct_id).unwrap();
 
                 let fields: Vec<_> = struct_def
                     .fields
@@ -1031,7 +1032,7 @@ impl<'m> Builder<'m> {
 
             Type::Variant(id) => {
                 let cases = &self
-                    .module
+                    .library
                     .metadata()
                     .get_variant_def(*id)
                     .unwrap_or_else(|| panic!("missing variant def {}", id))
@@ -1134,7 +1135,7 @@ impl<'m> Builder<'m> {
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.module.runtime_type(ty);
+                let rc_funcs = self.library.runtime_type(ty);
 
                 if let Some(retain) = rc_funcs.retain {
                     let at_ptr = self.local_temp(ty.clone().ptr());
@@ -1179,7 +1180,7 @@ impl<'m> Builder<'m> {
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.module.runtime_type(ty);
+                let rc_funcs = self.library.runtime_type(ty);
 
                 if let Some(release) = rc_funcs.release {
                     let at_ptr = self.local_temp(ty.clone().ptr());
@@ -1406,7 +1407,7 @@ impl<'m> Builder<'m> {
         length: impl Into<Value>,
         index: impl Into<Value>
     ) {
-        let bounds_check_func = self.module.gen_bounds_check(element_ty);
+        let bounds_check_func = self.library.gen_bounds_check(element_ty);
         let func_ref = Value::Ref(Ref::Global(GlobalRef::Function(bounds_check_func)));
 
         self.call(func_ref, [

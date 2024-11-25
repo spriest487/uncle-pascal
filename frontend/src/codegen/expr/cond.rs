@@ -1,10 +1,10 @@
-use crate::emit::builder::Builder;
-use crate::emit::expr;
-use crate::emit::pattern::translate_pattern_match;
-use crate::emit::pattern::PatternMatchOutput;
-use crate::emit::stmt::build_case_block;
-use crate::emit::typ;
-use crate::emit::ir;
+use crate::codegen::builder::Builder;
+use crate::codegen::expr;
+use crate::codegen::pattern::translate_pattern_match;
+use crate::codegen::pattern::PatternMatchOutput;
+use crate::codegen::stmt::build_case_block;
+use crate::codegen::typ;
+use crate::codegen::ir;
 
 pub fn translate_if_cond<B, BranchTranslateFn>(
     if_cond: &typ::ast::IfCond<B>,

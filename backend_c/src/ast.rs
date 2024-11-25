@@ -18,7 +18,7 @@ use std::fmt;
 use topological_sort::TopologicalSort;
 use ir_lang::NamePath;
 
-pub struct Module {
+pub struct CompilationUnit {
     functions: Vec<FunctionDef>,
     ffi_funcs: Vec<FfiFunction>,
     builtin_funcs: HashMap<ir::FunctionID, FunctionName>,
@@ -39,7 +39,7 @@ pub struct Module {
     type_names: HashMap<ir::Type, String>,
 }
 
-impl Module {
+impl CompilationUnit {
     pub fn new(metadata: &ir::Metadata, opts: Options) -> Self {
         let string_ty = Type::DefinedType(TypeDefName::Struct(ir::STRING_ID)).ptr();
 
@@ -274,7 +274,7 @@ impl Module {
             })
             .collect();
 
-        let mut module = Module {
+        let mut module = CompilationUnit {
             functions: Vec::new(),
             ffi_funcs: Vec::new(),
             builtin_funcs,
@@ -372,7 +372,7 @@ impl Module {
         }
     }
 
-    pub fn add_ir(&mut self, module: &ir::Module) {
+    pub fn add_lib(&mut self, module: &ir::Library) {
         let mut module_type_defs = Vec::new();
 
         for (id, type_def) in module.metadata().type_defs() {
@@ -503,7 +503,7 @@ impl Module {
     }
 }
 
-impl fmt::Display for Module {
+impl fmt::Display for CompilationUnit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.opts.trace_heap {
             writeln!(f, "#define TRACE_HEAP 1")?;

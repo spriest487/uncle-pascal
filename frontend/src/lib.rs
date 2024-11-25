@@ -6,7 +6,7 @@ pub mod parse;
 pub mod token_tree;
 pub mod typ;
 pub mod pp;
-pub mod emit;
+pub mod codegen;
 
 pub use self::consts::EnumConstant;
 pub use self::consts::IntConstant;
@@ -26,8 +26,8 @@ pub use ast::Ident;
 
 use crate::ast::IdentPath;
 use crate::ast::Unit;
-use crate::emit::ir;
-use crate::emit::IROptions;
+use crate::codegen::ir;
+use crate::codegen::IROptions;
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::pp::error::PreprocessorError;
@@ -91,6 +91,6 @@ pub fn typecheck(units: &[Unit<Span>]) -> TypeResult<Module> {
     Module::typecheck(units)
 }
 
-pub fn emit_ir(module: &Module, opts: IROptions) -> ir::Module {
-    emit::translate(module, opts)
+pub fn codegen_ir(module: &Module, opts: IROptions) -> ir::Library {
+    codegen::translate(module, opts)
 }

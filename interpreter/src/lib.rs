@@ -1911,7 +1911,7 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn load_module(&mut self, module: &ir::Module) -> ExecResult<()> {
+    pub fn load_module(&mut self, module: &ir::Library) -> ExecResult<()> {
         self.metadata.extend(&module.metadata());
 
         let mut marshaller = (*self.marshaller).clone();

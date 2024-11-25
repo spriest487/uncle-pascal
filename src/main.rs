@@ -15,7 +15,7 @@ use common::span::*;
 use common::BuildOptions;
 use frontend::ast;
 use frontend::ast::{IdentPath, Unit};
-use frontend::emit::IROptions;
+use frontend::codegen::IROptions;
 use frontend::pp as pp;
 use frontend::typ as ty;
 use interpreter::Interpreter;
@@ -45,7 +45,7 @@ enum CompileOutput {
     Preprocess(Vec<PreprocessedUnit>),
     Parse(Vec<Unit>),
     Typecheck(ty::Module),
-    IR(ir::Module),
+    IR(ir::Library),
 }
 
 fn preprocess(filename: &PathBuf, opts: BuildOptions) -> Result<PreprocessedUnit, CompileError> {
@@ -231,11 +231,11 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         debug: args.debug,
     };
 
-    let module = frontend::emit_ir(&typed_module, ir_opts);
+    let module = frontend::codegen_ir(&typed_module, ir_opts);
     Ok(CompileOutput::IR(module))
 }
 
-fn load_module_from_file(path: &Path) -> Result<ir::Module, CompileError> {
+fn load_module_from_file(path: &Path) -> Result<ir::Library, CompileError> {
     let mut module_bytes = Vec::new();
 
     File::open(&path)
@@ -249,7 +249,7 @@ fn load_module_from_file(path: &Path) -> Result<ir::Module, CompileError> {
             }
         })?;
 
-    let module: ir::Module = bincode::deserialize(&module_bytes)
+    let module: ir::Library = bincode::deserialize(&module_bytes)
         .map_err(|err| {
             CompileError::ReadSourceFileFailed {
                 msg: err.to_string(),
@@ -368,7 +368,7 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
     }
 }
 
-fn translate_c(module: &ir::Module, args: &Args) -> c::Module {
+fn translate_c(module: &ir::Library, args: &Args) -> c::CompilationUnit {
     let c_opts = backend_c::Options {
         trace_heap: args.trace_heap,
         trace_rc: args.trace_rc,
@@ -378,7 +378,7 @@ fn translate_c(module: &ir::Module, args: &Args) -> c::Module {
     backend_c::translate(&module, c_opts)
 }
 
-fn clang_compile(module: &ir::Module, args: &Args, out_path: &OsStr) -> io::Result<()> {
+fn clang_compile(module: &ir::Library, args: &Args, out_path: &OsStr) -> io::Result<()> {
     let c_module = translate_c(module, args);
     
     let mut clang_cmd = Command::new("clang");

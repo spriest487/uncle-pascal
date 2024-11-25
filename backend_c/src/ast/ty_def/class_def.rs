@@ -3,7 +3,7 @@ use crate::ast::FunctionDecl;
 use crate::ast::FunctionDef;
 use crate::ast::FunctionName;
 use crate::ast::GlobalName;
-use crate::ast::Module;
+use crate::ast::CompilationUnit;
 use crate::ast::Statement;
 use crate::ast::Type;
 use crate::ast::TypeDefName;
@@ -27,7 +27,7 @@ impl MethodImplFunc {
         iface_method: &ir::Method,
         impl_func_id: ir::FunctionID,
         metadata: &ir::Metadata,
-        module: &mut Module,
+        module: &mut CompilationUnit,
     ) -> Self {
         let class_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(self_ty_id));
         let iface_ty = ir::Type::RcPointer(ir::VirtualTypeID::Interface(iface_id));
@@ -59,7 +59,7 @@ impl MethodImplFunc {
         }
     }
 
-    fn gen_vcall_wrapper(&self, module: &Module) -> FunctionDef {
+    fn gen_vcall_wrapper(&self, module: &CompilationUnit) -> FunctionDef {
         let mut next_param_local = ir::LocalID(match &self.vcall_wrapper_decl.return_ty {
             Type::Void => 0,
             _ => 1,
@@ -124,7 +124,7 @@ impl Class {
         struct_id: ir::TypeDefID,
         _struct_def: &ir::Struct,
         metadata: &ir::Metadata,
-        module: &mut Module,
+        module: &mut CompilationUnit,
     ) -> Self {
         let name = module.type_names[&ir::Type::Struct(struct_id)].clone();
         
@@ -203,7 +203,7 @@ impl Class {
         }
     }
 
-    pub fn gen_vcall_wrappers(&self, module: &Module) -> Vec<FunctionDef> {
+    pub fn gen_vcall_wrappers(&self, module: &CompilationUnit) -> Vec<FunctionDef> {
         let mut wrappers = Vec::new();
         for (_iface_id, iface_impl) in &self.impls {
             for (_method_id, method_impl) in &iface_impl.method_impls {
@@ -387,7 +387,7 @@ impl Interface {
     pub fn translate(
         iface_id: ir::InterfaceID,
         iface: &ir::Interface,
-        module: &mut Module,
+        module: &mut CompilationUnit,
     ) -> Self {
         let methods = iface
             .methods

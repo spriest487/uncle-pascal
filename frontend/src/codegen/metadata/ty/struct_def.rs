@@ -1,7 +1,7 @@
-use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::syn;
-use crate::emit::translate_name;
-use crate::emit::typ;
+use crate::codegen::library_builder::LibraryBuilder;
+use crate::codegen::syn;
+use crate::codegen::translate_name;
+use crate::codegen::typ;
 use common::span::Spanned;
 use ir_lang::*;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use typ::layout::StructLayoutMember;
 pub fn translate_struct_def(
     struct_def: &typ::ast::StructDef,
     generic_ctx: &typ::GenericContext,
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
 ) -> Struct {
     let name_path = translate_name(&struct_def.name, generic_ctx, module);
 

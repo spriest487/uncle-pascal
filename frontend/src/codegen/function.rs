@@ -1,13 +1,13 @@
-use crate::emit::builder::jmp_exists;
-use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::syn;
-use crate::emit::syn::FunctionParamMod;
-use crate::emit::syn::Ident;
-use crate::emit::translate_block;
-use crate::emit::translate_literal;
-use crate::emit::typ;
-use crate::emit::Builder;
-use crate::emit::ClosureInstance;
+use crate::codegen::builder::jmp_exists;
+use crate::codegen::library_builder::LibraryBuilder;
+use crate::codegen::syn;
+use crate::codegen::syn::FunctionParamMod;
+use crate::codegen::syn::Ident;
+use crate::codegen::translate_block;
+use crate::codegen::translate_literal;
+use crate::codegen::typ;
+use crate::codegen::Builder;
+use crate::codegen::ClosureInstance;
 use common::span::Span;
 use ir_lang::*;
 use std::iter;
@@ -20,7 +20,7 @@ pub struct FunctionInstance {
 }
 
 fn create_function_body_builder<'m>(
-    module: &'m mut ModuleBuilder,
+    module: &'m mut LibraryBuilder,
     generic_ctx: typ::GenericContext,
     debug_name: &str,
 ) -> Builder<'m> {
@@ -37,7 +37,7 @@ fn create_function_body_builder<'m>(
 }
 
 pub fn build_func_def(
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
     generic_ctx: typ::GenericContext,
     def_params: &[typ::ast::FunctionParam],
     def_return_ty: &typ::Type,
@@ -72,7 +72,7 @@ pub fn build_func_def(
 }
 
 pub fn build_func_static_closure_def(
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
     target_func: &FunctionInstance,
     target_ir_func: &Function,
 ) -> FunctionDef {
@@ -134,7 +134,7 @@ pub fn build_func_static_closure_def(
 }
 
 pub fn build_closure_function_def(
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
     func_def: &typ::ast::AnonymousFunctionDef,
     closure_id: TypeDefID,
     src_span: Span,
@@ -302,7 +302,7 @@ fn build_func_body(
 pub fn build_static_closure_impl(
     closure: ClosureInstance,
     id: StaticClosureID,
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
 ) -> StaticClosure {
     let mut init_builder = Builder::new(module);
 

@@ -4,7 +4,7 @@ mod type_def;
 mod variant_def;
 
 pub use self::{class_def::*, struct_def::*, type_def::*, variant_def::*};
-use crate::ast::Module;
+use crate::ast::CompilationUnit;
 use crate::ir;
 use std::fmt;
 
@@ -48,7 +48,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn from_metadata(ty: &ir::Type, module: &mut Module) -> Type {
+    pub fn from_metadata(ty: &ir::Type, module: &mut CompilationUnit) -> Type {
         match ty {
             ir::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
             ir::Type::Function(id) => Type::DefinedType(TypeDefName::Alias(*id)),

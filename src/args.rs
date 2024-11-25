@@ -75,7 +75,7 @@ pub enum CompileStage {
 
 fn parse_compile_stage(s: &str) -> Result<CompileStage, String> {
     match s {
-        "ir" | "emit-ir" => Ok(CompileStage::EmitIR),
+        "ir" | "codegen-ir" => Ok(CompileStage::EmitIR),
         "p" | "parse" => Ok(CompileStage::Parse),
         "t" | "typecheck" => Ok(CompileStage::Typecheck),
         "pp" | "preprocess" => Ok(CompileStage::Preprocess),

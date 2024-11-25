@@ -3,11 +3,11 @@ pub mod op;
 pub mod ctor;
 pub mod cond;
 
-use crate::emit::ir;
-use crate::emit::syn;
-use crate::emit::translate_stmt;
-use crate::emit::typ;
-use crate::emit::Builder;
+use crate::codegen::ir;
+use crate::codegen::syn;
+use crate::codegen::translate_stmt;
+use crate::codegen::typ;
+use crate::codegen::Builder;
 use crate::typ::TypedValue;
 use crate::typ::STRING_TYPE_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;

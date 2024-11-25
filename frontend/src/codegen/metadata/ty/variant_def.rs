@@ -1,13 +1,13 @@
-use crate::emit::ir;
-use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::translate_name;
-use crate::emit::typ;
+use crate::codegen::ir;
+use crate::codegen::library_builder::LibraryBuilder;
+use crate::codegen::translate_name;
+use crate::codegen::typ;
 use common::span::Spanned;
 
 pub fn translate_variant_def(
     variant_def: &typ::ast::VariantDef,
     generic_ctx: &typ::GenericContext,
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
 ) -> ir::VariantDef {
     let name_path = translate_name(&variant_def.name, generic_ctx, module);
 

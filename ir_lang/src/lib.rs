@@ -6,13 +6,13 @@ mod ty;
 mod ty_decl;
 mod val;
 pub mod dep_sort;
-mod module;
+mod library;
 
 pub use formatter::*;
 pub use function::*;
 pub use instruction::*;
 pub use metadata::*;
-pub use module::*;
+pub use library::*;
 use std::borrow::Cow;
 use std::fmt;
 use serde::{Deserialize, Serialize};

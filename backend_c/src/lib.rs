@@ -10,9 +10,9 @@ pub struct Options {
     pub trace_ir: bool,
 }
 
-pub fn translate(ir_module: &ir::Module, opts: Options) -> c::Module {
-    let mut module = c::Module::new(&ir_module.metadata(), opts);
-    module.add_ir(ir_module);
+pub fn translate(ir_module: &ir::Library, opts: Options) -> c::CompilationUnit {
+    let mut module = c::CompilationUnit::new(&ir_module.metadata(), opts);
+    module.add_lib(ir_module);
 
     module
 }

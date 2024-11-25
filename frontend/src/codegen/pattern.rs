@@ -1,6 +1,6 @@
-use crate::emit::ir;
-use crate::emit::typ::TypePattern;
-use crate::emit::Builder;
+use crate::codegen::ir;
+use crate::codegen::typ::TypePattern;
+use crate::codegen::Builder;
 use crate::typ::Specializable;
 
 pub struct PatternMatchBinding {

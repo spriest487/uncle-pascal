@@ -1,12 +1,12 @@
-use crate::emit::builder::Builder;
-use crate::emit::syn;
-use crate::emit::typ;
-use crate::emit::expr;
+use crate::codegen::builder::Builder;
+use crate::codegen::syn;
+use crate::codegen::typ;
+use crate::codegen::expr;
 use crate::IntConstant;
 use bigdecimal::BigDecimal;
 use ir_lang::*;
 use syn::Operator;
-use crate::emit::expr::translate_expr;
+use crate::codegen::expr::translate_expr;
 
 pub fn translate_bin_op(
     bin_op: &typ::ast::BinOp,

@@ -1,18 +1,18 @@
 use crate::ast::IdentPath;
-use crate::emit::module_builder::ModuleBuilder;
-use crate::emit::syn;
-use crate::emit::typ;
+use crate::codegen::library_builder::LibraryBuilder;
+use crate::codegen::syn;
+use crate::codegen::typ;
 use ir_lang::*;
 use typ::Specializable;
 
 pub trait NamePathExt {
-    fn from_decl(name: typ::Symbol, metadata: &ModuleBuilder) -> Self;
+    fn from_decl(name: typ::Symbol, metadata: &LibraryBuilder) -> Self;
     fn from_ident_path(ident: &syn::IdentPath, type_args: Option<Vec<Type>>) -> Self;
     fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self;
 }
 
 impl NamePathExt for NamePath {
-    fn from_decl(name: typ::Symbol, builder: &ModuleBuilder) -> Self {
+    fn from_decl(name: typ::Symbol, builder: &LibraryBuilder) -> Self {
         let path_parts = name
             .full_path
             .into_iter()
@@ -57,7 +57,7 @@ impl NamePathExt for NamePath {
 pub fn translate_name(
     name: &typ::Symbol,
     generic_ctx: &typ::GenericContext,
-    module: &mut ModuleBuilder,
+    module: &mut LibraryBuilder,
 ) -> NamePath {
     let name = name.clone().apply_type_args(generic_ctx, generic_ctx);
 

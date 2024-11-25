@@ -1,8 +1,8 @@
 use std::borrow::Cow;
-use crate::emit::builder::Builder;
-use crate::emit::expr;
-use crate::emit::syn;
-use crate::emit::typ;
+use crate::codegen::builder::Builder;
+use crate::codegen::expr;
+use crate::codegen::syn;
+use crate::codegen::typ;
 use crate::typ::Specializable;
 use ir_lang::*;
 
