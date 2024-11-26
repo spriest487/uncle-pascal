@@ -14,7 +14,7 @@ pub struct Pointer {
 
 impl fmt::Display for Pointer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "0x{:0width$x} ({})", self.addr, self.ty, width = (size_of::<usize>() * 2))
+        write!(f, "0x{:0width$x} ({})", self.addr, self.ty, width = size_of::<usize>() * 2)
     }
 }
 
@@ -42,19 +42,19 @@ impl Pointer {
     }
 
     pub fn addr_add(&self, rhs: usize) -> Self {
-        Self { ty: self.ty.clone(), addr: self.addr + rhs }
+        Self { ty: self.ty.clone(), addr: self.addr.wrapping_add(rhs) }
     }
 
     pub fn addr_sub(&self, rhs: usize) -> Self {
-        Self { ty: self.ty.clone(), addr: self.addr - rhs }
+        Self { ty: self.ty.clone(), addr: self.addr.wrapping_sub(rhs) }
     }
 
     pub fn addr_mul(&self, rhs: usize) -> Self {
-        Self { ty: self.ty.clone(), addr: self.addr * rhs }
+        Self { ty: self.ty.clone(), addr: self.addr.wrapping_mul(rhs) }
     }
 
     pub fn addr_div(&self, rhs: usize) -> Self {
-        Self { ty: self.ty.clone(), addr: self.addr / rhs }
+        Self { ty: self.ty.clone(), addr: self.addr.wrapping_div(rhs) }
     }
 
     pub fn addr_shl(&self, rhs: usize) -> Self {

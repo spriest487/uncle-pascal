@@ -1,6 +1,5 @@
 # critical
 * project files/don't auto load used units
-* sets should only allow ranges and contiguous values (OR we should handle sparse sets somehow)
 * range types/`for var x in 0..123`
 * move strings to module (out of metadata)
 
@@ -17,6 +16,7 @@
 # bugs
 * source spans shouldn't be included in module files in release mode
 * parser: newlines/escape chars in string literals
+* signed i8 loop from -127 to 128 runs forever? 
 
 # improvements
 * go back to I prefix for interfaces~~~~

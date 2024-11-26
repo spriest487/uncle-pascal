@@ -136,16 +136,16 @@ impl DynValue {
 
     pub fn try_add(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a + b)),
-            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a + b)),
-            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a + b)),
-            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a + b)),
-            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a + b)),
-            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a + b)),
-            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a + b)),
-            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a + b)),
-            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a + b)),
-            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a + b)),
+            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a.wrapping_add(*b))),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a.wrapping_add(*b))),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a.wrapping_add(*b))),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a.wrapping_add(*b))),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a.wrapping_add(*b))),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a.wrapping_add(*b))),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a.wrapping_add(*b))),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a.wrapping_add(*b))),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a.wrapping_add(*b))),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a.wrapping_add(*b))),
             (DynValue::Pointer(a), DynValue::Pointer(b)) => {
                 Some(DynValue::Pointer(a.addr_add(b.addr)))
             },
@@ -164,16 +164,16 @@ impl DynValue {
 
     pub fn try_sub(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a - b)),
-            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a - b)),
-            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a - b)),
-            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a - b)),
-            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a - b)),
-            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a - b)),
-            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a - b)),
-            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a - b)),
-            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a - b)),
-            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a - b)),
+            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a.wrapping_sub(*b))),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a.wrapping_sub(*b))),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a.wrapping_sub(*b))),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a.wrapping_sub(*b))),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a.wrapping_sub(*b))),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a.wrapping_sub(*b))),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a.wrapping_sub(*b))),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a.wrapping_sub(*b))),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a.wrapping_sub(*b))),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a.wrapping_sub(*b))),
             (DynValue::Pointer(a), DynValue::Pointer(b)) => {
                 let ptr_diff = a.addr_sub(b.addr).addr as isize;
                 Some(DynValue::ISize(ptr_diff))
@@ -193,16 +193,16 @@ impl DynValue {
 
     pub fn try_mul(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a * b)),
-            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a * b)),
-            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a * b)),
-            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a * b)),
-            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a * b)),
-            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a * b)),
-            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a * b)),
-            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a * b)),
-            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a * b)),
-            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a * b)),
+            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a.wrapping_mul(*b))),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a.wrapping_mul(*b))),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a.wrapping_mul(*b))),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a.wrapping_mul(*b))),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a.wrapping_mul(*b))),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a.wrapping_mul(*b))),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a.wrapping_mul(*b))),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a.wrapping_mul(*b))),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a.wrapping_mul(*b))),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a.wrapping_mul(*b))),
             (DynValue::Pointer(a), DynValue::Pointer(b)) => {
                 Some(DynValue::Pointer(a.addr_mul(b.addr)))
             },
@@ -215,16 +215,16 @@ impl DynValue {
 
     pub fn try_idiv(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a / b)),
-            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a / b)),
-            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a / b)),
-            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a / b)),
-            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a / b)),
-            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a / b)),
-            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a / b)),
-            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a / b)),
-            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a / b)),
-            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a / b)),
+            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a.wrapping_div(*b))),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a.wrapping_div(*b))),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a.wrapping_div(*b))),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a.wrapping_div(*b))),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a.wrapping_div(*b))),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a.wrapping_div(*b))),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a.wrapping_div(*b))),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a.wrapping_div(*b))),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a.wrapping_div(*b))),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a.wrapping_div(*b))),
             (DynValue::Pointer(a), DynValue::Pointer(b)) => {
                 Some(DynValue::Pointer(a.addr_div(b.addr)))
             },
@@ -248,16 +248,16 @@ impl DynValue {
 
     pub fn try_mod(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a % b)),
-            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a % b)),
-            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a % b)),
-            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a % b)),
-            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a % b)),
-            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a % b)),
-            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a % b)),
-            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a % b)),
-            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a % b)),
-            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a % b)),
+            (DynValue::I8(a), DynValue::I8(b)) => Some(DynValue::I8(a.wrapping_rem(*b))),
+            (DynValue::U8(a), DynValue::U8(b)) => Some(DynValue::U8(a.wrapping_rem(*b))),
+            (DynValue::I16(a), DynValue::I16(b)) => Some(DynValue::I16(a.wrapping_rem(*b))),
+            (DynValue::U16(a), DynValue::U16(b)) => Some(DynValue::U16(a.wrapping_rem(*b))),
+            (DynValue::I32(a), DynValue::I32(b)) => Some(DynValue::I32(a.wrapping_rem(*b))),
+            (DynValue::U32(a), DynValue::U32(b)) => Some(DynValue::U32(a.wrapping_rem(*b))),
+            (DynValue::I64(a), DynValue::I64(b)) => Some(DynValue::I64(a.wrapping_rem(*b))),
+            (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a.wrapping_rem(*b))),
+            (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a.wrapping_rem(*b))),
+            (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a.wrapping_rem(*b))),
 
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a % b)),
 

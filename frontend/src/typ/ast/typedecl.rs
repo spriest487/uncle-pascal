@@ -417,8 +417,8 @@ impl SetDecl {
                 
                 to.annotation().expect_value(&val_ty)?;
                 
-                let from_num = eval_range_value(&from, range_span, ctx)?;
-                let to_num = eval_range_value(&to, range_span, ctx)?;
+                let from_num = get_set_range_expr_val(&from, range_span, ctx)?;
+                let to_num = get_set_range_expr_val(&to, range_span, ctx)?;
                 
                 if from_num.as_i128() > to_num.as_i128() {
                     return Err(TypeError::SetValuesMustBeSequential {
@@ -456,9 +456,17 @@ impl SetDecl {
                     span: range_span.clone(),
                 }
             }
-
+            
             SetDeclRange::Type { ty, .. } => {
-                unimplemented!()
+                let range_ty = typecheck_type(ty, ctx)?;
+
+                // just do this here to raise an error if it's invalid
+                _ = get_set_type_range(&range_ty, ty.span(), ctx)?;
+                
+                SetDeclRange::Type { 
+                    ty: range_ty,
+                    span: ty.span().clone(),
+                }
             }
         };
 
@@ -481,8 +489,10 @@ impl SetDecl {
     pub fn to_set_type(&self, ctx: &Context) -> TypeResult<SetType> {
         let name = self.name.full_path.clone();
 
-        match self.range.as_ref() {
-            SetDeclRange::Type { ty, .. } => unimplemented!(),
+        let (from_const, to_const) = match self.range.as_ref() {
+            SetDeclRange::Type { ty, span, .. } => {
+                get_set_type_range(ty, span, ctx)?
+            },
 
             SetDeclRange::Range { from, to, .. } => {
                 let from_const = from.annotation()
@@ -493,15 +503,17 @@ impl SetDecl {
                     .as_const()
                     .and_then(|val| val.value.clone().try_into_int())
                     .expect("set range values may only be const integers");
-                
-                Ok(SetType {
-                    min: from_const,
-                    max: to_const,
-                    name: Some(name),
-                    item_type: self.value_type().into_owned(),
-                })
+
+                (from_const, to_const)
             }
-        }
+        };
+
+        Ok(SetType {
+            min: from_const,
+            max: to_const,
+            name: Some(name),
+            item_type: self.value_type().into_owned(),
+        })
     }
     
     pub fn items_to_set_type(name: Option<IdentPath>, items: &[Expr], ctx: &Context) -> TypeResult<SetType> {
@@ -531,7 +543,61 @@ impl SetDecl {
     }
 }
 
-fn eval_range_value(val: &Expr, at: &Span, ctx: &Context) -> TypeResult<IntConstant> {
+fn get_set_type_range(range_ty: &Type, at: &Span, ctx: &Context) -> TypeResult<(IntConstant, IntConstant)> {
+    match &range_ty {
+        Type::Primitive(primitive) => {
+            let Some((min_const, max_const)) = primitive.integer_range() else {
+                return Err(TypeError::InvalidSetValueType {
+                    actual: range_ty.clone(),
+                    span: at.clone(),
+                });
+            };
+
+            let range = max_const.as_i128() - min_const.as_i128();
+            if range > MAX_FLAGS_BITS as i128 {
+                return Err(TypeError::TooManySetValues {
+                    count: range as usize,
+                    span: at.clone(),
+                });
+            }
+            
+            Ok((min_const, max_const))
+        }
+
+        Type::Enum(enum_path) => {
+            let Some(Def::Enum(enum_decl)) = ctx.find_type_def(enum_path) else {
+                return Err(TypeError::name_not_found(enum_path.as_ref().clone(), at.clone()));
+            };
+
+            let mut min = 0;
+            let mut max = 0;
+            for item in &enum_decl.items {
+                let item_val = item.value.as_ref().unwrap();
+                min = i128::min(item_val.as_i128(), min);
+                max = i128::max(item_val.as_i128(), max);
+            }
+
+            let range = max - min;
+            if range > MAX_FLAGS_BITS as i128 {
+                return Err(TypeError::TooManySetValues {
+                    count: range as usize,
+                    span: at.clone(),
+                });
+            }
+            
+            Ok((IntConstant::from(min), IntConstant::from(max)))
+        }
+
+        _ => {
+            return Err(TypeError::InvalidSetValueType {
+                actual: range_ty.clone(),
+                span: at.clone(),
+            });
+        }
+    }
+}
+
+fn get_set_range_expr_val(val: &Expr, at: &Span, ctx: &Context) -> TypeResult<IntConstant> {
     // have to handle enums specially here since they don't work with const_eval yet
     match val.annotation().ty().as_ref() {
         Type::Primitive(primitive) if primitive.is_numeric() => {
@@ -540,7 +606,7 @@ fn eval_range_value(val: &Expr, at: &Span, ctx: &Context) -> TypeResult<IntConst
             };
             
             let Some(int_val) = val_lit.try_into_int() else {
-                return Err(TypeError::SetValuesMustBeNumeric { 
+                return Err(TypeError::InvalidSetValueType { 
                     actual: Type::Primitive(*primitive), 
                     span: at.clone(), 
                 });
@@ -570,7 +636,7 @@ fn eval_range_value(val: &Expr, at: &Span, ctx: &Context) -> TypeResult<IntConst
         }
 
         other_ty => {
-            Err(TypeError::SetValuesMustBeNumeric {
+            Err(TypeError::InvalidSetValueType {
                 actual: other_ty.clone(),
                 span: at.clone(),
             })

@@ -192,7 +192,7 @@ fn set_decl_with_non_numeric_types_is_invalid() {
 
     match result {
         Ok(..) => panic!("expected error"),
-        Err(TypeError::SetValuesMustBeNumeric { actual, .. }) => {
+        Err(TypeError::InvalidSetValueType { actual, .. }) => {
             let string_ty = Type::class(builtin_string_name());
             assert_eq!(string_ty, actual);
         }

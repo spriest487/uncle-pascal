@@ -195,7 +195,7 @@ pub enum TypeError {
     },
     InvalidStatement(InvalidStatement<Value>),
     
-    SetValuesMustBeNumeric {
+    InvalidSetValueType {
         actual: Type,
         span: Span,
     },
@@ -414,7 +414,7 @@ impl Spanned for TypeError {
             TypeError::InvalidRefExpression { expr } => expr.annotation().span(),
             TypeError::InvalidStatement(expr) => expr.0.annotation().span(),
             
-            TypeError::SetValuesMustBeNumeric { span, .. } => span,
+            TypeError::InvalidSetValueType { span, .. } => span,
             TypeError::SetValuesMustBeSequential { span, .. } => span,
             TypeError::TooManySetValues { span, .. } => span,
             TypeError::EmptySetDecl { span, .. } => span,
@@ -535,7 +535,7 @@ impl DiagnosticOutput for TypeError {
             }
             TypeError::InvalidStatement(invalid_stmt) => return invalid_stmt.title(),
             
-            TypeError::SetValuesMustBeNumeric { .. } => "Set values must have numeric types",
+            TypeError::InvalidSetValueType { .. } => "Invalid set value type",
             TypeError::SetValuesMustBeSequential { .. } => "Set values must be sequential",
             TypeError::EmptySetDecl { .. } => "Empty set declaration",
             TypeError::TooManySetValues { .. } => "Set contains too many values",
@@ -1023,8 +1023,8 @@ impl fmt::Display for TypeError {
                 write!(f, "{}", invalid_stmt)
             }
             
-            TypeError::SetValuesMustBeNumeric { actual: actual_ty, .. } => {
-                write!(f, "type `{}` is not valid as a set value", actual_ty)
+            TypeError::InvalidSetValueType { actual: actual_ty, .. } => {
+                write!(f, "type `{}` is not an integer type or enum", actual_ty)
             }
 
             TypeError::SetValuesMustBeSequential { from, to, .. } => {

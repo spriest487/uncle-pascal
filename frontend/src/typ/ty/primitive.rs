@@ -43,6 +43,43 @@ impl Primitive {
             _ => true,
         }
     }
+    
+    // for types compatible with sets/range expressions
+    pub fn integer_range(&self) -> Option<(IntConstant, IntConstant)> {
+        match self {
+            Primitive::Pointer | Primitive::Boolean | Primitive::Real32 => None,
+            Primitive::UInt8 => {
+                Some((IntConstant::from(u8::MIN), IntConstant::from(u8::MAX)))
+            },
+            Primitive::Int8 => {
+                Some((IntConstant::from(i8::MIN), IntConstant::from(i8::MAX)))
+            },
+            Primitive::Int16 => {
+                Some((IntConstant::from(i16::MIN), IntConstant::from(i16::MAX)))
+            },
+            Primitive::UInt16 => {
+                Some((IntConstant::from(u16::MIN), IntConstant::from(u16::MAX)))
+            },
+            Primitive::Int32 => {
+                Some((IntConstant::from(i32::MIN), IntConstant::from(i32::MAX)))
+            },
+            Primitive::UInt32 => {
+                Some((IntConstant::from(u32::MIN), IntConstant::from(u32::MAX)))
+            },
+            Primitive::Int64 => {
+                Some((IntConstant::from(i64::MIN), IntConstant::from(i64::MAX)))
+            },
+            Primitive::UInt64 => {
+                Some((IntConstant::from(u64::MIN), IntConstant::from(u64::MAX)))
+            },
+            Primitive::NativeInt => {
+                Some((IntConstant::from(isize::MIN), IntConstant::from(isize::MAX)))
+            },
+            Primitive::NativeUInt => {
+                Some((IntConstant::from(usize::MIN), IntConstant::from(usize::MAX)))
+            },
+        }
+    }
 
     pub const fn is_signed(&self) -> bool {
         match self {
