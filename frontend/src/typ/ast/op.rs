@@ -1087,8 +1087,9 @@ pub fn typecheck_in_set_operator(
                     })
                 }
             };
-            
+
             let item_expr = typecheck_expr(lhs, item_expect_ty, ctx)?;
+            item_expr.annotation().expect_value(&item_expect_ty)?;
 
             (item_expr, set_expr)
         }

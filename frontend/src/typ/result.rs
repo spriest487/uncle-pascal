@@ -199,6 +199,11 @@ pub enum TypeError {
         actual: Type,
         span: Span,
     },
+    SetValuesMustBeSequential {
+        from: IntConstant,
+        to: IntConstant,
+        span: Span,
+    },
     EmptySetDecl {
         name: IdentPath,
         span: Span,
@@ -410,8 +415,10 @@ impl Spanned for TypeError {
             TypeError::InvalidStatement(expr) => expr.0.annotation().span(),
             
             TypeError::SetValuesMustBeNumeric { span, .. } => span,
+            TypeError::SetValuesMustBeSequential { span, .. } => span,
             TypeError::TooManySetValues { span, .. } => span,
             TypeError::EmptySetDecl { span, .. } => span,
+
             TypeError::EmptyVariantDecl(variant) => variant.span(),
             TypeError::EmptyVariantCaseBinding { span, .. } => span,
             TypeError::InvalidExplicitVariantCtorTypeArgs { span, .. } => span,
@@ -529,6 +536,7 @@ impl DiagnosticOutput for TypeError {
             TypeError::InvalidStatement(invalid_stmt) => return invalid_stmt.title(),
             
             TypeError::SetValuesMustBeNumeric { .. } => "Set values must have numeric types",
+            TypeError::SetValuesMustBeSequential { .. } => "Set values must be sequential",
             TypeError::EmptySetDecl { .. } => "Empty set declaration",
             TypeError::TooManySetValues { .. } => "Set contains too many values",
 
@@ -1018,7 +1026,11 @@ impl fmt::Display for TypeError {
             TypeError::SetValuesMustBeNumeric { actual: actual_ty, .. } => {
                 write!(f, "type `{}` is not valid as a set value", actual_ty)
             }
-            
+
+            TypeError::SetValuesMustBeSequential { from, to, .. } => {
+                write!(f, "{from} is greater than {to}")
+            }
+
             TypeError::EmptySetDecl { name, .. } => {
                 write!(f, "set declaration `{}` contains no values", name)
             }

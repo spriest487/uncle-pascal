@@ -1,27 +1,28 @@
-use std::cmp::Ordering;
-use common::{
-    span::{Span, Spanned},
-    TracedError
-};
-use crate::{
-    ast::{
-        expression::parse::CompoundExpressionPart,
-        ArgList,
-        BinOp,
-        Call,
-        Cast,
-        Expr,
-        FunctionCall,
-        TypeList,
-        UnaryOp
-    },
-    parse::{ParseError, ParseResult},
-    Operator,
-    Position,
-};
+use crate::ast::expression::parse::CompoundExpressionPart;
 use crate::ast::type_name::TypeName;
+use crate::ast::ArgList;
+use crate::ast::BinOp;
+use crate::ast::Call;
+use crate::ast::Cast;
+use crate::ast::Expr;
+use crate::ast::FunctionCall;
+use crate::ast::TypeList;
+use crate::ast::UnaryOp;
+use crate::parse::ParseError;
+use crate::parse::ParseResult;
+use crate::Operator;
+use crate::Position;
+use common::span::Span;
+use common::span::Spanned;
+use common::TracedError;
+use std::cmp::Ordering;
 
-fn resolve_postfix<F>(parts: Vec<CompoundExpressionPart>, lo_op_index: usize, span: &Span, f: F) -> ParseResult<Expr<Span>>
+fn resolve_postfix<F>(
+    parts: Vec<CompoundExpressionPart>,
+    lo_op_index: usize,
+    span: &Span,
+    f: F
+) -> ParseResult<Expr<Span>>
     where F: FnOnce(Expr<Span>) -> Expr<Span>
 {
     let (before_op, after_op) = parts.split_at(lo_op_index);
@@ -47,7 +48,9 @@ fn resolve_postfix<F>(parts: Vec<CompoundExpressionPart>, lo_op_index: usize, sp
     resolve_ops_by_precedence(merged_parts)
 }
 
-pub(super) fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<Expr<Span>> {
+pub(super) fn resolve_ops_by_precedence(
+    parts: Vec<CompoundExpressionPart>
+) -> ParseResult<Expr<Span>> {
     assert!(!parts.is_empty(), "expr must not be empty");
 
     if parts.len() == 1 {

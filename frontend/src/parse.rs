@@ -53,6 +53,8 @@ pub enum ParseError {
     CtorWithTypeArgs { span: Span },
     InvalidAssignmentExpr { span: Span },
     
+    InvalidSetRangeExpr { span: Span },
+    
     EmptyTypeParamList(TypeIdentList),
     EmptyTypeArgList(TypeArgList),
     InvalidTypeParamName(Span),
@@ -98,6 +100,7 @@ impl Spanned for ParseError {
             ParseError::EmptyTypeDecl { span, .. } => span,
             ParseError::InvalidForLoopInit(stmt) => stmt.span(),
             ParseError::InvalidTypeParamName(span) => span,
+            ParseError::InvalidSetRangeExpr { span } => span,
         }
     }
 }
@@ -120,6 +123,8 @@ impl fmt::Display for ParseError {
             ParseError::DuplicateModifier { .. } => write!(f, "Duplicate modifier"),
             ParseError::CtorWithTypeArgs { .. } => write!(f, "Constructor with type args"),
 
+            ParseError::InvalidSetRangeExpr { .. } => write!(f, "Invalid range expression for set declaration"),
+            
             ParseError::TypeConstraintAlreadySpecified(..) => write!(f, "Type constraint already specified"),
             ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
 
@@ -167,6 +172,8 @@ impl DiagnosticOutput for ParseError {
                 "the modifier `{}` is already present on this declaration",
                 new.keyword(),
             )),
+            
+            ParseError::InvalidSetRangeExpr { .. } => None,
 
             ParseError::CtorWithTypeArgs { .. } => {
                 Some("Object constructor expr cannot explicitly specify type args".to_string())

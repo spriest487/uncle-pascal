@@ -1,7 +1,7 @@
 implementation
 
 type
-    Numbers = set of [1 as Integer, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    Numbers = set of 1..10;
 
 initialization
     var evens: Numbers := [1, 2, 6, 8, 10];

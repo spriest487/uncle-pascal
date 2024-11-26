@@ -2,19 +2,21 @@
 mod test;
 
 use crate::ast;
-use crate::ast::{FunctionName, IdentPath, Literal};
 use crate::ast::Ident;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
+use crate::ast::{FunctionName, IdentPath, Literal, SetDeclRange};
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
 use crate::typ::ast::Expr;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::InterfaceMethodDecl;
-use crate::typ::{typecheck_type, MAX_FLAGS_BITS};
+use crate::typ::set::SetType;
+use crate::typ::typecheck_type;
 use crate::typ::ConstValue;
 use crate::typ::Context;
+use crate::typ::Def;
 use crate::typ::FunctionSig;
 use crate::typ::InvalidTypeParamsDeclKind;
 use crate::typ::MismatchedImplementation;
@@ -26,12 +28,12 @@ use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Value;
+use crate::typ::MAX_FLAGS_BITS;
 use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
 use std::borrow::Cow;
 use std::rc::Rc;
-use crate::typ::set::SetType;
 
 pub type StructDef = ast::StructDecl<Value>;
 pub type StructMemberDecl = ast::StructMemberDecl<Value>;
@@ -387,6 +389,17 @@ pub fn typecheck_enum_decl(
     Ok(enum_decl)
 }
 
+impl EnumDecl {
+    fn get_item_value(&self, item_index: usize) -> IntConstant {
+        if item_index >= self.items.len() {
+            panic!("EnumDecl::get_item_value: index out of range for {} ({})", self.name, item_index);
+        }
+
+        self.items[item_index].value
+            .expect("enum decl must have values for all items after typechecking")
+    }
+}
+
 impl SetDecl {
     pub fn typecheck(
         set_decl: &ast::SetDecl<Span>,
@@ -396,80 +409,62 @@ impl SetDecl {
         name.expect_no_type_params(InvalidTypeParamsDeclKind::Set)?;
         assert!(name.type_args.is_none());
 
-        if set_decl.items.is_empty() {
-            return Err(TypeError::EmptySetDecl {
-                name: name.full_path.clone(),
-                span: set_decl.span().clone(),
-            })
-        }
-
-        let mut values: Vec<IntConstant> = Vec::new();
-        let mut items: Vec<Expr> = Vec::new();
-
-        for i in 0..set_decl.items.len() {
-            let expect_ty = match i {
-                0 => Cow::Borrowed(&SET_DEFAULT_VALUE_TYPE),
-                _ => items[0].annotation().ty(),
-            };
-
-            let value_expr = typecheck_expr(&set_decl.items[i], &expect_ty, ctx)?;
-
-            let ty = match i {
-                // first item: check it's a numeric type
-                0 => {
-                    match value_expr.annotation().ty().into_owned() {
-                        Type::Primitive(primitive) if primitive.is_numeric() => {
-                            Type::Primitive(primitive)
-                        },
-
-                        enum_ty @ Type::Enum(..) => enum_ty,
-
-                        other_ty => {
-                            return Err(TypeError::SetValuesMustBeNumeric {
-                                actual: other_ty,
-                                span: value_expr.span().clone(),
-                            });
-                        }
-                    }
+        let range = match set_decl.range.as_ref() {
+            SetDeclRange::Range { from, to, span: range_span } => {
+                let from = typecheck_expr(from, &Type::Primitive(Primitive::UInt8), ctx)?;
+                let val_ty = from.annotation().ty().into_owned();
+                let to = typecheck_expr(to, &val_ty, ctx)?;
+                
+                to.annotation().expect_value(&val_ty)?;
+                
+                let from_num = eval_range_value(&from, range_span, ctx)?;
+                let to_num = eval_range_value(&to, range_span, ctx)?;
+                
+                if from_num.as_i128() > to_num.as_i128() {
+                    return Err(TypeError::SetValuesMustBeSequential {
+                        from: from_num,
+                        to: to_num,
+                        span: range_span.clone(),
+                    });
                 }
 
-                1.. => {
-                    let value_ty = value_expr.annotation().ty();
-
-                    if value_ty != expect_ty {
-                        return Err(TypeError::TypeMismatch {
-                            expected: expect_ty.into_owned(),
-                            span: value_expr.span().clone(),
-                            actual: value_ty.into_owned(),
-                        });
-                    }
-
-                    expect_ty.into_owned()
+                let range_size = (to_num.as_i128() - from_num.as_i128()) as usize; 
+                if range_size > MAX_FLAGS_BITS {
+                    return Err(TypeError::TooManySetValues { 
+                        span: range_span.clone(),
+                        count: range_size,
+                    });
                 }
-            };
+                
+                let from_val = ConstValue {
+                    ty: val_ty.clone(),
+                    span: from.span().clone(),
+                    decl: None,
+                    value: Literal::Integer(from_num),
+                };
 
-            let value = value_expr
-                .const_eval(ctx)
-                .and_then(|lit| lit.try_into_int())
-                .ok_or_else(|| {
-                    TypeError::InvalidConstExpr { expr: Box::new(value_expr.clone()) }
-                })?;
+                let to_val = ConstValue {
+                    ty: val_ty.clone(),
+                    span: to.span().clone(),
+                    decl: None,
+                    value: Literal::Integer(to_num),
+                };
+                
+                SetDeclRange::Range {
+                    from: Expr::Literal(Literal::Integer(from_num), Value::from(from_val)),
+                    to: Expr::Literal(Literal::Integer(to_num), Value::from(to_val)),
+                    span: range_span.clone(),
+                }
+            }
 
-            values.push(value.clone());
-            
-            let const_val = ConstValue {
-                value: Literal::Integer(value),
-                ty,
-                span: value_expr.span().clone(),
-                decl: None,
-            };
-
-            items.push(Expr::Literal(const_val.value.clone(), Value::from(const_val)));
-        }
+            SetDeclRange::Type { ty, .. } => {
+                unimplemented!()
+            }
+        };
 
         let set_decl = SetDecl {
             span: set_decl.span.clone(),
-            items,
+            range: Box::new(range),
             name,
         };
 
@@ -477,12 +472,36 @@ impl SetDecl {
     }
     
     pub fn value_type(&self) -> Cow<Type> {
-        self.items[0].annotation().ty()
+        match self.range.as_ref() {
+            SetDeclRange::Type { ty, .. } => Cow::Borrowed(ty),
+            SetDeclRange::Range { from, .. } => from.annotation().ty(),
+        }
     }
     
     pub fn to_set_type(&self, ctx: &Context) -> TypeResult<SetType> {
         let name = self.name.full_path.clone();
-        Self::items_to_set_type(Some(name), &self.items, ctx)
+
+        match self.range.as_ref() {
+            SetDeclRange::Type { ty, .. } => unimplemented!(),
+
+            SetDeclRange::Range { from, to, .. } => {
+                let from_const = from.annotation()
+                    .as_const()
+                    .and_then(|val| val.value.clone().try_into_int())
+                    .expect("set range values may only be const");
+                let to_const = to.annotation()
+                    .as_const()
+                    .and_then(|val| val.value.clone().try_into_int())
+                    .expect("set range values may only be const integers");
+                
+                Ok(SetType {
+                    min: from_const,
+                    max: to_const,
+                    name: Some(name),
+                    item_type: self.value_type().into_owned(),
+                })
+            }
+        }
     }
     
     pub fn items_to_set_type(name: Option<IdentPath>, items: &[Expr], ctx: &Context) -> TypeResult<SetType> {
@@ -509,5 +528,52 @@ impl SetDecl {
             max: IntConstant::from(max),
             item_type: items[0].annotation().ty().into_owned(),
         })
+    }
+}
+
+fn eval_range_value(val: &Expr, at: &Span, ctx: &Context) -> TypeResult<IntConstant> {
+    // have to handle enums specially here since they don't work with const_eval yet
+    match val.annotation().ty().as_ref() {
+        Type::Primitive(primitive) if primitive.is_numeric() => {
+            let Some(val_lit) = val.const_eval(ctx) else {
+                return Err(TypeError::InvalidConstExpr { expr: Box::new(val.clone()) });
+            };
+            
+            let Some(int_val) = val_lit.try_into_int() else {
+                return Err(TypeError::SetValuesMustBeNumeric { 
+                    actual: Type::Primitive(*primitive), 
+                    span: at.clone(), 
+                });
+            };
+            
+            Ok(int_val)
+        }
+
+        Type::Enum(enum_path) => {
+            let Expr::Ident(enum_item_name, ..) = val else {
+                return Err(TypeError::InvalidConstExpr { expr: Box::new(val.clone()) });
+            };
+            
+            let Some(Def::Enum(enum_decl)) = ctx.find_type_def(enum_path) else {
+                return Err(TypeError::name_not_found(enum_path.as_ref().clone(), at.clone()));
+            };
+
+            let Some(item_index) = enum_decl.items
+                .iter()
+                .position(|item| item.ident == *enum_item_name) else {
+                let item_name = enum_path.as_ref().clone().child(enum_item_name.clone());
+                return Err(TypeError::name_not_found(item_name, enum_item_name.span().clone()));
+            };
+            
+            let item_val = enum_decl.get_item_value(item_index);
+            Ok(IntConstant::from(item_val))
+        }
+
+        other_ty => {
+            Err(TypeError::SetValuesMustBeNumeric {
+                actual: other_ty.clone(),
+                span: at.clone(),
+            })
+        }
     }
 }

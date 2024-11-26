@@ -1,13 +1,16 @@
 use crate::ast::Annotation;
 use crate::ast::Expr;
+use crate::ast::IdentTypeName;
 use crate::ast::TypeDeclName;
+use crate::ast::TypeName;
+use crate::parse::ParseError;
 use crate::parse::ParseResult;
-use crate::Separator;
 use crate::Keyword;
-use crate::DelimiterPair;
+use crate::Operator;
 use crate::TokenStream;
 use common::span::Span;
 use common::span::Spanned;
+use common::TracedError;
 use derivative::Derivative;
 use std::fmt;
 
@@ -15,7 +18,8 @@ use std::fmt;
 #[derivative(Debug, PartialEq, Hash)]
 pub struct SetDecl<A: Annotation = Span> {
     pub name: A::Name,
-    pub items: Vec<Expr<A>>,
+    
+    pub range: Box<SetDeclRange<A>>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -28,31 +32,41 @@ impl SetDecl<Span> {
         let set_kw = tokens.match_one(Keyword::Set)?;
         tokens.match_one(Keyword::Of)?;
 
-        let items_group = tokens
-            .match_one(DelimiterPair::SquareBracket)?
-            .into_delimited_group()
-            .unwrap();
-        
-        let span = set_kw.into_span().to(items_group.close.span());
+        // todo: if we support range type decls later, this could be rolled into TypeName parsing 
+        let range = match Expr::parse(tokens)? {
+            Expr::BinOp(bin_op) if bin_op.op == Operator::RangeInclusive => {
+                SetDeclRange::Range {
+                    from: bin_op.lhs,
+                    to: bin_op.rhs,
+                    span: bin_op.annotation,
+                }
+            },
 
-        let mut items = Vec::new();
-        let mut items_tokens= items_group.to_inner_tokens();
+            other => {
+                let Some(type_name) = other.clone().try_into_ident_path() else {
+                    return Err(TracedError::trace(ParseError::InvalidSetRangeExpr {
+                        span: other.span().clone(),
+                    }));    
+                };
+                let name_span = type_name.path_span();
+                
+                SetDeclRange::Type {
+                    span: name_span.clone(),
+                    ty: TypeName::Ident(IdentTypeName {
+                        span: name_span,
+                        ident: type_name,
+                        indirection: 0,
+                        type_args: None,
+                    }),
+                }
+            },
+        };
 
-        // empty set?
-        while items_tokens.look_ahead().next().is_some() {
-            let item = Expr::parse(&mut items_tokens)?;
-            items.push(item);
+        let span = set_kw.into_span().to(range.span());
 
-            if items_tokens.match_one_maybe(Separator::Comma).is_none() {
-                break;
-            }
-        }
-
-        items_tokens.finish()?;
-        
         Ok(SetDecl {
             name,
-            items,
+            range: Box::new(range),
             span
         })
     }
@@ -66,14 +80,44 @@ impl<A: Annotation> Spanned for SetDecl<A> {
 
 impl<A: Annotation> fmt::Display for SetDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "set of [")?;
-        for i in 0..self.items.len() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
+        write!(f, "set of ")?;
 
-            write!(f, "{}", self.items[i])?;
+        match self.range.as_ref() {
+            SetDeclRange::Type { ty, .. } => {
+                write!(f, "{}", ty)?;
+            }
+            SetDeclRange::Range { from, to, .. } => {
+                write!(f, "{}{}{}", from, Operator::RangeInclusive, to)?;
+            }
         }
+
         write!(f, "]")
+    }
+}
+
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
+pub enum SetDeclRange<A: Annotation = Span> {
+    Type {
+        ty: A::Type,
+        span: Span
+    },
+    Range {
+        from: Expr<A>,
+        to: Expr<A>,
+
+        #[derivative(Debug = "ignore")]
+        #[derivative(Hash = "ignore")]
+        #[derivative(PartialEq = "ignore")]
+        span: Span,
+    }
+}
+
+impl<A: Annotation> Spanned for SetDeclRange<A> {
+    fn span(&self) -> &Span {
+        match self {
+            SetDeclRange::Type { span, .. } => span,
+            SetDeclRange::Range { span, .. } => span,
+        }
     }
 }

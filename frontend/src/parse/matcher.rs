@@ -24,6 +24,7 @@ pub enum Matcher {
     AnyLiteralString,
     AnyLiteralReal,
     AnyLiteralBoolean,
+    LiteralChar,
     Exact(TokenTree),
     OneOf(Vec<Matcher>),
 
@@ -122,6 +123,7 @@ impl fmt::Display for Matcher {
             Matcher::AnyLiteralString => write!(f, "string literal"),
             Matcher::AnyLiteralReal => write!(f, "floating point literal"),
             Matcher::AnyLiteralBoolean => write!(f, "boolean literal"),
+            Matcher::LiteralChar => write!(f, "character"),
             Matcher::Exact(exact_token) => write!(f, "{}", exact_token),
             Matcher::OneOf(matchers) => {
                 write!(f, "one of: ")?;
@@ -170,6 +172,11 @@ impl Matcher {
             Matcher::AnyLiteralBoolean => {
                 token.is_keyword(Keyword::True) || token.is_keyword(Keyword::False)
             }
+
+            Matcher::LiteralChar => token.as_literal_string()
+                .map(|s| s.len() == 1)
+                .unwrap_or(false),
+
             Matcher::Exact(exact_token) => *token == *exact_token,
             Matcher::OneOf(matchers) => matchers.iter().any(|matcher| matcher.is_match(token)),
             Matcher::ExprOperandStart => match token {
