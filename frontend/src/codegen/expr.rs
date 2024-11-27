@@ -452,8 +452,7 @@ fn translate_ident(ident: &Ident, annotation: &typ::Value, builder: &mut Builder
 }
 
 fn find_local_ref(ident: &Ident, builder: &Builder) -> Option<ir::Ref> {
-    let local = builder
-        .find_local(&ident.to_string())?;
+    let local = builder.find_local(ident.name.as_str())?;
     
     let value_ref = ir::Ref::Local(local.id());
     if local.by_ref() {
