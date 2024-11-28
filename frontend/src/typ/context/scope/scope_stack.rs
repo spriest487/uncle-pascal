@@ -244,14 +244,16 @@ impl ScopeStack {
                 let current_ns = current_path.to_namespace();
 
                 match value.visibility() {
-                    Visibility::Interface => {
+                    Some(Visibility::Interface) => {
                         true
                     },
 
-                    Visibility::Implementation => {
+                    Some(Visibility::Implementation) => {
                         let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
                         current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
                     }
+                    
+                    None => false,
                 }
             },
 

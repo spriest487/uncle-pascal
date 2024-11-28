@@ -30,7 +30,10 @@ pub enum Decl {
     Const {
         ty: Type,
         val: Literal,
-        visibility: Visibility,
+        
+        // if None, this is a local const within a function
+        visibility: Option<Visibility>,
+
         span: Span,
     },
     Namespace(IdentPath),
@@ -38,15 +41,16 @@ pub enum Decl {
 
 
 impl Decl {
-    pub fn visibility(&self) -> Visibility {
+    pub fn visibility(&self) -> Option<Visibility> {
         match self {
             | Decl::Type { visibility, .. }
-            | Decl::Function { visibility, .. }
+            | Decl::Function { visibility, .. }  => Some(*visibility),
+            
             | Decl::Const { visibility, .. } => *visibility,
 
             | Decl::Alias(_)
             | Decl::Namespace(_)
-            | Decl::BoundValue(_) => Visibility::Implementation,
+            | Decl::BoundValue(_) => None,
         }
     }
 

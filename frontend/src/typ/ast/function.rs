@@ -588,9 +588,7 @@ fn declare_locals_in_body(
                     },
                 };
 
-                // the visibility doesn't really matter here because it's not a unit-level decl
-                let visiblity = Visibility::Interface;
-                ctx.declare_const(local.ident.clone(), val.clone(), ty.clone(), visiblity, local.span.clone())?;
+                ctx.declare_const(local.ident.clone(), val.clone(), ty.clone(), None, local.span.clone())?;
             },
 
             ast::BindingDeclKind::Var => {

@@ -701,7 +701,7 @@ impl Context {
                 item.ident.clone(),
                 Literal::Integer(*ord_val),
                 enum_ty.clone(),
-                visibility,
+                Some(visibility),
                 item.span.clone(),
             )?;
         }
@@ -850,7 +850,7 @@ impl Context {
         name: Ident,
         val: Literal,
         ty: Type,
-        visibility: Visibility,
+        visibility: Option<Visibility>,
         span: Span,
     ) -> TypeResult<()> {
         self.declare(

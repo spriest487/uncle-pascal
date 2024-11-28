@@ -248,6 +248,15 @@ impl TypedValue {
             decl: Some(decl),
         }
     }
+    
+    pub fn local_const(ty: Type, name: Ident, span: Span) -> Self {
+        TypedValue {
+            ty,
+            span,
+            value_kind: ValueKind::Immutable,
+            decl: Some(IdentPath::from(name)),
+        }
+    }
 
     pub fn unit_var(ty: Type, decl: IdentPath, span: Span) -> Self {
         TypedValue {
@@ -255,6 +264,15 @@ impl TypedValue {
             span,
             value_kind: ValueKind::Mutable,
             decl: Some(decl),
+        }
+    }
+    
+    pub fn local_var(ty: Type, name: Ident, span: Span) -> Self {
+        TypedValue {
+            ty,
+            span,
+            value_kind: ValueKind::Mutable,
+            decl: Some(IdentPath::from(name)),
         }
     }
 }

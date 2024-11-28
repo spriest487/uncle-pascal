@@ -397,7 +397,7 @@ fn typecheck_global_binding_item(
                 item.ident.clone(),
                 const_val_literal.clone(),
                 ty.clone(),
-                visibility,
+                Some(visibility),
                 span.clone(),
             )?;
 
