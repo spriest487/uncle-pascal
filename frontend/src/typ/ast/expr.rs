@@ -175,24 +175,6 @@ fn typecheck_ident(
             
             Ok(ast::Expr::Literal(val.clone(), Value::from(value)))
         },
-        
-        ScopeMemberRef::Decl {
-            value: Decl::BoundValue(binding),
-            parent_path,
-            key,
-            ..
-        } => {
-            let decl_name = parent_path.to_namespace().child((**key).clone());
-
-            let value = TypedValue {
-                span: span.clone(),
-                ty: binding.ty.clone(),
-                value_kind: binding.kind,
-                decl: Some(decl_name),
-            };
-            
-            Ok(ast::Expr::Ident(ident.clone(), Value::from(value)))
-        }
 
         ScopeMemberRef::Decl {
             value: Decl::Function { overloads, .. },
