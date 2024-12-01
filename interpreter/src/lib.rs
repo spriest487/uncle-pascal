@@ -24,6 +24,7 @@ use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
 use ir_lang::InstructionFormatter as _;
+use ir_lang::VirtualTypeID;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::BitAnd;
@@ -1984,6 +1985,7 @@ impl Interpreter {
             );
         }
         
+        // declare global variables
         for (var_id, var_ty) in &module.variables {
             // global variables start zero-initialized
             let marshal_ty = self.marshaller.get_ty(var_ty)?;
@@ -1992,6 +1994,21 @@ impl Interpreter {
             self.globals.insert(ir::GlobalRef::Variable(*var_id), GlobalValue::Variable {
                 value: zero_val.into_boxed_slice(),
                 ty: var_ty.clone(),
+            });
+        }
+        
+        // declare (uninitialized) global vars for static closure pointers 
+        for static_closure in &module.static_closures {
+            let closure_ptr_ref = ir::GlobalRef::StaticClosure(static_closure.id);
+            let closure_ptr_ty = ir::Type::RcPointer(VirtualTypeID::Closure(static_closure.func_ty_id));
+            
+            // we only need to set a null pointer here, init code will set the actual value
+            let default_val = self.default_init_dyn_val(&closure_ptr_ty)?;
+            let default_val_bytes = self.marshaller.marshal_to_vec(&default_val)?;
+            
+            self.globals.insert(closure_ptr_ref, GlobalValue::Variable {
+                ty: closure_ptr_ty,
+                value: default_val_bytes.into_boxed_slice(),
             });
         }
 
