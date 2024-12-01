@@ -588,8 +588,17 @@ impl Context {
         TypeError::from_name_err(err, err_span)
     }
 
-    pub fn declare_binding(&mut self, name: Ident, binding: Binding) -> TypeResult<()> {
-        self.declare(name, Decl::BoundValue(binding))?;
+    pub fn declare_local_var(&mut self, name: Ident, binding: Binding) -> TypeResult<()> {
+        self.declare(name, Decl::LocalVariable { binding })?;
+        Ok(())
+    }
+
+    pub fn declare_global_var(&mut self,
+        name: Ident,
+        binding: Binding,
+        visibility: Visibility
+    ) -> TypeResult<()> {
+        self.declare(name, Decl::GlobalVariable { binding, visibility })?;
         Ok(())
     }
 
@@ -697,11 +706,11 @@ impl Context {
                 .value
                 .as_ref()
                 .expect("enum ord values must exist after typechecking");
-            self.declare_const(
+            self.declare_global_const(
                 item.ident.clone(),
                 Literal::Integer(*ord_val),
                 enum_ty.clone(),
-                Some(visibility),
+                visibility,
                 item.span.clone(),
             )?;
         }
@@ -845,17 +854,34 @@ impl Context {
         self.declare(name, Decl::Alias(aliased))
     }
 
-    pub fn declare_const(
+    pub fn declare_local_const(
         &mut self,
         name: Ident,
         val: Literal,
         ty: Type,
-        visibility: Option<Visibility>,
         span: Span,
     ) -> TypeResult<()> {
         self.declare(
             name,
-            Decl::Const {
+            Decl::LocalConst {
+                val,
+                ty,
+                span,
+            },
+        )
+    }
+
+    pub fn declare_global_const(
+        &mut self,
+        name: Ident,
+        val: Literal,
+        ty: Type,
+        visibility: Visibility,
+        span: Span,
+    ) -> TypeResult<()> {
+        self.declare(
+            name,
+            Decl::GlobalConst {
                 visibility,
                 val,
                 ty,
@@ -1845,8 +1871,18 @@ impl Context {
     /// Panics if the decl doesn't exist or isn't a kind of decl which can be initialized.
     pub fn initialize(&mut self, local_id: &Ident) {
         for scope in self.scopes.iter_mut().rev() {
-            if let Some(member) = scope.get_decl_mut(local_id) {
-                if let Decl::BoundValue(Binding { kind, .. }) = member {
+            let Some(member) = scope.get_decl_mut(local_id) else {
+                continue;
+            };
+
+            match member {
+                Decl::GlobalVariable { .. } => {
+                    // ignore attempts to initialize global vars, they behave like mutable values
+                    // but are assumed to be always initialized
+                    return;
+                }
+
+                Decl::LocalVariable { binding: Binding { kind, .. } } => {
                     if *kind == ValueKind::Uninitialized || *kind == ValueKind::Mutable {
                         *kind = ValueKind::Mutable;
 
@@ -1855,6 +1891,8 @@ impl Context {
                         panic!("{} does not refer to a mutable binding", local_id);
                     }
                 }
+
+                _ => continue,
             }
         }
 
@@ -1920,10 +1958,10 @@ impl Context {
             .top()
             .members()
             .filter_map(|(ident, decl)| match decl {
-                ScopeMember::Decl(Decl::BoundValue(Binding {
+                ScopeMember::Decl(Decl::LocalVariable { binding: Binding {
                     kind: ValueKind::Uninitialized,
                     ..
-                })) => Some(ident),
+                }}) => Some(ident),
                 _ => None,
             })
             .collect();
@@ -1932,23 +1970,22 @@ impl Context {
         // names initialized in all branches
         let mut all_init = Vec::new();
         for uninit_name in uninit_names {
-            let is_init_in_all =
-                branch_contexts
-                    .iter()
-                    .all(|ctx| match ctx.find_name(&uninit_name).unwrap() {
-                        ScopeMemberRef::Decl {
-                            value, parent_path, ..
-                        } => match value {
-                            Decl::BoundValue(binding) => {
-                                parent_path.as_slice().len() == this_depth
-                                    && binding.kind == ValueKind::Mutable
-                            },
-
-                            _ => false,
+            let is_init_in_all = branch_contexts
+                .iter()
+                .all(|ctx| match ctx.find_name(&uninit_name).unwrap() {
+                    ScopeMemberRef::Decl {
+                        value, parent_path, ..
+                    } => match value {
+                        Decl::LocalVariable { binding, .. } => {
+                            parent_path.as_slice().len() == this_depth
+                                && binding.kind == ValueKind::Mutable
                         },
 
-                        ScopeMemberRef::Scope { .. } => false,
-                    });
+                        _ => false,
+                    },
+
+                    ScopeMemberRef::Scope { .. } => false,
+                });
 
             if is_init_in_all {
                 all_init.push(uninit_name.clone());

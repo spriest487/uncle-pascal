@@ -37,7 +37,7 @@ fn ident(name: &str) -> Ident {
 }
 
 fn const_decl(val: i32) -> Decl {
-    Decl::Const {
+    Decl::GlobalConst {
         ty: Type::Primitive(Primitive::Int32),
         span: Span::zero("test"),
         val: Literal::Integer(val.into()),

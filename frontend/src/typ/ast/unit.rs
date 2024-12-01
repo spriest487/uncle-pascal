@@ -393,11 +393,11 @@ fn typecheck_global_binding_item(
                 }),
             }?;
 
-            ctx.declare_const(
+            ctx.declare_global_const(
                 item.ident.clone(),
                 const_val_literal.clone(),
                 ty.clone(),
-                Some(visibility),
+                visibility,
                 span.clone(),
             )?;
 
@@ -455,11 +455,11 @@ fn typecheck_global_binding_item(
                 }
             }
             
-            ctx.declare_binding(item.ident.clone(), Binding {
+            ctx.declare_global_var(item.ident.clone(), Binding {
                 ty: ty.clone(),
                 def: Some(item.ident.clone()),
                 kind: ValueKind::Mutable,
-            })?;
+            }, visibility)?;
 
             (ty, val)
         }

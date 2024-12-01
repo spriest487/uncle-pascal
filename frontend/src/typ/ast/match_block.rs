@@ -72,7 +72,7 @@ where
                 .map_err(|err| TypeError::from_name_err(err, pattern.span().clone()))?;
 
             for binding in bindings {
-                branch_ctx.declare_binding(
+                branch_ctx.declare_local_var(
                     binding.ident.clone(),
                     Binding {
                         ty: binding.ty,

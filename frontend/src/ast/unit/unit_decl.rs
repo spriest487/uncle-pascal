@@ -15,12 +15,22 @@ use crate::Separator;
 use common::span::Span;
 use common::span::Spanned;
 use std::fmt;
+use std::fmt::Formatter;
 use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Visibility {
     Implementation,
     Interface,
+}
+
+impl fmt::Display for Visibility {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            Visibility::Implementation => Keyword::Implementation,
+            Visibility::Interface => Keyword::Interface,
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

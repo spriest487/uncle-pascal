@@ -588,7 +588,7 @@ fn declare_locals_in_body(
                     },
                 };
 
-                ctx.declare_const(local.ident.clone(), val.clone(), ty.clone(), None, local.span.clone())?;
+                ctx.declare_local_const(local.ident.clone(), val.clone(), ty.clone(), local.span.clone())?;
             },
 
             ast::BindingDeclKind::Var => {
@@ -597,7 +597,7 @@ fn declare_locals_in_body(
                     None => ValueKind::Uninitialized,
                 };
 
-                ctx.declare_binding(local.ident.clone(), Binding {
+                ctx.declare_local_var(local.ident.clone(), Binding {
                     kind: binding_kind,
                     ty: ty.clone(),
                     def: Some(local.ident.clone()),
@@ -625,7 +625,7 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
             None => (ValueKind::Immutable, false),
         };
 
-        ctx.declare_binding(
+        ctx.declare_local_var(
             param.ident.clone(),
             Binding {
                 ty: param.ty.clone(),

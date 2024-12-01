@@ -122,7 +122,7 @@ pub fn typecheck_local_binding(
         def: Some(name.clone()),
     };
 
-    ctx.declare_binding(name.clone(), binding)?;
+    ctx.declare_local_var(name.clone(), binding)?;
 
     let annotation = Value::Untyped(span);
 

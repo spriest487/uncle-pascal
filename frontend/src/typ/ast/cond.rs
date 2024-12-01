@@ -75,7 +75,7 @@ fn create_then_branch_ctx(
             .map_err(|err| TypeError::from_name_err(err, pattern.span().clone()))?;
 
         for binding in bindings {
-            then_ctx.declare_binding(
+            then_ctx.declare_local_var(
                 binding.ident.clone(),
                 Binding {
                     kind: ValueKind::Immutable,
