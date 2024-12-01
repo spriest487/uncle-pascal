@@ -240,6 +240,7 @@ fn typecheck_ident(
         ScopeMemberRef::Decl {
             value: Decl::GlobalConst { val, .. } | Decl::LocalConst { val, .. }, .. } => {
             let value = member_annotation(&decl, span.clone(), ctx);
+
             Ok(Expr::Literal(val.clone(), value))
         },
 
@@ -375,7 +376,7 @@ pub fn member_annotation(member: &ScopeMemberRef, span: Span, ctx: &Context) -> 
         ScopeMemberRef::Decl { value: Decl::GlobalConst { ty, .. }, parent_path, key, .. } => {
             let decl_name = parent_path.to_namespace().child((**key).clone());
             let typed_val = TypedValue::unit_const(ty.clone(), decl_name, span.clone());
-            
+
             Value::from(typed_val)
         },
 

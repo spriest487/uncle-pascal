@@ -133,35 +133,13 @@ fn self_ty_not_valid_in_variant() {
 }
 
 #[test]
-fn set_decl_with_no_items_is_invalid() {
-    let result = try_module_from_src(
-        "test",
-        r"
-        implementation
-        
-        type MySet = set of [];
-        
-        end.
-        "
-    );
-    
-    match result {
-        Ok(..) => panic!("expected error"),
-        Err(TypeError::EmptySetDecl { name, .. }) => {
-            assert_eq!("test.MySet", name.to_string())
-        }
-        Err(err) => panic!("expected empty set error, got: {}", err)
-    }
-}
-
-#[test]
 fn set_decl_with_mixed_item_types_is_invalid() {
     let result = try_module_from_src(
         "test",
         r"
         implementation
         
-        type MySet = set of [1 as Integer, 2 as Byte];
+        type MySet = set of 1 as Integer..2 as Byte;
         
         end.
         "
@@ -184,7 +162,7 @@ fn set_decl_with_non_numeric_types_is_invalid() {
         r"
         implementation
         
-        type MySet = set of ['hello', 'world', '!'];
+        type MySet = set of 'hello'..'world';
         
         end.
         "
@@ -207,7 +185,7 @@ fn set_decl_with_characters_is_valid() {
         r"
         implementation
         
-        type MySet = set of ['a' as Byte, 'b', 'c'];
+        type MySet = set of 'a'..'c';
         
         end.
         "
@@ -227,7 +205,7 @@ fn set_decl_with_enum_members_is_valid() {
         implementation
         
         type MyEnum = (NumOne, NumTwo, NumThree);
-        type MySet = set of [NumOne, NumThree];
+        type MySet = set of NumOne..NumThree;
 
         end.
         "

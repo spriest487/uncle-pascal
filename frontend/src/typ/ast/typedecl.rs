@@ -389,17 +389,6 @@ pub fn typecheck_enum_decl(
     Ok(enum_decl)
 }
 
-impl EnumDecl {
-    fn get_item_value(&self, item_index: usize) -> IntConstant {
-        if item_index >= self.items.len() {
-            panic!("EnumDecl::get_item_value: index out of range for {} ({})", self.name, item_index);
-        }
-
-        self.items[item_index].value
-            .expect("enum decl must have values for all items after typechecking")
-    }
-}
-
 impl SetDecl {
     pub fn typecheck(
         set_decl: &ast::SetDecl<Span>,
@@ -598,48 +587,14 @@ fn get_set_type_range(range_ty: &Type, at: &Span, ctx: &Context) -> TypeResult<(
 }
 
 fn get_set_range_expr_val(val: &Expr, at: &Span, ctx: &Context) -> TypeResult<IntConstant> {
-    // have to handle enums specially here since they don't work with const_eval yet
-    match val.annotation().ty().as_ref() {
-        Type::Primitive(primitive) if primitive.is_numeric() => {
-            let Some(val_lit) = val.const_eval(ctx) else {
-                return Err(TypeError::InvalidConstExpr { expr: Box::new(val.clone()) });
-            };
-            
-            let Some(int_val) = val_lit.try_into_int() else {
-                return Err(TypeError::InvalidSetValueType { 
-                    actual: Type::Primitive(*primitive), 
-                    span: at.clone(), 
-                });
-            };
-            
-            Ok(int_val)
+    let Some(val_lit) = val.const_eval(ctx) else {
+        return Err(TypeError::InvalidConstExpr { expr: Box::new(val.clone()) });
+    };
+    
+    val_lit.try_into_int().ok_or_else(|| {
+        TypeError::InvalidSetValueType {
+            actual: val.annotation().ty().into_owned(),
+            span: at.clone(),
         }
-
-        Type::Enum(enum_path) => {
-            let Expr::Ident(enum_item_name, ..) = val else {
-                return Err(TypeError::InvalidConstExpr { expr: Box::new(val.clone()) });
-            };
-            
-            let Some(Def::Enum(enum_decl)) = ctx.find_type_def(enum_path) else {
-                return Err(TypeError::name_not_found(enum_path.as_ref().clone(), at.clone()));
-            };
-
-            let Some(item_index) = enum_decl.items
-                .iter()
-                .position(|item| item.ident == *enum_item_name) else {
-                let item_name = enum_path.as_ref().clone().child(enum_item_name.clone());
-                return Err(TypeError::name_not_found(item_name, enum_item_name.span().clone()));
-            };
-            
-            let item_val = enum_decl.get_item_value(item_index);
-            Ok(IntConstant::from(item_val))
-        }
-
-        other_ty => {
-            Err(TypeError::InvalidSetValueType {
-                actual: other_ty.clone(),
-                span: at.clone(),
-            })
-        }
-    }
+    })
 }
