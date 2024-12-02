@@ -49,12 +49,10 @@ pub fn translate_struct_def(
         fields.insert(next_id, StructFieldDef { name: None, rc: false, ty: pad_ty });
     }
 
-    let src_span = struct_def.span().clone();
-
     let identity = match struct_def.kind {
         StructKind::Class => StructIdentity::Class(name_path),
         StructKind::Record => StructIdentity::Record(name_path),
     };
 
-    Struct::new(identity, Some(src_span)).with_fields(fields)
+    Struct::new(identity).with_fields(fields)
 }

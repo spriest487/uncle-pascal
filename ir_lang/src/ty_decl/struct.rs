@@ -2,18 +2,16 @@ use crate::FieldID;
 use crate::NamePath;
 use crate::StructIdentity;
 use crate::Type;
-use common::span::Span;
 use linked_hash_map::LinkedHashMap;
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Struct {
     pub identity: StructIdentity,
     pub fields: LinkedHashMap<FieldID, StructFieldDef>,
-
-    pub src_span: Option<Span>,
 }
 
 impl Struct {
@@ -32,11 +30,10 @@ impl Struct {
         self.fields.get(&id)
     }
 
-    pub fn new(identity: StructIdentity, src_span: Option<Span>) -> Self {
+    pub fn new(identity: StructIdentity) -> Self {
         Self {
             identity,
             fields: LinkedHashMap::new(),
-            src_span,
         }
     }
 

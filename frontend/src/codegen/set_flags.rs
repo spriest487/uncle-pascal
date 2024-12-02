@@ -45,7 +45,6 @@ impl SetFlagsType {
 
         let set_flags_struct = ir::Struct {
             identity: ir::StructIdentity::SetFlags { bits: bit_count },
-            src_span: None,
             fields: (0..word_count)
                 .map(|id| (ir::FieldID(id), ir::StructFieldDef {
                     name: None,

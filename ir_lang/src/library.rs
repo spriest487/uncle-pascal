@@ -14,7 +14,6 @@ use crate::TypeDef;
 use crate::TypeDefID;
 use crate::VariableID;
 use crate::VirtualTypeID;
-use common::span::Span;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -31,8 +30,6 @@ pub struct Library {
     pub static_closures: Vec<StaticClosure>,
 
     pub init: Vec<Instruction>,
-
-    pub span: Option<Span>,
 }
 
 impl Library {
@@ -45,8 +42,6 @@ impl Library {
             variables: BTreeMap::new(),
 
             static_closures: Vec::new(),
-
-            span: None,
 
             metadata,
         }
@@ -62,10 +57,6 @@ impl Library {
 
     pub fn find_dyn_array_struct(&self, elem_ty: &Type) -> Option<TypeDefID> {
         self.metadata.find_dyn_array_struct(elem_ty)
-    }
-
-    pub fn span(&self) -> Option<&Span> {
-        self.span.as_ref()
     }
 
     pub fn init(&self) -> &[Instruction] {

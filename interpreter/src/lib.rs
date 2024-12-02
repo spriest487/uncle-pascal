@@ -2021,10 +2021,6 @@ impl Interpreter {
 
         self.push_stack("<init>", init_stack_size);
 
-        if let Some(module_span) = module.span() {
-            self.current_frame_mut()?.debug_push(module_span.clone());
-        }
-
         self.execute(module.init())?;
         self.pop_stack()?;
 

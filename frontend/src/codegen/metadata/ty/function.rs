@@ -75,7 +75,6 @@ pub fn translate_closure_struct(
         id,
         ir::Struct {
             identity: ir::StructIdentity::Closure(identity),
-            src_span: None,
             fields,
         },
     );

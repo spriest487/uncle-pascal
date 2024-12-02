@@ -675,7 +675,6 @@ impl Metadata {
             TypeDecl::Def(TypeDef::Struct(Struct {
                 identity: StructIdentity::DynArray(element.clone()),
                 fields,
-                src_span: None,
             })),
         );
 
