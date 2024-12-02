@@ -1,6 +1,5 @@
 # critical
 * project files/don't auto load used units
-* move strings to module (out of metadata)
 
 # features
 * generic interfaces 
@@ -13,7 +12,6 @@
 * compound assignment bitwise ops
 
 # bugs
-* source spans shouldn't be included in module files in release mode
 * parser: newlines/escape chars in string literals
 * signed i8 loop from -127 to 128 runs forever? 
 
