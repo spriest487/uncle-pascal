@@ -1,6 +1,5 @@
 # critical
 * project files/don't auto load used units
-* range types/`for var x in 0..123`
 * move strings to module (out of metadata)
 
 # features
@@ -19,7 +18,7 @@
 * signed i8 loop from -127 to 128 runs forever? 
 
 # improvements
-* go back to I prefix for interfaces~~~~
+* go back to I prefix for interfaces
 * undefined symbol checking can probably be moved to IR codegen rather than during typechecking 
 * type cache so we don't need to construct/pass around type objects all the time in the typechecker (This is really slow)
 * make IR function src spans optional?? some builtins don't have them
