@@ -107,8 +107,8 @@ impl fmt::Display for Library {
                                 .pretty_ty_name(&Type::Function(identity.virt_func_ty));
                             write!(
                                 f,
-                                "closure of {} @ {}:{}:{}",
-                                func_ty_name, identity.module, identity.line, identity.col
+                                "closure of {} @ ({})",
+                                func_ty_name, identity.id
                             )?;
                         },
 

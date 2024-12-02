@@ -87,8 +87,8 @@ impl fmt::Display for Struct {
             StructIdentity::SetFlags { bits, .. } => write!(f, "set<{bits}>"),
             StructIdentity::Closure(identity) => write!(
                 f,
-                "closure of function type {} @ {}:{}:{}",
-                identity.virt_func_ty, identity.module, identity.line, identity.col
+                "closure of function type {} ({})",
+                identity.virt_func_ty, identity.id
             ),
         }
     }

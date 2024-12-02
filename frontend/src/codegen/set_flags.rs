@@ -1,7 +1,7 @@
 use crate::codegen::builder::Builder;
 use crate::codegen::library_builder::LibraryBuilder;
-use crate::{ir, Operator};
-use crate::typ::builtin_span;
+use crate::ir;
+use crate::Operator;
 
 pub const WORD_TYPE: ir::Type = ir::Type::U64;
 const WORD_BITS: usize = u64::BITS as usize;
@@ -111,8 +111,6 @@ impl SetFlagsType {
         module: &mut LibraryBuilder
     ) -> ir::FunctionID {
         let func = ir::Function::Local(ir::FunctionDef {
-            src_span: builtin_span(),
-
             sig,
             debug_name: name,
             body,

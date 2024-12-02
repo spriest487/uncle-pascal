@@ -2,7 +2,6 @@ use crate::codegen::ir;
 use crate::codegen::library_builder::LibraryBuilder;
 use crate::codegen::translate_name;
 use crate::codegen::typ;
-use common::span::Spanned;
 
 pub fn translate_variant_def(
     variant_def: &typ::ast::VariantDef,
@@ -30,7 +29,6 @@ pub fn translate_variant_def(
 
     ir::VariantDef {
         name: name_path,
-        src_span: Some(variant_def.span().clone()),
         cases,
     }
 }

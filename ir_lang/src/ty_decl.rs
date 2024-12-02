@@ -2,18 +2,18 @@ mod r#struct;
 mod variant;
 mod interface;
 
+use crate::FunctionID;
 use crate::FunctionSig;
 use crate::NamePath;
 use crate::Type;
 use crate::TypeDefID;
-use common::span::Location;
-use common::span::Span;
 pub use interface::*;
 pub use r#struct::*;
+use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Write;
-use serde::{Deserialize, Serialize};
 pub use variant::*;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -34,16 +34,7 @@ pub struct ClosureIdentity {
     /// target type plus a type-erased pointer inserted as parameter 0
     pub virt_func_ty: TypeDefID,
 
-    pub module: String,
-    pub line: usize,
-    pub col: usize,
-}
-
-impl ClosureIdentity {
-    pub fn src_span(&self) -> Span {
-        let location = Location::new(self.line, self.col);
-        Span::new(self.module.clone(), location, location)
-    }
+    pub id: FunctionID,
 }
 
 impl StructIdentity {
@@ -106,14 +97,6 @@ impl TypeDef {
             TypeDef::Function(..) => None,
         }
     }
-
-    pub fn src_span(&self) -> Option<&Span> {
-        match self {
-            TypeDef::Struct(def) => def.src_span.as_ref(),
-            TypeDef::Variant(def) => def.src_span.as_ref(),
-            TypeDef::Function(..) => None,
-        }
-    }
     
     pub fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
     where
@@ -126,7 +109,7 @@ impl TypeDef {
                 },
                 StructIdentity::Closure(identity) => {
                     let func_ty_name = ty_format(&Type::Function(identity.virt_func_ty));
-                    format!("closure of {} @ {}:{}:{}", func_ty_name, identity.module, identity.line, identity.col)
+                    format!("closure of {} ({})", func_ty_name, identity.id)
                 },
                 StructIdentity::Array(ty, dim) => {
                     let ty_name = ty_format(ty);

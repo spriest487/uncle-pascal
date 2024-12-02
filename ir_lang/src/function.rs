@@ -1,14 +1,15 @@
-use std::fmt;
+use crate::Instruction;
+use crate::InstructionFormatter;
+use crate::Label;
+use crate::LocalID;
+use crate::NamePath;
+use crate::RawInstructionFormatter;
+use crate::Ref;
+use crate::Type;
+use crate::TypeDefID;
 use serde::Deserialize;
 use serde::Serialize;
-use common::span::Span;
-use crate::{InstructionFormatter, Label, RawInstructionFormatter};
-use crate::Type;
-use crate::Instruction;
-use crate::NamePath;
-use crate::TypeDefID;
-use crate::LocalID;
-use crate::Ref;
+use std::fmt;
 
 pub const BUILTIN_SRC: &str = "rt";
 
@@ -96,8 +97,6 @@ pub struct ExternalFunctionRef {
     pub src: String,
 
     pub sig: FunctionSig,
-
-    pub src_span: Span,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,8 +111,6 @@ pub struct FunctionDef {
     pub body: Vec<Instruction>,
 
     pub sig: FunctionSig,
-
-    pub src_span: Span,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -134,13 +131,6 @@ impl Function {
         match self {
             Function::External(external_func) => &external_func.sig,
             Function::Local(local_func) => &local_func.sig,
-        }
-    }
-
-    pub fn src_span(&self) -> &Span {
-        match self {
-            Function::External(external_func) => &external_func.src_span,
-            Function::Local(local_func) => &local_func.src_span,
         }
     }
 }

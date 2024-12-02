@@ -43,8 +43,6 @@ pub fn translate_closure_struct(
     module: &mut LibraryBuilder,
 ) -> ir::TypeDefID {
     let id = module.metadata_mut().reserve_new_struct();
-    
-    let src_span = identity.src_span();
 
     let mut fields = LinkedHashMap::new();
     fields.insert(
@@ -77,7 +75,7 @@ pub fn translate_closure_struct(
         id,
         ir::Struct {
             identity: ir::StructIdentity::Closure(identity),
-            src_span: Some(src_span),
+            src_span: None,
             fields,
         },
     );

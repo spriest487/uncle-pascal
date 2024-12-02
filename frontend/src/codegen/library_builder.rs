@@ -22,12 +22,12 @@ use crate::codegen::FunctionInstance;
 use crate::codegen::IROptions;
 use crate::codegen::SetFlagsType;
 use crate::typ::ast::apply_func_decl_named_ty_args;
-use crate::typ::{builtin_ident, GenericContext};
-use crate::typ::builtin_span;
+use crate::typ::builtin_ident;
 use crate::typ::free_mem_sig;
 use crate::typ::get_mem_sig;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
+use crate::typ::GenericContext;
 use crate::typ::Specializable;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeArgsResult;
@@ -35,7 +35,6 @@ use crate::typ::TypeParamContainer;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
-use common::span::Spanned;
 use ir_lang::RuntimeType;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
@@ -172,7 +171,6 @@ impl LibraryBuilder {
                     param_tys: Vec::new(),
                     return_ty: ir::Type::Nothing
                 },
-                src_span: init_block.keyword_span.clone(),
                 debug_name: format!("{}.<init>", unit.ident),
             };
 
@@ -322,7 +320,6 @@ impl LibraryBuilder {
             &specialized_decl.return_ty,
             &func_def.locals,
             &func_def.body,
-            func_def.span.clone(),
             debug_name,
         );
 
@@ -376,8 +373,6 @@ impl LibraryBuilder {
                 symbol: extern_decl.name.to_string(),
 
                 sig: ir::FunctionSig { return_ty, param_tys },
-
-                src_span: extern_decl.span().clone(),
             }),
         );
 
@@ -503,7 +498,6 @@ impl LibraryBuilder {
             &generic_method_def.decl.return_ty,
             &generic_method_def.locals,
             &generic_method_def.body,
-            generic_method_def.span().clone(),
             debug_name,
         );
         self.library.functions.insert(id, ir::Function::Local(ir_func));
@@ -1066,7 +1060,6 @@ impl LibraryBuilder {
                         param_tys: vec![ty.clone().ptr()],
                     },
                     debug_name: format!("generated RC retain func for {}", self.library.metadata.pretty_ty_name(ty)),
-                    src_span: self.module_span().clone(),
                 }),
             );
 
@@ -1087,7 +1080,6 @@ impl LibraryBuilder {
                         param_tys: vec![ty.clone().ptr()],
                     },
                     debug_name: format!("<generated releaser for {}>", self.library.metadata.pretty_ty_name(ty)),
-                    src_span: self.module_span().clone(),
                 }),
             );
             
@@ -1172,7 +1164,6 @@ impl LibraryBuilder {
                     ir::Type::I32,
                 ],
             },
-            src_span: builtin_span(),
             debug_name,
         };
 
@@ -1233,10 +1224,9 @@ impl LibraryBuilder {
 
         let closure_identity = ir::ClosureIdentity {
             virt_func_ty: func_ty_id,
-            module: func.span().file.display().to_string(),
-            line: func.span().start.line,
-            col: func.span().start.col,
+            id,
         };
+
         let closure_id = translate_closure_struct(
             closure_identity,
             &func.captures,
@@ -1248,8 +1238,7 @@ impl LibraryBuilder {
 
         let cached_func = FunctionInstance { id, sig: func_ty_sig };
 
-        let src_span = func.span().clone();
-        let ir_func = build_closure_function_def(self, &func, closure_id, src_span, debug_name);
+        let ir_func = build_closure_function_def(self, &func, closure_id, debug_name);
 
         self.library.functions.insert(id, ir::Function::Local(ir_func));
 
@@ -1262,7 +1251,7 @@ impl LibraryBuilder {
 
     pub fn build_func_static_closure_instance(&mut self,
         func: &FunctionInstance,
-        generic_ctx: &typ::GenericContext
+        generic_ctx: &GenericContext
     ) -> &ir::StaticClosure {
         if let Some(existing) = self.library.metadata.get_static_closure(func.id) {
             return &self.library.static_closures[existing.0];
@@ -1273,19 +1262,14 @@ impl LibraryBuilder {
 
         let func_ty_id = self.translate_func_ty(func.sig.as_ref(), generic_ctx);
 
-        let ir_func = self.library.functions.get(&func.id)
+        let ir_func = self.library.functions
+            .get(&func.id)
             .expect("function passed to build_function_closure_instance must have been previously translated")
             .clone();
 
-        // the span associated with the static closure should be the function definition
-        // itself, not the usage
-        let src_span = ir_func.src_span();
-
         let closure_identity = ir::ClosureIdentity {
             virt_func_ty: func_ty_id,
-            col: src_span.start.col,
-            line: src_span.end.col,
-            module: src_span.file.display().to_string(),
+            id: func.id,
         };
 
         let closure_id = translate_closure_struct(
@@ -1421,7 +1405,6 @@ fn gen_dyn_array_funcs(module: &mut LibraryBuilder, elem_ty: &ir::Type, struct_i
             return_ty: ir::Type::Nothing,
         },
         body: alloc_body,
-        src_span: module.module_span().clone(),
     }));
 
     let mut length_builder = Builder::new(module);
@@ -1438,7 +1421,6 @@ fn gen_dyn_array_funcs(module: &mut LibraryBuilder, elem_ty: &ir::Type, struct_i
             return_ty: ir::Type::I32,
         },
         body: length_body,
-        src_span: module.module_span().clone(),
     }));
 }
 
@@ -1686,7 +1668,6 @@ fn gen_dyn_array_rc_boilerplate(module: &mut LibraryBuilder, elem_ty: &ir::Type,
                 param_tys: vec![array_struct_ty.clone().ptr()],
             },
             body: releaser_body,
-            src_span: module.module_span().clone(),
         }),
     );
 }

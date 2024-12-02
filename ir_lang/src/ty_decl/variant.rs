@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
-use common::span::Span;
-use crate::{NamePath, Type};
+use crate::NamePath;
+use crate::Type;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VariantCase {
@@ -13,6 +14,4 @@ pub struct VariantCase {
 pub struct VariantDef {
     pub name: NamePath,
     pub cases: Vec<VariantCase>,
-
-    pub src_span: Option<Span>,
 }
