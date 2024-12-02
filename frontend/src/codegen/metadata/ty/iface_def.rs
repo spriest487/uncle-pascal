@@ -6,12 +6,12 @@ use crate::codegen::ir;
 pub fn translate_iface(
     iface_def: &typ::ast::InterfaceDecl,
     generic_ctx: &typ::GenericContext,
-    module: &mut LibraryBuilder,
+    lib: &mut LibraryBuilder,
 ) -> ir::Interface {
-    let name = translate_name(&iface_def.name, generic_ctx, module);
+    let name = translate_name(&iface_def.name, generic_ctx, lib);
 
     // it needs to be declared to reference its own ID in the Self type
-    let id = module.metadata_mut().declare_iface(&name);
+    let id = lib.metadata_mut().declare_iface(&name);
 
     let methods: Vec<_> = iface_def
         .methods
@@ -23,7 +23,7 @@ pub fn translate_iface(
                 name: method.ident().to_string(),
                 return_ty: match &method.decl.return_ty {
                     typ::Type::MethodSelf => self_ty.clone(),
-                    return_ty => module.translate_type(return_ty, generic_ctx),
+                    return_ty => lib.translate_type(return_ty, generic_ctx),
                 },
                 params: method
                     .decl
@@ -31,7 +31,7 @@ pub fn translate_iface(
                     .iter()
                     .map(|param| match &param.ty {
                         typ::Type::MethodSelf => self_ty.clone(),
-                        param_ty => module.translate_type(param_ty, generic_ctx),
+                        param_ty => lib.translate_type(param_ty, generic_ctx),
                     })
                     .collect(),
             }

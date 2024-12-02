@@ -164,6 +164,12 @@ impl LibraryBuilder {
             }
             
             let unit_init = init_builder.finish();
+            
+            let debug_name = if self.opts.debug {
+                Some(format!("{}.<init>", unit.ident))
+            } else {
+                None
+            };
 
             let init_func = ir::FunctionDef {
                 body: unit_init,
@@ -171,7 +177,7 @@ impl LibraryBuilder {
                     param_tys: Vec::new(),
                     return_ty: ir::Type::Nothing
                 },
-                debug_name: format!("{}.<init>", unit.ident),
+                debug_name,
             };
 
             let init_func_id = self.library.metadata.insert_func(None);
@@ -312,7 +318,12 @@ impl LibraryBuilder {
 
         self.translated_funcs.insert(key, cached_func.clone());
 
-        let debug_name = specialized_decl.to_string();
+        let debug_name = if self.opts.debug {
+            Some(specialized_decl.to_string())
+        } else {
+            None
+        };
+
         let ir_func = build_func_def(
             self,
             generic_ctx,
@@ -490,7 +501,12 @@ impl LibraryBuilder {
         };
         self.translated_funcs.insert(key, cached_func.clone());
 
-        let debug_name = specialized_decl.to_string();
+        let debug_name = if self.opts.debug {
+            Some(specialized_decl.to_string())
+        } else {
+            None
+        };
+
         let ir_func = build_func_def(
             self,
             generic_ctx,
@@ -1051,6 +1067,12 @@ impl LibraryBuilder {
         let retain_func = if retain_body.len() > 0 {
             let func_id = self.metadata_mut().insert_func(None);
 
+            let debug_name = if self.opts.debug {
+                Some(format!("generated RC retain func for {}", self.library.metadata.pretty_ty_name(ty)))
+            } else {
+                None
+            };
+
             self.insert_func(
                 func_id,
                 ir::Function::Local(ir::FunctionDef {
@@ -1059,7 +1081,7 @@ impl LibraryBuilder {
                         return_ty: ir::Type::Nothing,
                         param_tys: vec![ty.clone().ptr()],
                     },
-                    debug_name: format!("generated RC retain func for {}", self.library.metadata.pretty_ty_name(ty)),
+                    debug_name,
                 }),
             );
 
@@ -1071,6 +1093,12 @@ impl LibraryBuilder {
         let release_func = if release_body.len() > 0 {
             let func_id = self.library.metadata.insert_func(None);
 
+            let debug_name = if self.opts.debug {
+                Some(format!("<generated releaser for {}>", self.library.metadata.pretty_ty_name(ty)))
+            } else {
+                None
+            };
+
             self.insert_func(
                 func_id,
                 ir::Function::Local(ir::FunctionDef {
@@ -1079,7 +1107,7 @@ impl LibraryBuilder {
                         return_ty: ir::Type::Nothing,
                         param_tys: vec![ty.clone().ptr()],
                     },
-                    debug_name: format!("<generated releaser for {}>", self.library.metadata.pretty_ty_name(ty)),
+                    debug_name,
                 }),
             );
             
@@ -1152,8 +1180,13 @@ impl LibraryBuilder {
 
         let body = builder.finish();
 
-        let element_name = self.metadata().pretty_ty_name(element_ty);
-        let debug_name = format!("bounds check for {element_name}");
+
+        let debug_name = if self.opts.debug {
+            let element_name = self.metadata().pretty_ty_name(element_ty);
+            Some(format!("bounds check for {element_name}"))
+        } else {
+            None
+        };
 
         let func_def = ir::FunctionDef {
             body,
@@ -1234,7 +1267,11 @@ impl LibraryBuilder {
             self
         );
 
-        let debug_name = "<anonymous function>".to_string();
+        let debug_name = if self.opts.debug {
+            Some("<anonymous function>".to_string())
+        } else {
+            None
+        };
 
         let cached_func = FunctionInstance { id, sig: func_ty_sig };
 
@@ -1387,19 +1424,25 @@ pub(crate) struct FunctionDefKey {
     pub type_args: Option<typ::TypeArgList>,
 }
 
-fn gen_dyn_array_funcs(module: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
-    let mut alloc_builder = Builder::new(module);
+fn gen_dyn_array_funcs(lib: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
+    let mut alloc_builder = Builder::new(lib);
     gen_dyn_array_alloc_func(&mut alloc_builder, elem_ty, struct_id);
     let alloc_body = alloc_builder.finish();
 
-    let dyn_array_rtti = module.metadata().get_dynarray_runtime_type(elem_ty)
+    let dyn_array_rtti = lib.metadata().get_dynarray_runtime_type(elem_ty)
         .expect("missing dynarray rtti for type");
 
-    module.insert_func(dyn_array_rtti.alloc, ir::Function::Local(ir::FunctionDef {
-        debug_name: format!(
+    let alloc_debug_name = if lib.opts.debug {
+        Some(format!(
             "dynarray alloc function for element type {}",
-            module.metadata().pretty_ty_name(elem_ty)
-        ),
+            lib.metadata().pretty_ty_name(elem_ty)
+        ))
+    } else {
+        None
+    };
+
+    lib.insert_func(dyn_array_rtti.alloc, ir::Function::Local(ir::FunctionDef {
+        debug_name: alloc_debug_name,
         sig: ir::FunctionSig {
             param_tys: vec![ir::Type::any(), ir::Type::I32, ir::Type::any(), ir::Type::any()],
             return_ty: ir::Type::Nothing,
@@ -1407,15 +1450,21 @@ fn gen_dyn_array_funcs(module: &mut LibraryBuilder, elem_ty: &ir::Type, struct_i
         body: alloc_body,
     }));
 
-    let mut length_builder = Builder::new(module);
+    let mut length_builder = Builder::new(lib);
     gen_dyn_array_length_func(&mut length_builder, struct_id);
     let length_body = length_builder.finish();
 
-    module.insert_func(dyn_array_rtti.length, ir::Function::Local(ir::FunctionDef {
-        debug_name: format!(
+    let length_debug_name = if lib.opts.debug {
+        Some(format!(
             "dynarray length function for element type {}",
-            module.metadata().pretty_ty_name(elem_ty)
-        ),
+            lib.metadata().pretty_ty_name(elem_ty)
+        ))
+    } else {
+        None
+    };
+
+    lib.insert_func(dyn_array_rtti.length, ir::Function::Local(ir::FunctionDef {
+        debug_name: length_debug_name,
         sig: ir::FunctionSig {
             param_tys: vec![ir::Type::any()],
             return_ty: ir::Type::I32,
@@ -1576,16 +1625,16 @@ fn gen_dyn_array_length_func(builder: &mut Builder, struct_id: ir::TypeDefID) {
     builder.field_val(ir::RETURN_REF, arr, array_ref_ty, ir::DYNARRAY_LEN_FIELD, ir::Type::I32);
 }
 
-fn gen_dyn_array_rc_boilerplate(module: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
+fn gen_dyn_array_rc_boilerplate(lib: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
     let array_ref_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
     let array_struct_ty = ir::Type::Struct(struct_id);
 
-    let runtime_type = module
+    let runtime_type = lib
         .metadata()
         .get_runtime_type(&array_struct_ty)
         .expect("rtti function ids for dynarray inner struct must exist");
 
-    let mut builder = Builder::new(module);
+    let mut builder = Builder::new(lib);
 
     builder.comment("%0 is the self arg, the pointer to the inner struct");
     builder.bind_param(ir::LocalID(0), array_struct_ty.clone().ptr(), "self", true);
@@ -1657,12 +1706,17 @@ fn gen_dyn_array_rc_boilerplate(module: &mut LibraryBuilder, elem_ty: &ir::Type,
 
     let releaser_body = builder.finish();
 
-    let array_ref_ty_name = module.metadata().pretty_ty_name(&array_ref_ty).into_owned();
-
-    module.insert_func(
+    let debug_name = if lib.opts.debug {
+        let array_ref_ty_name = lib.metadata().pretty_ty_name(&array_ref_ty).into_owned();
+        Some(format!("<generated dynarray releaser for {}>", array_ref_ty_name))
+    } else {
+        None
+    };
+    
+    lib.insert_func(
         runtime_type.release.expect("dynarray class object must have a release func id allocated"),
         ir::Function::Local(ir::FunctionDef {
-            debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
+            debug_name,
             sig: ir::FunctionSig {
                 return_ty: ir::Type::Nothing,
                 param_tys: vec![array_struct_ty.clone().ptr()],
@@ -1678,13 +1732,13 @@ fn gen_dyn_array_rc_boilerplate(module: &mut LibraryBuilder, elem_ty: &ir::Type,
 // for example, a class instance maybe be stored behind an `Any` reference,
 // at which point rc instructions must discover the actual class type
 // dynamically from the rc cell's class pointer/class ID
-fn gen_class_rc_boilerplate(module: &mut LibraryBuilder, class_ty: &ir::Type) {
+fn gen_class_rc_boilerplate(lib: &mut LibraryBuilder, class_ty: &ir::Type) {
     let resource_struct = class_ty
         .rc_resource_class_id()
         .and_then(|class_id| class_id.as_class())
         .expect("resource class of translated class type was not a struct");
 
-    module.runtime_type(&ir::Type::Struct(resource_struct));
+    lib.runtime_type(&ir::Type::Struct(resource_struct));
 }
 
 fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::TypeArgList>) {

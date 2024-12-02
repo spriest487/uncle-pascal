@@ -57,7 +57,7 @@ impl NamePathExt for NamePath {
 pub fn translate_name(
     name: &typ::Symbol,
     generic_ctx: &typ::GenericContext,
-    module: &mut LibraryBuilder,
+    lib: &mut LibraryBuilder,
 ) -> NamePath {
     let name = name.clone().apply_type_args(generic_ctx, generic_ctx);
 
@@ -83,7 +83,7 @@ pub fn translate_name(
             name_type_args_list
                 .items
                 .iter()
-                .map(|arg| module.translate_type(arg, generic_ctx))
+                .map(|arg| lib.translate_type(arg, generic_ctx))
                 .collect()
         });
 

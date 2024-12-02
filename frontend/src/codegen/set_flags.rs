@@ -40,7 +40,7 @@ pub fn set_word_count(bit_count: usize) -> usize {
 impl SetFlagsType {
     // full-size 256-bit flag struct, the max number of values supported by
     // delphi/FPC sets
-    pub fn define_new(module: &mut LibraryBuilder, bit_count: usize) -> Self {
+    pub fn define_new(lib: &mut LibraryBuilder, bit_count: usize) -> Self {
         let word_count = set_word_count(bit_count);
 
         let set_flags_struct = ir::Struct {
@@ -54,38 +54,38 @@ impl SetFlagsType {
                 .collect()
         };
 
-        let struct_id = module.metadata_mut().reserve_new_struct();
-        module.metadata_mut().define_struct(struct_id, set_flags_struct);
+        let struct_id = lib.metadata_mut().reserve_new_struct();
+        lib.metadata_mut().define_struct(struct_id, set_flags_struct);
         
-        let include_func = Self::define_include(struct_id, word_count, module);
-        let exclude_func = Self::define_exclude(struct_id, word_count, module);
-        let contains_func = Self::define_contains(struct_id, word_count, module);
+        let include_func = Self::define_include(struct_id, word_count, lib);
+        let exclude_func = Self::define_exclude(struct_id, word_count, lib);
+        let contains_func = Self::define_contains(struct_id, word_count, lib);
         
         let bit_and_func = Self::define_bitwise_bin_op(
             struct_id,
             word_count,
             Operator::BitAnd,
-            module,
+            lib,
             |builder, out, a, b| builder.bit_and(out, a, b)
         );
         let bit_or_func = Self::define_bitwise_bin_op(
             struct_id,
             word_count,
             Operator::BitOr,
-            module,
+            lib,
             |builder, out, a, b| builder.bit_or(out, a, b)
         );
         let bit_xor_func = Self::define_bitwise_bin_op(
             struct_id,
             word_count,
             Operator::Caret,
-            module,
+            lib,
             |builder, out, a, b| builder.bit_xor(out, a, b)
         );
         
-        let bit_not_func = Self::define_bit_not(struct_id, word_count, module);
+        let bit_not_func = Self::define_bit_not(struct_id, word_count, lib);
         
-        let eq_func = Self::define_eq(struct_id, word_count, module);
+        let eq_func = Self::define_eq(struct_id, word_count, lib);
         
         Self {
             struct_id,
@@ -107,16 +107,22 @@ impl SetFlagsType {
         name: String,
         body: Vec<ir::Instruction>,
         sig: ir::FunctionSig,
-        module: &mut LibraryBuilder
+        lib: &mut LibraryBuilder
     ) -> ir::FunctionID {
+        let name = if lib.opts().debug {
+            Some(name)
+        } else {
+            None
+        };
+
         let func = ir::Function::Local(ir::FunctionDef {
             sig,
             debug_name: name,
             body,
         });
 
-        let func_id = module.metadata_mut().insert_func(None);
-        module.insert_func(func_id, func);
+        let func_id = lib.metadata_mut().insert_func(None);
+        lib.insert_func(func_id, func);
 
         func_id
     }
@@ -124,11 +130,11 @@ impl SetFlagsType {
     fn define_include(
         struct_id: ir::TypeDefID,
         word_count: usize,
-        module: &mut LibraryBuilder
+        lib: &mut LibraryBuilder
     ) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
-        let mut builder = Builder::new(module);
+        let mut builder = Builder::new(lib);
         builder.bind_param(ir::LocalID(0), struct_ty.clone().ptr(), "flags", false);
         builder.bind_param(ir::LocalID(1), ir::Type::U8, "bit", false);
 
@@ -147,13 +153,13 @@ impl SetFlagsType {
             ir::Type::U8,
         ], ir::Type::Nothing);
         
-        Self::define_func(name, builder.finish(), sig, module)
+        Self::define_func(name, builder.finish(), sig, lib)
     }
     
-    fn define_exclude(struct_id: ir::TypeDefID, word_count: usize, module: &mut LibraryBuilder) -> ir::FunctionID {
+    fn define_exclude(struct_id: ir::TypeDefID, word_count: usize, lib: &mut LibraryBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
-        let mut builder = Builder::new(module);
+        let mut builder = Builder::new(lib);
         builder.bind_param(ir::LocalID(0), struct_ty.clone().ptr(), "flags", false);
         builder.bind_param(ir::LocalID(1), ir::Type::U8, "bit", false);
 
@@ -173,13 +179,13 @@ impl SetFlagsType {
             ir::Type::U8,
         ], ir::Type::Nothing);
         
-        Self::define_func(name, builder.finish(), sig, module)
+        Self::define_func(name, builder.finish(), sig, lib)
     }
 
-    fn define_contains(struct_id: ir::TypeDefID, word_count: usize, module: &mut LibraryBuilder) -> ir::FunctionID {
+    fn define_contains(struct_id: ir::TypeDefID, word_count: usize, lib: &mut LibraryBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
-        let mut builder = Builder::new(module);
+        let mut builder = Builder::new(lib);
         builder.bind_return();
         builder.bind_param(ir::LocalID(1), struct_ty.clone().ptr(), "flags", false);
         builder.bind_param(ir::LocalID(2), ir::Type::U8, "bit", false);
@@ -204,19 +210,19 @@ impl SetFlagsType {
             ir::Type::U8,
         ], ir::Type::Bool);
 
-        Self::define_func(name, builder.finish(), sig, module)
+        Self::define_func(name, builder.finish(), sig, lib)
     }
     
     fn define_bitwise_bin_op(
         struct_id: ir::TypeDefID,
         word_count: usize,
         op: Operator,
-        module: &mut LibraryBuilder,
+        lib: &mut LibraryBuilder,
         build_op: impl Fn(&mut Builder, ir::Ref, ir::Value, ir::Value)
     ) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
-        let mut builder = Builder::new(module);
+        let mut builder = Builder::new(lib);
         builder.bind_param(ir::LocalID(0), struct_ty.clone().ptr(), "flags", false);
         builder.bind_param(ir::LocalID(1), struct_ty.clone().ptr(), "other", false);
 
@@ -244,13 +250,13 @@ impl SetFlagsType {
             ir::Type::Struct(struct_id).ptr(),
         ], ir::Type::Nothing);
 
-        Self::define_func(name, builder.finish(), sig, module)
+        Self::define_func(name, builder.finish(), sig, lib)
     }
     
-    fn define_bit_not(struct_id: ir::TypeDefID, word_count: usize, module: &mut LibraryBuilder) -> ir::FunctionID {
+    fn define_bit_not(struct_id: ir::TypeDefID, word_count: usize, lib: &mut LibraryBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
 
-        let mut builder = Builder::new(module);
+        let mut builder = Builder::new(lib);
         builder.bind_param(ir::LocalID(0), struct_ty.clone().ptr(), "flags", false);
 
         let flags_ref = ir::Ref::Local(ir::LocalID(0)).to_deref();
@@ -269,13 +275,13 @@ impl SetFlagsType {
             ir::Type::Struct(struct_id).ptr(),
         ], ir::Type::Nothing);
         
-        Self::define_func(name, builder.finish(), sig, module)
+        Self::define_func(name, builder.finish(), sig, lib)
     }
 
-    fn define_eq(struct_id: ir::TypeDefID, word_count: usize, module: &mut LibraryBuilder) -> ir::FunctionID {
+    fn define_eq(struct_id: ir::TypeDefID, word_count: usize, lib: &mut LibraryBuilder) -> ir::FunctionID {
         let struct_ty = ir::Type::Struct(struct_id);
         
-        let mut builder = Builder::new(module);
+        let mut builder = Builder::new(lib);
         builder.bind_return();
         builder.bind_param(ir::LocalID(1), struct_ty.clone().ptr(), "flags", false);
         builder.bind_param(ir::LocalID(2), struct_ty.clone().ptr(), "other", false);
@@ -309,7 +315,7 @@ impl SetFlagsType {
             ir::Type::Struct(struct_id).ptr(),
         ], ir::Type::Bool);
 
-        Self::define_func(name, builder.finish(), sig, module)
+        Self::define_func(name, builder.finish(), sig, lib)
     }
 
     // expected locals:

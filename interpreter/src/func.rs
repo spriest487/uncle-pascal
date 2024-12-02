@@ -68,11 +68,11 @@ impl Function {
         }
     }
 
-    pub fn debug_name(&self) -> &str {
+    pub fn debug_name(&self) -> Option<&str> {
         match self {
-            Function::Builtin(def) => &def.debug_name,
-            Function::External(def) => &def.debug_name,
-            Function::IR(def) => &def.debug_name,
+            Function::Builtin(def) => Some(def.debug_name.as_str()),
+            Function::External(def) => Some(def.debug_name.as_str()),
+            Function::IR(def) => def.debug_name.as_ref().map(|s| s.as_str()),
         }
     }
 
@@ -86,14 +86,19 @@ impl Function {
             }
 
             Function::External(def) => def.invoker.invoke(state)?,
-
+            
             Function::IR(def) => {
+                let display_name = match &def.debug_name {
+                    Some(name) => name.as_str(),
+                    None => "function",
+                };
+
                 if state.opts().trace_ir {
-                    println!("entering {}", def.debug_name);
+                    println!("entering {}", display_name);
                 }
                 state.execute(&def.body)?;
                 if state.opts().trace_ir {
-                    println!("exiting {}", def.debug_name);
+                    println!("exiting {}", display_name);
                 }
             }
         };

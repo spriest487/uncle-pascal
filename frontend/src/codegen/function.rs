@@ -18,19 +18,26 @@ pub struct FunctionInstance {
 }
 
 fn create_function_body_builder<'m>(
-    module: &'m mut LibraryBuilder,
+    lib: &mut LibraryBuilder,
     generic_ctx: typ::GenericContext,
-    debug_name: &str,
-) -> Builder<'m> {
-    let mut comment = format!("function def body of {}", debug_name);
-    if !generic_ctx.is_empty() {
-        comment += format!(" with generic context {}", generic_ctx).as_str();
+    debug_name: Option<String>,
+) -> Builder {
+    let debug_comment = debug_name.map(|name| {
+        let mut comment = format!("function def body of {}", name);
+        if !generic_ctx.is_empty() {
+            comment += format!(" with generic context {}", generic_ctx).as_str();
+        }
+        
+        comment
+    });
+
+    let mut builder = Builder::new(lib)
+        .with_generic_ctx(generic_ctx);
+    
+    if let Some(comment) = debug_comment {
+        builder.comment(&comment);
     }
 
-    let mut builder = Builder::new(module)
-        .with_generic_ctx(generic_ctx);
-
-    builder.comment(&comment);
     builder
 }
 
@@ -41,12 +48,12 @@ pub fn build_func_def(
     def_return_ty: &typ::Type,
     def_locals: &[typ::ast::FunctionLocalBinding],
     def_body: &typ::ast::Block,
-    debug_name: String,
+    debug_name: Option<String>,
 ) -> FunctionDef {
     let mut body_builder = create_function_body_builder(
         module,
         generic_ctx,
-        &debug_name
+        debug_name.clone()
     );
 
     let return_ty = bind_function_return(def_return_ty, &mut body_builder);
@@ -91,10 +98,16 @@ pub fn build_func_static_closure_def(
             }
         })
         .collect::<Vec<_>>();
-    
-    let debug_name = format!("static closure def ({})", target_ir_func.debug_name());
-    
-    let mut body_builder = create_function_body_builder(library, generic_ctx, &debug_name);
+
+    let debug_name = match target_ir_func.debug_name() {
+        Some(func_name) if library.opts().debug => {
+            Some(format!("static closure def ({func_name})"))
+        },
+
+        _ => None,
+    };
+
+    let mut body_builder = create_function_body_builder(library, generic_ctx, debug_name.clone());
 
     let return_ty = bind_function_return(&target_func.sig.return_ty, &mut body_builder);
 
@@ -127,21 +140,21 @@ pub fn build_func_static_closure_def(
                 .collect(),
             return_ty,
         },
-        debug_name: format!("{} static closure", target_func.id),
+        debug_name,
         body: body_builder.finish(),
     }
 }
 
 pub fn build_closure_function_def(
-    module: &mut LibraryBuilder,
+    lib: &mut LibraryBuilder,
     func_def: &typ::ast::AnonymousFunctionDef,
     closure_id: TypeDefID,
-    debug_name: String,
+    debug_name: Option<String>,
 ) -> FunctionDef {
-    let closure_def = module.metadata().get_struct_def(closure_id).cloned().unwrap();
+    let closure_def = lib.metadata().get_struct_def(closure_id).cloned().unwrap();
 
     let generic_ctx = typ::GenericContext::empty();
-    let mut body_builder = create_function_body_builder(module, generic_ctx, &debug_name);
+    let mut body_builder = create_function_body_builder(lib, generic_ctx, debug_name.clone());
 
     let return_ty = bind_function_return(&func_def.return_ty, &mut body_builder);
 
@@ -323,9 +336,9 @@ fn build_func_body(
 pub fn build_static_closure_impl(
     closure: ClosureInstance,
     id: StaticClosureID,
-    module: &mut LibraryBuilder,
+    library: &mut LibraryBuilder,
 ) -> StaticClosure {
-    let mut init_builder = Builder::new(module);
+    let mut init_builder = Builder::new(library);
 
     let static_closure_ptr_ref = Ref::Global(GlobalRef::StaticClosure(id));
 
@@ -334,13 +347,19 @@ pub fn build_static_closure_impl(
     init_builder.mov(static_closure_ptr_ref, closure_ref);
 
     let init_body = init_builder.finish();
+    
+    let debug_name = if library.opts().debug {
+        Some(format!("static closure init for {}", closure))
+    } else {
+        None
+    };
 
-    let init_func_id = module.metadata_mut().insert_func(None);
-    module.insert_func(
+    let init_func_id = library.metadata_mut().insert_func(None);
+    library.insert_func(
         init_func_id,
         Function::Local(FunctionDef {
             body: init_body,
-            debug_name: format!("static closure init for {}", closure),
+            debug_name,
             sig: FunctionSig {
                 param_tys: Vec::new(),
                 return_ty: Type::Nothing,

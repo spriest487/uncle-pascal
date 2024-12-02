@@ -106,7 +106,7 @@ pub struct FunctionDecl {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionDef {
-    pub debug_name: String,
+    pub debug_name: Option<String>,
 
     pub body: Vec<Instruction>,
 
@@ -120,10 +120,10 @@ pub enum Function {
 }
 
 impl Function {
-    pub fn debug_name(&self) -> &str {
+    pub fn debug_name(&self) -> Option<&String> {
         match self {
-            Function::External(ExternalFunctionRef { symbol, .. }) => symbol.as_str(),
-            Function::Local(FunctionDef { debug_name, .. }) => debug_name.as_str(),
+            Function::External(ExternalFunctionRef { symbol, .. }) => Some(symbol),
+            Function::Local(FunctionDef { debug_name, .. }) => debug_name.as_ref(),
         }
     }
 

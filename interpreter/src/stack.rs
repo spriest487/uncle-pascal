@@ -42,7 +42,7 @@ struct StackAlloc {
 
 #[derive(Debug)]
 pub(super) struct StackFrame {
-    name: String,
+    name: Rc<String>,
 
     locals: Vec<StackAlloc>,
     block_stack: Vec<Block>,
@@ -56,7 +56,7 @@ pub(super) struct StackFrame {
 }
 
 impl StackFrame {
-    pub fn new(name: impl Into<String>, marshaller: Rc<Marshaller>, stack_size: usize) -> Self {
+    pub fn new(name: Rc<String>, marshaller: Rc<Marshaller>, stack_size: usize) -> Self {
         let sentinel_size = size_of::<usize>();
         let mut stack_mem = vec![0; stack_size + sentinel_size];
         stack_mem[stack_size..].copy_from_slice(&SENTINEL.to_ne_bytes());
@@ -110,7 +110,7 @@ impl StackFrame {
             if existing_id == id.0 {
                 if local.alloc_pc != Some(alloc_pc) {
                     return Err(StackError::DuplicateLocalAlloc {
-                        stack_frame: self.name.clone(),
+                        stack_frame: (*self.name).clone(),
                         id,
                         first_pc: local.alloc_pc,
                         next_pc: alloc_pc,

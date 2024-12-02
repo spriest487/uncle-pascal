@@ -6,15 +6,15 @@ use crate::codegen::typ;
 pub fn translate_variant_def(
     variant_def: &typ::ast::VariantDef,
     generic_ctx: &typ::GenericContext,
-    module: &mut LibraryBuilder,
+    lib: &mut LibraryBuilder,
 ) -> ir::VariantDef {
-    let name_path = translate_name(&variant_def.name, generic_ctx, module);
+    let name_path = translate_name(&variant_def.name, generic_ctx, lib);
 
     let mut cases = Vec::new();
     for case in &variant_def.cases {
         let (case_ty, case_rc) = match case.data_ty.as_ref() {
             Some(data_ty) => {
-                let case_ty = module.translate_type(data_ty, generic_ctx);
+                let case_ty = lib.translate_type(data_ty, generic_ctx);
                 (Some(case_ty), data_ty.is_strong_rc_reference())
             },
             None => (None, false),

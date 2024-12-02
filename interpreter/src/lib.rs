@@ -44,7 +44,7 @@ pub struct Interpreter {
 
     opts: InterpreterOpts,
 
-    functions: BTreeMap<ir::FunctionID, Rc<Function>>,
+    functions: BTreeMap<ir::FunctionID, FunctionInfo>,
     
     diag_worker: Option<DiagnosticWorker>,
 }
@@ -370,7 +370,7 @@ impl Interpreter {
         }
     }
 
-    fn push_stack(&mut self, name: impl Into<String>, stack_size: usize) {
+    fn push_stack(&mut self, name: Rc<String>, stack_size: usize) {
         let stack_frame = StackFrame::new(name, self.marshaller.clone(), stack_size);
         self.stack.push(stack_frame);
     }
@@ -446,7 +446,7 @@ impl Interpreter {
         args: &[DynValue],
         out: Option<&ir::Ref>,
     ) -> ExecResult<()> {
-        let func = self
+        let func_info = self
             .functions
             .get(&id)
             .ok_or_else(|| {
@@ -455,8 +455,10 @@ impl Interpreter {
             })?
             .clone();
 
+        let func = &func_info.func;
         let stack_size = func.stack_alloc_size(self.marshaller())?;
-        self.push_stack(func.debug_name(), stack_size);
+
+        self.push_stack(func_info.name.clone(), stack_size);
 
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
@@ -1683,7 +1685,10 @@ impl Interpreter {
             debug_name: name.to_string(),
         });
 
-        self.functions.insert(func_id, Rc::new(func));
+        self.functions.insert(func_id, FunctionInfo {
+            func: Rc::new(func),
+            name: Rc::new(name.to_string()),
+        });
 
         Ok(())
     }
@@ -1959,7 +1964,13 @@ impl Interpreter {
                     GlobalValue::Function(*func_id),
                 );
 
-                self.functions.insert(*func_id, Rc::new(func));
+                self.functions.insert(*func_id, FunctionInfo {
+                    name: Rc::new(match func.debug_name() {
+                        Some(name) => name.to_string(),
+                        None => format!("function {}", func_id)
+                    }),
+                    func: Rc::new(func),
+                });
             }
         }
 
@@ -2019,7 +2030,7 @@ impl Interpreter {
             .stack_alloc_size(module.init())
             .map_err(|err| self.add_stack_trace(err.into()))?;
 
-        self.push_stack("<init>", init_stack_size);
+        self.push_stack(Rc::new("<init>".to_string()), init_stack_size);
 
         self.execute(module.init())?;
         self.pop_stack()?;
@@ -2147,6 +2158,15 @@ impl Interpreter {
 
         Ok(())
     }
+}
+
+
+#[derive(Debug, Clone)]
+struct FunctionInfo {
+    func: Rc<Function>,
+
+    // cached debug name for stack frame
+    name: Rc<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

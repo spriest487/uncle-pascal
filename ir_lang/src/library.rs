@@ -218,8 +218,11 @@ impl fmt::Display for Library {
                 Some(desc_name) => {
                     writeln!(f, " ({})", desc_name)?;
                 },
+
                 None => {
-                    writeln!(f, " ({})", func.debug_name())?;
+                    if let Some(debug_name) = func.debug_name() {
+                        writeln!(f, " ({})", debug_name)?;
+                    }
                 },
             }
 

@@ -39,17 +39,17 @@ pub struct Builder<'m> {
 }
 
 impl<'m> Builder<'m> {
-    pub fn new(module: &'m mut LibraryBuilder) -> Self {
-        let module_span = module.module_span().clone();
+    pub fn new(lib: &'m mut LibraryBuilder) -> Self {
+        let module_span = lib.module_span().clone();
 
         let mut instructions = Vec::new();
-        if module.opts().debug {
+        if lib.opts().debug {
             instructions.push(Instruction::DebugPush(module_span.clone()));
         }
         instructions.push(Instruction::LocalBegin);
 
         Self {
-            library: module,
+            library: lib,
             
             instructions,
 

@@ -154,7 +154,11 @@ impl FunctionDecl {
             .map(|param| Type::from_metadata(param, module))
             .collect();
 
-        let mut comment = func.debug_name.to_string();
+        let mut comment = match &func.debug_name {
+            Some(name) => name.clone(),
+            None => format!("function {}", id),
+        };
+
         comment.push_str(": (");
         for (i, arg) in func.sig.param_tys.iter().enumerate() {
             if i > 0 {
