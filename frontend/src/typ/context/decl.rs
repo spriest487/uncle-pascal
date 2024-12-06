@@ -2,14 +2,15 @@ use crate::ast::IdentPath;
 use crate::ast::Visibility;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
+use crate::typ::builtin_comparable_name;
 use crate::typ::builtin_displayable_name;
 use crate::typ::builtin_disposable_name;
 use crate::typ::builtin_string_name;
+use crate::typ::builtin_typeinfo_name;
 use crate::typ::Binding;
 use crate::typ::DeclConflict;
 use crate::typ::FunctionSig;
 use crate::typ::Type;
-use crate::typ::builtin_comparable_name;
 use common::span::Span;
 use std::fmt;
 use std::rc::Rc;
@@ -106,7 +107,7 @@ impl Decl {
             },
 
             Decl::Type { ty: Type::Class(sym), .. } => {
-                **sym == builtin_string_name()
+                **sym == builtin_string_name() || **sym == builtin_typeinfo_name()
             },
 
             _ => false,

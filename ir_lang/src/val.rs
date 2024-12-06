@@ -1,8 +1,8 @@
 use crate::metadata::StringID;
 use crate::ty::Type;
-use crate::FunctionID;
 use crate::StaticClosureID;
 use crate::VariableID;
+use crate::FunctionID;
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use bigdecimal::ToPrimitive;
@@ -183,6 +183,7 @@ pub enum GlobalRef {
     Function(FunctionID),
     StringLiteral(StringID),
     StaticClosure(StaticClosureID),
+    StaticTypeInfo(Box<Type>),
     Variable(VariableID),
 }
 
@@ -193,6 +194,7 @@ impl fmt::Display for GlobalRef {
             GlobalRef::StringLiteral(id) => write!(f, "{}", id),
             GlobalRef::StaticClosure(id) => write!(f, "{}", id),
             GlobalRef::Variable(id) => write!(f, "{}", id),
+            GlobalRef::StaticTypeInfo(ty) => write!(f, "typeinfo({})", ty)
         }
     }
 }

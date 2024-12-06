@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::ast::TypeAnnotation;
 use crate::typ::ast::Expr;
-use crate::typ::string_to_char_lit;
+use crate::typ::{builtin_typeinfo_name, string_to_char_lit};
 use crate::typ::string_type;
 use crate::typ::typecheck_type;
 use crate::typ::Context;
@@ -360,6 +360,15 @@ pub fn typecheck_literal(
             }
 
             Ok(create_default_literal(ty, span.clone()))
+        }
+        
+        ast::Literal::TypeInfo(typename) => {
+            let ty = typecheck_type(typename, ctx)?; 
+            
+            let typeinfo_type = Type::Class(Rc::new(builtin_typeinfo_name()));
+            let val = TypedValue::temp(typeinfo_type, span.clone());
+            
+            Ok(Expr::Literal(Literal::TypeInfo(Box::new(ty)), Value::from(val)))
         }
     }
 }

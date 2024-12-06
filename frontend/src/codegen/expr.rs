@@ -297,15 +297,24 @@ pub fn literal_to_val(
             _ => panic!("bad type for real literal: {}", ty),
         },
 
-        syn::Literal::String(s) => match ty {
-            typ::Type::Class(class) if is_string_class(class) => {
-                let lit_id = builder.find_or_insert_string(s);
-                let lit_ref = ir::GlobalRef::StringLiteral(lit_id);
+        syn::Literal::String(s) => {
+            match ty {
+                typ::Type::Class(class) if is_string_class(class) => {
+                    let lit_id = builder.find_or_insert_string(s);
+                    let lit_ref = ir::GlobalRef::StringLiteral(lit_id);
 
-                ir::Value::Ref(ir::Ref::Global(lit_ref))
-            },
-            _ => panic!("bad type for string literal: {}", ty),
+                    ir::Value::Ref(ir::Ref::Global(lit_ref))
+                },
+                _ => panic!("bad type for string literal: {}", ty),
+            }
         },
+        
+        syn::Literal::TypeInfo(ty) => {
+            let ty = builder.translate_type(ty);
+            let type_info_ref = ir::GlobalRef::StaticTypeInfo(Box::new(ty));
+            
+            ir::Value::from(type_info_ref)
+        }
 
         syn::Literal::SizeOf(ty) => {
             let ty = builder.translate_type(ty);

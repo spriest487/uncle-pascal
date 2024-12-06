@@ -1,26 +1,43 @@
-use crate::ast::{FunctionDeclKind, Path};
+use crate::ast::Access;
+use crate::ast::FunctionDeclKind;
+use crate::ast::IdentPath;
+use crate::ast::Path;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
-use crate::ast::{Access, IdentPath};
-use crate::typ::{ast, FunctionSigParam, FunctionSig};
-use crate::typ::ast::{Literal, MethodDecl};
+use crate::typ::ast;
 use crate::typ::ast::SELF_PARAM_NAME;
 use crate::typ::Context;
 use crate::typ::Environment;
+use crate::typ::FunctionSig;
+use crate::typ::FunctionSigParam;
 use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeResult;
-use crate::{Ident, IntConstant};
+use crate::Ident;
+use crate::IntConstant;
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
+
+thread_local! {
+    pub static BUILTIN_SPAN: Span = Span {
+        file: Rc::new(PathBuf::from(BUILTIN_FILENAME)),
+        start: Location::zero(),
+        end: Location::zero(),
+    };
+}
+
+pub const SYSTEM_UNIT_NAME: &str = "System";
 
 pub const NIL_NAME: &str = "nil";
 
-pub const SYSTEM_UNIT_NAME: &str = "System";
 pub const NOTHING_TYPE_NAME: &str = "Nothing";
 pub const ANY_TYPE_NAME: &str = "Object";
+
+pub const TYPEINFO_TYPE_NAME: &str = "TypeInfo";
+pub const TYPEINFO_NAME_METHOD: &str = "Name";
 
 pub const DISPOSABLE_IFACE_NAME: &str = "Disposable";
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
@@ -65,11 +82,7 @@ pub fn free_mem_sig() -> FunctionSig {
 }
 
 pub fn builtin_span() -> Span {
-    Span {
-        file: Rc::new(BUILTIN_FILENAME.into()),
-        start: Location { line: 0, col: 0 },
-        end: Location { line: 0, col: 0 },
-    }
+    BUILTIN_SPAN.with(|span| span.clone())
 }
 
 pub fn builtin_ident(name: &str) -> Ident {
@@ -129,14 +142,6 @@ pub fn builtin_string_class() -> ast::StructDef {
     }
 }
 
-pub fn string_to_char_lit(string: &str) -> Option<Literal> {
-    if string.len() == 1 && string[..1].is_ascii() {
-        let char_byte = string.as_bytes()[0];
-        return Some(Literal::Integer(IntConstant::from(char_byte)));
-    }
-    
-    None
-}
 
 // builtin name of the dispose method of the builtin disposable interface
 pub fn builtin_disposable_dispose_name(owning_ty: Option<Type>) -> ast::TypedFunctionName {
@@ -153,8 +158,58 @@ pub fn builtin_disposable_dispose_name(owning_ty: Option<Type>) -> ast::TypedFun
 pub fn builtin_disposable_name() -> Symbol {
     Symbol::from(IdentPath::from_vec(vec![
         builtin_ident(SYSTEM_UNIT_NAME), 
-        builtin_ident(DISPOSABLE_IFACE_NAME)
+        builtin_ident(DISPOSABLE_IFACE_NAME),
     ]))
+}
+
+pub fn builtin_typeinfo_class() -> ast::StructDef {
+    let name_method = ast::MethodDecl {
+        access: Access::Public,
+        func_decl: Rc::new(ast::FunctionDecl {
+            name: ast::TypedFunctionName {
+                ident: builtin_ident(TYPEINFO_NAME_METHOD),
+                span: builtin_span(),
+                owning_ty: Some(Type::class(builtin_typeinfo_name())),
+            },
+            mods: vec![],
+            params: vec![],
+            return_ty: Type::class(builtin_string_name()),
+            kind: FunctionDeclKind::Function,
+            type_params: None,
+            span: builtin_span(),
+        })
+    };
+
+    ast::StructDef {
+        kind: StructKind::Class,
+        name: builtin_typeinfo_name(),
+        packed: false,
+        forward: false,
+        fields: vec![],
+        methods: vec![
+            name_method,
+        ],
+        implements: vec![
+            Type::interface(builtin_displayable_name().full_path)
+        ],
+        span: builtin_span(),
+    }
+}
+
+pub fn builtin_typeinfo_name() -> Symbol {
+    Symbol::from(IdentPath::from_vec(vec![
+        builtin_ident(SYSTEM_UNIT_NAME),
+        builtin_ident(TYPEINFO_TYPE_NAME),
+    ]))
+}
+
+pub fn string_to_char_lit(string: &str) -> Option<ast::Literal> {
+    if string.len() == 1 && string[..1].is_ascii() {
+        let char_byte = string.as_bytes()[0];
+        return Some(ast::Literal::Integer(IntConstant::from(char_byte)));
+    }
+
+    None
 }
 
 pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
@@ -188,7 +243,7 @@ pub fn builtin_comparable_name() -> Symbol {
         builtin_ident(SYSTEM_UNIT_NAME),
         builtin_ident(COMPARABLE_IFACE_NAME),
     ]))
-} 
+}
 
 pub fn builtin_comparable_iface() -> ast::InterfaceDecl {
     let builtin_span = builtin_span();
@@ -296,7 +351,7 @@ pub fn declare_builtin_ty(
     ty: Type,
     comparable: bool,
     displayable: bool
-) -> TypeResult<LinkedHashMap<Ident, MethodDecl>> {
+) -> TypeResult<LinkedHashMap<Ident, ast::MethodDecl>> {
     let builtin_span = builtin_span();
     
     let ident = Ident::new(name, builtin_span.clone());
@@ -310,7 +365,7 @@ pub fn declare_builtin_ty(
             let display_method = Rc::new(builtin_displayable_display_method(ty.clone(), ty.clone()));
             ctx.declare_function(display_method.name.ident.clone(), display_method.clone(), Visibility::Interface)?;
 
-            methods.insert(display_method.name.ident.clone(), MethodDecl {
+            methods.insert(display_method.name.ident.clone(), ast::MethodDecl {
                 func_decl: display_method,
                 access: Access::Published,
             });
@@ -320,7 +375,7 @@ pub fn declare_builtin_ty(
             let compare_method = Rc::new(builtin_comparable_compare_method(ty.clone(), ty.clone()));
             ctx.declare_function(compare_method.name.ident.clone(), compare_method.clone(), Visibility::Interface)?;
             
-            methods.insert(compare_method.name.ident.clone(), MethodDecl {
+            methods.insert(compare_method.name.ident.clone(), ast::MethodDecl {
                 func_decl: compare_method,
                 access: Access::Published,
             });

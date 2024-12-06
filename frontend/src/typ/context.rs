@@ -19,22 +19,24 @@ pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
 use crate::ast as syn;
+use crate::ast::Access;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Path;
+use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::ast::INTERFACE_METHOD_ACCESS;
-use crate::ast::{Access, StructKind};
+use crate::typ::ast::EnumDecl;
 use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionDef;
 use crate::typ::ast::InterfaceDecl;
 use crate::typ::ast::Literal;
 use crate::typ::ast::MethodDecl;
 use crate::typ::ast::OverloadCandidate;
+use crate::typ::ast::SetDecl;
 use crate::typ::ast::StructDef;
 use crate::typ::ast::VariantDef;
 use crate::typ::ast::SELF_TY_NAME;
-use crate::typ::ast::{EnumDecl, SetDecl};
 use crate::typ::specialize_by_return_ty;
 use crate::typ::specialize_struct_def;
 use crate::typ::specialize_variant_def;
@@ -186,6 +188,10 @@ impl Context {
                     .expect("builtin type decl must not fail");
                 declare_builtin_ty(ctx, ANY_TYPE_NAME, Type::Any, false, false)
                     .expect("builtin type decl must not fail");
+                
+                let typeinfo_ty = Type::class(builtin_typeinfo_name());
+                declare_builtin_ty(ctx, TYPEINFO_TYPE_NAME, typeinfo_ty, false, false)
+                    .expect("typeinfo type decl must not fail");
 
                 for primitive in &Primitive::ALL {
                     let primitive_ty = Type::Primitive(*primitive);

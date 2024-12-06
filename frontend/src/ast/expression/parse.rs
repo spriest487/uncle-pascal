@@ -119,7 +119,22 @@ fn parse_default(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
     Ok(Expr::Literal(Literal::DefaultValue(Box::new(ty)), span))
 }
 
-pub fn parse_case_expr(tokens: &mut TokenStream) -> ParseResult<Expr<Span>> {
+fn parse_type_info_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
+    let kw = tokens.match_one(Keyword::TypeInfo)?;
+    let typename_group = tokens.match_one(DelimiterPair::Bracket)?
+        .into_delimited_group()
+        .unwrap();
+
+    let span = kw.span().to(&typename_group.close);
+    
+    let mut typename_tokens = typename_group.to_inner_tokens();
+    let typename = TypeName::parse(&mut typename_tokens)?;
+    typename_tokens.finish()?;
+
+    Ok(Expr::Literal(Literal::TypeInfo(Box::new(typename)), span))
+}
+
+pub fn parse_case_expr(tokens: &mut TokenStream) -> ParseResult<Expr> {
     let case = CaseExpr::parse(tokens)?;
     let expr = Expr::Case(Box::new(case));
 
@@ -324,6 +339,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 let expr = Expr::from(raise);
                 self.push_operand(expr);
             },
+            
+            Some(tt) if tt.is_keyword(Keyword::TypeInfo) => {
+                let expr = parse_type_info_expr(self.tokens)?;
+                self.push_operand(expr);
+            }
 
             Some(tt) if tt.is_delimited(DelimiterPair::CaseEnd) => {
                 let expr = parse_case_expr(self.tokens)?;

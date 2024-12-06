@@ -160,6 +160,9 @@ impl Expr {
                 let name = GlobalName::Variable(*id);
                 Expr::Global(name)
             }
+            ir::Ref::Global(ir::GlobalRef::StaticTypeInfo(ty)) => {
+                unimplemented!("static type info for {ty}")
+            }
         }
     }
 

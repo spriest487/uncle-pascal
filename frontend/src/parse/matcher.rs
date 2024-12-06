@@ -201,6 +201,7 @@ impl Matcher {
                     | Keyword::Nil
                     | Keyword::SizeOf
                     | Keyword::Default
+                    | Keyword::TypeInfo
                     | Keyword::True
                     | Keyword::False
                     => true,

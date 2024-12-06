@@ -70,6 +70,12 @@ type
     Displayable = interface
         function ToString: String;
     end;
+    
+    TypeInfo = class
+        name: String;
+    public
+        function Name: String;
+    end;
 
 function GetMem(count: Int32): ^Byte; external 'rt';
 function FreeMem(mem: ^Byte); external 'rt';
@@ -521,6 +527,11 @@ begin
         raise 'invalid index ' + at + ' in string of length ' + self;
 
     self.chars[at]
+end;
+
+function TypeInfo.Name: String;
+begin
+    self.name
 end;
 
 function Int8.ToString: String;

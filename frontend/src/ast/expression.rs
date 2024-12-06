@@ -39,6 +39,7 @@ pub enum Literal<T: TypeAnnotation> {
     Boolean(bool),
     SizeOf(Box<T>),
     DefaultValue(Box<T>),
+    TypeInfo(Box<T>),
 }
 
 impl<T: TypeAnnotation> fmt::Display for Literal<T> {
@@ -51,6 +52,7 @@ impl<T: TypeAnnotation> fmt::Display for Literal<T> {
             Literal::Boolean(b) => write!(f, "{}", b),
             Literal::SizeOf(ty) => write!(f, "sizeof({})", ty),
             Literal::DefaultValue(ty) => write!(f, "default({})", ty),
+            Literal::TypeInfo(ty) => write!(f, "typeinfo({})", ty),
         }
     }
 }

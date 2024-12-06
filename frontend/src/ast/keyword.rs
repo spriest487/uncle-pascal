@@ -68,9 +68,10 @@ pub enum Keyword {
     Is,
     
     Where,
-    
+
     SizeOf,
     Default,
+    TypeInfo,
 
     Public,
     Private,
@@ -140,6 +141,7 @@ impl Keyword {
             
             "sizeof" => Some(Keyword::SizeOf),
             "default" => Some(Keyword::Default),
+            "typeinfo" => Some(Keyword::TypeInfo),
             
             "is" => Some(Keyword::Is),
             "with" => Some(Keyword::With),
@@ -230,6 +232,7 @@ impl fmt::Display for Keyword {
 
             Keyword::SizeOf => "sizeof",
             Keyword::Default => "default",
+            Keyword::TypeInfo => "typeinfo",
             
             Keyword::Public => "public",
             Keyword::Private => "private",
