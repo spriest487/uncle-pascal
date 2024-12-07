@@ -259,11 +259,10 @@ impl LibraryBuilder {
         }
 
         let set_flags_type = SetFlagsType::define_new(self, bits);
+        self.set_flags_type_info.insert(bits, set_flags_type);
 
-        self.set_flags_type_info.insert(typ::MAX_FLAGS_BITS, set_flags_type);
         self.runtime_type(&ir::Type::Struct(set_flags_type.struct_id));
 
-        self.set_flags_type_info.insert(bits, set_flags_type);
         set_flags_type
     }
 

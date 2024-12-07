@@ -1040,7 +1040,7 @@ pub fn typecheck_in_set_operator(
                 .map(|el| el.value)
                 .collect();
 
-            let set_type = SetDecl::items_to_set_type(None, &item_exprs, ctx)?;
+            let set_type = SetDecl::items_to_set_type(None, &item_exprs, &ctor.annotation, ctx)?;
             let set_expr = typecheck_expr(rhs, &Type::set(set_type), ctx)?;
 
             match set_expr.annotation().ty().as_ref() {

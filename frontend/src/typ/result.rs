@@ -1,7 +1,8 @@
 use crate::ast;
+use crate::ast::Access;
 use crate::ast::Ident;
+use crate::ast::IdentPath;
 use crate::ast::Operator;
-use crate::ast::{Access, IdentPath};
 use crate::parse::InvalidStatement;
 use crate::typ::annotation::Value;
 use crate::typ::ast::Call;
@@ -12,10 +13,11 @@ use crate::typ::ast::Stmt;
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::ast::VariantDef;
 use crate::typ::context::NameError;
-use crate::typ::{FunctionSig, MAX_FLAGS_BITS};
+use crate::typ::FunctionSig;
 use crate::typ::GenericError;
 use crate::typ::Type;
 use crate::typ::ValueKind;
+use crate::typ::MAX_FLAGS_BITS;
 use crate::IntConstant;
 use common::span::*;
 use common::Backtrace;
@@ -205,7 +207,7 @@ pub enum TypeError {
         span: Span,
     },
     EmptySetDecl {
-        name: IdentPath,
+        name: Option<IdentPath>,
         span: Span,
     },
     TooManySetValues {
@@ -1032,7 +1034,10 @@ impl fmt::Display for TypeError {
             }
 
             TypeError::EmptySetDecl { name, .. } => {
-                write!(f, "set declaration `{}` contains no values", name)
+                match name {
+                    Some(path) => write!(f, "set declaration `{path}` contains no values"),
+                    None => write!(f, "set declaration contains no values")
+                }
             }
             
             TypeError::TooManySetValues { count, ..  } => {

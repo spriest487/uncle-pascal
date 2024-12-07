@@ -40,7 +40,7 @@ pub fn set_word_count(bit_count: usize) -> usize {
 impl SetFlagsType {
     // full-size 256-bit flag struct, the max number of values supported by
     // delphi/FPC sets
-    pub fn define_new(lib: &mut LibraryBuilder, bit_count: usize) -> Self {
+    pub fn define_new(lib: &mut LibraryBuilder, bit_count: usize) -> Self {        
         let word_count = set_word_count(bit_count);
 
         let set_flags_struct = ir::Struct {

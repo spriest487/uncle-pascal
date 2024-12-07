@@ -18,8 +18,14 @@ pub struct SetType {
 
 impl SetType {
     pub fn flags_type_bits(&self) -> usize {
-        // only support one size for now
-        MAX_FLAGS_BITS
+        let range = self.max.as_i128() - self.min.as_i128();
+        if range <= 64 {
+            64
+        } else if range <= 128 {
+            128
+        } else {
+            MAX_FLAGS_BITS
+        }
     }
 }
 
@@ -32,21 +38,3 @@ impl fmt::Display for SetType {
         }
     }
 }
-
-// #[derive(Derivative, Clone, Eq)]
-// #[derivative(Debug, PartialEq, Hash)]
-// pub struct SetValue {
-//     pub indices: Vec<usize>,
-//     pub set_type: Rc<SetType>,
-//     
-//     #[derivative(Debug = "ignore")]
-//     #[derivative(PartialEq = "ignore")]
-//     #[derivative(Hash = "ignore")]
-//     pub span: Span,
-// }
-// 
-// impl From<SetValue> for Typed {
-//     fn from(value: SetValue) -> Self {
-//         Typed::Set(Rc::new(value))
-//     }
-// }

@@ -505,21 +505,32 @@ impl SetDecl {
         })
     }
     
-    pub fn items_to_set_type(name: Option<IdentPath>, items: &[Expr], ctx: &Context) -> TypeResult<SetType> {
-        let mut max = 0;
-        let mut min = 0;
-
-        for item in items {
-            let int_val = const_eval_integer(item, ctx)?;
-
-            max = i128::max(max, int_val.as_i128());
-            min = i128::min(min, int_val.as_i128());
+    pub fn items_to_set_type(name: Option<IdentPath>, items: &[Expr], at: &Span, ctx: &Context) -> TypeResult<SetType> {
+        if items.is_empty() {
+            return Err(TypeError::EmptySetDecl {
+                span: at.clone(),
+                name,
+            });
         }
         
-        if max - min > (MAX_FLAGS_BITS as i128) {
+        let mut max = None;
+        let mut min = None;
+
+        for item in items {
+            let int_val = const_eval_integer(item, ctx)?.as_i128();
+
+            max = Some(max.map_or(int_val, |val| i128::max(val, int_val)));
+            min = Some(min.map_or(int_val, |val| i128::min(val, int_val)));
+        }
+        
+        let min = min.unwrap();
+        let max = max.unwrap();
+        let range = max - min;
+
+        if range > MAX_FLAGS_BITS as i128 {
             return Err(TypeError::TooManySetValues {
-                count: (max - min) as usize,
-                span: items[0].span().to(items[items.len() - 1].span()),
+                count: range as usize,
+                span: at.clone(),
             })
         }
 
@@ -558,15 +569,25 @@ fn get_set_type_range(range_ty: &Type, at: &Span, ctx: &Context) -> TypeResult<(
                 return Err(TypeError::name_not_found(enum_path.as_ref().clone(), at.clone()));
             };
 
-            let mut min = 0;
-            let mut max = 0;
-            for item in &enum_decl.items {
-                let item_val = item.value.as_ref().unwrap();
-                min = i128::min(item_val.as_i128(), min);
-                max = i128::max(item_val.as_i128(), max);
+            if enum_decl.items.is_empty() {
+                return Err(TypeError::InvalidSetValueType {
+                    actual: range_ty.clone(),
+                    span: at.clone(),
+                });
             }
 
+            let mut min = None;
+            let mut max = None;
+            for item in &enum_decl.items {
+                let item_val = item.value.as_ref().unwrap().as_i128();
+                min = Some(min.map_or(item_val, |val| i128::min(item_val, val)));
+                max = Some(max.map_or(item_val, |val| i128::max(item_val, val)));
+            }
+
+            let min = min.unwrap();
+            let max = max.unwrap();
             let range = max - min;
+
             if range > MAX_FLAGS_BITS as i128 {
                 return Err(TypeError::TooManySetValues {
                     count: range as usize,
@@ -578,10 +599,10 @@ fn get_set_type_range(range_ty: &Type, at: &Span, ctx: &Context) -> TypeResult<(
         }
 
         _ => {
-            return Err(TypeError::InvalidSetValueType {
+            Err(TypeError::InvalidSetValueType {
                 actual: range_ty.clone(),
                 span: at.clone(),
-            });
+            })
         }
     }
 }
