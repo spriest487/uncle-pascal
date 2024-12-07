@@ -1,4 +1,4 @@
-use crate::ast::CompilationUnit;
+use crate::ast::Unit;
 use crate::ast::Type;
 use crate::ast::TypeDecl;
 use crate::ast::TypeDefName;
@@ -55,7 +55,7 @@ impl StructDef {
     pub fn translate(
         id: ir::TypeDefID,
         ir_struct: &ir::Struct,
-        module: &mut CompilationUnit,
+        module: &mut Unit,
     ) -> Self {
         let mut members = Vec::new();
 

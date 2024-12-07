@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use serde::Deserialize;
 use serde::Serialize;
 use crate::FunctionID;
+use crate::StringID;
 use crate::Type;
 
 pub trait RttiProvider {
@@ -11,7 +12,7 @@ pub trait RttiProvider {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RuntimeType {
-    pub name: Option<String>,
+    pub name: Option<StringID>,
 
     pub release: Option<FunctionID>,
     pub retain: Option<FunctionID>,

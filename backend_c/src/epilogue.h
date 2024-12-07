@@ -58,6 +58,160 @@ INT_TO_STR_IMPL(System_NativeIntToStr,  ptrdiff_t,      "zd",   24 + 1)
 INT_TO_STR_IMPL(System_PointerToStr,    const void*,    "p",    24 + 0)
 INT_TO_STR_IMPL(System_RealToStr,       float,          "f",    3 + FLT_MANT_DIG - FLT_MIN_EXP)
 
+static void* Alloc(size_t len) {
+    void* mem = calloc((size_t) len, 1);
+    if (!mem) {
+        abort();
+    }
+
+#ifdef TRACE_HEAP
+    struct AllocTrace* new_alloc = malloc(sizeof(struct AllocTrace));
+    new_alloc->next = alloc_traces;
+    new_alloc->len = len;
+    new_alloc->at = mem;
+    alloc_traces = new_alloc;
+
+    fprintf(stderr, "heap: alloc %4zu bytes at 0x%p\n", len, mem);
+#endif
+
+    return mem;
+}
+
+static void Free(void* mem) {
+#ifdef TRACE_HEAP
+    struct AllocTrace** alloc = &alloc_traces;
+
+    while (*alloc) {
+        if ((*alloc)->at == mem) {
+            struct AllocTrace* removed = *alloc;
+            *alloc = removed->next;
+
+            fprintf(stderr, "heap:  free %4zu bytes at 0x%p\n", removed->len, removed->at);
+            free(removed);
+            break;
+        } else {
+            alloc = &((*alloc)->next);
+        }
+    }
+#endif
+
+    free(mem);
+}
+
+// RC runtime functions
+
+static void* RcAlloc(struct Class* class) {
+    if (!class) {
+        abort();
+    }
+
+    void* instance = Alloc(class->size);
+
+    // the rc field should be the first member of any rc type
+    struct Rc* rc = (struct Rc*)instance;
+    rc->class = class;
+    rc->strong_count = 1;
+    rc->weak_count = 0;
+
+    return rc;
+}
+
+static void RcRetain(void* instance, bool weak) {
+    if (!instance) {
+        return;
+    }
+
+    struct Rc* rc = (struct Rc*)instance;
+    
+    // don't retain immortal refs
+    if (rc->strong_count < 0) {
+        return;
+    }
+    
+    if (weak) {
+        rc->weak_count += 1;
+    } else {
+        if (rc->strong_count == 0) {
+            fprintf(stderr, "resurrecting with 0 strong refs pointer @ 0x%p (+ %d weak refs remain)\n", instance, rc->weak_count);
+            abort();
+        }
+    
+        rc->strong_count += 1;
+    }
+
+#if TRACE_RC
+    // safe to use the name chars ptr as a C string here, we null-terminate string literals
+    printf("rc: retain %s @ 0x%p (%d+%d refs)\n", 
+        TYPEINFO_NAME_CHARS(rc->class->typeinfo), 
+        instance, 
+        rc->strong_count, 
+        rc->weak_count);
+#endif
+}
+
+static void RcRelease(void* instance, bool weak) {
+    if (!instance) {
+        // releasing NULL should be ignored
+        return;
+    }
+
+    struct Rc* rc = (struct Rc*)instance;
+
+    if (rc->strong_count < 0) {
+        // immortal
+        return;
+    }
+   
+    if (weak) {
+        if (rc->weak_count == 0) {
+            fprintf(stderr, "releasing with 0 weak refs remaining @ 0x%p\n", instance);
+            abort();
+        }
+
+#if TRACE_RC
+        printf("rc: release %s @ 0x%p (%d+%d remain)\n", TYPEINFO_NAME_CHARS(rc->class->typeinfo), instance, rc->strong_count, rc->weak_count - 1);
+#endif
+        
+        rc->weak_count -= 1;
+    } else {
+        if (rc->strong_count == 0) {
+            fprintf(stderr, "releasing with 0 strong refs remaining @ 0x%p\n", instance);
+            abort();
+        }
+
+#if TRACE_RC
+        printf("rc: release %s @ 0x%p (%d+%d remain)\n", TYPEINFO_NAME_CHARS(rc->class->typeinfo), instance, rc->strong_count - 1, rc->weak_count);
+#endif
+
+        // call the disposer before decrementing the ref count, because it must still be a live reference
+        // while the function is executing
+        if (rc->strong_count == 1 && rc->class->disposer) {
+#if TRACE_RC
+            printf("rc: \tdisposing %s @ 0x%p\n", TYPEINFO_NAME_CHARS(rc->class->typeinfo), instance);
+#endif
+            rc->class->disposer(instance);
+            
+            // invoke structural release to release struct fields
+            if (rc->class->cleanup) {
+                rc->class->cleanup(instance);
+            }
+            rc->class = NULL;
+
+            if (rc->strong_count != 1) {
+                fprintf(stderr, "disposal routine for %s modified the reference count of the disposed instance\n", TYPEINFO_NAME_CHARS(rc->class->typeinfo));
+                abort();
+            }
+        }
+  
+        rc->strong_count -= 1;
+    }
+
+    if (rc->strong_count == 0 && rc->weak_count == 0) {
+        // free memory
+        Free(instance);
+    }
+}
+
 static unsigned char* System_GetMem(int32_t len) {
     return (unsigned char*) Alloc(len);
 }

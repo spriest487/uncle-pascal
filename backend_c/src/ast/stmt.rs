@@ -3,10 +3,11 @@ use crate::ast::expr::InfixOp;
 use crate::ast::expr::PrefixOp;
 use crate::ast::ty_def::FieldName;
 use crate::ast::FunctionName;
-use crate::ast::CompilationUnit;
+use crate::ast::Unit;
 use crate::ast::Type;
 use ir_lang as ir;
 use std::fmt;
+use ir_lang::VirtualTypeID;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum GlobalName {
@@ -15,6 +16,8 @@ pub enum GlobalName {
     StringLiteral(ir::StringID),
 
     StaticClosure(ir::StaticClosureID),
+    
+    StaticTypeInfo(Box<ir::Type>),
     
     Variable(ir::VariableID),
 }
@@ -26,7 +29,64 @@ impl fmt::Display for GlobalName {
             GlobalName::StringLiteral(id) => write!(f, "String_{}", id.0),
             GlobalName::StaticClosure(id) => write!(f, "StaticClosure_{}", id.0),
             GlobalName::Variable(id) => write!(f, "Variable_{}", id.0),
+
+            GlobalName::StaticTypeInfo(ty) => {
+                write_global_typeinfo_decl_name(f, ty)
+            }
         }
+    }
+}
+
+pub fn write_global_typeinfo_decl_name(f: &mut fmt::Formatter, ty: &ir::Type) -> fmt::Result {
+    write!(f, "TypeInfo_")?;
+    write_global_typeinfo_decl_name_type(f, ty)
+}
+
+fn write_global_typeinfo_decl_name_type(f: &mut fmt::Formatter, ty: &ir::Type) -> fmt::Result {
+    match ty {
+        // primitives
+        ir::Type::Bool => write!(f, "Bool"),
+        ir::Type::U8 => write!(f, "U8"),
+        ir::Type::I8 => write!(f, "I8"),
+        ir::Type::I16 => write!(f, "I16"),
+        ir::Type::U16 => write!(f, "U16"),
+        ir::Type::I32 => write!(f, "I32"),
+        ir::Type::U32 => write!(f, "U32"),
+        ir::Type::I64 => write!(f, "I64"),
+        ir::Type::U64 => write!(f, "U64"),
+        ir::Type::USize => write!(f, "USize"),
+        ir::Type::ISize => write!(f, "ISize"),
+        ir::Type::F32 => write!(f, "F32"),
+
+        // aggregates
+        ir::Type::Struct(id) => write!(f, "Struct_{id}"),
+        ir::Type::Variant(id) => write!(f, "Variant_{id}"),
+
+        // reference types
+        ir::Type::RcPointer(id) | ir::Type::RcWeakPointer(id) => {
+            write!(f, "VType_")?;
+            match id {
+                VirtualTypeID::Any => write!(f, "Any"),
+                VirtualTypeID::Class(id) => write!(f, "Class_{id}"),
+                VirtualTypeID::Interface(id) => write!(f, "Interface_{id}"),
+                VirtualTypeID::Closure(id) => write!(f, "Closure_{id}"),
+            }
+        },
+
+        ir::Type::Function(closure_id) => write!(f, "Closure_{closure_id}"),
+
+        // ???
+        ir::Type::Nothing => write!(f, "Nothing"),
+        
+        // recursive types
+        ir::Type::Pointer(ty) => {
+            write!(f, "Ptr_")?;
+            write_global_typeinfo_decl_name(f, ty)
+        },
+        ir::Type::Array { element, dim } => {
+            write!(f, "Array{}_", dim)?;
+            write_global_typeinfo_decl_name(f, element)
+        },
     }
 }
 
@@ -126,12 +186,12 @@ impl fmt::Display for Statement {
 }
 
 pub struct Builder<'a> {
-    module: &'a mut CompilationUnit,
+    module: &'a mut Unit,
     pub stmts: Vec<Statement>,
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(module: &'a mut CompilationUnit) -> Self {
+    pub fn new(module: &'a mut Unit) -> Self {
         Self {
             module,
             stmts: Vec::new(),

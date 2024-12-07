@@ -103,10 +103,6 @@ impl<'m> Builder<'m> {
         translate_name(name, &self.generic_context, self.library)
     }
 
-    pub fn translate_class(&mut self, class_def: &typ::ast::StructDef) -> Struct {
-        translate_struct_def(class_def, &self.generic_context, self.library)
-    }
-
     pub fn translate_iface(&mut self, iface_def: &typ::ast::InterfaceDecl) -> Interface {
         translate_iface(iface_def, &self.generic_context, self.library)
     }

@@ -23,6 +23,8 @@ use crate::codegen::IROptions;
 use crate::codegen::SetFlagsType;
 use crate::typ::ast::apply_func_decl_named_ty_args;
 use crate::typ::builtin_ident;
+use crate::typ::builtin_string_name;
+use crate::typ::builtin_typeinfo_name;
 use crate::typ::free_mem_sig;
 use crate::typ::get_mem_sig;
 use crate::typ::layout::StructLayout;
@@ -71,13 +73,17 @@ pub struct LibraryBuilder {
 }
 
 impl LibraryBuilder {
-    pub fn new(src_metadata: typ::Context, metadata: ir::Metadata, opts: IROptions) -> Self {        
+    pub fn new(src_metadata: typ::Context, metadata: ir::Metadata, opts: IROptions) -> Self {
+        let mut builtin_names = HashMap::new();
+        builtin_names.insert(ir::STRING_TYPE, builtin_string_name().to_string());
+        builtin_names.insert(ir::TYPEINFO_TYPE, builtin_typeinfo_name().to_string());
+
         let mut builder = LibraryBuilder {
             opts,
             src_metadata,
             
             rtti_provider: PascalRttiProvider {
-                names: HashMap::new(),
+                names: builtin_names,
             },
             
             type_cache: LinkedHashMap::new(),
@@ -118,11 +124,16 @@ impl LibraryBuilder {
             gen_dyn_array_funcs(&mut self, &elem_ty, struct_id);
         }
         for class_ty in self.class_types().cloned().collect::<Vec<_>>() {
-            gen_class_rc_boilerplate(&mut self, &class_ty);
+            gen_class_runtime_type(&mut self, &class_ty);
         }
         for closure_id in self.library.closure_types().collect::<Vec<_>>() {
             self.runtime_type(&ir::Type::Struct(closure_id));
         }
+
+        // ensure builtin types have typeinfo, even if they weren't referenced
+        // for ty in BUILTIN_TYPE_DEFS {
+        //     let rtt = self.runtime_type(&ty);
+        // }
 
         self.library.metadata.sort_type_defs_by_deps();
 
@@ -885,7 +896,7 @@ impl LibraryBuilder {
                 self.type_cache.insert(src_ty.clone(), ty.clone());
 
                 let name_path = translate_name(&variant, generic_ctx, self);
-                self.library.metadata.declare_struct(id, &name_path);
+                self.library.metadata.declare_struct(id, &name_path, false);
 
                 let variant_meta = translate_variant_def(&variant_def, generic_ctx, self);
 
@@ -896,11 +907,11 @@ impl LibraryBuilder {
             typ::Type::Record(name) | typ::Type::Class(name) => {
                 // handle builtin types
                 if **name == typ::builtin_string_name() {
-                    let string_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(ir::STRING_ID));
-
-                    self.type_cache.insert(src_ty, string_ty.clone());
-
-                    return string_ty;
+                    self.type_cache.insert(src_ty, ir::STRING_TYPE);
+                    return ir::STRING_TYPE;
+                } else if **name == typ::builtin_typeinfo_name() {
+                    self.type_cache.insert(src_ty, ir::TYPEINFO_TYPE);
+                    return ir::TYPEINFO_TYPE;
                 }
 
                 let kind = src_ty.struct_kind().unwrap();
@@ -920,8 +931,7 @@ impl LibraryBuilder {
                 self.type_cache.insert(src_ty.clone(), ty.clone());
 
                 let name_path = translate_name(&name, generic_ctx, self);
-
-                self.library.metadata.declare_struct(id, &name_path);
+                self.library.metadata.declare_struct(id, &name_path, kind == StructKind::Class);
 
                 let struct_meta = translate_struct_def(&def, generic_ctx, self);
                 self.library.metadata.define_struct(id, struct_meta);
@@ -1125,9 +1135,13 @@ impl LibraryBuilder {
         } else {
             None
         };
+        
+        let rtti_name_id = self.rtti_provider
+            .type_name(ty)
+            .map(|name| self.library.metadata.find_or_insert_string(name.as_ref()));
 
         let rtt = ir::RuntimeType {
-            name: self.rtti_provider.type_name(ty).map(Cow::into_owned),
+            name: rtti_name_id,
             retain: retain_func,
             release: release_func,
         };
@@ -1741,13 +1755,15 @@ fn gen_dyn_array_rc_boilerplate(lib: &mut LibraryBuilder, elem_ty: &ir::Type, st
 // for example, a class instance maybe be stored behind an `Any` reference,
 // at which point rc instructions must discover the actual class type
 // dynamically from the rc cell's class pointer/class ID
-fn gen_class_rc_boilerplate(lib: &mut LibraryBuilder, class_ty: &ir::Type) {
+fn gen_class_runtime_type(lib: &mut LibraryBuilder, class_ty: &ir::Type) {
     let resource_struct = class_ty
         .rc_resource_class_id()
         .and_then(|class_id| class_id.as_class())
         .expect("resource class of translated class type was not a struct");
 
-    lib.runtime_type(&ir::Type::Struct(resource_struct));
+    let resource_ty = ir::Type::Struct(resource_struct);
+    lib.runtime_type(&resource_ty);
+    lib.runtime_type(&class_ty);
 }
 
 fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::TypeArgList>) {

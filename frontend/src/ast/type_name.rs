@@ -180,7 +180,15 @@ impl Parse for TypeName {
                 Ok(TypeName::Weak(Box::new(weak_ty), span))
             }
 
-            _ => unreachable!(),
+            Some(bad) => {
+                unreachable!("matcher should exclude {}", bad)
+            }
+            
+            None => {
+                tokens
+                    .match_one(Self::start_matcher())
+                    .map(|_| unreachable!("will never succeed"))
+            }
         }
     }
 }

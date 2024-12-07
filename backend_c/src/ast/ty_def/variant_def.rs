@@ -1,5 +1,5 @@
 use crate::ast::FieldName;
-use crate::ast::CompilationUnit;
+use crate::ast::Unit;
 use crate::ast::Type;
 use crate::ast::TypeDecl;
 use crate::ast::TypeDefName;
@@ -49,7 +49,7 @@ impl Hash for VariantDef {
 }
 
 impl VariantDef {
-    pub fn translate(id: TypeDefID, variant: &ir::VariantDef, module: &mut CompilationUnit) -> Self {
+    pub fn translate(id: TypeDefID, variant: &ir::VariantDef, module: &mut Unit) -> Self {
         let cases = variant
             .cases
             .iter()

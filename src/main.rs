@@ -318,9 +318,9 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
             Ok(())
         }),
 
-        CompileOutput::IR(module) => {
+        CompileOutput::IR(lib) => {
             if let Some(CompileStage::EmitIR) = args.print_stage {
-                return print_output(args.output.as_ref(), |dst| write!(dst, "{}", module));
+                return print_output(args.output.as_ref(), |dst| write!(dst, "{}", lib));
             }
             
             if let Some(output_arg) = args.output.as_ref() {
@@ -330,20 +330,20 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
 
                 if output_ext.eq_ignore_ascii_case("c") {
                     // output C code
-                    let c_module = translate_c(&module, args);
+                    let c_unit = translate_c(&lib, args);
 
                     print_output(args.output.as_ref(), |dst| {
-                        write!(dst, "{}", c_module)
+                        write!(dst, "{}", c_unit)
                     })
                 } else if output_ext.eq_ignore_ascii_case(IR_LIB_EXT) {
                     // the IR object is the output
-                    let module_bytes = bincode::serialize(&module)?;
+                    let module_bytes = bincode::serialize(&lib)?;
 
                     print_output(args.output.as_ref(), |dst| {
                         dst.write_all(&module_bytes)
                     })
                 } else if output_ext.eq_ignore_ascii_case(env::consts::EXE_EXTENSION) {
-                    clang_compile(&module, args, output_arg.as_os_str())
+                    clang_compile(&lib, args, output_arg.as_os_str())
                         .map_err(|err| CompileError::ClangBuildFailed(err))
                 } else {
                     return Err(CompileError::UnknownOutputFormat(output_ext))
@@ -359,7 +359,7 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
                 };
 
                 let mut interpreter = Interpreter::new(interpret_opts);
-                interpreter.load_lib(&module)?;
+                interpreter.load_lib(&lib)?;
                 interpreter.shutdown()?;
 
                 Ok(())
@@ -368,7 +368,7 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
     }
 }
 
-fn translate_c(module: &ir::Library, args: &Args) -> c::CompilationUnit {
+fn translate_c(module: &ir::Library, args: &Args) -> c::Unit {
     let c_opts = backend_c::Options {
         trace_heap: args.trace_heap,
         trace_rc: args.trace_rc,
@@ -379,7 +379,7 @@ fn translate_c(module: &ir::Library, args: &Args) -> c::CompilationUnit {
 }
 
 fn clang_compile(module: &ir::Library, args: &Args, out_path: &OsStr) -> io::Result<()> {
-    let c_module = translate_c(module, args);
+    let c_unit = translate_c(module, args);
     
     let mut clang_cmd = Command::new("clang");
     clang_cmd
@@ -400,7 +400,7 @@ fn clang_compile(module: &ir::Library, args: &Args, out_path: &OsStr) -> io::Res
         let c_file_path = PathBuf::from(out_path).with_extension("c");
         
         let mut c_file = File::create(&c_file_path)?; 
-        write!(c_file, "{c_module}")?;
+        write!(c_file, "{c_unit}")?;
 
         clang_cmd.arg(c_file_path)
             .arg("-g")
@@ -422,7 +422,7 @@ fn clang_compile(module: &ir::Library, args: &Args, out_path: &OsStr) -> io::Res
             .take()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "unable to write to stdin"))?;
 
-        write!(clang_in, "{}", c_module)?;
+        write!(clang_in, "{}", c_unit)?;
         drop(clang_in);
         
         clang

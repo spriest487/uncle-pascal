@@ -14,6 +14,10 @@ typedef void (*RcRetainFunc)(void*);
 #define STRING_CHARS(str_ptr) (str_ptr->field_0)
 #define STRING_LEN(str_ptr) (str_ptr->field_1)
 
+#define TYPEINFO_STRUCT struct Struct_2
+#define TYPEINFO_NAME(typeinfo) (typeinfo->field_0)
+#define TYPEINFO_NAME_CHARS(typeinfo) (TYPEINFO_NAME(typeinfo)->field_0)
+
 #ifdef _MSC_VER
 #   define PACKED_DECL(DECL) __pragma(pack(push, 1)) DECL __pragma(pack(pop))
 #else
@@ -29,7 +33,8 @@ struct MethodTable {
 
 struct Class {
     size_t size;
-    const char* name;
+    
+    TYPEINFO_STRUCT* typeinfo;
 
     struct MethodTable* iface_methods;
 
@@ -43,8 +48,9 @@ struct Rc {
     int32_t weak_count;
 };
 
-// forward decl of string type
+// forward decl of builtin types
 STRING_STRUCT;
+TYPEINFO_STRUCT;
 
 typedef void (*DynArrayAlloc)(void* arr, int32_t len, void* copy_from, void* default_val);
 typedef int32_t (*DynArrayLength)(void* arr);
@@ -82,154 +88,14 @@ static bool IsImpl(struct Class* class, size_t iface) {
 
 #endif
 
-static void* Alloc(size_t len) {
-    void* mem = calloc((size_t) len, 1);
-    if (!mem) {
-        abort();
-    }
-
-#ifdef TRACE_HEAP
-    struct AllocTrace* new_alloc = malloc(sizeof(struct AllocTrace));
-    new_alloc->next = alloc_traces;
-    new_alloc->len = len;
-    new_alloc->at = mem;
-    alloc_traces = new_alloc;
-
-    fprintf(stderr, "heap: alloc %4zu bytes at 0x%p\n", len, mem);
-#endif
-
-    return mem;
-}
-
-static void Free(void* mem) {
-#ifdef TRACE_HEAP
-    struct AllocTrace** alloc = &alloc_traces;
-
-    while (*alloc) {
-        if ((*alloc)->at == mem) {
-            struct AllocTrace* removed = *alloc;
-            *alloc = removed->next;
-
-            fprintf(stderr, "heap:  free %4zu bytes at 0x%p\n", removed->len, removed->at);
-            free(removed);
-            break;
-        } else {
-            alloc = &((*alloc)->next);
-        }
-    }
-#endif
-
-    free(mem);
-}
+static void* Alloc(size_t len);
+static void Free(void* mem);
 
 // RC runtime functions
 
-static void* RcAlloc(struct Class* class) {
-    if (!class) {
-        abort();
-    }
-
-    void* instance = Alloc(class->size);
-
-    // the rc field should be the first member of any rc type
-    struct Rc* rc = (struct Rc*)instance;
-    rc->class = class;
-    rc->strong_count = 1;
-    rc->weak_count = 0;
-
-    return rc;
-}
-
-static void RcRetain(void* instance, bool weak) {
-    if (!instance) {
-        return;
-    }
-
-    struct Rc* rc = (struct Rc*)instance;
-    
-    // don't retain immortal refs
-    if (rc->strong_count < 0) {
-        return;
-    }
-    
-    if (weak) {
-        rc->weak_count += 1;
-    } else {
-        if (rc->strong_count == 0) {
-            fprintf(stderr, "resurrecting with 0 strong refs pointer @ 0x%p (+ %d weak refs remain)\n", instance, rc->weak_count);
-            abort();
-        }
-    
-        rc->strong_count += 1;
-    }
-
-#if TRACE_RC
-    printf("rc: retain %s @ 0x%p (%d+%d refs)\n", rc->class->name, instance, rc->strong_count, rc->weak_count);
-#endif
-}
-
-static void RcRelease(void* instance, bool weak) {
-    if (!instance) {
-        // releasing NULL should be ignored
-        return;
-    }
-
-    struct Rc* rc = (struct Rc*)instance;
-
-    if (rc->strong_count < 0) {
-        // immortal
-        return;
-    }
-   
-    if (weak) {
-        if (rc->weak_count == 0) {
-            fprintf(stderr, "releasing with 0 weak refs remaining @ 0x%p\n", instance);
-            abort();
-        }
-
-#if TRACE_RC
-        printf("rc: release %s @ 0x%p (%d+%d remain)\n", rc->class->name, instance, rc->strong_count, rc->weak_count - 1);
-#endif
-        
-        rc->weak_count -= 1;
-    } else {
-        if (rc->strong_count == 0) {
-            fprintf(stderr, "releasing with 0 strong refs remaining @ 0x%p\n", instance);
-            abort();
-        }
-
-#if TRACE_RC
-        printf("rc: release %s @ 0x%p (%d+%d remain)\n", rc->class->name, instance, rc->strong_count - 1, rc->weak_count);
-#endif
-
-        // call the disposer before decrementing the ref count, because it must still be a live reference
-        // while the function is executing
-        if (rc->strong_count == 1 && rc->class->disposer) {
-#if TRACE_RC
-            printf("rc: \tdisposing %s @ 0x%p\n", rc->class->name, instance);
-#endif
-            rc->class->disposer(instance);
-            
-            // invoke structural release to release struct fields
-            if (rc->class->cleanup) {
-                rc->class->cleanup(instance);
-            }
-            rc->class = NULL;
-
-            if (rc->strong_count != 1) {
-                fprintf(stderr, "disposal routine for %s modified the reference count of the disposed instance\n", rc->class->name);
-                abort();
-            }
-        }
-  
-        rc->strong_count -= 1;
-    }
-
-    if (rc->strong_count == 0 && rc->weak_count == 0) {
-        // free memory
-        Free(instance);
-    }
-}
+static void* RcAlloc(struct Class* class);
+static void RcRetain(void* instance, bool weak);
+static void RcRelease(void* instance, bool weak);
 
 _Noreturn static void Raise(STRING_STRUCT* msg_str);
 

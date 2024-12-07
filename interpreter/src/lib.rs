@@ -1782,6 +1782,7 @@ impl Interpreter {
         self.marshaller = Rc::new(marshaller);
         self.native_heap.set_marshaller(self.marshaller.clone());
 
+        let mut string_lit_values = HashMap::new();
         for (id, literal) in lib.metadata().strings() {
             let str_val = self
                 .create_string(literal, true)
@@ -1799,14 +1800,16 @@ impl Interpreter {
                     ty: ir::Type::RcPointer(ir::VirtualTypeID::Class(ir::STRING_ID)),
                 },
             );
+
+            string_lit_values.insert(id, str_val);
         }
 
         for (ty, runtime_type) in lib.metadata.runtime_types() {
             let typeinfo_ref = GlobalRef::StaticTypeInfo(Box::new(ty.clone()));
-            
+
             let name_string = match &runtime_type.name {
                 None => DynValue::Pointer(Pointer::null(Type::Struct(STRING_ID))),
-                Some(name) => self.create_string(name, true)?, 
+                Some(name_id) => string_lit_values[name_id].clone(),
             };
             
             let typeinfo_struct = StructValue::new(TYPEINFO_ID, [name_string]);

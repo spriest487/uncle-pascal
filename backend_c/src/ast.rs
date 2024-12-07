@@ -3,6 +3,7 @@ mod stmt;
 mod expr;
 mod string_lit;
 mod ty_def;
+mod typeinfo;
 
 pub use self::expr::*;
 pub use self::function::*;
@@ -17,8 +18,9 @@ use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
 use std::fmt;
 use topological_sort::TopologicalSort;
+use crate::ast::typeinfo::TypeInfo;
 
-pub struct CompilationUnit {
+pub struct Unit {
     functions: Vec<FunctionDef>,
     ffi_funcs: Vec<FfiFunction>,
     builtin_funcs: HashMap<ir::FunctionID, FunctionName>,
@@ -38,10 +40,10 @@ pub struct CompilationUnit {
 
     opts: Options,
 
-    type_names: HashMap<ir::Type, String>,
+    typeinfos: HashMap<ir::Type, TypeInfo>,
 }
 
-impl CompilationUnit {
+impl Unit {
     pub fn new(metadata: &ir::Metadata, opts: Options) -> Self {
         let string_ty = Type::DefinedType(TypeDefName::Struct(ir::STRING_ID)).ptr();
 
@@ -261,22 +263,17 @@ impl CompilationUnit {
             .strings()
             .map(|(id, str)| (id, StringLiteral::from(str.to_string())))
             .collect();
-
-        let type_names = metadata
-            .type_defs()
-            .map(|(id, ty_def)| {
-                let ty = match ty_def {
-                    ir::TypeDef::Variant(..) => ir::Type::Variant(id),
-                    ir::TypeDef::Struct(..) => ir::Type::Struct(id),
-                    ir::TypeDef::Function(..) => ir::Type::Function(id),
-                };
-
-                let name = metadata.pretty_ty_name(&ty);
-                (ty, name.to_string())
+        
+        let type_infos = metadata
+            .runtime_types()
+            .map(|(ty, typeinfo)| {
+                (ty.clone(), TypeInfo {
+                    name: typeinfo.name
+                })
             })
             .collect();
 
-        let mut module = CompilationUnit {
+        let mut module = Unit {
             functions: Vec::new(),
             ffi_funcs: Vec::new(),
             builtin_funcs,
@@ -296,16 +293,11 @@ impl CompilationUnit {
 
             opts,
 
-            type_names,
+            typeinfos: type_infos,
         };
 
-        let class_defs = metadata.type_defs().filter_map(|(id, def)| match def {
-            ir::TypeDef::Struct(struct_def) => Some((id, struct_def)),
-            _ => None,
-        });
-
-        for (class_id, class_def) in class_defs {
-            let class = Class::translate(class_id, class_def, metadata, &mut module);
+        for (class_id, _class_def) in metadata.class_defs() {
+            let class = Class::translate(class_id, metadata, &mut module);
             module.classes.push(class);
         }
 
@@ -318,8 +310,12 @@ impl CompilationUnit {
     }
 
     pub fn pretty_type(&self, ir_ty: &ir::Type) -> Cow<str> {
-        match self.type_names.get(ir_ty) {
-            Some(name) => Cow::Borrowed(name),
+        match self.typeinfos.get(ir_ty).and_then(|typeinfo| typeinfo.name) {
+            Some(name_id) => {
+                let name = &self.string_literals[&name_id];
+                Cow::Borrowed(name.as_str())
+            },
+
             None => Cow::Owned(ir_ty.to_string()),
         }
     }
@@ -488,19 +484,30 @@ impl CompilationUnit {
                 body: Vec::new(),
             },
         };
+        
+        let mut init_stmts = Vec::new();
 
-        let ffi_init_stmts: Vec<_> = self
-            .ffi_funcs
-            .iter()
-            .map(|ffi_func| ffi_func.init_statement())
-            .collect();
+        // initialize type info fields that can't be statically initialized
+        for (ty, typeinfo) in &self.typeinfos {            
+            if let Some(name_id) = typeinfo.name {
+                let lhs = Expr::Global(GlobalName::StaticTypeInfo(Box::new(ty.clone())))
+                    .field(FieldName::ID(ir::TYPEINFO_NAME_FIELD));
+                let rhs = Expr::Global(GlobalName::StringLiteral(name_id)).addr_of();
+                
+                init_stmts.push(Statement::Expr(Expr::assign(lhs, rhs)));
+            }
+        }
+
+        // look up FFI functions
+        for ffi_func in &self.ffi_funcs {
+            init_stmts.push(ffi_func.init_statement());
+        }
 
         let mut init_builder = Builder::new(self);
+        init_builder.stmts.append(&mut init_stmts);
 
-        init_builder.stmts.extend(ffi_init_stmts);
-
+        // translate initialization blocks from library
         init_builder.translate_instructions(library.init());
-
         init_func.body.extend(init_builder.stmts);
         
         for (var_id, var_ty) in library.variables() {
@@ -517,7 +524,7 @@ impl CompilationUnit {
     }
 }
 
-impl fmt::Display for CompilationUnit {
+impl fmt::Display for Unit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.opts.trace_heap {
             writeln!(f, "#define TRACE_HEAP 1")?;
@@ -573,6 +580,24 @@ impl fmt::Display for CompilationUnit {
             writeln!(f)?;
         }
 
+        let typeinfo_struct_name = TypeDefName::Struct(ir::TYPEINFO_ID);
+        for (ty, _typeinfo) in &self.typeinfos {
+            write!(f, "static struct {} ", typeinfo_struct_name)?;
+            write_global_typeinfo_decl_name(f, ty)?;
+            writeln!(f, " = {{")?;
+
+            writeln!(f, "  .{} = {{", FieldName::Rc)?;
+            writeln!(f, "    .{} = -1,", FieldName::RcStrongCount)?;
+            writeln!(f, "    .{} = 0,", FieldName::RcWeakCount)?;
+            writeln!(f, "  }},")?;
+
+            // class typeinfo is initialized before strings (the string class must exist first),
+            // so we'll initialize class names before initialization in main()
+            writeln!(f, "  .{} = NULL,", FieldName::ID(ir::TYPEINFO_NAME_FIELD))?;
+
+            writeln!(f, "}};")?;
+        }
+
         for iface in &self.ifaces {
             writeln!(f, "{}", iface.method_table_string())?;
             writeln!(f)?;
@@ -584,11 +609,11 @@ impl fmt::Display for CompilationUnit {
             writeln!(f)?;
         }
 
+        let string_name = TypeDefName::Struct(ir::STRING_ID);
         for (str_id, lit) in &self.string_literals {
             let chars_field = FieldName::ID(ir::STRING_CHARS_FIELD);
             let len_field = FieldName::ID(ir::STRING_LEN_FIELD);
 
-            let string_name = TypeDefName::Struct(ir::STRING_ID);
             let lit_name = GlobalName::StringLiteral(*str_id);
             writeln!(f, "static struct {} {} = {{", string_name, lit_name)?;
 

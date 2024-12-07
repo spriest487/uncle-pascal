@@ -1,7 +1,7 @@
 use crate::ast::Builder;
 use crate::ast::Expr;
 use crate::ast::InfixOp;
-use crate::ast::CompilationUnit;
+use crate::ast::Unit;
 use crate::ast::Statement;
 use crate::ast::Type;
 use crate::ast::TypeDecl;
@@ -144,7 +144,7 @@ pub struct FunctionDecl {
 }
 
 impl FunctionDecl {
-    pub fn translate(id: ir::FunctionID, func: &ir_lang::FunctionDef, module: &mut CompilationUnit) -> Self {
+    pub fn translate(id: ir::FunctionID, func: &ir_lang::FunctionDef, module: &mut Unit) -> Self {
         let name = FunctionName::ID(id);
         let return_ty = Type::from_metadata(&func.sig.return_ty, module);
         let params = func
@@ -219,7 +219,7 @@ pub struct FunctionDef {
 }
 
 impl FunctionDef {
-    pub fn translate(id: ir::FunctionID, func: &ir::FunctionDef, module: &mut CompilationUnit) -> Self {
+    pub fn translate(id: ir::FunctionID, func: &ir::FunctionDef, module: &mut Unit) -> Self {
         let mut builder = Builder::new(module);
         builder.translate_instructions(&func.body);
 
@@ -260,7 +260,7 @@ impl FfiFunction {
     pub fn translate(
         id: ir::FunctionID,
         func_ref: &ir::ExternalFunctionRef,
-        module: &mut CompilationUnit,
+        module: &mut Unit,
     ) -> Self {
         let return_ty = Type::from_metadata(&func_ref.sig.return_ty, module);
         let mut params = Vec::new();

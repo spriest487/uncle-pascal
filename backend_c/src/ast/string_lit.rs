@@ -1,5 +1,6 @@
 use std::fmt;
 
+#[derive(Debug, Clone)]
 pub struct StringLiteral(String);
 
 impl fmt::Display for StringLiteral {

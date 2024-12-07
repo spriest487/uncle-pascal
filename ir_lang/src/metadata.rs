@@ -26,7 +26,7 @@ use linked_hash_map::LinkedHashMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::rc::Rc;
 
@@ -80,7 +80,6 @@ pub const STRING_TYPE: Type = Type::RcPointer(STRING_VTYPE_ID);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
 
-
 pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
 pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
@@ -91,11 +90,18 @@ pub const TYPEINFO_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(TYPEINFO_ID);
 pub const TYPEINFO_TYPE: Type = Type::RcPointer(TYPEINFO_VTYPE_ID);
 pub const TYPEINFO_NAME_FIELD: FieldID = FieldID(0);
 
+pub const BUILTIN_TYPE_DEFS: [Type; 2] = [
+    STRING_TYPE,
+    TYPEINFO_TYPE,
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Metadata {
     type_decls: LinkedHashMap<TypeDefID, TypeDecl>,
     string_literals: LinkedHashMap<StringID, String>,
     ifaces: LinkedHashMap<InterfaceID, InterfaceDecl>,
+    
+    class_ids: BTreeSet<TypeDefID>,
 
     dyn_array_structs: LinkedHashMap<Type, TypeDefID>,
 
@@ -202,11 +208,23 @@ impl Metadata {
     }
 
     pub fn type_defs(&self) -> impl Iterator<Item = (TypeDefID, &TypeDef)> {
-        self.type_decls.iter().filter_map(|(id, decl)| match decl {
-            TypeDecl::Def(def) => Some((*id, def)),
+        self.type_decls
+            .iter()
+            .filter_map(|(id, decl)| match decl {
+                TypeDecl::Def(def) => Some((*id, def)),
+    
+                TypeDecl::Reserved | TypeDecl::Forward(..) => None,
+            })
+    }
 
-            TypeDecl::Reserved | TypeDecl::Forward(..) => None,
-        })
+    pub fn class_defs(&self) -> impl Iterator<Item = (TypeDefID, &TypeDef)> {
+        self.class_ids
+            .iter()
+            .filter_map(|id| match self.type_decls.get(id)? {
+                TypeDecl::Def(def) => Some((*id, def)),
+
+                TypeDecl::Reserved | TypeDecl::Forward(..) => None,
+            })
     }
 
     pub fn get_struct_def(&self, struct_id: TypeDefID) -> Option<&Struct> {
@@ -446,7 +464,11 @@ impl Metadata {
     }
 
     // turn a reserved struct ID into a forward decl by name
-    pub fn declare_struct(&mut self, id: TypeDefID, name: &NamePath) {
+    pub fn declare_struct(&mut self, id: TypeDefID, name: &NamePath, is_class: bool) {
+        if is_class && self.class_ids.contains(&id) {
+            panic!("class {id} is already declared (new declaration: {name})");
+        }
+        
         match &mut self.type_decls[&id] {
             reserved @ TypeDecl::Reserved => {
                 *reserved = TypeDecl::Forward(name.clone());
@@ -466,6 +488,10 @@ impl Metadata {
                     "can't declare same struct multiple times with different names"
                 );
             },
+        }
+        
+        if is_class {
+            self.class_ids.insert(id);
         }
     }
 
@@ -694,7 +720,7 @@ impl Metadata {
         
         let runtime_name = rtti_provider
             .dyn_array_type_name(&element)
-            .map(Cow::into_owned);
+            .map(|name| self.find_or_insert_string(name.as_ref()));
 
         self.declare_runtime_type(Type::Struct(struct_id), RuntimeType {
             name: runtime_name,

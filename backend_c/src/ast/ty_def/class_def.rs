@@ -3,7 +3,7 @@ use crate::ast::FunctionDecl;
 use crate::ast::FunctionDef;
 use crate::ast::FunctionName;
 use crate::ast::GlobalName;
-use crate::ast::CompilationUnit;
+use crate::ast::Unit;
 use crate::ast::Statement;
 use crate::ast::Type;
 use crate::ast::TypeDefName;
@@ -27,7 +27,7 @@ impl MethodImplFunc {
         iface_method: &ir::Method,
         impl_func_id: ir::FunctionID,
         metadata: &ir::Metadata,
-        module: &mut CompilationUnit,
+        module: &mut Unit,
     ) -> Self {
         let class_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(self_ty_id));
         let iface_ty = ir::Type::RcPointer(ir::VirtualTypeID::Interface(iface_id));
@@ -59,7 +59,7 @@ impl MethodImplFunc {
         }
     }
 
-    fn gen_vcall_wrapper(&self, module: &CompilationUnit) -> FunctionDef {
+    fn gen_vcall_wrapper(&self, module: &Unit) -> FunctionDef {
         let mut next_param_local = ir::LocalID(match &self.vcall_wrapper_decl.return_ty {
             Type::Void => 0,
             _ => 1,
@@ -107,8 +107,6 @@ pub struct InterfaceImpl {
 
 #[derive(Clone, Debug)]
 pub struct Class {
-    name: String,
-    
     struct_id: ir::TypeDefID,
     impls: HashMap<ir::InterfaceID, InterfaceImpl>,
 
@@ -122,12 +120,9 @@ pub struct Class {
 impl Class {
     pub fn translate(
         struct_id: ir::TypeDefID,
-        _struct_def: &ir::Struct,
         metadata: &ir::Metadata,
-        module: &mut CompilationUnit,
-    ) -> Self {
-        let name = module.type_names[&ir::Type::Struct(struct_id)].clone();
-        
+        module: &mut Unit,
+    ) -> Self {        
         let class_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
 
         let mut impls = HashMap::new();
@@ -194,7 +189,6 @@ impl Class {
             .next();
 
         Class {
-            name,
             struct_id,
             impls,
             disposer,
@@ -203,7 +197,7 @@ impl Class {
         }
     }
 
-    pub fn gen_vcall_wrappers(&self, module: &CompilationUnit) -> Vec<FunctionDef> {
+    pub fn gen_vcall_wrappers(&self, module: &Unit) -> Vec<FunctionDef> {
         let mut wrappers = Vec::new();
         for (_iface_id, iface_impl) in &self.impls {
             for (_method_id, method_impl) in &iface_impl.method_impls {
@@ -309,11 +303,6 @@ impl Class {
             "  .size = {},",
             Expr::SizeOf(Type::DefinedType(TypeDefName::Struct(self.struct_id)))
         ).unwrap();
-        writeln!(
-            class_init,
-            "  .name = {},",
-            Expr::LitCString(self.name.clone()),
-        ).unwrap();
 
         if let Some(..) = &self.disposer {
             let dispose_wrapper = FunctionName::MethodWrapper(
@@ -326,12 +315,12 @@ impl Class {
             writeln!(class_init, "  .disposer = NULL,").unwrap();
         };
 
-        
-        writeln!(class_init, "  .cleanup = (RcCleanupFunc) ").unwrap();
+        writeln!(class_init, "  .typeinfo = &TypeInfo_VType_Class_{},", self.struct_id).unwrap();        
+        write!(class_init, "  .cleanup = (RcCleanupFunc) ").unwrap();
 
         match self.release_func {
-            Some(name) => write!(class_init, "&{},", name).unwrap(),
-            None => write!(class_init, "NULL,").unwrap(),
+            Some(name) => writeln!(class_init, "&{},", name).unwrap(),
+            None => writeln!(class_init, "NULL,").unwrap(),
         }
 
         if let Some((_, (first_iface_id, _))) = impls.get(0) {
@@ -387,7 +376,7 @@ impl Interface {
     pub fn translate(
         iface_id: ir::InterfaceID,
         iface: &ir::Interface,
-        module: &mut CompilationUnit,
+        module: &mut Unit,
     ) -> Self {
         let methods = iface
             .methods
