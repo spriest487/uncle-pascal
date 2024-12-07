@@ -359,7 +359,7 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
                 };
 
                 let mut interpreter = Interpreter::new(interpret_opts);
-                interpreter.load_module(&module)?;
+                interpreter.load_lib(&module)?;
                 interpreter.shutdown()?;
 
                 Ok(())

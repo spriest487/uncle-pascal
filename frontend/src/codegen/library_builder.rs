@@ -35,7 +35,7 @@ use crate::typ::TypeParamContainer;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
-use ir_lang::RuntimeType;
+use ir::RttiProvider as _;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -48,6 +48,8 @@ pub struct LibraryBuilder {
     src_metadata: typ::Context,
     
     opts: IROptions,
+    
+    rtti_provider: PascalRttiProvider,
     
     type_cache: LinkedHashMap<typ::Type, ir::Type>,
     
@@ -73,6 +75,10 @@ impl LibraryBuilder {
         let mut builder = LibraryBuilder {
             opts,
             src_metadata,
+            
+            rtti_provider: PascalRttiProvider {
+                names: HashMap::new(),
+            },
             
             type_cache: LinkedHashMap::new(),
             set_flags_type_info: BTreeMap::new(),
@@ -866,6 +872,8 @@ impl LibraryBuilder {
         if let Some(cached) = self.type_cache.get(&src_ty) {
             return cached.clone();
         }
+        
+        let runtime_name = src_ty.to_string();
 
         // instantiate types which may contain generic params
         let ty = match &src_ty {
@@ -990,6 +998,8 @@ impl LibraryBuilder {
                 ty
             },
         };
+        
+        self.rtti_provider.names.insert(ty.clone(), runtime_name);
 
         // ensure the runtime type info exists for all referenced types
         self.runtime_type(&ty);
@@ -1025,9 +1035,9 @@ impl LibraryBuilder {
 
     // get or generate runtime type for a given type, which contains the function IDs etc
     // used for RC operations at runtime
-    pub fn runtime_type(&mut self, ty: &ir::Type) -> ir::RuntimeType {
-        if let Some(boilerplate) = self.library.metadata.get_runtime_type(ty) {
-            return boilerplate.clone();
+    pub fn runtime_type(&mut self, ty: &ir::Type) -> Rc<ir::RuntimeType> {
+        if let Some(existing) = self.library.metadata.get_runtime_type(ty) {
+            return existing;
         }
 
         let release_body = {
@@ -1116,14 +1126,13 @@ impl LibraryBuilder {
             None
         };
 
-        let rtt = RuntimeType {
+        let rtt = ir::RuntimeType {
+            name: self.rtti_provider.type_name(ty).map(Cow::into_owned),
             retain: retain_func,
             release: release_func,
         };
 
-        self.library.metadata.declare_runtime_type(ty.clone(), rtt.clone());
-
-        rtt
+        self.library.metadata.declare_runtime_type(ty.clone(), rtt.clone())
     }
 
     pub fn translate_dyn_array_struct(
@@ -1135,7 +1144,7 @@ impl LibraryBuilder {
 
         match self.library.metadata.find_dyn_array_struct(&element_ty) {
             Some(id) => id,
-            None => self.library.metadata.define_dyn_array_struct(element_ty),
+            None => self.library.metadata.define_dyn_array_struct(element_ty, &self.rtti_provider),
         }
     }
 
@@ -1749,5 +1758,22 @@ fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::T
             "name of translated variant must not contain unspecialized generics: {}",
             target
         );
+    }
+}
+
+#[derive(Debug)]
+struct PascalRttiProvider {
+    names: HashMap<ir::Type, String>,
+}
+
+impl ir::RttiProvider for PascalRttiProvider {
+    fn type_name(&self, ty: &ir::Type) -> Option<Cow<String>> {
+        self.names.get(ty).map(Cow::Borrowed)
+    }
+
+    fn dyn_array_type_name(&self, element_ty: &ir::Type) -> Option<Cow<String>> {
+        let element_name = self.type_name(element_ty)?;
+        
+        Some(Cow::Owned(format!("array of {element_name}")))
     }
 }

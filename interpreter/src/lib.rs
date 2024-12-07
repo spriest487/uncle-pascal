@@ -23,8 +23,13 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
+use ir_lang::GlobalRef;
 use ir_lang::InstructionFormatter as _;
+use ir_lang::Type;
 use ir_lang::VirtualTypeID;
+use ir_lang::STRING_ID;
+use ir_lang::TYPEINFO_ID;
+use ir_lang::TYPEINFO_VTYPE_ID;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::BitAnd;
@@ -539,44 +544,46 @@ impl Interpreter {
                 .unwrap_or_else(|| dispose_func_id.to_string());
 
             if self.opts.trace_rc {
-                eprintln!("rc: invoking {}", dispose_desc);
+                eprintln!("[rc] invoking {}", dispose_desc);
             }
 
             self.call(dispose_func_id, &[val.clone()], None)?;
         } else if self.opts.trace_rc {
-            eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty));
+            eprintln!("[rc] no disposer for {}", self.metadata.pretty_ty_name(ty));
         }
 
         Ok(())
     }
 
-    fn find_rc_boilerplate(&self, resource_ty: &ir::Type) -> ExecResult<ir::RuntimeType> {
-        self.metadata.get_runtime_type(&resource_ty).ok_or_else(|| {
-            let name = self.metadata.pretty_ty_name(&resource_ty);
-            let funcs = self
-                .metadata
-                .runtime_types()
-                .map(|(ty, funcs)| {
-                    let ty_name = self.metadata.pretty_ty_name(ty);
-
-                    let release_func = match funcs.release {
-                        Some(id) => id.to_string(),
-                        None => "None".to_string(),
-                    };
-
-                    let retain_func = match funcs.retain {
-                        Some(id) => id.to_string(),
-                        None => "None".to_string(),
-                    };
-
-                    format!("  {}: release={}, retain={}", ty_name, release_func, retain_func)
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            let msg = format!("missing rc boilerplate for {} in:\n{}", name, funcs);
-            ExecError::illegal_state(msg)
-        })
+    fn find_runtime_type(&self, resource_ty: &ir::Type) -> ExecResult<Rc<ir::RuntimeType>> {
+        self.metadata
+            .get_runtime_type(&resource_ty)
+            .ok_or_else(|| {
+                let name = self.metadata.pretty_ty_name(&resource_ty);
+                let funcs = self
+                    .metadata
+                    .runtime_types()
+                    .map(|(ty, funcs)| {
+                        let ty_name = self.metadata.pretty_ty_name(ty);
+    
+                        let release_func = match funcs.release {
+                            Some(id) => id.to_string(),
+                            None => "None".to_string(),
+                        };
+    
+                        let retain_func = match funcs.retain {
+                            Some(id) => id.to_string(),
+                            None => "None".to_string(),
+                        };
+    
+                        format!("  {}: release={}, retain={}", ty_name, release_func, retain_func)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+    
+                let msg = format!("missing rc boilerplate for {} in:\n{}", name, funcs);
+                ExecError::illegal_state(msg)
+            })
     }
     
     // load a pointer, expected to point to an RC struct
@@ -645,7 +652,7 @@ impl Interpreter {
             if struct_rc.strong_count == 1 {
                 if self.opts.trace_rc {
                     println!(
-                        "rc: dispose @ {} ({}+{} refs remain)",
+                        "[rc] dispose @ {} ({}+{} refs remain)",
                         ptr.to_pretty_string(&self.metadata),
                         struct_rc.strong_count,
                         struct_rc.weak_count,
@@ -658,7 +665,7 @@ impl Interpreter {
                 self.invoke_disposer(&val, &ir::Type::RcPointer(class_id))?;
 
                 // Now release the fields of the struct as if it was a normal record
-                let rc_funcs = self.find_rc_boilerplate(&ir::Type::Struct(struct_val.type_id))?;
+                let rc_funcs = self.find_runtime_type(&ir::Type::Struct(struct_val.type_id))?;
                 if let Some(release_func) = rc_funcs.release {
                     self.call(release_func, &[val.clone()], None)?;
                 }
@@ -669,7 +676,7 @@ impl Interpreter {
 
         if self.opts.trace_rc {
             eprintln!(
-                "rc: release @ {} ({}+{} refs to {} remain)",
+                "[rc] release @ {} ({}+{} refs to {} remain)",
                 ptr.to_pretty_string(&self.metadata),
                 struct_rc.strong_count,
                 struct_rc.weak_count,
@@ -681,7 +688,7 @@ impl Interpreter {
             // no more refs, free the object
             if self.opts.trace_rc {
                 eprintln!(
-                    "rc: free @ {} of {}",
+                    "[rc] free @ {} ({})",
                     ptr.to_pretty_string(&self.metadata),
                     self.struct_debug_string(&struct_val),
                 )
@@ -737,7 +744,7 @@ impl Interpreter {
 
         if self.opts.trace_rc {
             eprintln!(
-                "rc: retain @ {} ({}+{} refs)",
+                "[rc] retain @ {} ({}+{} refs)",
                 ptr.to_pretty_string(&self.metadata),
                 struct_rc.strong_count,
                 struct_rc.weak_count
@@ -1011,7 +1018,7 @@ impl Interpreter {
 
     fn exec_rc_new(&mut self, out: &ir::Ref, struct_id: ir::TypeDefID) -> ExecResult<()> {
         let struct_val = self.init_struct(struct_id)?;
-        let rc_ptr = self.rc_alloc(struct_val)?;
+        let rc_ptr = self.rc_alloc(struct_val, false)?;
 
         self.store(out, DynValue::Pointer(rc_ptr))?;
 
@@ -1693,11 +1700,11 @@ impl Interpreter {
         Ok(())
     }
 
-    fn rc_alloc(&mut self, mut value: StructValue) -> ExecResult<Pointer> {
+    fn rc_alloc(&mut self, mut value: StructValue, immortal: bool) -> ExecResult<Pointer> {
         let res_ty = ir::Type::Struct(value.type_id);
 
         value.rc = Some(RcState {
-            strong_count: 1,
+            strong_count: if immortal { -1 } else { 1 },
             weak_count: 0,
         });
 
@@ -1707,228 +1714,26 @@ impl Interpreter {
     }
 
     fn init_stdlib_globals(&mut self) -> ExecResult<()> {
-        let system_funcs: &[(&str, BuiltinFn, ir::Type, Vec<ir::Type>)] = &[
-            (
-                "Int8ToStr",
-                builtin::i8_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::I8],
-            ),
-            (
-                "UInt8ToStr",
-                builtin::u8_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::U8],
-            ),
-            (
-                "Int16ToStr",
-                builtin::i16_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::I16],
-            ),
-            (
-                "UInt16ToStr",
-                builtin::u16_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::U16],
-            ),
-            (
-                "Int32ToStr",
-                builtin::i32_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::I32],
-            ),
-            (
-                "UInt32ToStr",
-                builtin::u32_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::U32],
-            ),
-            (
-                "Int64ToStr",
-                builtin::i64_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::I64],
-            ),
-            (
-                "UInt64ToStr",
-                builtin::u64_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::U64],
-            ),
-            (
-                "NativeIntToStr",
-                builtin::isize_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::ISize],
-            ),
-            (
-                "NativeUIntToStr",
-                builtin::usize_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::USize],
-            ),
-            (
-                "PointerToStr",
-                builtin::pointer_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::Nothing.ptr()],
-            ),
-            (
-                "RealToStr",
-                builtin::real_to_str,
-                ir::Type::string_ptr(),
-                vec![ir::Type::F32],
-            ),
-            (
-                "StrToInt",
-                builtin::str_to_int,
-                ir::Type::I32,
-                vec![ir::STRING_TYPE],
-            ),
-            (
-                "Write",
-                builtin::write,
-                ir::Type::Nothing,
-                vec![ir::STRING_TYPE],
-            ),
-            (
-                "WriteLn",
-                builtin::write_ln,
-                ir::Type::Nothing,
-                vec![ir::STRING_TYPE],
-            ),
-            ("ReadLn", builtin::read_ln, ir::Type::string_ptr(), vec![]),
-            (
-                "GetMem",
-                builtin::get_mem,
-                ir::Type::U8.ptr(),
-                vec![ir::Type::I32],
-            ),
-            (
-                "FreeMem",
-                builtin::free_mem,
-                ir::Type::Nothing,
-                vec![ir::Type::U8.ptr()],
-            ),
-            (
-                "ArrayLengthInternal",
-                builtin::array_length,
-                ir::Type::I32,
-                vec![ir::Type::any()],
-            ),
-            (
-                "ArraySetLengthInternal",
-                builtin::set_length,
-                ir::Type::any(),
-                vec![ir::Type::any(), ir::Type::I32, ir::Type::any()],
-            ),
-            (
-                "RandomInteger",
-                builtin::random_integer,
-                ir::Type::I32,
-                vec![ir::Type::I32, ir::Type::I32]
-            ),
-            (
-                "RandomSingle",
-                builtin::random_single,
-                ir::Type::F32,
-                vec![ir::Type::F32, ir::Type::F32]
-            ),
-            (
-                "Pow",
-                builtin::pow,
-                ir::Type::F32,
-                vec![ir::Type::F32, ir::Type::F32]
-            ),
-            (
-                "Sqrt",
-                builtin::sqrt,
-                ir::Type::F32,
-                vec![ir::Type::F32]
-            ),
-            (
-                "Sin",
-                builtin::sin,
-                ir::Type::F32,
-                vec![ir::Type::F32]
-            ),
-            (
-                "ArcSin",
-                builtin::arc_sin,
-                ir::Type::F32,
-                vec![ir::Type::F32]
-            ),
-            (
-                "Cos",
-                builtin::cos,
-                ir::Type::F32,
-                vec![ir::Type::F32]
-            ),
-            (
-                "ArcCos",
-                builtin::arc_cos,
-                ir::Type::F32,
-                vec![ir::Type::F32]
-            ),
-            (
-                "Tan",
-                builtin::tan,
-                ir::Type::F32,
-                vec![ir::Type::F32]
-            ),
-            (
-                "ArcTan",
-                builtin::arc_tan,
-                ir::Type::F32,
-                vec![ir::Type::F32]
-            ),
-            (
-                "Infinity",
-                builtin::infinity,
-                ir::Type::F32,
-                vec![]
-            ),
-            (
-                "IsInfinite",
-                builtin::is_infinite,
-                ir::Type::Bool,
-                vec![ir::Type::F32]
-            ),
-            (
-                "NaN",
-                builtin::nan,
-                ir::Type::F32,
-                vec![]
-            ),
-            (
-                "IsNaN",
-                builtin::is_nan,
-                ir::Type::Bool,
-                vec![ir::Type::F32]
-            ),
-        ];
-
-        for (ident, func, ret, params) in system_funcs {
+        for (ident, func, ret, params) in builtin::system_funcs() {
             let name = ir::NamePath::new(vec!["System".to_string()], ident.to_string());
-            self.define_builtin(name, *func, ret.clone(), params.to_vec())?;
+            self.define_builtin(name, func, ret, params)?;
         }
         
         Ok(())
     }
 
-    pub fn load_module(&mut self, module: &ir::Library) -> ExecResult<()> {
-        self.metadata.extend(&module.metadata());
+    pub fn load_lib(&mut self, lib: &ir::Library) -> ExecResult<()> {
+        self.metadata.extend(&lib.metadata());
 
         let mut marshaller = (*self.marshaller).clone();
 
-        for (id, type_def) in module.metadata().type_defs() {
+        for (id, type_def) in lib.metadata().type_defs() {
             let def_result = match type_def {
                 ir::TypeDef::Struct(struct_def) => marshaller
-                    .add_struct(id, struct_def, module.metadata())
+                    .add_struct(id, struct_def, lib.metadata())
                     .map(Some),
                 ir::TypeDef::Variant(variant_def) => marshaller
-                    .add_variant(id, variant_def, module.metadata())
+                    .add_variant(id, variant_def, lib.metadata())
                     .map(Some),
                 ir::TypeDef::Function(_func_def) => {
                     // functions don't need special marshalling, we only marshal pointers to them
@@ -1939,7 +1744,7 @@ impl Interpreter {
             def_result.map_err(|err| self.add_stack_trace(err.into()))?;
         }
 
-        for (func_id, ir_func) in module.functions() {
+        for (func_id, ir_func) in lib.functions() {
             let func = match ir_func {
                 ir::Function::Local(ir_func_def) => {
                     let ir_func = Function::IR(ir_func_def.clone());
@@ -1977,9 +1782,9 @@ impl Interpreter {
         self.marshaller = Rc::new(marshaller);
         self.native_heap.set_marshaller(self.marshaller.clone());
 
-        for (id, literal) in module.metadata().strings() {
+        for (id, literal) in lib.metadata().strings() {
             let str_val = self
-                .create_string(literal)
+                .create_string(literal, true)
                 .map_err(|err| ExecError::WithStackTrace {
                     err: err.into(),
                     stack_trace: self.stack_trace(),
@@ -1995,9 +1800,28 @@ impl Interpreter {
                 },
             );
         }
+
+        for (ty, runtime_type) in lib.metadata.runtime_types() {
+            let typeinfo_ref = GlobalRef::StaticTypeInfo(Box::new(ty.clone()));
+            
+            let name_string = match &runtime_type.name {
+                None => DynValue::Pointer(Pointer::null(Type::Struct(STRING_ID))),
+                Some(name) => self.create_string(name, true)?, 
+            };
+            
+            let typeinfo_struct = StructValue::new(TYPEINFO_ID, [name_string]);
+            
+            let typeinfo_ptr = self.rc_alloc(typeinfo_struct, true)?;
+            let ptr_bytes = self.marshaller.marshal_to_vec(&DynValue::Pointer(typeinfo_ptr))?;
+            
+            self.globals.insert(typeinfo_ref, GlobalValue::Variable {
+                value: ptr_bytes.into_boxed_slice(),
+                ty: ir::Type::RcPointer(TYPEINFO_VTYPE_ID),
+            });
+        }
         
         // declare global variables
-        for (var_id, var_ty) in &module.variables {
+        for (var_id, var_ty) in &lib.variables {
             // global variables start zero-initialized
             let marshal_ty = self.marshaller.get_ty(var_ty)?;
             let zero_val = vec![0u8; marshal_ty.size()];
@@ -2009,7 +1833,7 @@ impl Interpreter {
         }
         
         // declare (uninitialized) global vars for static closure pointers 
-        for static_closure in &module.static_closures {
+        for static_closure in &lib.static_closures {
             let closure_ptr_ref = ir::GlobalRef::StaticClosure(static_closure.id);
             let closure_ptr_ty = ir::Type::RcPointer(VirtualTypeID::Closure(static_closure.func_ty_id));
             
@@ -2027,18 +1851,18 @@ impl Interpreter {
 
         let init_stack_size = self
             .marshaller
-            .stack_alloc_size(module.init())
+            .stack_alloc_size(lib.init())
             .map_err(|err| self.add_stack_trace(err.into()))?;
 
         self.push_stack(Rc::new("<init>".to_string()), init_stack_size);
 
-        self.execute(module.init())?;
+        self.execute(lib.init())?;
         self.pop_stack()?;
 
         Ok(())
     }
 
-    fn create_string(&mut self, content: &str) -> ExecResult<DynValue> {
+    fn create_string(&mut self, content: &str, immortal: bool) -> ExecResult<DynValue> {
         let chars: Vec<_> = content.chars().map(|c| DynValue::U8(c as u8)).collect();
         let chars_len = cast::i32(chars.len()).map_err(|_| {
             let msg = format!("string length out of range: {}", chars.len());
@@ -2055,7 +1879,7 @@ impl Interpreter {
         string_struct[ir::STRING_LEN_FIELD] = DynValue::I32(chars_len);
         string_struct[ir::STRING_CHARS_FIELD] = DynValue::Pointer(chars_ptr);
 
-        let str_ptr = self.rc_alloc(string_struct)?;
+        let str_ptr = self.rc_alloc(string_struct, immortal)?;
 
         Ok(DynValue::Pointer(str_ptr))
     }

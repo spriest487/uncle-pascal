@@ -1,7 +1,7 @@
 use crate::dep_sort::sort_defs;
+use crate::rtti::{DynArrayRuntimeType, RttiProvider, RuntimeType};
 use crate::ty::FieldID;
 use crate::ty::VirtualTypeID;
-use crate::DynArrayRuntimeType;
 use crate::FunctionDecl;
 use crate::FunctionID;
 use crate::FunctionSig;
@@ -13,7 +13,6 @@ use crate::InterfaceImpl;
 use crate::NamePath;
 use crate::RawInstructionFormatter;
 use crate::Ref;
-use crate::RuntimeType;
 use crate::StaticClosureID;
 use crate::Struct;
 use crate::StructFieldDef;
@@ -77,15 +76,20 @@ pub const DISPOSABLE_DISPOSE_INDEX: MethodID = MethodID(0);
 
 pub const STRING_ID: TypeDefID = TypeDefID(1);
 pub const STRING_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(STRING_ID);
+pub const STRING_TYPE: Type = Type::RcPointer(STRING_VTYPE_ID);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
 
-pub const STRING_TYPE: Type = Type::RcPointer(STRING_VTYPE_ID);
 
 pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
 pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
 pub const CLOSURE_PTR_FIELD: FieldID = FieldID(0);
+
+pub const TYPEINFO_ID: TypeDefID = TypeDefID(2);
+pub const TYPEINFO_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(TYPEINFO_ID);
+pub const TYPEINFO_TYPE: Type = Type::RcPointer(TYPEINFO_VTYPE_ID);
+pub const TYPEINFO_NAME_FIELD: FieldID = FieldID(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Metadata {
@@ -100,7 +104,7 @@ pub struct Metadata {
     closures: Vec<TypeDefID>,
     function_static_closures: HashMap<FunctionID, StaticClosureID>,
 
-    runtime_types: HashMap<Type, RuntimeType>,
+    runtime_types: HashMap<Type, Rc<RuntimeType>>,
     dyn_array_runtime_types: HashMap<Type, DynArrayRuntimeType>,
     
     bounds_check_functions: HashMap<Type, FunctionID>,
@@ -266,12 +270,15 @@ impl Metadata {
         self.bounds_check_functions.get(type_id).cloned()
     }
 
-    pub fn declare_runtime_type(&mut self, ty: Type, runtime_type: RuntimeType) {
+    pub fn declare_runtime_type(&mut self, ty: Type, runtime_type: RuntimeType) -> Rc<RuntimeType> {
         if self.runtime_types.contains_key(&ty) {
-            panic!("duplicate rc boilerplate declaration for type {}", self.pretty_ty_name(&ty));
+            let ty_name = self.pretty_ty_name(&ty);
+            panic!("duplicate rc boilerplate declaration for type {}", ty_name);
         }
 
-        self.runtime_types.insert(ty, runtime_type);
+        self.runtime_types.entry(ty)
+            .or_insert_with(|| Rc::new(runtime_type))
+            .clone()
     }
 
     pub fn declare_dynarray_runtime_type(&mut self, element_ty: &Type) -> DynArrayRuntimeType {
@@ -288,7 +295,7 @@ impl Metadata {
         runtime_type
     }
 
-    pub fn get_runtime_type(&self, ty: &Type) -> Option<RuntimeType> {
+    pub fn get_runtime_type(&self, ty: &Type) -> Option<Rc<RuntimeType>> {
         self.runtime_types.get(ty).cloned()
     }
 
@@ -296,7 +303,7 @@ impl Metadata {
         self.dyn_array_runtime_types.get(elem_ty).cloned()
     }
 
-    pub fn runtime_types(&self) -> impl Iterator<Item = (&Type, &RuntimeType)> {
+    pub fn runtime_types(&self) -> impl Iterator<Item = (&Type, &Rc<RuntimeType>)> {
         self.runtime_types.iter()
     }
 
@@ -644,7 +651,7 @@ impl Metadata {
         self.dyn_array_structs.get(element).cloned()
     }
 
-    pub fn define_dyn_array_struct(&mut self, element: Type) -> TypeDefID {
+    pub fn define_dyn_array_struct(&mut self, element: Type, rtti_provider: &dyn RttiProvider) -> TypeDefID {
         assert!(
             !self.dyn_array_structs.contains_key(&element),
             "duplicate IR struct definition for dynamic array with element {}",
@@ -684,7 +691,13 @@ impl Metadata {
         // dyn array structs are heap-allocated and don't need structural ref-counting
         // (but they do need custom finalization to clean up references they hold)
         let release_id = self.insert_func(None);
+        
+        let runtime_name = rtti_provider
+            .dyn_array_type_name(&element)
+            .map(Cow::into_owned);
+
         self.declare_runtime_type(Type::Struct(struct_id), RuntimeType {
+            name: runtime_name,
             release: Some(release_id),
             retain: None,
         });

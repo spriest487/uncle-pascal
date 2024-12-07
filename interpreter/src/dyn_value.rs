@@ -558,6 +558,16 @@ pub struct StructValue {
 }
 
 impl StructValue {
+    pub fn new(id: TypeDefID, fields: impl IntoIterator<Item=DynValue>) -> Self {
+        Self {
+            type_id: id,
+            fields: fields.into_iter().collect(),
+
+            // will be set by rc_alloc
+            rc: None,
+        }
+    }
+    
     pub fn struct_ty(&self) -> Type {
         Type::Struct(self.type_id)
     }

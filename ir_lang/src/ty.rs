@@ -1,10 +1,10 @@
 use crate::metadata::InterfaceID;
 use crate::metadata::TypeDefID;
 use crate::metadata::STRING_ID;
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt;
 use std::rc::Rc;
-use serde::{Deserialize, Serialize};
-use crate::FunctionID;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Type {
@@ -202,14 +202,3 @@ impl fmt::Display for FieldID {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RuntimeType {
-    pub release: Option<FunctionID>,
-    pub retain: Option<FunctionID>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DynArrayRuntimeType {
-    pub alloc: FunctionID,
-    pub length: FunctionID,
-}
