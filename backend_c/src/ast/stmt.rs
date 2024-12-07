@@ -82,11 +82,11 @@ fn write_global_typeinfo_decl_name_type(f: &mut fmt::Formatter, ty: &ir::Type) -
         // recursive types
         ir::Type::Pointer(ty) => {
             write!(f, "Ptr_")?;
-            write_global_typeinfo_decl_name(f, ty)
+            write_global_typeinfo_decl_name_type(f, ty)
         },
         ir::Type::Array { element, dim } => {
             write!(f, "Array{}_", dim)?;
-            write_global_typeinfo_decl_name(f, element)
+            write_global_typeinfo_decl_name_type(f, element)
         },
     }
 }
