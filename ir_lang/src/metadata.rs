@@ -1,18 +1,22 @@
 use crate::dep_sort::sort_defs;
-use crate::rtti::{DynArrayRuntimeType, RttiProvider, RuntimeType};
+use crate::rtti::DynArrayRuntimeType;
+use crate::rtti::RttiProvider;
+use crate::rtti::RuntimeType;
 use crate::ty::FieldID;
 use crate::ty::VirtualTypeID;
-use crate::FunctionDecl;
+use crate::{FunctionDecl, SetAliasDef};
 use crate::FunctionID;
 use crate::FunctionSig;
 use crate::GlobalRef;
 use crate::InstructionFormatter;
 use crate::Interface;
 use crate::InterfaceDecl;
+use crate::InterfaceID;
 use crate::InterfaceImpl;
 use crate::NamePath;
 use crate::RawInstructionFormatter;
 use crate::Ref;
+use crate::SetAliasID;
 use crate::StaticClosureID;
 use crate::Struct;
 use crate::StructFieldDef;
@@ -20,13 +24,15 @@ use crate::StructIdentity;
 use crate::Type;
 use crate::TypeDecl;
 use crate::TypeDef;
+use crate::TypeDefID;
 use crate::Value;
 use crate::VariantDef;
 use linked_hash_map::LinkedHashMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
@@ -38,18 +44,6 @@ impl fmt::Display for StringID {
         write!(f, "string literal #{}", self.0)
     }
 }
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
-pub struct TypeDefID(pub usize);
-
-impl fmt::Display for TypeDefID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
-pub struct InterfaceID(pub usize);
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct MethodID(pub usize);
@@ -106,6 +100,7 @@ pub struct Metadata {
     dyn_array_structs: LinkedHashMap<Type, TypeDefID>,
 
     functions: LinkedHashMap<FunctionID, Rc<FunctionDecl>>,
+    set_aliases: LinkedHashMap<SetAliasID, SetAliasDef>,
 
     closures: Vec<TypeDefID>,
     function_static_closures: HashMap<FunctionID, StaticClosureID>,
@@ -226,6 +221,14 @@ impl Metadata {
                 TypeDecl::Reserved | TypeDecl::Forward(..) => None,
             })
     }
+    
+    pub fn set_alias_defs(&self) -> impl Iterator<Item = (SetAliasID, &SetAliasDef)> {
+        self.set_aliases
+            .iter()
+            .map(|(id, def)| {
+                (*id, def)
+            })
+    }
 
     pub fn get_struct_def(&self, struct_id: TypeDefID) -> Option<&Struct> {
         match self.type_decls.get(&struct_id)? {
@@ -273,6 +276,16 @@ impl Metadata {
             .map(FunctionID)
             .find(|id| !self.functions.contains_key(id))
             .unwrap()
+    }
+
+    fn next_set_id(&mut self) -> SetAliasID {
+        let id = self.set_aliases
+            .iter()
+            .last()
+            .map(|(id, _)| id.0)
+            .unwrap_or(0);
+
+        SetAliasID(id + 1)
     }
 
     pub fn insert_func(&mut self, global_name: Option<NamePath>) -> FunctionID {
@@ -786,6 +799,28 @@ impl Metadata {
 
             _ => None,
         })
+    }
+    
+    pub fn find_set_def(&self, name: &NamePath) -> Option<(SetAliasID, &SetAliasDef)> {
+        self.set_aliases
+            .iter()
+            .find_map(|(id, def)| {
+                match &def.name {
+                    Some(def_name) if def_name == name => Some((*id, def)),
+                    _ => None,
+                }
+            })
+    }
+    
+    pub fn define_set_type(&mut self, name: Option<NamePath>, flags_struct: TypeDefID) -> SetAliasID {
+        let set_id = self.next_set_id();
+        
+        self.set_aliases.insert(set_id, SetAliasDef {
+            name,
+            flags_struct,
+        });
+        
+        set_id
     }
 
     pub fn find_or_insert_string(&mut self, s: &str) -> StringID {

@@ -2,11 +2,10 @@ mod r#struct;
 mod variant;
 mod interface;
 
-use crate::FunctionID;
 use crate::FunctionSig;
 use crate::NamePath;
 use crate::Type;
-use crate::TypeDefID;
+use crate::FunctionID;
 pub use interface::*;
 pub use r#struct::*;
 use serde::Deserialize;
@@ -15,6 +14,29 @@ use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Write;
 pub use variant::*;
+
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct TypeDefID(pub usize);
+
+impl fmt::Display for TypeDefID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct InterfaceID(pub usize);
+
+// key used for distinguishing unique set types, which are implemented using the same underlying
+// struct type but can have different RTTI
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct SetAliasID(pub usize);
+
+impl fmt::Display for SetAliasID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum StructIdentity {
@@ -142,6 +164,16 @@ impl TypeDef {
             }
         }
     }
+}
+
+// sets aren't normal types because they share an underlying type based on their bit width
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SetAliasDef {
+    // sets can be anonymous (inline in an `in` expression), in which case we will only ever
+    // reference them once and won't need to find them by this name
+    pub name: Option<NamePath>,
+
+    pub flags_struct: TypeDefID,
 }
 
 impl fmt::Display for TypeDef {

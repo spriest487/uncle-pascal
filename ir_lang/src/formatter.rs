@@ -1,10 +1,10 @@
 use crate::instruction::BinOpInstruction;
 use crate::instruction::Instruction;
-use crate::metadata::InterfaceID;
 use crate::metadata::MethodID;
 use crate::ty::FieldID;
 use crate::ty::Type;
 use crate::ty::VirtualTypeID;
+use crate::ty_decl::InterfaceID;
 use crate::val::Ref;
 use crate::val::Value;
 use crate::NamePath;

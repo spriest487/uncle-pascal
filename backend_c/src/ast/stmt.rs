@@ -61,6 +61,7 @@ fn write_global_typeinfo_decl_name_type(f: &mut fmt::Formatter, ty: &ir::Type) -
         // aggregates
         ir::Type::Struct(id) => write!(f, "Struct_{id}"),
         ir::Type::Variant(id) => write!(f, "Variant_{id}"),
+        ir::Type::Flags(_repr_id, set_id) => write!(f, "Flags_{set_id}"),
 
         // reference types
         ir::Type::RcPointer(id) | ir::Type::RcWeakPointer(id) => {

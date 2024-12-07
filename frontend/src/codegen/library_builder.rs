@@ -44,6 +44,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use ir_lang::NamePath;
 
 #[derive(Debug)]
 pub struct LibraryBuilder {
@@ -78,7 +79,7 @@ impl LibraryBuilder {
         builtin_names.insert(ir::STRING_TYPE, builtin_string_name().to_string());
         builtin_names.insert(ir::TYPEINFO_TYPE, builtin_typeinfo_name().to_string());
 
-        let mut builder = LibraryBuilder {
+        let builder = LibraryBuilder {
             opts,
             src_metadata,
             
@@ -102,11 +103,6 @@ impl LibraryBuilder {
             free_mem_func: None,
             get_mem_func: None,
         };
-
-        let set_flags_type = SetFlagsType::define_new(&mut builder, 256);
-
-        builder.set_flags_type_info.insert(typ::MAX_FLAGS_BITS, set_flags_type);
-        builder.runtime_type(&ir::Type::Struct(set_flags_type.struct_id));
 
         builder
     }
@@ -256,8 +252,19 @@ impl LibraryBuilder {
         index
     }
     
-    pub fn get_set_flags_type_info(&self, bits: usize) -> SetFlagsType {
-        self.set_flags_type_info[&bits]
+    pub fn get_set_flags_type_info(&mut self, bits: usize) -> SetFlagsType {
+        let existing = self.set_flags_type_info.get(&bits).cloned();
+        if let Some(set_flags_ty) = existing {
+            return set_flags_ty;
+        }
+
+        let set_flags_type = SetFlagsType::define_new(self, bits);
+
+        self.set_flags_type_info.insert(typ::MAX_FLAGS_BITS, set_flags_type);
+        self.runtime_type(&ir::Type::Struct(set_flags_type.struct_id));
+
+        self.set_flags_type_info.insert(bits, set_flags_type);
+        set_flags_type
     }
 
     fn instantiate_system_func(&mut self, name: &str, sig: Rc<typ::FunctionSig>) -> ir::FunctionID {
@@ -749,8 +756,8 @@ impl LibraryBuilder {
         }
     }
 
-    pub fn find_type(&self, ty: &typ::Type) -> ir::Type {
-        match ty {
+    pub fn find_type(&self, src_ty: &typ::Type) -> ir::Type {
+        match src_ty {
             typ::Type::Nothing => ir::Type::Nothing,
             typ::Type::Nil => ir::Type::Nothing.ptr(),
 
@@ -793,7 +800,7 @@ impl LibraryBuilder {
                     None => panic!("{} was not found in metadata (not instantiated)", class),
                 };
 
-                match ty {
+                match src_ty {
                     typ::Type::Class(..) => {
                         let class_id = ir::VirtualTypeID::Class(struct_id);
                         ir::Type::RcPointer(class_id)
@@ -856,7 +863,20 @@ impl LibraryBuilder {
             // TODO: variable sized sets
             // we could decide to use a smaller or larger set flags type here depending on the range
             // of values, but for now all sets use the widest representation (256-bit)
-            typ::Type::Set(..) => ir::Type::Struct(self.set_flags_type_info[&256].struct_id),
+            typ::Type::Set(set_ty) => {
+                let name = set_ty.name
+                    .as_ref()
+                    .map(|ident_path| NamePath::from_ident_path(ident_path, None))
+                    .unwrap_or_else(|| {
+                        panic!("can't find existing definition of unnamed set type for {}", src_ty)
+                    });
+                
+                let Some((set_id, set_ty)) = self.library.metadata.find_set_def(&name) else {
+                    panic!("flags type for {} is not defined", src_ty);
+                };
+
+                ir::Type::Flags(set_ty.flags_struct, set_id)
+            },
 
             typ::Type::Any => ir::Type::RcPointer(ir::VirtualTypeID::Any),
         }
@@ -999,6 +1019,21 @@ impl LibraryBuilder {
 
                 ty
             },
+            
+            typ::Type::Set(set_ty) => {
+                let flags_ty = self.get_set_flags_type_info(set_ty.flags_type_bits());
+                let name = set_ty.name
+                    .as_ref()
+                    .map(|ident_path| NamePath::from_ident_path(ident_path, None));
+    
+                let set_id = self.metadata_mut()
+                    .define_set_type(name, flags_ty.struct_id);
+                let ty = ir::Type::Flags(flags_ty.struct_id, set_id);
+                
+                self.type_cache.insert(src_ty, ty.clone());
+                
+                ty
+            }
 
             real_ty => {
                 // nothing to be instantiated

@@ -48,6 +48,14 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn from_ir_struct(id: ir::TypeDefID) -> Type {
+        Type::DefinedType(TypeDefName::Struct(id))
+    }
+
+    pub fn from_ir_variant(id: ir::TypeDefID) -> Type {
+        Type::DefinedType(TypeDefName::Variant(id))
+    }
+    
     pub fn from_metadata(ty: &ir::Type, module: &mut Unit) -> Type {
         match ty {
             ir::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
@@ -57,8 +65,10 @@ impl Type {
                 Type::DefinedType(TypeDefName::Struct(*id)).ptr()
             },
             ir::Type::RcPointer(..) | ir::Type::RcWeakPointer(..) => Type::Void.ptr(),
-            ir::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
-            ir::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
+            ir::Type::Struct(id) => Type::from_ir_struct(*id),
+            ir::Type::Variant(id) => Type::from_ir_variant(*id),
+            ir::Type::Flags(repr_id, _set_id) => Type::from_ir_struct(*repr_id),
+            
             ir::Type::Nothing => Type::Void,
             ir::Type::Bool => Type::Bool,
             ir::Type::F32 => Type::Float,

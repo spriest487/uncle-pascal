@@ -361,6 +361,21 @@ impl Marshaller {
 
         Ok(variant_ffi_ty)
     }
+    
+    pub fn add_flags_type(
+        &mut self,
+        repr_ty_id: ir::TypeDefID,
+        set_id: ir::SetAliasID,
+        metadata: &ir::Metadata
+    ) -> MarshalResult<ForeignType> {
+        let repr_struct_ty = ir::Type::Struct(repr_ty_id);
+        let repr_ffi_ty = self.build_marshalled_type(&repr_struct_ty, metadata)?;
+
+        let flags_type = ir::Type::Flags(repr_ty_id, set_id);
+        self.types.insert(flags_type, repr_ffi_ty.clone());
+        
+        Ok(repr_ffi_ty)
+    }
 
     pub fn build_invoker(
         &mut self,
@@ -458,6 +473,10 @@ impl Marshaller {
 
                 Ok(ForeignType::structure(el_tys))
             },
+
+            ir::Type::Flags(ty_id, set_id) => {
+                self.add_flags_type(*ty_id, *set_id, metadata)
+            }
 
             // all primitives/builtins should be in the cache already
             _ => Err(MarshalError::UnsupportedType(ty.clone())),
@@ -749,7 +768,7 @@ impl Marshaller {
 
             // these need field offset/tag type info from the ffi cache so marshal/unmarshal should
             // be members
-            ir::Type::Struct(struct_id) => {
+            ir::Type::Struct(struct_id) | ir::Type::Flags(struct_id, ..) => {
                 let struct_val = self.unmarshal_struct(*struct_id, in_bytes)?;
 
                 UnmarshalledValue {

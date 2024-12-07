@@ -23,13 +23,7 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
-use ir_lang::GlobalRef;
 use ir_lang::InstructionFormatter as _;
-use ir_lang::Type;
-use ir_lang::VirtualTypeID;
-use ir_lang::STRING_ID;
-use ir_lang::TYPEINFO_ID;
-use ir_lang::TYPEINFO_VTYPE_ID;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::BitAnd;
@@ -159,6 +153,8 @@ impl Interpreter {
             ir::Type::F32 => DynValue::F32(f32::NAN),
 
             ir::Type::Struct(id) => DynValue::from(self.init_struct(*id)?),
+            
+            ir::Type::Flags(repr_id, ..) => DynValue::from(self.init_struct(*repr_id)?),
 
             ir::Type::RcPointer(class_id) 
             | ir::Type::RcWeakPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
@@ -1600,6 +1596,10 @@ impl Interpreter {
         of_ty: &ir::Type,
     ) -> ExecResult<()> {
         let field_ptr = match of_ty {
+            ir::Type::Flags(repr_id, ..) => {
+                return self.exec_field(out, a, field, &ir::Type::Struct(*repr_id));
+            }
+            
             ir::Type::Struct(struct_id) => {
                 let struct_ptr = self.addr_of_ref(a)?;
 
@@ -1743,6 +1743,10 @@ impl Interpreter {
 
             def_result.map_err(|err| self.add_stack_trace(err.into()))?;
         }
+        
+        for (set_id, set_ty_def) in lib.metadata.set_alias_defs() {
+            marshaller.add_flags_type(set_ty_def.flags_struct, set_id, lib.metadata())?;
+        }
 
         for (func_id, ir_func) in lib.functions() {
             let func = match ir_func {
@@ -1805,21 +1809,21 @@ impl Interpreter {
         }
 
         for (ty, runtime_type) in lib.metadata.runtime_types() {
-            let typeinfo_ref = GlobalRef::StaticTypeInfo(Box::new(ty.clone()));
+            let typeinfo_ref = ir::GlobalRef::StaticTypeInfo(Box::new(ty.clone()));
 
             let name_string = match &runtime_type.name {
-                None => DynValue::Pointer(Pointer::null(Type::Struct(STRING_ID))),
+                None => DynValue::Pointer(Pointer::null(ir::Type::Struct(ir::STRING_ID))),
                 Some(name_id) => string_lit_values[name_id].clone(),
             };
             
-            let typeinfo_struct = StructValue::new(TYPEINFO_ID, [name_string]);
+            let typeinfo_struct = StructValue::new(ir::TYPEINFO_ID, [name_string]);
             
             let typeinfo_ptr = self.rc_alloc(typeinfo_struct, true)?;
             let ptr_bytes = self.marshaller.marshal_to_vec(&DynValue::Pointer(typeinfo_ptr))?;
             
             self.globals.insert(typeinfo_ref, GlobalValue::Variable {
                 value: ptr_bytes.into_boxed_slice(),
-                ty: ir::Type::RcPointer(TYPEINFO_VTYPE_ID),
+                ty: ir::Type::RcPointer(ir::TYPEINFO_VTYPE_ID),
             });
         }
         
@@ -1838,7 +1842,7 @@ impl Interpreter {
         // declare (uninitialized) global vars for static closure pointers 
         for static_closure in &lib.static_closures {
             let closure_ptr_ref = ir::GlobalRef::StaticClosure(static_closure.id);
-            let closure_ptr_ty = ir::Type::RcPointer(VirtualTypeID::Closure(static_closure.func_ty_id));
+            let closure_ptr_ty = ir::Type::RcPointer(ir::VirtualTypeID::Closure(static_closure.func_ty_id));
             
             // we only need to set a null pointer here, init code will set the actual value
             let default_val = self.default_init_dyn_val(&closure_ptr_ty)?;

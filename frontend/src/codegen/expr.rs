@@ -344,8 +344,9 @@ pub fn literal_to_val(
                 ir::Type::ISize => ir::Value::LiteralISize(0),
                 ir::Type::F32 => ir::Value::LiteralF32(0.0),
                 
-                ir::Type::Struct(_)
-                | ir::Type::Variant(_)
+                ir::Type::Struct(..)
+                | ir::Type::Flags(..)
+                | ir::Type::Variant(..)
                 | ir::Type::Array { .. }
                 | ir::Type::Nothing => {
                     let size_expr = ir::Value::SizeOf(ir_ty.clone());

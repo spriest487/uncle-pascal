@@ -1,6 +1,7 @@
-use crate::metadata::InterfaceID;
-use crate::metadata::TypeDefID;
 use crate::metadata::STRING_ID;
+use crate::ty_decl::InterfaceID;
+use crate::ty_decl::SetAliasID;
+use crate::ty_decl::TypeDefID;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fmt;
@@ -14,6 +15,7 @@ pub enum Type {
     Pointer(Rc<Type>),
     Struct(TypeDefID),
     Variant(TypeDefID),
+    Flags(TypeDefID, SetAliasID),
     Array {
         element: Rc<Type>,
         dim: usize,
@@ -139,6 +141,7 @@ impl fmt::Display for Type {
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{struct {}}}", id),
             Type::Variant(id) => write!(f, "{{variant {}}}", id),
+            Type::Flags(_repr_id, set_id) => write!(f, "{{flags {}}}", set_id),
             Type::RcPointer(id) => match id {
                 VirtualTypeID::Any => write!(f, "any"),
                 VirtualTypeID::Class(id) => write!(f, "class {}", id),

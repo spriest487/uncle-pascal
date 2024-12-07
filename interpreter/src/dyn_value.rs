@@ -2,11 +2,7 @@ use crate::ptr::Pointer;
 use cast::i128;
 use std::ops::Index;
 use std::ops::IndexMut;
-use ir_lang::FunctionID;
-use ir_lang::FieldID;
-use ir_lang::Type;
-use ir_lang::TypeDefID;
-use ir_lang::VirtualTypeID;
+use ir_lang as ir;
 
 #[derive(Debug, Clone)]
 pub enum DynValue {
@@ -22,7 +18,7 @@ pub enum DynValue {
     ISize(isize),
     USize(usize),
     F32(f32),
-    Function(FunctionID),
+    Function(ir::FunctionID),
     Structure(Box<StructValue>),
     Variant(Box<VariantValue>),
     Pointer(Pointer),
@@ -30,21 +26,21 @@ pub enum DynValue {
 }
 
 impl DynValue {
-    pub fn try_cast(&self, ty: &Type) -> Option<Self> {
+    pub fn try_cast(&self, ty: &ir::Type) -> Option<Self> {
         match ty {
-            Type::I8 => self.to_bigint().map(|x| x as i8).map(DynValue::I8),
-            Type::U8 => self.to_bigint().map(|x| x as u8).map(DynValue::U8),
-            Type::I16 => self.to_bigint().map(|x| x as i16).map(DynValue::I16),
-            Type::U16 => self.to_bigint().map(|x| x as u16).map(DynValue::U16),
-            Type::I32 => self.to_bigint().map(|x| x as i32).map(DynValue::I32),
-            Type::U32 => self.to_bigint().map(|x| x as u32).map(DynValue::U32),
-            Type::I64 => self.to_bigint().map(|x| x as i64).map(DynValue::I64),
-            Type::U64 => self.to_bigint().map(|x| x as u64).map(DynValue::U64),
-            Type::ISize => self.to_bigint().map(|x| x as isize).map(DynValue::ISize),
-            Type::USize => self.to_bigint().map(|x| x as usize).map(DynValue::USize),
-            Type::Bool => self.to_bigint().map(|i| DynValue::Bool(i != 0)),
+            ir::Type::I8 => self.to_bigint().map(|x| x as i8).map(DynValue::I8),
+            ir::Type::U8 => self.to_bigint().map(|x| x as u8).map(DynValue::U8),
+            ir::Type::I16 => self.to_bigint().map(|x| x as i16).map(DynValue::I16),
+            ir::Type::U16 => self.to_bigint().map(|x| x as u16).map(DynValue::U16),
+            ir::Type::I32 => self.to_bigint().map(|x| x as i32).map(DynValue::I32),
+            ir::Type::U32 => self.to_bigint().map(|x| x as u32).map(DynValue::U32),
+            ir::Type::I64 => self.to_bigint().map(|x| x as i64).map(DynValue::I64),
+            ir::Type::U64 => self.to_bigint().map(|x| x as u64).map(DynValue::U64),
+            ir::Type::ISize => self.to_bigint().map(|x| x as isize).map(DynValue::ISize),
+            ir::Type::USize => self.to_bigint().map(|x| x as usize).map(DynValue::USize),
+            ir::Type::Bool => self.to_bigint().map(|i| DynValue::Bool(i != 0)),
 
-            Type::F32 => {
+            ir::Type::F32 => {
                 if let DynValue::F32(..) = self {
                     return Some(self.clone());
                 }
@@ -52,7 +48,7 @@ impl DynValue {
                 self.to_bigint().map(|x| x as f32).map(DynValue::F32)
             },
 
-            Type::Pointer(deref_ty) => {
+            ir::Type::Pointer(deref_ty) => {
                 let addr = cast::usize(self.to_bigint()?).ok()?;
                 let ptr = Pointer {
                     ty: (**deref_ty).clone(),
@@ -61,46 +57,51 @@ impl DynValue {
                 Some(DynValue::Pointer(ptr))
             },
 
-            Type::Nothing => None,
+            ir::Type::Nothing => None,
 
-            Type::RcPointer(class_id) | Type::RcWeakPointer(class_id) => {
+            ir::Type::RcPointer(class_id) | ir::Type::RcWeakPointer(class_id) => {
                 // assume self is a pointer-compatible type, its int value be the address
                 let addr = cast::usize(self.to_bigint()?).ok()?;
 
                 let ptr = Pointer {
                     addr,
                     ty: match class_id {
-                        VirtualTypeID::Class(struct_id) => Type::Struct(*struct_id),
+                        ir::VirtualTypeID::Class(struct_id) => ir::Type::Struct(*struct_id),
 
                         // Any, interfaces and closure pointers only have virtual types so we
                         // can't include any type info about the concrete type here - it's up to
                         // the language to have the right info when it uses this pointer value
-                        VirtualTypeID::Any | VirtualTypeID::Interface(..) | VirtualTypeID::Closure(..) => {
-                            Type::Nothing
+                        ir::VirtualTypeID::Any | ir::VirtualTypeID::Interface(..) | ir::VirtualTypeID::Closure(..) => {
+                            ir::Type::Nothing
                         },
                     },
                 };
                 Some(DynValue::Pointer(ptr))
             },
 
-            Type::Struct(id) => match self {
+            ir::Type::Struct(id) => match self {
                 DynValue::Structure(s) if s.type_id == *id => Some(self.clone()),
                 _ => None,
             },
 
-            Type::Variant(id) => match self {
+            ir::Type::Variant(id) => match self {
                 DynValue::Variant(v) if v.type_id == *id => Some(self.clone()),
                 _ => None,
             },
 
-            Type::Array { element, dim } => match self {
+            ir::Type::Array { element, dim } => match self {
                 DynValue::Array(arr) if arr.el_ty == **element && arr.elements.len() == *dim => {
                     Some(self.clone())
                 },
                 _ => None,
             },
 
-            Type::Function(..) => None,
+            ir::Type::Flags(repr_id, _set_id) => match self {
+                DynValue::Structure(s) if s.type_id == *repr_id => Some(self.clone()),
+                _ => None,
+            },
+
+            ir::Type::Function(..) => None,
         }
     }
 
@@ -389,35 +390,35 @@ impl DynValue {
         }
     }    
 
-    pub fn as_function(&self) -> Option<FunctionID> {
+    pub fn as_function(&self) -> Option<ir::FunctionID> {
         match self {
             DynValue::Function(f) => Some(*f),
             _ => None,
         }
     }
 
-    pub fn as_struct_mut(&mut self, struct_id: TypeDefID) -> Option<&mut StructValue> {
+    pub fn as_struct_mut(&mut self, struct_id: ir::TypeDefID) -> Option<&mut StructValue> {
         match self {
             DynValue::Structure(struct_val) if struct_id == struct_val.type_id => Some(struct_val),
             _ => None,
         }
     }
 
-    pub fn as_struct(&self, struct_id: TypeDefID) -> Option<&StructValue> {
+    pub fn as_struct(&self, struct_id: ir::TypeDefID) -> Option<&StructValue> {
         match self {
             DynValue::Structure(struct_val) if struct_id == struct_val.type_id => Some(struct_val),
             _ => None,
         }
     }
 
-    pub fn as_array(&self, el_ty: &Type) -> Option<&[DynValue]> {
+    pub fn as_array(&self, el_ty: &ir::Type) -> Option<&[DynValue]> {
         match self {
             DynValue::Array(arr) if arr.el_ty == *el_ty => Some(&arr.elements),
             _ => None,
         }
     }
 
-    pub fn as_variant(&self, struct_id: TypeDefID) -> Option<&VariantValue> {
+    pub fn as_variant(&self, struct_id: ir::TypeDefID) -> Option<&VariantValue> {
         match self {
             DynValue::Variant(var_val) if struct_id == var_val.type_id => Some(var_val),
             _ => None,
@@ -552,13 +553,13 @@ impl From<ArrayValue> for DynValue {
 
 #[derive(Debug, Clone)]
 pub struct StructValue {
-    pub type_id: TypeDefID,
+    pub type_id: ir::TypeDefID,
     pub rc: Option<RcState>,
     pub fields: Vec<DynValue>,
 }
 
 impl StructValue {
-    pub fn new(id: TypeDefID, fields: impl IntoIterator<Item=DynValue>) -> Self {
+    pub fn new(id: ir::TypeDefID, fields: impl IntoIterator<Item=DynValue>) -> Self {
         Self {
             type_id: id,
             fields: fields.into_iter().collect(),
@@ -568,21 +569,21 @@ impl StructValue {
         }
     }
     
-    pub fn struct_ty(&self) -> Type {
-        Type::Struct(self.type_id)
+    pub fn struct_ty(&self) -> ir::Type {
+        ir::Type::Struct(self.type_id)
     }
 }
 
-impl Index<FieldID> for StructValue {
+impl Index<ir::FieldID> for StructValue {
     type Output = DynValue;
 
-    fn index(&self, index: FieldID) -> &DynValue {
+    fn index(&self, index: ir::FieldID) -> &DynValue {
         &self.fields[index.0]
     }
 }
 
-impl IndexMut<FieldID> for StructValue {
-    fn index_mut(&mut self, index: FieldID) -> &mut DynValue {
+impl IndexMut<ir::FieldID> for StructValue {
+    fn index_mut(&mut self, index: ir::FieldID) -> &mut DynValue {
         &mut self.fields[index.0]
     }
 }
@@ -611,20 +612,20 @@ pub struct RcState {
 
 #[derive(Debug, Clone)]
 pub struct VariantValue {
-    pub type_id: TypeDefID,
+    pub type_id: ir::TypeDefID,
     pub tag: Box<DynValue>,
     pub data: Box<DynValue>,
 }
 
 impl VariantValue {
-    pub fn variant_ty(&self) -> Type {
-        Type::Variant(self.type_id)
+    pub fn variant_ty(&self) -> ir::Type {
+        ir::Type::Variant(self.type_id)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ArrayValue {
-    pub el_ty: Type,
+    pub el_ty: ir::Type,
     pub elements: Vec<DynValue>,
 }
 
@@ -641,7 +642,7 @@ impl ArrayValue {
         }
     }
 
-    pub fn array_ty(&self) -> Type {
+    pub fn array_ty(&self) -> ir::Type {
         self.el_ty.clone().array(self.elements.len())
     }
 }

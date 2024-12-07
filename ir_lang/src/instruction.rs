@@ -1,11 +1,11 @@
 use crate::formatter::InstructionFormatter;
 use crate::formatter::RawInstructionFormatter;
-use crate::metadata::InterfaceID;
 use crate::metadata::MethodID;
-use crate::metadata::TypeDefID;
 use crate::ty::FieldID;
 use crate::ty::Type;
 use crate::ty::VirtualTypeID;
+use crate::ty_decl::InterfaceID;
+use crate::ty_decl::TypeDefID;
 use crate::val::LocalID;
 use crate::val::Ref;
 use crate::val::Value;
