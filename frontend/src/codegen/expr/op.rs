@@ -52,13 +52,13 @@ pub fn translate_bin_op(
 
             let struct_def = builder
                 .get_struct(struct_id)
-                .expect("referenced struct must exist");
+                .unwrap_or_else(|| panic!("struct {struct_id} referenced in expression {bin_op} must exist"));
 
             let member_name = bin_op
                 .rhs
                 .as_ident()
                 .map(syn::Ident::to_string)
-                .expect("rhs of member binop must be an ident");
+                .unwrap_or_else(|| panic!("rhs of member expression {bin_op} must be an ident"));
 
             let field = struct_def
                 .find_field(&member_name)

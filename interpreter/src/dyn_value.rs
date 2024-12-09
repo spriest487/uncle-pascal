@@ -610,6 +610,15 @@ pub struct RcState {
     pub weak_count: i32,
 }
 
+impl RcState {
+    pub fn new(immortal: bool) -> Self {
+        Self {
+            strong_count: if immortal { -1 } else { 1 },
+            weak_count: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VariantValue {
     pub type_id: ir::TypeDefID,

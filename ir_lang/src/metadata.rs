@@ -1,10 +1,9 @@
 use crate::dep_sort::sort_defs;
 use crate::rtti::DynArrayRuntimeType;
-use crate::rtti::RttiProvider;
 use crate::rtti::RuntimeType;
 use crate::ty::FieldID;
 use crate::ty::VirtualTypeID;
-use crate::{FunctionDecl, SetAliasDef};
+use crate::FunctionDecl;
 use crate::FunctionID;
 use crate::FunctionSig;
 use crate::GlobalRef;
@@ -16,6 +15,7 @@ use crate::InterfaceImpl;
 use crate::NamePath;
 use crate::RawInstructionFormatter;
 use crate::Ref;
+use crate::SetAliasDef;
 use crate::SetAliasID;
 use crate::StaticClosureID;
 use crate::Struct;
@@ -83,6 +83,12 @@ pub const TYPEINFO_ID: TypeDefID = TypeDefID(2);
 pub const TYPEINFO_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(TYPEINFO_ID);
 pub const TYPEINFO_TYPE: Type = Type::RcPointer(TYPEINFO_VTYPE_ID);
 pub const TYPEINFO_NAME_FIELD: FieldID = FieldID(0);
+pub const TYPEINFO_METHODS_FIELD: FieldID = FieldID(1);
+
+pub const METHODINFO_ID: TypeDefID = TypeDefID(3);
+pub const METHODINFO_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(METHODINFO_ID);
+pub const METHODINFO_TYPE: Type = Type::RcPointer(crate::METHODINFO_VTYPE_ID);
+pub const METHODINFO_NAME_FIELD: FieldID = FieldID(0);
 
 pub const BUILTIN_TYPE_DEFS: [Type; 2] = [
     STRING_TYPE,
@@ -258,21 +264,21 @@ impl Metadata {
     }
 
     fn next_type_def_id(&mut self) -> TypeDefID {
-        (0..)
+        (1..)
             .map(TypeDefID)
             .find(|id| !self.type_decls.contains_key(id) && *id != STRING_ID)
             .unwrap()
     }
 
     fn next_iface_id(&mut self) -> InterfaceID {
-        (0..)
+        (1..)
             .map(InterfaceID)
             .find(|id| !self.ifaces.contains_key(id) && *id != DISPOSABLE_ID)
             .unwrap()
     }
 
     fn next_function_id(&mut self) -> FunctionID {
-        (0..)
+        (1..)
             .map(FunctionID)
             .find(|id| !self.functions.contains_key(id))
             .unwrap()
@@ -301,15 +307,14 @@ impl Metadata {
         self.bounds_check_functions.get(type_id).cloned()
     }
 
-    pub fn declare_runtime_type(&mut self, ty: Type, runtime_type: RuntimeType) -> Rc<RuntimeType> {
-        if self.runtime_types.contains_key(&ty) {
-            let ty_name = self.pretty_ty_name(&ty);
-            panic!("duplicate rc boilerplate declaration for type {}", ty_name);
-        }
+    pub fn insert_runtime_type(&mut self, ty: Type, runtime_type: RuntimeType) -> Rc<RuntimeType> {
+        let runtime_type = Rc::new(runtime_type);
 
-        self.runtime_types.entry(ty)
-            .or_insert_with(|| Rc::new(runtime_type))
-            .clone()
+        // it's valid to replace existing entries
+        // getting the runtime type info right is the responsibility of the frontend 
+        self.runtime_types.insert(ty, runtime_type.clone());
+        
+        runtime_type
     }
 
     pub fn declare_dynarray_runtime_type(&mut self, element_ty: &Type) -> DynArrayRuntimeType {
@@ -690,7 +695,7 @@ impl Metadata {
         self.dyn_array_structs.get(element).cloned()
     }
 
-    pub fn define_dyn_array_struct(&mut self, element: Type, rtti_provider: &dyn RttiProvider) -> TypeDefID {
+    pub fn define_dyn_array_struct(&mut self, element: Type, rtti_name: Option<StringID>) -> TypeDefID {
         assert!(
             !self.dyn_array_structs.contains_key(&element),
             "duplicate IR struct definition for dynamic array with element {}",
@@ -730,17 +735,11 @@ impl Metadata {
         // dyn array structs are heap-allocated and don't need structural ref-counting
         // (but they do need custom finalization to clean up references they hold)
         let release_id = self.insert_func(None);
+
+        let mut rtt = RuntimeType::new(rtti_name);
+        rtt.release = Some(release_id);
         
-        let runtime_name = rtti_provider
-            .dyn_array_type_name(&element)
-            .map(|name| self.find_or_insert_string(name.as_ref()));
-
-        self.declare_runtime_type(Type::Struct(struct_id), RuntimeType {
-            name: runtime_name,
-            release: Some(release_id),
-            retain: None,
-        });
-
+        self.insert_runtime_type(Type::Struct(struct_id), rtt);
         self.declare_dynarray_runtime_type(&element);
 
         struct_id

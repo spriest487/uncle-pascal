@@ -1,6 +1,7 @@
 use crate::ast::FunctionParamMod;
-use crate::ast::IdentPath;
 use crate::ast::StructKind;
+use crate::ast::Access;
+use crate::ast::IdentPath;
 use crate::codegen::build_closure_function_def;
 use crate::codegen::build_func_def;
 use crate::codegen::build_func_static_closure_def;
@@ -23,6 +24,7 @@ use crate::codegen::IROptions;
 use crate::codegen::SetFlagsType;
 use crate::typ::ast::apply_func_decl_named_ty_args;
 use crate::typ::builtin_ident;
+use crate::typ::builtin_methodinfo_name;
 use crate::typ::builtin_string_name;
 use crate::typ::builtin_typeinfo_name;
 use crate::typ::free_mem_sig;
@@ -37,14 +39,12 @@ use crate::typ::TypeParamContainer;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
-use ir::RttiProvider as _;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use ir_lang::NamePath;
 
 #[derive(Debug)]
 pub struct LibraryBuilder {
@@ -52,13 +52,12 @@ pub struct LibraryBuilder {
     
     opts: IROptions,
     
-    rtti_provider: PascalRttiProvider,
-    
     type_cache: LinkedHashMap<typ::Type, ir::Type>,
-    
+    cached_types: LinkedHashMap<ir::Type, typ::Type>,
+
     // key is size (bits)
     set_flags_type_info: BTreeMap<usize, SetFlagsType>,
-    
+
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
     function_types_by_sig: HashMap<typ::FunctionSig, ir::TypeDefID>,
@@ -74,20 +73,38 @@ pub struct LibraryBuilder {
 }
 
 impl LibraryBuilder {
-    pub fn new(src_metadata: typ::Context, metadata: ir::Metadata, opts: IROptions) -> Self {
-        let mut builtin_names = HashMap::new();
-        builtin_names.insert(ir::STRING_TYPE, builtin_string_name().to_string());
-        builtin_names.insert(ir::TYPEINFO_TYPE, builtin_typeinfo_name().to_string());
+    pub fn new(src_metadata: typ::Context, mut metadata: ir::Metadata, opts: IROptions) -> Self {
+        let builtin_classes = [
+            (builtin_string_name(), ir::STRING_ID),
+            (builtin_typeinfo_name(), ir::TYPEINFO_ID),
+            (builtin_methodinfo_name(), ir::METHODINFO_ID),
+        ];
+        
+        for (_, builtin_class_id) in &builtin_classes {
+            metadata.reserve_struct(*builtin_class_id);
+        }
+
+        let cached_types = builtin_classes
+            .iter()
+            .map(|(name, id)| (ir::Type::class_ptr(*id), typ::Type::class(name.clone())))
+            .collect();
+
+        let type_cache = builtin_classes
+            .into_iter()
+            .map(|(name, id)| (typ::Type::class(name), ir::Type::class_ptr(id)))
+            .collect();        
+        
+        let library = ir::Library::new(metadata);
 
         let builder = LibraryBuilder {
+            library,
+
             opts,
             src_metadata,
-            
-            rtti_provider: PascalRttiProvider {
-                names: builtin_names,
-            },
-            
-            type_cache: LinkedHashMap::new(),
+
+            type_cache,
+            cached_types,
+
             set_flags_type_info: BTreeMap::new(),
             
             translated_funcs: HashMap::new(),
@@ -96,8 +113,6 @@ impl LibraryBuilder {
             
             next_variable_id: 0,
             variables_by_name: HashMap::new(),
-
-            library: ir::Library::new(metadata),
             
             // placeholders
             free_mem_func: None,
@@ -123,16 +138,14 @@ impl LibraryBuilder {
             gen_class_runtime_type(&mut self, &class_ty);
         }
         for closure_id in self.library.closure_types().collect::<Vec<_>>() {
-            self.runtime_type(&ir::Type::Struct(closure_id));
+            self.gen_runtime_type(&ir::Type::Struct(closure_id));
         }
 
-        // ensure builtin types have typeinfo, even if they weren't referenced
-        // for ty in BUILTIN_TYPE_DEFS {
-        //     let rtt = self.runtime_type(&ty);
-        // }
+        // add optional RTTI info like class and method names
+        // can maybe disable this with a compile option to reduce startup time/build size
+        self.populate_all_runtime_type_info();
 
         self.library.metadata.sort_type_defs_by_deps();
-
         self.library
     }
     
@@ -261,7 +274,7 @@ impl LibraryBuilder {
         let set_flags_type = SetFlagsType::define_new(self, bits);
         self.set_flags_type_info.insert(bits, set_flags_type);
 
-        self.runtime_type(&ir::Type::Struct(set_flags_type.struct_id));
+        self.gen_runtime_type(&ir::Type::Struct(set_flags_type.struct_id));
 
         set_flags_type
     }
@@ -865,7 +878,7 @@ impl LibraryBuilder {
             typ::Type::Set(set_ty) => {
                 let name = set_ty.name
                     .as_ref()
-                    .map(|ident_path| NamePath::from_ident_path(ident_path, None))
+                    .map(|ident_path| ir::NamePath::from_ident_path(ident_path, None))
                     .unwrap_or_else(|| {
                         panic!("can't find existing definition of unnamed set type for {}", src_ty)
                     });
@@ -897,13 +910,10 @@ impl LibraryBuilder {
         src_ty: &typ::Type,
         generic_ctx: &typ::GenericContext,
     ) -> ir::Type {
-        let src_ty = src_ty.clone().apply_type_args(generic_ctx, generic_ctx);
-
+        let src_ty = generic_ctx.apply_to_type(src_ty.clone());
         if let Some(cached) = self.type_cache.get(&src_ty) {
             return cached.clone();
         }
-        
-        let runtime_name = src_ty.to_string();
 
         // instantiate types which may contain generic params
         let ty = match &src_ty {
@@ -912,7 +922,9 @@ impl LibraryBuilder {
 
                 let id = self.library.metadata.reserve_new_struct();
                 let ty = ir::Type::Variant(id);
+                
                 self.type_cache.insert(src_ty.clone(), ty.clone());
+                self.cached_types.insert(ty.clone(), src_ty.clone());
 
                 let name_path = translate_name(&variant, generic_ctx, self);
                 self.library.metadata.declare_struct(id, &name_path, false);
@@ -924,20 +936,10 @@ impl LibraryBuilder {
             },
 
             typ::Type::Record(name) | typ::Type::Class(name) => {
-                // handle builtin types
-                if **name == typ::builtin_string_name() {
-                    self.type_cache.insert(src_ty, ir::STRING_TYPE);
-                    return ir::STRING_TYPE;
-                } else if **name == typ::builtin_typeinfo_name() {
-                    self.type_cache.insert(src_ty, ir::TYPEINFO_TYPE);
-                    return ir::TYPEINFO_TYPE;
-                }
-
                 let kind = src_ty.struct_kind().unwrap();
                 let def = self.src_metadata.instantiate_struct_def(name, kind).unwrap();
 
                 let id = self.library.metadata.reserve_new_struct();
-
                 let ty = match def.kind {
                     StructKind::Class => {
                         ir::Type::RcPointer(ir::VirtualTypeID::Class(id))
@@ -948,6 +950,7 @@ impl LibraryBuilder {
                 };
 
                 self.type_cache.insert(src_ty.clone(), ty.clone());
+                self.cached_types.insert(ty.clone(), src_ty.clone());
 
                 let name_path = translate_name(&name, generic_ctx, self);
                 self.library.metadata.declare_struct(id, &name_path, kind == StructKind::Class);
@@ -975,7 +978,8 @@ impl LibraryBuilder {
                 let id = self.library.metadata.declare_iface(&iface_name);
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Interface(id));
 
-                self.type_cache.insert(src_ty, ty.clone());
+                self.type_cache.insert(src_ty.clone(), ty.clone());
+                self.cached_types.insert(ty.clone(), src_ty);
 
                 let iface_meta = translate_iface(&iface_def, generic_ctx, self);
                 let def_id = self.library.metadata.define_iface(iface_meta);
@@ -991,7 +995,8 @@ impl LibraryBuilder {
                     dim: array_ty.dim,
                 };
 
-                self.type_cache.insert(src_ty, ty.clone());
+                self.type_cache.insert(src_ty.clone(), ty.clone());
+                self.cached_types.insert(ty.clone(), src_ty);
                 ty
             },
 
@@ -999,7 +1004,9 @@ impl LibraryBuilder {
                 let id = self.translate_dyn_array_struct(&element, generic_ctx);
 
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(id));
-                self.type_cache.insert(src_ty, ty.clone());
+
+                self.type_cache.insert(src_ty.clone(), ty.clone());
+                self.cached_types.insert(ty.clone(), src_ty);
 
                 ty
             },
@@ -1014,7 +1021,8 @@ impl LibraryBuilder {
 
                 let ty = ir::Type::RcPointer(ir::VirtualTypeID::Closure(func_ty_id));
 
-                self.type_cache.insert(src_ty, ty.clone());
+                self.type_cache.insert(src_ty.clone(), ty.clone());
+                self.cached_types.insert(ty.clone(), src_ty);
 
                 ty
             },
@@ -1023,32 +1031,31 @@ impl LibraryBuilder {
                 let flags_ty = self.get_set_flags_type_info(set_ty.flags_type_bits());
                 let name = set_ty.name
                     .as_ref()
-                    .map(|ident_path| NamePath::from_ident_path(ident_path, None));
+                    .map(|ident_path| ir::NamePath::from_ident_path(ident_path, None));
     
                 let set_id = self.metadata_mut()
                     .define_set_type(name, flags_ty.struct_id);
                 let ty = ir::Type::Flags(flags_ty.struct_id, set_id);
-                
-                self.type_cache.insert(src_ty, ty.clone());
+
+                self.type_cache.insert(src_ty.clone(), ty.clone());
+                self.cached_types.insert(ty.clone(), src_ty);
                 
                 ty
             }
 
             real_ty => {
-                // nothing to be instantiated
+                // nothing to be instantiated (must be a trivial/primitive type or this will panic)
                 let ty = self.find_type(real_ty);
-                self.type_cache.insert(src_ty, ty.clone());
+                
+                self.type_cache.insert(src_ty.clone(), ty.clone());
+                self.cached_types.insert(ty.clone(), src_ty);
 
                 ty
             },
         };
-        
-        self.rtti_provider.names.insert(ty.clone(), runtime_name);
 
         // ensure the runtime type info exists for all referenced types
-        self.runtime_type(&ty);
-
-        // println!("{} <- {}", src_ty, self.pretty_ty_name(&ty_def));
+        self.gen_runtime_type(&ty);
 
         ty
     }
@@ -1078,9 +1085,10 @@ impl LibraryBuilder {
     }
 
     // get or generate runtime type for a given type, which contains the function IDs etc
-    // used for RC operations at runtime
-    pub fn runtime_type(&mut self, ty: &ir::Type) -> Rc<ir::RuntimeType> {
-        if let Some(existing) = self.library.metadata.get_runtime_type(ty) {
+    // used for RC operations at runtime. the rest of the RTTI info will be filled in later 
+    // in a separate pass
+    pub fn gen_runtime_type(&mut self, ty: &ir::Type) -> Rc<ir::RuntimeType> {
+        if let Some(existing) = self.library.metadata.get_runtime_type(&ty) {
             return existing;
         }
 
@@ -1097,6 +1105,7 @@ impl LibraryBuilder {
                     release_builder.field(chars_field_ref.clone(), target_ref, ty.clone(), ir::STRING_CHARS_FIELD);
                     release_builder.free_mem(chars_field_ref.to_deref());
                 },
+
                 _ => {
                     release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
                         builder.release(el_ref, el_ty)
@@ -1105,7 +1114,6 @@ impl LibraryBuilder {
             }
             release_builder.finish()
         };
-
 
         let retain_body = {
             let mut retain_builder = Builder::new(self);
@@ -1169,30 +1177,104 @@ impl LibraryBuilder {
         } else {
             None
         };
-        
-        let rtti_name_id = self.rtti_provider
-            .type_name(ty)
-            .map(|name| self.library.metadata.find_or_insert_string(name.as_ref()));
 
-        let rtt = ir::RuntimeType {
-            name: rtti_name_id,
-            retain: retain_func,
-            release: release_func,
+        // type names and methods will be added after codegen
+        let mut rtti = ir::RuntimeType::new(None);
+        rtti.retain = retain_func;
+        rtti.release = release_func;
+        
+        self.library.metadata.insert_runtime_type(ty.clone(), rtti)
+    }
+    
+    // gen_runtime_type only populates the basics needed for codegen, this fills in reflection
+    // values like type names and methods
+    fn populate_all_runtime_type_info(&mut self) {
+        // TODO: this might be overly defensive, maybe the type cache will never change here?
+        // clone the type cache for iteration
+        // the RTTI generation process can touch new parts of code and
+        // cause the type cache to expand, so repeat until it stops growing
+        let mut done_count = 0;
+        while done_count < self.type_cache.len() {
+            let type_cache = self.type_cache.clone();
+
+            for (src_ty, ty) in type_cache.into_iter().skip(done_count) {
+                self.populate_runtime_type_info(src_ty, ty);
+                done_count += 1;
+            }
+        }
+    }
+
+    fn populate_runtime_type_info(&mut self, src_ty: typ::Type, ty: ir::Type) {
+        // should fetch from the cache at this point
+        let mut rtti = (*self.gen_runtime_type(&ty)).clone();
+        rtti.name = Some(self.library.metadata.find_or_insert_string(&src_ty.to_string()));
+
+        match &src_ty {
+            typ::Type::Record(name) | typ::Type::Class(name) => {
+                let def = self.src_metadata
+                    .instantiate_struct_def(name.as_ref(), src_ty.struct_kind().unwrap())
+                    .unwrap();
+
+                for (method_index, method) in def.methods.iter().enumerate() {
+                    let method_name = method.func_decl.name.ident.as_str();
+                    let method_name_id = self.library.metadata.find_or_insert_string(method_name);
+
+                    let method_generic_ctx = GenericContext::empty();
+
+                    if method.access >= Access::Published && method.func_decl.type_params.is_none() {
+                        let params = method.func_decl.params
+                            .iter()
+                            .map(|param| {
+                                let mut param_ty = self.translate_type(&param.ty, &method_generic_ctx);
+                                if matches!(param.modifier, Some(FunctionParamMod::Var | FunctionParamMod::Out)) {
+                                    param_ty = param_ty.ptr();
+                                }
+
+                                param_ty
+                            })
+                            .collect();
+
+                        let method_key = MethodDeclKey {
+                            self_ty: src_ty.clone(),
+                            method_index,
+                        };
+                        let method_instance = self.instantiate_method(&method_key, None);
+
+                        rtti.methods.push(ir::RuntimeMethod {
+                            function: method_instance.id,
+                            name: method_name_id,
+                            params,
+                            result_ty: self.translate_type(&method.func_decl.return_ty, &method_generic_ctx),
+                        });
+                    }
+                }
+            }
+
+            _ => {
+                // type has no publishable methods
+            }
         };
 
-        self.library.metadata.declare_runtime_type(ty.clone(), rtt.clone())
+        // replace the existing RTTI
+        self.library.metadata.insert_runtime_type(ty, rtti);
     }
 
     pub fn translate_dyn_array_struct(
         &mut self,
-        element_ty: &typ::Type,
+        src_element_ty: &typ::Type,
         generic_ctx: &typ::GenericContext,
     ) -> ir::TypeDefID {
-        let element_ty = self.translate_type(element_ty, generic_ctx);
+        let element_ty = self.translate_type(src_element_ty, generic_ctx);
 
         match self.library.metadata.find_dyn_array_struct(&element_ty) {
             Some(id) => id,
-            None => self.library.metadata.define_dyn_array_struct(element_ty, &self.rtti_provider),
+
+            None => {
+                let rtti_name = src_element_ty.clone().dyn_array().to_string();
+                let rtti_name_id = self.library.metadata.find_or_insert_string(&rtti_name);
+                
+                self.library.metadata.define_dyn_array_struct(element_ty, Some(rtti_name_id))
+            }
         }
     }
 
@@ -1796,8 +1878,8 @@ fn gen_class_runtime_type(lib: &mut LibraryBuilder, class_ty: &ir::Type) {
         .expect("resource class of translated class type was not a struct");
 
     let resource_ty = ir::Type::Struct(resource_struct);
-    lib.runtime_type(&resource_ty);
-    lib.runtime_type(&class_ty);
+    lib.gen_runtime_type(&resource_ty);
+    lib.gen_runtime_type(&class_ty);
 }
 
 fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::TypeArgList>) {
@@ -1808,22 +1890,5 @@ fn expect_no_generic_args<T: fmt::Display>(target: &T, type_args: Option<&typ::T
             "name of translated variant must not contain unspecialized generics: {}",
             target
         );
-    }
-}
-
-#[derive(Debug)]
-struct PascalRttiProvider {
-    names: HashMap<ir::Type, String>,
-}
-
-impl ir::RttiProvider for PascalRttiProvider {
-    fn type_name(&self, ty: &ir::Type) -> Option<Cow<String>> {
-        self.names.get(ty).map(Cow::Borrowed)
-    }
-
-    fn dyn_array_type_name(&self, element_ty: &ir::Type) -> Option<Cow<String>> {
-        let element_name = self.type_name(element_ty)?;
-        
-        Some(Cow::Owned(format!("array of {element_name}")))
     }
 }

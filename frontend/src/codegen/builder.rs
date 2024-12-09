@@ -1131,7 +1131,7 @@ impl<'m> Builder<'m> {
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.library.runtime_type(ty);
+                let rc_funcs = self.library.gen_runtime_type(ty);
 
                 if let Some(retain) = rc_funcs.retain {
                     let at_ptr = self.local_temp(ty.clone().ptr());
@@ -1176,7 +1176,7 @@ impl<'m> Builder<'m> {
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.library.runtime_type(ty);
+                let rc_funcs = self.library.gen_runtime_type(ty);
 
                 if let Some(release) = rc_funcs.release {
                     let at_ptr = self.local_temp(ty.clone().ptr());

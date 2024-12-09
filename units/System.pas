@@ -70,11 +70,19 @@ type
     Displayable = interface
         function ToString: String;
     end;
-    
-    TypeInfo = class
+
+    MethodInfo = class
         name: String;
     public
         function Name: String;
+    end;
+    
+    TypeInfo = class
+        name: String;
+        methods: array of MethodInfo;
+    public
+        function Name: String;
+        function Methods: array of MethodInfo;
     end;
 
 function GetMem(count: Int32): ^Byte; external 'rt';
@@ -216,7 +224,9 @@ begin
     end;
 end;
 
-function Result[T, E].Then[TNext](f: function(T): Result[TNext, E]): Result[TNext, E];
+function Result[T, E].Then[TNext](
+    f: function(T): Result[TNext, E]
+): Result[TNext, E];
 begin
     match self of
         Result.Ok val: f(val);
@@ -240,8 +250,7 @@ end;
 
 function StringConcat(a, b: String): String;
 begin
-    if a.len = 0 and b.len = 0 then
-        exit String(chars: nil; len: 0);
+    if a.len = 0 and b.len = 0 then exit '';
 
     if a.len = 0 then exit b;
     if b.len = 0 then exit a;
@@ -264,17 +273,16 @@ end;
 
 function StringFromBytes(bytes: ^Byte; len: Integer): String;
 begin
-    if len = 0 then String(chars: nil; len: 0)
-    else begin
-        var strBytes: ^Byte := GetMem(len);
+    if len = 0 then exit '';
 
-        for var i: Integer := 0 to len - 1 do
-        begin
-            strBytes[i] := bytes[i];
-        end;
+    var strBytes: ^Byte := GetMem(len);
 
-        String(chars: strBytes; len: len)
-    end
+    for var i: Integer := 0 to len - 1 do
+    begin
+        strBytes[i] := bytes[i];
+    end;
+
+    String(chars: strBytes; len: len)
 end;
 
 function StringLenNullTerminated(chars: ^Byte): Integer;
@@ -292,10 +300,7 @@ end;
 
 function CompareStr(a, b: String): Integer;
 begin
-    if a.len = 0 and b.len = 0 then 
-    begin
-        exit 0;
-    end;
+    if a.len = 0 and b.len = 0 then exit 0;
 
     var aPos := 0;
     var bPos := 0;
@@ -342,12 +347,12 @@ begin
     var startAt := 0;
     var endAt := self.len - 1;
 
-    while startAt < endAt and self.CharAt(startAt).IsWhiteSpace do
+    while startAt < endAt and self.CharAt(startAt).IsWhiteSpace do 
     begin
         startAt += 1;
     end;
 
-    while endAt >= startAt and self.CharAt(endAt).IsWhiteSpace do
+    while endAt >= startAt and self.CharAt(endAt).IsWhiteSpace do 
     begin
         endAt -= 1;
     end;
@@ -530,6 +535,16 @@ begin
 end;
 
 function TypeInfo.Name: String;
+begin
+    self.name
+end;
+
+function TypeInfo.Methods: array of MethodInfo;
+begin
+    self.methods
+end;
+
+function MethodInfo.Name: String;
 begin
     self.name
 end;

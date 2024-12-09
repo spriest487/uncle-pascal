@@ -39,7 +39,7 @@ impl Default for IROptions {
     }
 }
 
-pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Library {
+pub fn gen_lib(module: &typ::Module, opts: IROptions) -> ir::Library {
     let metadata = ir::Metadata::new();
     let mut lib = LibraryBuilder::new((*module.root_ctx).clone(), metadata, opts);
 
@@ -59,6 +59,7 @@ pub fn translate(module: &typ::Module, opts: IROptions) -> ir::Library {
 
     translate_builtin_class(&module, &mut lib, &typ::builtin_string_name(), ir::STRING_ID);
     translate_builtin_class(&module, &mut lib, &typ::builtin_typeinfo_name(), ir::TYPEINFO_ID);
+    translate_builtin_class(&module, &mut lib, &typ::builtin_methodinfo_name(), ir::METHODINFO_ID);
 
     for unit in &module.units {
         lib.translate_unit(&unit.unit);
@@ -83,12 +84,11 @@ fn translate_builtin_class(
 
     let name = translate_name(name, &generic_ctx, lib);
 
-    lib.metadata_mut().reserve_struct(id);
     lib.metadata_mut().declare_struct(id, &name, true);
 
     let resource_ty = translate_struct_def(class_def.as_ref(), &generic_ctx, lib);
 
     lib.metadata_mut().define_struct(id, resource_ty);
-    lib.runtime_type(&ir::Type::Struct(id));
-    lib.runtime_type(&ir::Type::RcPointer(ir::VirtualTypeID::Class(id)));
+    lib.gen_runtime_type(&ir::Type::Struct(id));
+    lib.gen_runtime_type(&ir::Type::RcPointer(ir::VirtualTypeID::Class(id)));
 }

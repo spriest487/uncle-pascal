@@ -92,5 +92,5 @@ pub fn typecheck(units: &[Unit<Span>]) -> TypeResult<Module> {
 }
 
 pub fn codegen_ir(module: &Module, opts: IROptions) -> ir::Library {
-    codegen::translate(module, opts)
+    codegen::gen_lib(module, opts)
 }

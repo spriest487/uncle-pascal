@@ -1,4 +1,4 @@
-use crate::codegen::translate;
+use crate::codegen::gen_lib;
 use crate::codegen::IROptions;
 use crate::typ;
 use ir_lang::dep_sort::find_deps;
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
     let module = typ::test::module_from_src("test", src);
-    let ir = translate(&module, IROptions::default());
+    let ir = gen_lib(&module, IROptions::default());
 
     let defs = ir.metadata().type_defs()
         .map(|(id, def)| (id, def.clone()))

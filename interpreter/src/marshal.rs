@@ -563,7 +563,7 @@ impl Marshaller {
                 let mut el_offset = 0;
 
                 for i in 0..x.elements.len() {
-                    let el = &x.elements[i as usize];
+                    let el = &x.elements[i];
                     let el_bytes = &mut out_bytes[el_offset..];
                     el_offset += self.marshal(el, el_bytes)?;
                 }
@@ -750,7 +750,7 @@ impl Marshaller {
 
             ir::Type::Array { element, dim } => {
                 let mut offset = 0;
-                let mut elements = Vec::with_capacity(*dim as usize);
+                let mut elements = Vec::with_capacity(*dim);
                 for _ in 0..*dim {
                     let el_val = self.unmarshal(&in_bytes[offset..], &element)?;
                     offset += el_val.byte_count;

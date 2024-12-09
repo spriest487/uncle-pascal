@@ -1811,15 +1811,8 @@ impl Interpreter {
         for (ty, runtime_type) in lib.metadata.runtime_types() {
             let typeinfo_ref = ir::GlobalRef::StaticTypeInfo(Box::new(ty.clone()));
 
-            let name_string = match &runtime_type.name {
-                None => DynValue::Pointer(Pointer::null(ir::Type::Struct(ir::STRING_ID))),
-                Some(name_id) => string_lit_values[name_id].clone(),
-            };
-            
-            let typeinfo_struct = StructValue::new(ir::TYPEINFO_ID, [name_string]);
-            
-            let typeinfo_ptr = self.rc_alloc(typeinfo_struct, true)?;
-            let ptr_bytes = self.marshaller.marshal_to_vec(&DynValue::Pointer(typeinfo_ptr))?;
+            let typeinfo_ptr = self.create_typeinfo(runtime_type, &string_lit_values)?;
+            let ptr_bytes = self.marshaller.marshal_to_vec(&typeinfo_ptr)?;
             
             self.globals.insert(typeinfo_ref, GlobalValue::Variable {
                 value: ptr_bytes.into_boxed_slice(),
@@ -1947,6 +1940,73 @@ impl Interpreter {
         }
 
         Ok(chars.into_iter().collect())
+    }
+    
+    fn create_dyn_array(&mut self,
+        element_ty: &ir::Type,
+        elements: Vec<DynValue>,
+        immortal: bool
+    ) -> ExecResult<DynValue> {
+        let Some(array_id) = self.metadata.find_dyn_array_struct(element_ty) else {
+            let ty_name = self.metadata.pretty_ty_name(&element_ty);
+            return Err(ExecError::IllegalState {
+                msg: format!("can't create dynarray of type {}: not found in metadata", ty_name),
+            });
+        };
+
+        let array_len = elements.len() as i32;
+        let array_ptr = if !elements.is_empty() {
+            self.dynalloc_init(&element_ty, elements)?
+        } else {
+            Pointer::null(element_ty.clone())
+        };
+
+        let array = StructValue {
+            type_id: array_id,
+            rc: Some(RcState::new(immortal)),
+            fields: vec![ 
+                DynValue::I32(array_len),
+                DynValue::Pointer(array_ptr),
+            ]
+        };
+        
+        let dynarray = self.rc_alloc(array, immortal)?;
+        Ok(DynValue::Pointer(dynarray))
+    }
+    
+    fn create_typeinfo(&mut self,
+        rtti: &ir::RuntimeType,
+        string_lit_values: &HashMap<ir::StringID, DynValue>
+    ) -> ExecResult<DynValue> {
+        let type_name_string = match &rtti.name {
+            None => DynValue::Pointer(Pointer::null(ir::Type::Struct(ir::STRING_ID))),
+            Some(name_id) => string_lit_values[name_id].clone(),
+        };
+
+        let mut method_infos = Vec::new();
+        for rtti_method in &rtti.methods {
+            let name_val = string_lit_values[&rtti_method.name].clone();
+            let method_info = StructValue {
+                rc: Some(RcState::new(true)),
+                type_id: ir::METHODINFO_ID,
+                fields: vec![
+                    name_val,
+                ],
+            };
+            
+            let method_info_ptr = self.rc_alloc(method_info, true)?;
+            method_infos.push(DynValue::Pointer(method_info_ptr));
+        }
+
+        let method_array = self.create_dyn_array(&ir::METHODINFO_TYPE, method_infos, true)?;
+
+        let typeinfo_struct = StructValue::new(ir::TYPEINFO_ID, [
+            type_name_string,
+            method_array,
+        ]);
+        
+        let typeinfo_ptr = self.rc_alloc(typeinfo_struct, true)?;
+        Ok(DynValue::Pointer(typeinfo_ptr))
     }
     
     fn update_diagnostics(&self) {

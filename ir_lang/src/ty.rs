@@ -53,6 +53,10 @@ impl Type {
         Type::RcPointer(VirtualTypeID::Any)
     }
 
+    pub const fn class_ptr(id: TypeDefID) -> Self {
+        Self::rc_ptr_to(VirtualTypeID::Class(id))
+    }
+    
     pub const fn rc_ptr_to(class: VirtualTypeID) -> Self {
         Type::RcPointer(class)
     }

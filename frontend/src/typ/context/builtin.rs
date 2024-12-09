@@ -2,7 +2,6 @@ use crate::ast::Access;
 use crate::ast::FunctionDeclKind;
 use crate::ast::IdentPath;
 use crate::ast::Path;
-use crate::ast::StructKind;
 use crate::ast::Visibility;
 use crate::typ::ast;
 use crate::typ::ast::SELF_PARAM_NAME;
@@ -38,6 +37,10 @@ pub const ANY_TYPE_NAME: &str = "Object";
 
 pub const TYPEINFO_TYPE_NAME: &str = "TypeInfo";
 pub const TYPEINFO_NAME_METHOD: &str = "Name";
+pub const TYPEINFO_METHODS_METHOD: &str = "Methods";
+
+pub const METHOD_TYPE_NAME: &str = "MethodInfo";
+pub const METHOD_NAME_METHOD: &str = "Name";
 
 pub const DISPOSABLE_IFACE_NAME: &str = "Disposable";
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
@@ -51,8 +54,8 @@ pub const DISPLAYABLE_IFACE_NAME: &str = "Displayable";
 pub const DISPLAYABLE_TOSTRING_METHOD: &str = "ToString";
 
 pub const STRING_TYPE_NAME: &str = "String";
-const STRING_CHARS_FIELD: &str = "chars";
-const STRING_LEN_FIELD: &str = "len";
+// const STRING_CHARS_FIELD: &str = "chars";
+// const STRING_LEN_FIELD: &str = "len";
 pub static STRING_CHAR_TYPE: Primitive = Primitive::UInt8;
 
 pub const STRING_CONCAT_FUNC_NAME: &str = "StringConcat";
@@ -111,38 +114,6 @@ pub fn builtin_string_name() -> Symbol {
     }
 }
 
-pub fn builtin_string_class() -> ast::StructDef {
-    let builtin_span = builtin_span();
-
-    ast::StructDef {
-        name: builtin_string_name(),
-        packed: false,
-        fields: vec![
-            ast::FieldDecl {
-                ident: Ident::new(STRING_CHARS_FIELD, builtin_span.clone()),
-                ty: Type::from(Primitive::UInt8).ptr(),
-                span: builtin_span.clone(),
-                access: Access::Private,
-            },
-            ast::FieldDecl {
-                ident: Ident::new(STRING_LEN_FIELD, builtin_span.clone()),
-                ty: Type::from(Primitive::Int32),
-                span: builtin_span.clone(),
-                access: Access::Private,
-            },
-        ],
-        methods: Vec::new(),
-        implements: vec![
-            Type::interface(builtin_displayable_name().full_path),
-            Type::interface(builtin_comparable_name().full_path),
-        ],
-        forward: false,
-        kind: StructKind::Class,
-        span: builtin_span,
-    }
-}
-
-
 // builtin name of the dispose method of the builtin disposable interface
 pub fn builtin_disposable_dispose_name(owning_ty: Option<Type>) -> ast::TypedFunctionName {
     let iface_ty = Type::interface(builtin_disposable_name().full_path);
@@ -162,38 +133,11 @@ pub fn builtin_disposable_name() -> Symbol {
     ]))
 }
 
-pub fn builtin_typeinfo_class() -> ast::StructDef {
-    let name_method = ast::MethodDecl {
-        access: Access::Public,
-        func_decl: Rc::new(ast::FunctionDecl {
-            name: ast::TypedFunctionName {
-                ident: builtin_ident(TYPEINFO_NAME_METHOD),
-                span: builtin_span(),
-                owning_ty: Some(Type::class(builtin_typeinfo_name())),
-            },
-            mods: vec![],
-            params: vec![],
-            return_ty: Type::class(builtin_string_name()),
-            kind: FunctionDeclKind::Function,
-            type_params: None,
-            span: builtin_span(),
-        })
-    };
-
-    ast::StructDef {
-        kind: StructKind::Class,
-        name: builtin_typeinfo_name(),
-        packed: false,
-        forward: false,
-        fields: vec![],
-        methods: vec![
-            name_method,
-        ],
-        implements: vec![
-            Type::interface(builtin_displayable_name().full_path)
-        ],
-        span: builtin_span(),
-    }
+pub fn builtin_methodinfo_name() -> Symbol {
+    Symbol::from(IdentPath::from_vec(vec![
+        builtin_ident(SYSTEM_UNIT_NAME),
+        builtin_ident(METHOD_TYPE_NAME),
+    ]))
 }
 
 pub fn builtin_typeinfo_name() -> Symbol {
