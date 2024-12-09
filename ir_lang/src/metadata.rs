@@ -3,7 +3,6 @@ use crate::rtti::DynArrayRuntimeType;
 use crate::rtti::RuntimeType;
 use crate::ty::FieldID;
 use crate::ty::VirtualTypeID;
-use crate::FunctionDecl;
 use crate::FunctionID;
 use crate::FunctionSig;
 use crate::GlobalRef;
@@ -27,6 +26,7 @@ use crate::TypeDef;
 use crate::TypeDefID;
 use crate::Value;
 use crate::VariantDef;
+use crate::FunctionDecl;
 use linked_hash_map::LinkedHashMap;
 use serde::Deserialize;
 use serde::Serialize;
@@ -87,8 +87,9 @@ pub const TYPEINFO_METHODS_FIELD: FieldID = FieldID(1);
 
 pub const METHODINFO_ID: TypeDefID = TypeDefID(3);
 pub const METHODINFO_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(METHODINFO_ID);
-pub const METHODINFO_TYPE: Type = Type::RcPointer(crate::METHODINFO_VTYPE_ID);
+pub const METHODINFO_TYPE: Type = Type::RcPointer(METHODINFO_VTYPE_ID);
 pub const METHODINFO_NAME_FIELD: FieldID = FieldID(0);
+pub const METHODINFO_OWNER_FIELD: FieldID = FieldID(1);
 
 pub const BUILTIN_TYPE_DEFS: [Type; 2] = [
     STRING_TYPE,
@@ -341,6 +342,22 @@ impl Metadata {
 
     pub fn runtime_types(&self) -> impl Iterator<Item = (&Type, &Rc<RuntimeType>)> {
         self.runtime_types.iter()
+    }
+    
+    pub fn find_runtime_method(&self, type_name: &str, method_name: &str) -> Option<(&Type, &Rc<RuntimeType>, usize)> {
+        let type_name_str = self.find_string_id(type_name)?;
+        
+        let (ty, runtime_type) = self.runtime_types
+            .iter()
+            .find(|(_, t)| t.name == Some(type_name_str))?;
+        
+        let method_name_str = self.find_string_id(method_name)?;
+
+        let method_index = runtime_type.methods
+            .iter()
+            .position(|m| m.name == method_name_str)?;
+        
+        Some((ty, runtime_type, method_index))
     }
 
     pub fn find_function(&self, name: &NamePath) -> Option<FunctionID> {

@@ -71,10 +71,16 @@ type
         function ToString: String;
     end;
 
+    TypeInfo = class;
+
     MethodInfo = class
         name: String;
+        owner: TypeInfo; 
     public
+        function Owner: TypeInfo;
         function Name: String;
+
+        function Invoke(instance: Pointer; args: array of Pointer; resultPtr: Pointer);
     end;
     
     TypeInfo = class
@@ -155,6 +161,13 @@ const
     DEG_TO_RAD = PI / 180.0;
 
 implementation
+
+function InvokeMethod(
+    method: MethodInfo; 
+    instance: Pointer; 
+    args: array of Pointer; 
+    resultOut: Pointer;
+); external 'rt';
 
 function ByteToStr(i: Byte): String;
 begin
@@ -547,6 +560,16 @@ end;
 function MethodInfo.Name: String;
 begin
     self.name
+end;
+
+function MethodInfo.Owner: TypeInfo;
+begin
+    self.owner
+end;
+
+function MethodInfo.Invoke(instance: Pointer; args: array of Pointer; resultOut: Pointer);
+begin
+    InvokeMethod(self, instance, args, resultOut);
 end;
 
 function Int8.ToString: String;

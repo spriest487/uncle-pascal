@@ -222,7 +222,7 @@ pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
         })?;
 
     let arr_arg = state.evaluate(&Value::Ref(array_arg_ref))?;
-    state.call(len_func, &[arr_arg], Some(&RETURN_REF))?;
+    state.call_store(len_func, &[arr_arg], Some(&RETURN_REF))?;
 
     Ok(())
 }
@@ -253,11 +253,113 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     let new_arr = state.rc_alloc(new_arr_struct, false)?;
     let new_arr_val = DynValue::Pointer(new_arr);
 
-    state.call(alloc_func, &[new_arr_val.clone(), new_len, old_arr, default_val_ptr], None)?;
+    state.call_store(alloc_func, &[new_arr_val.clone(), new_len, old_arr, default_val_ptr], None)?;
 
     state.store(&RETURN_REF, new_arr_val)?;
 
     Ok(())
+}
+
+fn invoke_method(state: &mut Interpreter) -> ExecResult<()> {
+    let method_ptr = load_pointer(state, &Ref::Local(LocalID(0)))?;
+    let instance_ptr = load_pointer(state, &Ref::Local(LocalID(1)))?;
+    let arg_array_ptr = load_pointer(state, &Ref::Local(LocalID(2)))?;
+    let result_ptr_arg = load_pointer(state, &Ref::Local(LocalID(3)))?;
+
+    let (method_info_val,_) = state.load_rc_struct_ptr(&method_ptr)?;
+    
+    let method_name_ptr = method_info_val[METHODINFO_NAME_FIELD]
+        .as_pointer()
+        .ok_or_else(|| {
+            let msg = format!("bad type: expected string pointer at field {METHODINFO_NAME_FIELD} of method info");
+            ExecError::illegal_state(msg)
+        })?;
+
+    // TODO: MethodInfo should be know its own method index/ID for overloading?
+    let method_name = state.read_string_indirect(method_name_ptr)?;
+
+    let type_info_ptr = method_info_val[METHODINFO_OWNER_FIELD]
+        .as_pointer()
+        .ok_or_else(|| {
+            let msg = format!("bad type: expected owner pointer at field {METHODINFO_OWNER_FIELD} of method info");
+            ExecError::illegal_state(msg)
+        })?;
+
+    let (type_info_val, _) = state.load_rc_struct_ptr(&type_info_ptr)?;
+    let type_name_ptr = type_info_val[TYPEINFO_NAME_FIELD]
+        .as_pointer()
+        .ok_or_else(|| {
+            let msg = format!("bad type: expected string pointer at field {TYPEINFO_NAME_FIELD} of type info");
+            ExecError::illegal_state(msg)
+        })?;
+
+    let type_name = state.read_string_indirect(type_name_ptr)?;
+    
+    let (ty, runtime_type, method_index) = state.metadata
+        .find_runtime_method(&type_name, &method_name)
+        .ok_or_else(|| {
+            let msg = format!("attempting to invoke method {}.{} which does not exist in metadata", type_name, method_name);
+            ExecError::illegal_state(msg)
+        })?;
+    
+    let method = runtime_type.methods[method_index].clone();
+
+    let mut call_arg_vals = Vec::new();
+    if !instance_ptr.is_null() { 
+        let instance_val = state.load_indirect(&instance_ptr.reinterpret(ty.clone()))?;
+        call_arg_vals.push(instance_val);
+    }
+    
+    let arg_array = state.read_dynarray(&arg_array_ptr)?;
+    let total_arg_count = call_arg_vals.len() + arg_array.len();
+
+    if total_arg_count != method.params.len() {
+        let msg = format!(
+            "method invoke arg array for {}.{} did not match expected size (got {}, expected {})",
+            type_name,
+            method_name,
+            total_arg_count,
+            method.params.len(),
+        );
+        return Err(ExecError::illegal_state(msg));
+    }
+    
+    let mut param_index = call_arg_vals.len();
+
+    for arg in arg_array {
+        let arg_ptr = arg
+            .as_pointer()
+            .ok_or_else(|| ExecError::illegal_state("method_invoke arg array may only contain pointers"))?
+            .reinterpret(method.params[param_index].clone());
+
+        let arg_val = state.load_indirect(&arg_ptr)?;
+        
+        call_arg_vals.push(arg_val);
+        param_index += 1;
+    }
+
+    let result_val = state.call(method.function, &call_arg_vals)?;
+    if !result_ptr_arg.is_null() {
+        let Some(result_val) = result_val else {
+            return Err(ExecError::illegal_state("result pointer was provided but function did not return a value"));
+        };
+        
+        let result_ptr = result_ptr_arg.reinterpret(method.result_ty.clone());
+        state.store_indirect(&result_ptr, result_val)?;
+    }
+    
+    Ok(())
+}
+
+fn load_pointer(state: &mut Interpreter, at: &Ref) -> ExecResult<Pointer> {
+    state
+        .load(at)?
+        .as_pointer()
+        .cloned()
+        .ok_or_else(|| {
+            let msg = format!("bad type: expected pointer at {at}");
+            ExecError::illegal_state(msg)
+        })
 }
 
 fn load_integer(state: &mut Interpreter, at: &Ref) -> ExecResult<i32> {
@@ -373,207 +475,118 @@ pub(super) fn is_nan(state: &mut Interpreter) -> ExecResult<()> {
     state.store(&RETURN_REF, DynValue::Bool(val.is_nan()))
 }
 
-pub fn system_funcs() -> impl IntoIterator<Item=(&'static str, BuiltinFn, Type, Vec<Type>)> {
+pub fn system_funcs(
+    metadata: &Metadata
+) -> impl IntoIterator<Item=(&'static str, BuiltinFn, Type, Vec<Type>)> {
+    let array_of_ptr = metadata.find_dyn_array_struct(&Type::Nothing.ptr())
+        .expect("array of raw pointer type must exist in metadata");
+    
     let items = [
-        (
-            "Int8ToStr",
-            i8_to_str as BuiltinFn,
-            Type::string_ptr(),
-            vec![Type::I8],
-        ),
-        (
-            "UInt8ToStr",
-            u8_to_str,
-            Type::string_ptr(),
-            vec![Type::U8],
-        ),
-        (
-            "Int16ToStr",
-            i16_to_str,
-            Type::string_ptr(),
-            vec![Type::I16],
-        ),
-        (
-            "UInt16ToStr",
-            u16_to_str,
-            Type::string_ptr(),
-            vec![Type::U16],
-        ),
-        (
-            "Int32ToStr",
-            i32_to_str,
-            Type::string_ptr(),
-            vec![Type::I32],
-        ),
-        (
-            "UInt32ToStr",
-            u32_to_str,
-            Type::string_ptr(),
-            vec![Type::U32],
-        ),
-        (
-            "Int64ToStr",
-            i64_to_str,
-            Type::string_ptr(),
-            vec![Type::I64],
-        ),
-        (
-            "UInt64ToStr",
-            u64_to_str,
-            Type::string_ptr(),
-            vec![Type::U64],
-        ),
-        (
-            "NativeIntToStr",
-            isize_to_str,
-            Type::string_ptr(),
-            vec![Type::ISize],
-        ),
-        (
-            "NativeUIntToStr",
-            usize_to_str,
-            Type::string_ptr(),
-            vec![Type::USize],
-        ),
-        (
-            "PointerToStr",
-            pointer_to_str,
-            Type::string_ptr(),
-            vec![Type::Nothing.ptr()],
-        ),
-        (
-            "RealToStr",
-            real_to_str,
-            Type::string_ptr(),
-            vec![Type::F32],
-        ),
-        (
-            "StrToInt",
-            str_to_int,
-            Type::I32,
-            vec![STRING_TYPE],
-        ),
-        (
-            "Write",
-            write,
-            Type::Nothing,
-            vec![STRING_TYPE],
-        ),
-        (
-            "WriteLn",
-            write_ln,
-            Type::Nothing,
-            vec![STRING_TYPE],
-        ),
-        ("ReadLn", read_ln, Type::string_ptr(), vec![]),
-        (
-            "GetMem",
-            get_mem,
-            Type::U8.ptr(),
-            vec![Type::I32],
-        ),
-        (
-            "FreeMem",
-            free_mem,
-            Type::Nothing,
-            vec![Type::U8.ptr()],
-        ),
-        (
-            "ArrayLengthInternal",
-            array_length,
-            Type::I32,
-            vec![Type::any()],
-        ),
-        (
-            "ArraySetLengthInternal",
-            set_length,
-            Type::any(),
-            vec![Type::any(), Type::I32, Type::any()],
-        ),
-        (
-            "RandomInteger",
-            random_integer,
-            Type::I32,
-            vec![Type::I32, Type::I32]
-        ),
-        (
-            "RandomSingle",
-            random_single,
-            Type::F32,
-            vec![Type::F32, Type::F32]
-        ),
-        (
-            "Pow",
-            pow,
-            Type::F32,
-            vec![Type::F32, Type::F32]
-        ),
-        (
-            "Sqrt",
-            sqrt,
-            Type::F32,
-            vec![Type::F32]
-        ),
-        (
-            "Sin",
-            sin,
-            Type::F32,
-            vec![Type::F32]
-        ),
-        (
-            "ArcSin",
-            arc_sin,
-            Type::F32,
-            vec![Type::F32]
-        ),
-        (
-            "Cos",
-            cos,
-            Type::F32,
-            vec![Type::F32]
-        ),
-        (
-            "ArcCos",
-            arc_cos,
-            Type::F32,
-            vec![Type::F32]
-        ),
-        (
-            "Tan",
-            tan,
-            Type::F32,
-            vec![Type::F32]
-        ),
-        (
-            "ArcTan",
-            arc_tan,
-            Type::F32,
-            vec![Type::F32]
-        ),
-        (
-            "Infinity",
-            infinity,
-            Type::F32,
-            vec![]
-        ),
-        (
-            "IsInfinite",
-            is_infinite,
-            Type::Bool,
-            vec![Type::F32]
-        ),
-        (
-            "NaN",
-            nan,
-            Type::F32,
-            vec![]
-        ),
-        (
-            "IsNaN",
-            is_nan,
-            Type::Bool,
-            vec![Type::F32]
-        )];
+        ("Int8ToStr", i8_to_str as BuiltinFn, Type::string_ptr(), vec![
+            Type::I8
+        ]),
+        ("UInt8ToStr", u8_to_str, Type::string_ptr(), vec![
+            Type::U8
+        ]),
+        ("Int16ToStr", i16_to_str, Type::string_ptr(), vec![
+            Type::I16
+        ]),
+        ("UInt16ToStr", u16_to_str, Type::string_ptr(), vec![
+            Type::U16
+        ]),
+        ("Int32ToStr", i32_to_str, Type::string_ptr(), vec![
+            Type::I32
+        ]),
+        ("UInt32ToStr", u32_to_str, Type::string_ptr(), vec![
+            Type::U32
+        ]),
+        ("Int64ToStr", i64_to_str, Type::string_ptr(), vec![
+            Type::I64
+        ]),
+        ("UInt64ToStr", u64_to_str, Type::string_ptr(), vec![
+            Type::U64
+        ]),
+        ("NativeIntToStr", isize_to_str, Type::string_ptr(), vec![
+            Type::ISize
+        ]),
+        ("NativeUIntToStr", usize_to_str, Type::string_ptr(), vec![
+            Type::USize
+        ]),
+        ("PointerToStr", pointer_to_str, Type::string_ptr(), vec![
+            Type::Nothing.ptr()
+        ]),
+        ("RealToStr", real_to_str, Type::string_ptr(), vec![
+            Type::F32
+        ]),
+        ("StrToInt", str_to_int, Type::I32, vec![
+            STRING_TYPE
+        ]),
+        ("Write", write, Type::Nothing, vec![
+            STRING_TYPE
+        ]),
+        ("WriteLn", write_ln, Type::Nothing, vec![
+            STRING_TYPE
+        ]),
+        ("ReadLn", read_ln, Type::string_ptr(), vec![]), 
+        ("GetMem", get_mem, Type::U8.ptr(), vec![
+            Type::I32
+        ]),
+        ("FreeMem", free_mem, Type::Nothing, vec![
+            Type::U8.ptr()
+        ]),
+        ("ArrayLengthInternal", array_length, Type::I32, vec![
+            Type::any()
+        ]),
+        ("ArraySetLengthInternal", set_length, Type::any(), vec![
+            Type::any(), 
+            Type::I32, 
+            Type::any()
+        ]),
+        ("InvokeMethod", invoke_method, Type::Nothing, vec![
+            METHODINFO_TYPE,
+            Type::Nothing.ptr(),
+            Type::class_ptr(array_of_ptr),
+            Type::Nothing.ptr(),
+        ]),
+        ("RandomInteger", random_integer, Type::I32, vec![
+            Type::I32, Type::I32
+        ]),
+        ("RandomSingle", random_single, Type::F32, vec![
+            Type::F32, Type::F32
+        ]),
+        ("Pow", pow, Type::F32, vec![
+            Type::F32, Type::F32
+        ]),
+        ("Sqrt", sqrt, Type::F32, vec![
+            Type::F32
+        ]),
+        ("Sin", sin, Type::F32, vec![
+            Type::F32
+        ]),
+        ("ArcSin", arc_sin, Type::F32, vec![
+            Type::F32
+        ]),
+        ("Cos", cos, Type::F32, vec![
+            Type::F32
+        ]),
+        ("ArcCos", arc_cos, Type::F32, vec![
+            Type::F32
+        ]),
+        ("Tan", tan, Type::F32, vec![
+            Type::F32
+        ]),
+        ("ArcTan", arc_tan, Type::F32, vec![
+            Type::F32
+        ]),
+        ("Infinity", infinity, Type::F32, vec![]),
+        ("IsInfinite", is_infinite, Type::Bool, vec![
+            Type::F32
+        ]),
+        ("NaN", nan, Type::F32, vec![]),
+        ("IsNaN", is_nan, Type::Bool, vec![
+            Type::F32
+        ])
+    ];
 
     items
 }

@@ -611,6 +611,13 @@ pub struct RcState {
 }
 
 impl RcState {
+    pub fn immortal() -> Self {
+        Self {
+            strong_count: -1,
+            weak_count: 0,
+        }
+    }
+    
     pub fn new(immortal: bool) -> Self {
         Self {
             strong_count: if immortal { -1 } else { 1 },

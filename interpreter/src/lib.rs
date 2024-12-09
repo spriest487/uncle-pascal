@@ -441,12 +441,36 @@ impl Interpreter {
             })
     }
 
-    fn call(
+    fn call_store(
         &mut self,
         id: ir::FunctionID,
         args: &[DynValue],
         out: Option<&ir::Ref>,
     ) -> ExecResult<()> {
+        let result_val = self.call(id, args)?;
+        
+        match (result_val, out) {
+            (Some(v), Some(out_at)) => {
+                self.store(&out_at, v)?;
+            },
+
+            (None, Some(_)) => {
+                let msg = "called function which has no return type in a context where a return value was expected";
+                return Err(ExecError::illegal_state(msg));
+            },
+
+            // ok, no output expected, ignore result if there is one
+            (_, None) => {},
+        }
+        
+        Ok(())
+    }
+
+    fn call(
+        &mut self,
+        id: ir::FunctionID,
+        args: &[DynValue],
+    ) -> ExecResult<Option<DynValue>> {
         let func_info = self
             .functions
             .get(&id)
@@ -511,21 +535,7 @@ impl Interpreter {
 
         self.pop_stack()?;
 
-        match (result_val, out) {
-            (Some(v), Some(out_at)) => {
-                self.store(&out_at, v)?;
-            },
-
-            (None, Some(_)) => {
-                let msg = "called function which has no return type in a context where a return value was expected";
-                return Err(ExecError::illegal_state(msg));
-            },
-
-            // ok, no output expected, ignore result if there is one
-            (_, None) => {},
-        }
-
-        Ok(())
+        Ok(result_val)
     }
 
     fn invoke_disposer(&mut self, val: &DynValue, ty: &ir::Type) -> ExecResult<()> {
@@ -543,7 +553,7 @@ impl Interpreter {
                 eprintln!("[rc] invoking {}", dispose_desc);
             }
 
-            self.call(dispose_func_id, &[val.clone()], None)?;
+            self.call_store(dispose_func_id, &[val.clone()], None)?;
         } else if self.opts.trace_rc {
             eprintln!("[rc] no disposer for {}", self.metadata.pretty_ty_name(ty));
         }
@@ -663,7 +673,7 @@ impl Interpreter {
                 // Now release the fields of the struct as if it was a normal record
                 let rc_funcs = self.find_runtime_type(&ir::Type::Struct(struct_val.type_id))?;
                 if let Some(release_func) = rc_funcs.release {
-                    self.call(release_func, &[val.clone()], None)?;
+                    self.call_store(release_func, &[val.clone()], None)?;
                 }
             }
 
@@ -1498,7 +1508,7 @@ impl Interpreter {
             .collect::<ExecResult<_>>()?;
 
         match self.evaluate(function)? {
-            DynValue::Function(function) => self.call(function, &arg_vals, out.as_ref())?,
+            DynValue::Function(function) => self.call_store(function, &arg_vals, out.as_ref())?,
 
             _ => {
                 let msg = format!("{} does not reference a function", function);
@@ -1535,7 +1545,7 @@ impl Interpreter {
             },
         };
 
-        self.call(func, &arg_vals, out)?;
+        self.call_store(func, &arg_vals, out)?;
 
         Ok(())
     }
@@ -1714,7 +1724,7 @@ impl Interpreter {
     }
 
     fn init_stdlib_globals(&mut self) -> ExecResult<()> {
-        for (ident, func, ret, params) in builtin::system_funcs() {
+        for (ident, func, ret, params) in builtin::system_funcs(&self.metadata) {
             let name = ir::NamePath::new(vec!["System".to_string()], ident.to_string());
             self.define_builtin(name, func, ret, params)?;
         }
@@ -1884,16 +1894,21 @@ impl Interpreter {
         Ok(DynValue::Pointer(str_ptr))
     }
 
+    fn read_string_indirect(&self, str_ptr: &Pointer) -> ExecResult<String> {
+        let (str_struct, _) = self.load_rc_struct_ptr(str_ptr)?;
+        self.read_string_struct(str_struct.as_ref())
+    }
+
     // reads the string value stored in the string object that `str_ref` is a pointer to
     fn read_string(&self, str_ref: &ir::Ref) -> ExecResult<String> {
-        let str_ptr = self.load(&str_ref.clone().to_deref())?;
+        let str_val = self.load(&str_ref.clone().to_deref())?;
 
-        let str_struct = match str_ptr.as_struct(ir::STRING_ID) {
+        let str_struct = match str_val.as_struct(ir::STRING_ID) {
             Some(struct_val) if struct_val.type_id == ir::STRING_ID => struct_val,
             _ => {
                 let msg = format!(
                     "tried to read string value from rc val which didn't contain a string struct: {:?}",
-                    str_ptr,
+                    str_val,
                 );
                 return Err(ExecError::illegal_state(msg));
             },
@@ -1974,6 +1989,32 @@ impl Interpreter {
         Ok(DynValue::Pointer(dynarray))
     }
     
+    fn read_dynarray(&self, ptr: &Pointer) -> ExecResult<Vec<DynValue>> {
+        let (array_struct, _) = self.load_rc_struct_ptr(ptr)?;
+
+        let element_ty = self.metadata.dyn_array_element_ty(array_struct.type_id)
+            .ok_or_else(|| {
+                let msg = format!("loaded array of class {} but its metadata was missing", array_struct.type_id);
+                ExecError::illegal_state(msg)
+            })?;
+        let element_size = self.marshaller.get_ty(element_ty)?.size();
+        
+        let array_ptr = array_struct[ir::DYNARRAY_PTR_FIELD].as_pointer()
+            .expect("pointer field of dynarray instance must be a pointer");
+        let array_len = array_struct[ir::DYNARRAY_LEN_FIELD].as_i32()
+            .expect("length field of dynarray instance must be i32");
+        
+        let mut elements = Vec::with_capacity(array_len as usize);
+        for i in 0..array_len as usize {
+            let el_ptr = array_ptr.addr_add(element_size * i);
+            let element = self.native_heap.load(&el_ptr)?;
+            
+            elements.push(element);
+        }
+        
+        Ok(elements)
+    }
+    
     fn create_typeinfo(&mut self,
         rtti: &ir::RuntimeType,
         string_lit_values: &HashMap<ir::StringID, DynValue>
@@ -1982,30 +2023,37 @@ impl Interpreter {
             None => DynValue::Pointer(Pointer::null(ir::Type::Struct(ir::STRING_ID))),
             Some(name_id) => string_lit_values[name_id].clone(),
         };
-
-        let mut method_infos = Vec::new();
-        for rtti_method in &rtti.methods {
-            let name_val = string_lit_values[&rtti_method.name].clone();
-            let method_info = StructValue {
-                rc: Some(RcState::new(true)),
-                type_id: ir::METHODINFO_ID,
-                fields: vec![
-                    name_val,
-                ],
-            };
-            
-            let method_info_ptr = self.rc_alloc(method_info, true)?;
-            method_infos.push(DynValue::Pointer(method_info_ptr));
-        }
-
-        let method_array = self.create_dyn_array(&ir::METHODINFO_TYPE, method_infos, true)?;
-
-        let typeinfo_struct = StructValue::new(ir::TYPEINFO_ID, [
+        
+        // allocate and store the typeinfo before populating methods, so we can easily
+        // get a real heap pointer to use for the "owner" field
+        let mut typeinfo_struct = StructValue::new(ir::TYPEINFO_ID, [
             type_name_string,
-            method_array,
+            DynValue::Pointer(Pointer::null(ir::Type::Struct(ir::METHODINFO_ID))),
         ]);
         
-        let typeinfo_ptr = self.rc_alloc(typeinfo_struct, true)?;
+        let typeinfo_ptr = self.rc_alloc(typeinfo_struct.clone(), true)?;
+        
+        // rc_alloc sets this on the copy it stores in memory, but we need to store it again later
+        typeinfo_struct.rc = Some(RcState::immortal());
+
+        let mut method_info_ptrs = Vec::new();
+        for rtti_method in &rtti.methods {
+            let name_val = string_lit_values[&rtti_method.name].clone();
+            let method_info = StructValue::new(ir::METHODINFO_ID, [
+                name_val,
+                DynValue::Pointer(typeinfo_ptr.clone()),
+            ]);
+            
+            let method_info_ptr = self.rc_alloc(method_info, true)?;
+            method_info_ptrs.push(DynValue::Pointer(method_info_ptr));
+        }
+
+        let method_array = self.create_dyn_array(&ir::METHODINFO_TYPE, method_info_ptrs, true)?;
+        typeinfo_struct[ir::TYPEINFO_METHODS_FIELD] = method_array;
+
+        // update the typeinfo instance in memory with the circular references set
+        self.native_heap.store(&typeinfo_ptr, DynValue::from(typeinfo_struct))?;
+
         Ok(DynValue::Pointer(typeinfo_ptr))
     }
     
