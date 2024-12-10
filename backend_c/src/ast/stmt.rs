@@ -216,6 +216,10 @@ impl<'a> Builder<'a> {
             stmts: Vec::new(),
         }
     }
+    
+    pub fn translate_type(&mut self, ir_ty: &ir::Type) -> Type {
+        Type::from_metadata(ir_ty, self.module)
+    }
 
     pub fn translate_instructions(&mut self, instructions: &[ir::Instruction]) {
         for instruction in instructions {
@@ -549,6 +553,10 @@ impl<'a> Builder<'a> {
                 )));
             },
         }
+    }
+    
+    pub fn assign(&mut self, lhs: impl Into<Expr>, rhs: impl Into<Expr>) {
+        self.stmts.push(Statement::Expr(Expr::assign(lhs.into(), rhs.into())));
     }
 
     fn write_infix_op(&mut self, out: &ir::Ref, lhs: &ir::Value, op: InfixOp, rhs: &ir::Value) {

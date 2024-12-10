@@ -1,4 +1,4 @@
-use crate::ast::Builder;
+use crate::ast::{Builder, VariableID};
 use crate::ast::Expr;
 use crate::ast::InfixOp;
 use crate::ast::Statement;
@@ -231,6 +231,66 @@ impl FunctionDef {
         Self {
             body: builder.stmts,
             decl: FunctionDecl::translate(id, func, module),
+        }
+    }
+    
+    pub fn invoker(id: ir::FunctionID, func_def: &ir::FunctionDef, module: &mut Unit) -> Self {
+        let mut builder = Builder::new(module);
+
+        let args_array = ir::LocalID(0);
+        let result_ptr = ir::LocalID(1);
+        
+        let mut arg_vars = Vec::new();
+        
+        for i in 0..func_def.sig.param_tys.len() {
+            let param_ty = builder.translate_type(&func_def.sig.param_tys[i]);
+            let arg_var = VariableID::Named(Box::new(format!("arg{i}")));
+ 
+            builder.stmts.push(Statement::VariableDecl {
+                id: arg_var.clone(),
+                null_init: false,
+                ty: param_ty.clone(),
+            });
+
+            // argN := *((TArg*) *(args + i));
+            builder.assign(
+                Expr::Variable(arg_var.clone()),
+                Expr::infix_op(
+                    Expr::local_var(args_array), 
+                    InfixOp::Add,
+                    Expr::LitInt(i as i128),
+                ).deref().cast(param_ty.ptr()).deref(),
+            );
+            
+            arg_vars.push(Expr::Variable(arg_var));
+        }
+        
+        let function = Expr::Function(FunctionName::ID(id));
+
+        if func_def.sig.return_ty == ir::Type::Nothing {
+            builder.stmts.push(Statement::Expr(function.call(arg_vars)));
+        } else {
+            let result_ty = builder.translate_type(&func_def.sig.return_ty);
+            
+            // *((TReturn*) resultPtr) = function(..); 
+            let result_ptr_expr = Expr::local_var(result_ptr)
+                .cast(result_ty.ptr())
+                .deref();
+
+            builder.assign(result_ptr_expr, function.call(arg_vars));
+        }
+        
+        Self {
+            body: builder.stmts,
+            decl: FunctionDecl {
+                comment: Some(format!("reflection invoker for function {id}")),
+                name: FunctionName::Invoker(id),
+                params: vec![
+                    Type::Void.ptr().ptr(), // args
+                    Type::Void.ptr(), // result
+                ],
+                return_ty: Type::Void,
+            }
         }
     }
 }

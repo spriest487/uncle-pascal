@@ -368,23 +368,18 @@ static bool System_IsNaN(float val) {
 }
 
 static void InvokeMethod(METHODINFO_STRUCT* method, void* instance, POINTERARRAY_STRUCT* args, void* outResult) {
-    const char* type_name = (const char*) TYPEINFO_NAME_CHARS(method->field_1);
-    const char* method_name = (const char*) STRING_CHARS(method->field_0);
-    
-    printf("invoking %s.%s\n", type_name, method_name);
-
     Invoker invoker = METHODINFO_INVOKER(method);
 
     if (instance) {
         int args_len = DYNARRAY_LEN(args);
 
         void** all_args = (void**) malloc(sizeof(void*) * (args_len + 1));
-        memcpy(all_args, DYNARRAY_PTR(args), args_len);
-        
-        all_args[args_len] = instance;
-        
+        all_args[0] = instance;
+
+        memcpy(all_args + 1, DYNARRAY_PTR(args), args_len * sizeof(void*));
+
         invoker(all_args, outResult);
-    
+
         free(all_args);
     } else {
         invoker(DYNARRAY_PTR(args), outResult);
