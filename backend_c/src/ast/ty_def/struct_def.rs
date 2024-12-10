@@ -146,6 +146,9 @@ pub enum FieldName {
 
     // builtin name: class info pointer field of RC internal struct
     RcClass,
+    
+    // internal class property that stores the class's allocation function
+    DynArrayAlloc,
 
     // builtin name: static array inner array
     StaticArrayElements,
@@ -164,6 +167,7 @@ impl fmt::Display for FieldName {
             FieldName::RcWeakCount => write!(f, "weak_count"),
             FieldName::RcClass => write!(f, "class"),
             FieldName::StaticArrayElements => write!(f, "elements"),
+            FieldName::DynArrayAlloc => write!(f, "alloc"),
             FieldName::VariantTag => write!(f, "tag"),
             FieldName::VariantData => write!(f, "data"),
             FieldName::VariantDataCase(case) => write!(f, "data_{}", case),

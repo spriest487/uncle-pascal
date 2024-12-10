@@ -90,6 +90,7 @@ pub const METHODINFO_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(METHODINFO_I
 pub const METHODINFO_TYPE: Type = Type::RcPointer(METHODINFO_VTYPE_ID);
 pub const METHODINFO_NAME_FIELD: FieldID = FieldID(0);
 pub const METHODINFO_OWNER_FIELD: FieldID = FieldID(1);
+pub const METHODINFO_IMPL_FIELD: FieldID = FieldID(2);
 
 pub const BUILTIN_TYPE_DEFS: [Type; 2] = [
     STRING_TYPE,
@@ -119,11 +120,11 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new() -> Self {        
+    pub fn new() -> Self {
         let metadata = Self {
             ..Default::default()
         };
-        
+
         metadata
     }
 
@@ -205,6 +206,12 @@ impl Metadata {
         for (element_ty, func_id) in &other.bounds_check_functions {
             if !self.bounds_check_functions.contains_key(element_ty) {
                 self.bounds_check_functions.insert(element_ty.clone(), *func_id);
+            }
+        }
+        
+        for (id, def) in &other.set_aliases {
+            if !self.set_aliases.contains_key(&id) {
+                self.set_aliases.insert(*id, def.clone());
             }
         }
     }
@@ -745,6 +752,8 @@ impl Metadata {
                 fields,
             })),
         );
+        
+        self.class_ids.insert(struct_id);
 
         self.dyn_array_structs.insert(element.clone(), struct_id);
 

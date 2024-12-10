@@ -1,10 +1,10 @@
 use crate::ast::Builder;
 use crate::ast::Expr;
 use crate::ast::InfixOp;
-use crate::ast::Unit;
 use crate::ast::Statement;
 use crate::ast::Type;
 use crate::ast::TypeDecl;
+use crate::ast::Unit;
 use ir_lang as ir;
 use std::fmt;
 
@@ -20,6 +20,7 @@ pub enum FunctionName {
     LoadSymbol,
 
     ID(ir::FunctionID),
+    Invoker(ir::FunctionID),
     Method(ir::InterfaceID, ir::MethodID),
     MethodWrapper(ir::InterfaceID, ir::MethodID, ir::TypeDefID),
 
@@ -29,6 +30,7 @@ pub enum FunctionName {
     RcRelease,
     IsImpl,
     Raise,
+    InvokeMethod,
 
     // builtins
     Int8ToStr,
@@ -80,6 +82,8 @@ impl fmt::Display for FunctionName {
             FunctionName::LoadSymbol => write!(f, "LoadSymbol"),
 
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
+            FunctionName::Invoker(id) => write!(f, "Invoker_{}", id.0),
+
             FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method.0),
             FunctionName::MethodWrapper(iface, method, self_ty) => {
                 write!(f, "Method_{}_{}_Wrapper_{}", iface, method.0, self_ty)
@@ -90,6 +94,7 @@ impl fmt::Display for FunctionName {
             FunctionName::RcRelease => write!(f, "RcRelease"),
             FunctionName::IsImpl => write!(f, "IsImpl"),
             FunctionName::Raise => write!(f, "Raise"),
+            FunctionName::InvokeMethod => write!(f, "InvokeMethod"),
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
             FunctionName::Write => write!(f, "System_Write"),
@@ -243,7 +248,7 @@ impl fmt::Display for FunctionDef {
         }
 
         if self.decl.return_ty != Type::Void {
-            write!(f, "{}", Statement::ReturnValue(Expr::Local(ir::LocalID(0))))?;
+            write!(f, "{}", Statement::ReturnValue(Expr::local_var(ir::RETURN_LOCAL)))?;
         }
 
         write!(f, "}}")

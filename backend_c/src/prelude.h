@@ -9,15 +9,6 @@ typedef void (*Disposer)(void*);
 typedef void (*RcCleanupFunc)(void*);
 typedef void (*RcRetainFunc)(void*);
 
-#define STRING_STRUCT struct Struct_1
-#define STRING_CLASS Class_1
-#define STRING_CHARS(str_ptr) (str_ptr->field_0)
-#define STRING_LEN(str_ptr) (str_ptr->field_1)
-
-#define TYPEINFO_STRUCT struct Struct_2
-#define TYPEINFO_NAME(typeinfo) (typeinfo->field_0)
-#define TYPEINFO_NAME_CHARS(typeinfo) (TYPEINFO_NAME(typeinfo)->field_0)
-
 #ifdef _MSC_VER
 #   define PACKED_DECL(DECL) __pragma(pack(push, 1)) DECL __pragma(pack(pop))
 #else
@@ -51,6 +42,10 @@ struct Rc {
 // forward decl of builtin types
 STRING_STRUCT;
 TYPEINFO_STRUCT;
+METHODINFO_STRUCT;
+POINTERARRAY_STRUCT;
+
+typedef void (*Invoker)(void** args, void* resultOut);
 
 typedef void (*DynArrayAlloc)(void* arr, int32_t len, void* copy_from, void* default_val);
 typedef int32_t (*DynArrayLength)(void* arr);
@@ -98,6 +93,8 @@ static void RcRetain(void* instance, bool weak);
 static void RcRelease(void* instance, bool weak);
 
 _Noreturn static void Raise(STRING_STRUCT* msg_str);
+
+static void InvokeMethod(METHODINFO_STRUCT* method, void* instance, POINTERARRAY_STRUCT* args, void* outResult);
 
 // implementations of System.pas builtins
 

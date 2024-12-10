@@ -6,6 +6,8 @@ use crate::ast::Type;
 use crate::ast::TypeDefName;
 use crate::ir;
 use std::fmt;
+use ir_lang::LocalID;
+use crate::c::VariableID;
 
 #[allow(unused)]
 #[derive(Clone, PartialEq, Debug)]
@@ -73,7 +75,7 @@ impl fmt::Display for PrefixOp {
 #[allow(unused)]
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
-    Local(ir::LocalID),
+    Variable(VariableID),
     Function(FunctionName),
     Class(ir::TypeDefID),
     Deref(Box<Expr>),
@@ -142,7 +144,7 @@ impl Expr {
             ir::Ref::Discard => {
                 panic!("can't translate a discard ref, it should only be used in assignments")
             },
-            ir::Ref::Local(local_id) => Expr::Local(*local_id),
+            ir::Ref::Local(local_id) => Expr::Variable(VariableID::Local(*local_id)),
             ir::Ref::Deref(inner) => Expr::translate_val(inner.as_ref(), module).deref(),
             ir::Ref::Global(ir::GlobalRef::Function(id)) => {
                 let name = module.function_name(*id);
@@ -166,6 +168,21 @@ impl Expr {
             }
         }
     }
+    
+    pub fn local_var(id: LocalID) -> Self {
+        Expr::Variable(VariableID::Local(id))
+    }
+    
+    pub fn named_var(name: impl Into<String>) -> Self {
+        Expr::Variable(VariableID::Named(Box::new(name.into())))
+    }
+    
+    pub fn call(self, args: impl IntoIterator<Item=Self>) -> Self {
+        Expr::Call {
+            func: Box::new(self),
+            args: args.into_iter().collect(),
+        }
+    }
 
     pub fn deref(self) -> Self {
         Expr::Deref(Box::new(self))
@@ -187,13 +204,6 @@ impl Expr {
             lhs: Box::new(lhs),
             op,
             rhs: Box::new(rhs),
-        }
-    }
-
-    pub fn call(func: Self, args: impl IntoIterator<Item = Self>) -> Self {
-        Expr::Call {
-            func: Box::new(func),
-            args: args.into_iter().collect(),
         }
     }
 
@@ -327,7 +337,7 @@ impl fmt::Display for Expr {
             Expr::InfixOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
             Expr::PrefixOp { op, operand } => write!(f, "({}({}))", op, operand),
             Expr::Null => write!(f, "NULL"),
-            Expr::Local(id) => write!(f, "L{}", id.0),
+            Expr::Variable(id) => write!(f, "{}", id),
             Expr::Function(name) => write!(f, "{}", name),
             Expr::Call { func, args } => {
                 write!(f, "{}(", func)?;

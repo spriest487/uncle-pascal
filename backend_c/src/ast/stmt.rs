@@ -7,6 +7,7 @@ use crate::ast::Unit;
 use crate::ast::Type;
 use ir_lang as ir;
 use std::fmt;
+use std::fmt::Formatter;
 use ir_lang::VirtualTypeID;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -91,11 +92,28 @@ fn write_global_typeinfo_decl_name_type(f: &mut fmt::Formatter, ty: &ir::Type) -
     }
 }
 
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum VariableID {
+    Local(ir::LocalID),
+    Named(Box<String>),
+}
+
+impl fmt::Display for VariableID {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "L")?;
+        match self {
+            VariableID::Local(id) => write!(f, "{}", id.0),
+            VariableID::Named(name) => write!(f, "_{}", name),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Statement {
     VariableDecl {
         ty: Type,
-        id: ir::LocalID,
+        id: VariableID,
         null_init: bool,
     },
     Expr(Expr),
@@ -142,7 +160,7 @@ impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Statement::VariableDecl { ty, id, null_init } => {
-                let name = format!("L{}", id.0);
+                let name = format!("{}", id);
                 write!(f, "{}", ty.to_decl_string(&name))?;
 
                 if *null_init {
@@ -216,7 +234,7 @@ impl<'a> Builder<'a> {
                 let ty = Type::from_metadata(ty, self.module);
                 self.stmts.push(Statement::VariableDecl {
                     ty,
-                    id: *id,
+                    id: VariableID::Local(*id),
                     null_init,
                 });
             },
@@ -468,7 +486,7 @@ impl<'a> Builder<'a> {
                 let retain = Expr::Function(FunctionName::RcRetain);
 
                 let rc_ptr = Expr::translate_ref(at, self.module);
-                let call_retain = Expr::call(retain, vec![rc_ptr, Expr::LitBool(*weak)]);
+                let call_retain = retain.call([rc_ptr, Expr::LitBool(*weak)]);
 
                 self.stmts.push(Statement::Expr(call_retain));
             },
@@ -477,7 +495,7 @@ impl<'a> Builder<'a> {
                 let release = Expr::Function(FunctionName::RcRelease);
 
                 let rc_ptr = Expr::translate_ref(at, self.module);
-                let call_release = Expr::call(release, vec![rc_ptr, Expr::LitBool(*weak)]);
+                let call_release = release.call([rc_ptr, Expr::LitBool(*weak)]);
 
                 self.stmts.push(Statement::Expr(call_release));
             },
@@ -498,7 +516,7 @@ impl<'a> Builder<'a> {
                         .map(|arg| Expr::translate_val(arg, self.module)),
                 );
 
-                let call = Expr::call(method_func, args);
+                let call = method_func.call(args);
 
                 self.stmts.push(Statement::Expr(match out {
                     Some(out) => Expr::translate_assign(out, call, self.module),
@@ -513,8 +531,8 @@ impl<'a> Builder<'a> {
             ir::Instruction::Raise { val } => {
                 let raise_func = Expr::Function(FunctionName::Raise);
                 let val_expr = Expr::translate_ref(val, self.module);
-                self.stmts
-                    .push(Statement::Expr(Expr::call(raise_func, vec![val_expr])));
+
+                self.stmts.push(Statement::Expr(raise_func.call([val_expr])));
             },
 
             ir::Instruction::Cast { ty, out, a } => {
@@ -597,7 +615,7 @@ impl<'a> Builder<'a> {
             .iter()
             .map(|arg_val| Expr::translate_val(arg_val, self.module));
 
-        let call = Expr::call(func_expr, args);
+        let call = func_expr.call(args);
 
         self.stmts.push(Statement::Expr(match out {
             Some(out) => Expr::translate_assign(out, call, self.module),

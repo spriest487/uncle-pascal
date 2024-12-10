@@ -75,7 +75,9 @@ type
 
     MethodInfo = class
         name: String;
-        owner: TypeInfo; 
+        owner: TypeInfo;
+
+        impl: Pointer; 
     public
         function Owner: TypeInfo;
         function Name: String;

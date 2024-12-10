@@ -3,7 +3,6 @@ mod stmt;
 mod expr;
 mod string_lit;
 mod ty_def;
-mod typeinfo;
 
 pub use self::expr::*;
 pub use self::function::*;
@@ -12,19 +11,18 @@ pub use self::ty_def::*;
 use crate::ast::string_lit::StringLiteral;
 use crate::ir;
 use crate::Options;
-use ir_lang::NamePath;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::HashMap;
 use std::fmt;
+use std::rc::Rc;
 use topological_sort::TopologicalSort;
-use crate::ast::typeinfo::TypeInfo;
 
 pub struct Unit {
     functions: Vec<FunctionDef>,
     ffi_funcs: Vec<FfiFunction>,
     builtin_funcs: HashMap<ir::FunctionID, FunctionName>,
-    
+
     global_vars: Vec<GlobalVar>,
 
     static_array_types: HashMap<ArraySig, Type>,
@@ -40,218 +38,135 @@ pub struct Unit {
 
     opts: Options,
 
-    typeinfos: HashMap<ir::Type, TypeInfo>,
+    typeinfos: HashMap<ir::Type, Rc<ir::RuntimeType>>,
+    methodinfo_array_class: ir::TypeDefID,
+    pointer_array_class: ir::TypeDefID,
 }
 
 impl Unit {
     pub fn new(metadata: &ir::Metadata, opts: Options) -> Self {
         let string_ty = Type::DefinedType(TypeDefName::Struct(ir::STRING_ID)).ptr();
 
+        // array types referenced in the system unit required for reflection to work
+        let methodinfo_array_class = metadata
+            .find_dyn_array_struct(&ir::METHODINFO_TYPE)
+            .expect("method info array type must exist");
+
+        let pointer_array_class = metadata
+            .find_dyn_array_struct(&ir::Type::Nothing.ptr())
+            .expect("raw pointer array type must exist");
+
         let system_funcs = &[
-            (
-                "Int8ToStr",
-                FunctionName::Int8ToStr,
-                vec![Type::SChar],
-                string_ty.clone(),
-            ),
-            (
-                "UInt8ToStr",
-                FunctionName::ByteToStr,
-                vec![Type::UChar],
-                string_ty.clone(),
-            ),
-            (
-                "Int16ToStr",
-                FunctionName::Int16ToStr,
-                vec![Type::Int16],
-                string_ty.clone(),
-            ),
-            (
-                "UInt16ToStr",
-                FunctionName::UInt16ToStr,
-                vec![Type::UInt16],
-                string_ty.clone(),
-            ),
-            (
-                "Int32ToStr",
-                FunctionName::IntToStr,
-                vec![Type::Int32],
-                string_ty.clone(),
-            ),
-            (
-                "UInt32ToStr",
-                FunctionName::UInt32ToStr,
-                vec![Type::UInt32],
-                string_ty.clone(),
-            ),
-            (
-                "Int64ToStr",
-                FunctionName::Int64ToStr,
-                vec![Type::Int64],
-                string_ty.clone(),
-            ),
-            (
-                "UInt64ToStr",
-                FunctionName::UInt64ToStr,
-                vec![Type::UInt64],
-                string_ty.clone(),
-            ),
-            (
-                "NativeIntToStr",
-                FunctionName::NativeIntToStr,
-                vec![Type::PtrDiffType],
-                string_ty.clone(),
-            ),
-            (
-                "NativeUIntToStr",
-                FunctionName::NativeUIntToStr,
-                vec![Type::SizeType],
-                string_ty.clone(),
-            ),
-            (
-                "PointerToStr",
-                FunctionName::PointerToStr,
-                vec![Type::Void.ptr()],
-                string_ty.clone(),
-            ),
-            (
-                "RealToStr",
-                FunctionName::RealToStr,
-                vec![Type::Float.ptr()],
-                string_ty.clone(),
-            ),
-            (
-                "StrToInt",
-                FunctionName::StrToInt,
-                vec![string_ty.clone()],
-                Type::Int32,
-            ),
-            (
-                "GetMem",
-                FunctionName::GetMem,
-                vec![Type::Int32],
-                Type::UChar.ptr(),
-            ),
-            (
-                "FreeMem",
-                FunctionName::FreeMem,
-                vec![Type::UChar.ptr()],
-                Type::Void,
-            ),
-            (
-                "WriteLn",
-                FunctionName::WriteLn,
-                vec![string_ty.clone()],
-                Type::Void,
-            ),
-            (
-                "Write",
-                FunctionName::Write,
-                vec![string_ty.clone()],
-                Type::Void,
-            ),
-            ("ReadLn", FunctionName::ReadLn, vec![], string_ty.clone()),
-            (
-                "ArrayLengthInternal",
-                FunctionName::ArrayLengthInternal,
-                vec![Type::Void.ptr()],
-                Type::Int32,
-            ),
-            (
-                "ArraySetLengthInternal",
-                FunctionName::ArraySetLengthInternal,
-                vec![Type::Void.ptr(), Type::Int32, Type::Void.ptr()],
+            ("Int8ToStr", FunctionName::Int8ToStr, string_ty.clone(), vec![
+                Type::SChar
+            ]),
+            ("UInt8ToStr", FunctionName::ByteToStr, string_ty.clone(), vec![
+                Type::UChar
+            ]),
+            ("Int16ToStr", FunctionName::Int16ToStr, string_ty.clone(), vec![
+                Type::Int16
+            ]),
+            ("UInt16ToStr", FunctionName::UInt16ToStr, string_ty.clone(), vec![
+                Type::UInt16
+            ]),
+            ("Int32ToStr", FunctionName::IntToStr, string_ty.clone(), vec![
+                Type::Int32
+            ]),
+            ("UInt32ToStr", FunctionName::UInt32ToStr, string_ty.clone(), vec![
+                Type::UInt32
+            ]),
+            ("Int64ToStr", FunctionName::Int64ToStr, string_ty.clone(), vec![
+                Type::Int64
+            ]),
+            ("UInt64ToStr", FunctionName::UInt64ToStr, string_ty.clone(), vec![
+                Type::UInt64
+            ]),
+            ("NativeIntToStr", FunctionName::NativeIntToStr, string_ty.clone(), vec![
+                Type::PtrDiffType
+            ]),
+            ("NativeUIntToStr", FunctionName::NativeUIntToStr, string_ty.clone(), vec![
+                Type::SizeType
+            ]),
+            ("PointerToStr", FunctionName::PointerToStr, string_ty.clone(), vec![
+                Type::Void.ptr()
+            ]),
+            ("RealToStr", FunctionName::RealToStr, string_ty.clone(), vec![
+                Type::Float.ptr()
+            ]),
+            ("StrToInt", FunctionName::StrToInt, Type::Int32, vec![
+                string_ty.clone()
+            ]),
+            ("GetMem", FunctionName::GetMem, Type::UChar.ptr(), vec![
+                Type::Int32
+            ]),
+            ("FreeMem", FunctionName::FreeMem, Type::Void, vec![
+                Type::UChar.ptr()
+            ]),
+            ("WriteLn", FunctionName::WriteLn, Type::Void, vec![
+                string_ty.clone()
+            ]),
+            ("Write", FunctionName::Write, Type::Void, vec![
+                string_ty.clone()
+            ]),
+            ("ReadLn", FunctionName::ReadLn, string_ty.clone(), vec![]),
+            ("ArrayLengthInternal", FunctionName::ArrayLengthInternal, Type::Int32, vec![
+                Type::Void.ptr()
+            ]),
+            ("ArraySetLengthInternal", FunctionName::ArraySetLengthInternal, Type::Void.ptr(), vec![
+                Type::Void.ptr(), 
+                Type::Int32, 
+                Type::Void.ptr()
+            ]),
+            ("InvokeMethod", FunctionName::InvokeMethod, Type::Int32, vec![
+                Type::from_ir_struct(ir::METHODINFO_ID).ptr(),
                 Type::Void.ptr(),
-            ),
-            (
-                "RandomInteger",
-                FunctionName::RandomInteger,
-                vec![Type::Int32, Type::Int32],
-                Type::Int32,
-            ),
-            (
-                "RandomSingle",
-                FunctionName::RandomSingle,
-                vec![Type::Float, Type::Float],
-                Type::Float,
-            ),
-            (
-                "Pow",
-                FunctionName::Pow,
-                vec![Type::Float, Type::Float],
-                Type::Float,
-            ),
-            (
-                "Sqrt",
-                FunctionName::Sqrt,
-                vec![Type::Float],
-                Type::Float,
-            ),
-            (
-                "Sin",
-                FunctionName::Sin,
-                vec![Type::Float],
-                Type::Float,
-            ),
-            (
-                "ArcSin",
-                FunctionName::ArcSin,
-                vec![Type::Float],
-                Type::Float,
-            ),
-            (
-                "Cos",
-                FunctionName::Cos,
-                vec![Type::Float],
-                Type::Float,
-            ),
-            (
-                "ArcCos",
-                FunctionName::ArcCos,
-                vec![Type::Float],
-                Type::Float,
-            ),
-            (
-                "Tan",
-                FunctionName::Tan,
-                vec![Type::Float],
-                Type::Float,
-            ),
-            (
-                "ArcTan",
-                FunctionName::ArcTan,
-                vec![Type::Float],
-                Type::Float,
-            ),
-            (
-                "Infinity",
-                FunctionName::Infinity,
-                vec![],
+                Type::from_ir_struct(pointer_array_class).ptr(),
+                Type::Void.ptr(),
+            ]),
+            ("RandomInteger", FunctionName::RandomInteger, Type::Int32, vec![
+                Type::Int32, 
+                Type::Int32]),
+            ("RandomSingle", FunctionName::RandomSingle, Type::Float, vec![
+                Type::Float, 
                 Type::Float
-            ),
-            (
-                "NaN",
-                FunctionName::NaN,
-                vec![],
+            ]),
+            ("Pow", FunctionName::Pow, Type::Float, vec![
+                Type::Float, Type::Float
+            ]),
+            ("Sqrt", FunctionName::Sqrt, Type::Float, vec![
                 Type::Float
-            ),
-            (
-                "IsInfinite",
-                FunctionName::IsInfinite,
-                vec![Type::Float],
-                Type::Bool
-            ),
-            (
-                "IsNaN",
-                FunctionName::IsNaN,
-                vec![Type::Float],
-                Type::Bool
-            ),
+            ]),
+            ("Sin", FunctionName::Sin, Type::Float, vec![
+                Type::Float
+            ]),
+            ("ArcSin", FunctionName::ArcSin, Type::Float, vec![
+                Type::Float
+            ]),
+            ("Cos", FunctionName::Cos, Type::Float, vec![
+                Type::Float
+            ]),
+            ("ArcCos", FunctionName::ArcCos, Type::Float, vec![
+                Type::Float
+            ]),
+            ("Tan", FunctionName::Tan, Type::Float, vec![
+                Type::Float
+            ]),
+            ("ArcTan", FunctionName::ArcTan, Type::Float, vec![
+                Type::Float
+            ]),
+            ("Infinity", FunctionName::Infinity, Type::Float, vec![]),
+            ("NaN", FunctionName::NaN, Type::Float, vec![]),
+            ("IsInfinite", FunctionName::IsInfinite, Type::Bool, vec![
+                Type::Float
+            ]),
+            ("IsNaN", FunctionName::IsNaN, Type::Bool, vec![
+                Type::Float
+            ]),
         ];
 
         let mut builtin_funcs = HashMap::new();
         for (pas_name, c_name, _params, _return_ty) in system_funcs {
-            let global_name = &NamePath::new(vec!["System".to_string()], *pas_name);
+            let global_name = &ir::NamePath::new(vec!["System".to_string()], *pas_name);
 
             // if a function isn't used then it won't be included in the metadata
             if let Some(func_id) = metadata.find_function(global_name) {
@@ -266,11 +181,7 @@ impl Unit {
         
         let type_infos = metadata
             .runtime_types()
-            .map(|(ty, typeinfo)| {
-                (ty.clone(), TypeInfo {
-                    name: typeinfo.name
-                })
-            })
+            .map(|(ty, rtti)| (ty.clone(), rtti.clone()))
             .collect();
 
         let mut module = Unit {
@@ -294,6 +205,8 @@ impl Unit {
             opts,
 
             typeinfos: type_infos,
+            methodinfo_array_class,
+            pointer_array_class,
         };
 
         for (class_id, _class_def) in metadata.class_defs() {
@@ -488,14 +401,119 @@ impl Unit {
         let mut init_stmts = Vec::new();
 
         // initialize type info fields that can't be statically initialized
-        for (ty, typeinfo) in &self.typeinfos {            
+        const METHODS_ARRAY_NAME: &str = "methods_array";
+        init_stmts.push(Statement::VariableDecl {
+            ty: Type::from_ir_struct(self.methodinfo_array_class).ptr(),
+            id: VariableID::Named(Box::new(METHODS_ARRAY_NAME.to_string())),
+            null_init: false,
+        });
+        
+        const METHODINFO_NAME: &str = "methodinfo";
+        init_stmts.push(Statement::VariableDecl { 
+            ty: Type::from_ir_struct(ir::METHODINFO_ID).ptr().ptr(),
+            id: VariableID::Named(Box::new(METHODINFO_NAME.to_string())),
+            null_init: false,
+        });
+
+        const METHODNULL_NAME: &str = "method_null";
+        init_stmts.push(Statement::VariableDecl {
+            ty: Type::from_ir_struct(ir::METHODINFO_ID).ptr(),
+            id: VariableID::Named(Box::new(METHODNULL_NAME.to_string())),
+            null_init: true,
+        });
+
+        let method_array_class_ptr = Expr::Global(GlobalName::ClassInstance(self.methodinfo_array_class))
+            .addr_of()
+            .cast(Type::Class.ptr()); 
+        let method_class_ptr = Expr::Global(GlobalName::ClassInstance(ir::METHODINFO_ID))
+            .addr_of();
+
+        let call_array_rcalloc = Expr::Function(FunctionName::RcAlloc).call([method_array_class_ptr]);
+
+        for (ty, typeinfo) in &self.typeinfos {
+            // allocate the method dynarray instance for this typeinfo 
+            init_stmts.push(Statement::Expr(Expr::assign(
+                Expr::named_var(METHODS_ARRAY_NAME), 
+                call_array_rcalloc.clone()
+            )));
+            
+            // make the dynarray immortal
+            init_stmts.push(Statement::Expr(Expr::assign(
+                Expr::named_var(METHODS_ARRAY_NAME)
+                    .arrow(FieldName::Rc)
+                    .field(FieldName::RcStrongCount),
+                Expr::LitInt(-1),
+            )));
+            
+            // allocate the array memory
+            let array_realloc = Expr::Class(self.methodinfo_array_class)
+                .field(FieldName::DynArrayAlloc);
+            init_stmts.push(Statement::Expr(array_realloc.call([
+                Expr::named_var(METHODS_ARRAY_NAME),
+                Expr::LitInt(typeinfo.methods.len() as i128),
+                Expr::Null,
+                Expr::named_var(METHODNULL_NAME).addr_of(),
+            ])));
+            
+            let type_info_expr = Expr::Global(GlobalName::StaticTypeInfo(Box::new(ty.clone())));
+
             if let Some(name_id) = typeinfo.name {
-                let lhs = Expr::Global(GlobalName::StaticTypeInfo(Box::new(ty.clone())))
-                    .field(FieldName::ID(ir::TYPEINFO_NAME_FIELD));
-                let rhs = Expr::Global(GlobalName::StringLiteral(name_id)).addr_of();
-                
-                init_stmts.push(Statement::Expr(Expr::assign(lhs, rhs)));
+                init_stmts.push(Statement::Expr(Expr::assign(
+                    type_info_expr.clone().field(FieldName::ID(ir::TYPEINFO_NAME_FIELD)),
+                    Expr::Global(GlobalName::StringLiteral(name_id)).addr_of(),
+                )));
             }
+
+            for method_index in 0..typeinfo.methods.len() {
+                // methodinfo = methods_array->ptr + method_index
+                init_stmts.push(Statement::Expr(Expr::assign(
+                    Expr::named_var(METHODINFO_NAME),
+                    Expr::infix_op(
+                        Expr::named_var(METHODS_ARRAY_NAME)
+                            .arrow(FieldName::ID(ir::DYNARRAY_PTR_FIELD)),
+                        InfixOp::Add,
+                        Expr::LitInt(method_index as i128),
+                    )
+                )));
+                
+                let method_ptr_expr = Expr::named_var(METHODINFO_NAME).deref();
+
+                // *methodinfo = RcAlloc(..method info class)
+                init_stmts.push(Statement::Expr(Expr::assign(
+                    method_ptr_expr.clone(),
+                    Expr::Function(FunctionName::RcAlloc).call([method_class_ptr.clone()]),
+                )));
+                
+                // make it immortal
+                init_stmts.push(Statement::Expr(Expr::assign(
+                    method_ptr_expr.clone()
+                        .arrow(FieldName::Rc)
+                        .field(FieldName::RcStrongCount),
+                    Expr::LitInt(-1),
+                )));
+                
+                let method = &typeinfo.methods[method_index];
+                init_stmts.push(Statement::Expr(Expr::assign(
+                    method_ptr_expr.clone().arrow(FieldName::ID(ir::METHODINFO_NAME_FIELD)),
+                    Expr::Global(GlobalName::StringLiteral(method.name)).addr_of(),
+                )));
+
+                init_stmts.push(Statement::Expr(Expr::assign(
+                    method_ptr_expr.clone().arrow(FieldName::ID(ir::METHODINFO_OWNER_FIELD)),
+                    type_info_expr.clone().addr_of(),
+                )));
+
+                init_stmts.push(Statement::Expr(Expr::assign(
+                    method_ptr_expr.clone().arrow(FieldName::ID(ir::METHODINFO_IMPL_FIELD)),
+                    Expr::Function(FunctionName::Invoker(method.function)).addr_of(),
+                )));
+            }
+            
+            // typeinfo.methods = methods_array
+            init_stmts.push(Statement::Expr(Expr::assign(
+                type_info_expr.field(FieldName::ID(ir::TYPEINFO_METHODS_FIELD)),
+                Expr::named_var(METHODS_ARRAY_NAME),
+            )));
         }
 
         // look up FFI functions
@@ -533,6 +551,23 @@ impl fmt::Display for Unit {
         if self.opts.trace_rc {
             writeln!(f, "#define TRACE_RC 1")?;
         }
+
+        writeln!(f, "#define STRING_STRUCT struct {}", TypeDefName::Struct(ir::STRING_ID))?;
+        writeln!(f, "#define STRING_CLASS {}", GlobalName::ClassInstance(ir::STRING_ID))?;
+        writeln!(f, "#define STRING_CHARS(str_ptr) (str_ptr->{})", FieldName::ID(ir::STRING_CHARS_FIELD))?;
+        writeln!(f, "#define STRING_LEN(str_ptr) (str_ptr->{})", FieldName::ID(ir::STRING_LEN_FIELD))?;
+        
+        writeln!(f, "#define TYPEINFO_STRUCT struct {}", TypeDefName::Struct(ir::TYPEINFO_ID))?;
+        writeln!(f, "#define TYPEINFO_NAME(typeinfo) (typeinfo->{})", FieldName::ID(ir::TYPEINFO_NAME_FIELD))?;
+        writeln!(f, "#define TYPEINFO_NAME_CHARS(typeinfo) STRING_CHARS(TYPEINFO_NAME(typeinfo))")?;
+
+        writeln!(f, "#define METHODINFO_STRUCT struct {}", TypeDefName::Struct(ir::METHODINFO_ID))?;
+        writeln!(f, "#define METHODINFO_INVOKER(method) ((Invoker) method->{})", FieldName::ID(ir::METHODINFO_IMPL_FIELD))?;
+        
+        writeln!(f, "#define POINTERARRAY_STRUCT struct {}", TypeDefName::Struct(self.pointer_array_class))?;
+        
+        writeln!(f, "#define DYNARRAY_PTR(arr) (arr->{})", FieldName::ID(ir::DYNARRAY_PTR_FIELD))?;
+        writeln!(f, "#define DYNARRAY_LEN(arr) (arr->{})", FieldName::ID(ir::DYNARRAY_LEN_FIELD))?;
 
         writeln!(f, "{}", include_str!("prelude.h"))?;
 
@@ -592,8 +627,9 @@ impl fmt::Display for Unit {
             writeln!(f, "  }},")?;
 
             // class typeinfo is initialized before strings (the string class must exist first),
-            // so we'll initialize class names before initialization in main()
+            // so we'll initialize the rest before initialization in main()
             writeln!(f, "  .{} = NULL,", FieldName::ID(ir::TYPEINFO_NAME_FIELD))?;
+            writeln!(f, "  .{} = NULL,", FieldName::ID(ir::TYPEINFO_METHODS_FIELD))?;
 
             writeln!(f, "}};")?;
         }

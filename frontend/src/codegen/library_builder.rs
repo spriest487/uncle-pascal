@@ -45,6 +45,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use ir_lang::Value;
 
 #[derive(Debug)]
 pub struct LibraryBuilder {
@@ -1639,10 +1640,6 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
     let default_el_ptr = builder.local_temp(el_ptr_ty.clone());
     builder.cast(default_el_ptr.clone(), default_val_arg, el_ptr_ty.clone());
 
-    builder.comment("copy_len := copy_from->length");
-    let src_len = builder.local_temp(ir::Type::I32);
-    builder.field_val(src_len.clone(), src_arr.clone(), array_ref_ty.clone(), ir::DYNARRAY_LEN_FIELD, ir::Type::I32);
-
     builder.comment("el_len := sizeof(elem_ty)");
     let el_len = builder.local_temp(ir::Type::I32);
     builder.size_of(el_len.clone(), elem_ty.clone());
@@ -1665,6 +1662,16 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
     let done = builder.local_temp(ir::Type::Bool);
 
     builder.comment("copy elements from copied array");
+
+    let skip_copy_label = builder.alloc_label();
+    builder.comment("skip copying from source if copy_from is null");
+    let src_is_null = builder.eq_to_val(src_arr.clone(), Value::LiteralNull);
+    builder.jmp_if(skip_copy_label, src_is_null);
+
+    builder.comment("copy_len := copy_from->length");
+    let src_len = builder.local_temp(ir::Type::I32);
+    builder.field_val(src_len.clone(), src_arr.clone(), array_ref_ty.clone(), ir::DYNARRAY_LEN_FIELD, ir::Type::I32);
+    
     builder.scope(|builder| {
         let copy_count = builder.local_temp(ir::Type::I32);
         let copy_count_ok = builder.local_temp(ir::Type::Bool);
@@ -1717,6 +1724,8 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
         builder.jmp(copy_loop_label);
         builder.label(copy_break_label);
     });
+    
+    builder.label(skip_copy_label);
 
     builder.comment("while counter < len, default init next element");
     let init_break_label = builder.alloc_label();
