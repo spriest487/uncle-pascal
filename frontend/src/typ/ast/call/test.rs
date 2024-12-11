@@ -340,6 +340,95 @@ fn specializes_method_call_by_lambda_arg_ty() {
 }
 
 #[test]
+fn specializes_method_call_by_dynarray_element_ty() {
+    let src = r"
+        implementation
+        
+        type C = class
+            function A[T](arg: array of T);
+        end;
+        
+        type B = class
+        end;
+        
+        function C.A[T](arg: array of T);
+        begin
+        end;
+        
+        initialization
+            var instance := C();
+            instance.A([] as array of B);
+        end.
+    ";
+
+    let module = module_from_src("Test", src);
+    let unit = module.units.iter().last().unwrap();
+    let init = unit.unit.init.as_ref().unwrap();
+
+    match init.body[1].as_call() {
+        Some(ast::Call::Method(method_call)) => {
+            assert_eq!("instance", method_call.args[0].to_string());
+            assert_eq!("Test.C", method_call.args[0].annotation().ty().to_string());
+
+            assert_eq!("array of Test.B", method_call.args[1].annotation().ty().to_string());
+
+            assert_eq!("A", method_call.ident.to_string());
+            assert_eq!("Test.C", method_call.iface_type.to_string());
+
+            assert_eq!("Test.B", method_call.type_args.as_ref().unwrap().items[0].to_string());
+        }
+
+        other => panic!("expected call to A, got {:?}", other),
+    }
+}
+
+#[test]
+fn specializes_free_func_call_by_dynarray_element_ty() {
+    let src = r"
+        implementation
+        uses System;
+        
+        function A[T](arg: array of T);
+        begin
+        end;
+        
+        type B = class
+        end;
+        
+        initialization
+            var arr: array of B := [];
+            arr.A;
+        end.
+    ";
+
+    let module = module_from_src("Test", src);
+    let unit = module.units.iter().last().unwrap();
+    let init = unit.unit.init.as_ref().unwrap();
+
+    match init.body[1].as_call() {
+        Some(ast::Call::Function(func_call)) => {
+            assert_eq!("array of Test.B", func_call.args[0].annotation().ty().to_string());
+
+            assert_eq!("arr.A", func_call.target.to_string());
+            assert_eq!("Test.B", func_call.type_args.as_ref().unwrap().items[0].to_string());   
+            
+            match func_call.target.annotation() {
+                Value::Function(target_func) => {
+                    assert_eq!(target_func.name.to_string(), "Test.A[Test.B]")
+                }
+                other => {
+                    panic!("expected function A, got: {}", other)
+                },
+            }
+        }
+
+        other => {
+            panic!("expected call to A, got {:?}", other)
+        },
+    }
+}
+
+#[test]
 fn overload_with_accessible_method_is_ambiguous() {
     let a_src = r"
         interface

@@ -419,6 +419,43 @@ impl Type {
             _ => false,
         }
     }
+    
+    pub fn can_specialize_to(&self, other: &Self, ctx: &Context) -> bool {
+        if self == other {
+            return true;
+        }
+
+        if !self.contains_unresolved_params(ctx) {
+            return false;
+        }
+
+        match (self, other) {
+            (Type::GenericParam(..), ..) => true,
+            
+            (Type::Array(arr), Type::Array(other_arr)) => {
+                arr.dim == other_arr.dim 
+                    && arr.element_ty.can_specialize_to(&other_arr.element_ty, ctx)
+            }
+
+            (Type::DynArray { element }, Type::DynArray { element: other_element }) => {
+                element.can_specialize_to(other_element, ctx)
+            }
+
+            (Type::Function(sig), Type::Function(other_sig)) => {
+                sig.return_ty.can_specialize_to(&other_sig.return_ty, ctx)
+                    && sig.params.len() == other_sig.params.len()
+                    && sig.params
+                        .iter()
+                        .zip(other_sig.params.iter())
+                        .all(|(p, other_p)| {
+                            p.modifier == other_p.modifier
+                                && p.ty.can_specialize_to(&other_p.ty, ctx)
+                        })
+            }
+            
+            _ => self.same_decl_type(other),
+        }
+    }
 
     pub fn same_decl_type(&self, other: &Self) -> bool {
         match (self.full_path(), other.full_path()) {

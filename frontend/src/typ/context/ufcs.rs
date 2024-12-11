@@ -14,7 +14,7 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::rc::Rc;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InstanceMethod {
     FreeFunction {
         /// fully-qualified function name, starting with the namespace the function is declared in
@@ -99,12 +99,10 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
             if overload.decl().params.is_empty() {
                 continue;
             }
-            
+
             let self_param = &overload.decl().params[0];
 
-            if self_param.ty == *ty
-                || (self_param.ty.contains_unresolved_params(ctx) && self_param.ty.same_decl_type(ty))
-            {
+            if self_param.ty.can_specialize_to(ty, ctx) {
                 let func_name = Symbol::from(decl_path.clone())
                     .with_ty_params(overload.decl().type_params.clone());
 
