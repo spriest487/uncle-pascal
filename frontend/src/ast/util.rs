@@ -41,5 +41,6 @@ pub fn try_unit_from_string(unit_name: &str, src: &str) -> ParseResult<Unit<Span
 }
 
 pub fn unit_from_string(unit_name: &str, src: &str) -> Unit<Span> {
-    try_unit_from_string(unit_name, src).unwrap()
+    try_unit_from_string(unit_name, src)
+        .unwrap_or_else(|err| panic!("{}", err))
 }
