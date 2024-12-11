@@ -425,13 +425,9 @@ impl Type {
             return true;
         }
 
-        if !self.contains_unresolved_params(ctx) {
-            return false;
-        }
-
         match (self, other) {
             (Type::GenericParam(..), ..) => true,
-            
+
             (Type::Array(arr), Type::Array(other_arr)) => {
                 arr.dim == other_arr.dim 
                     && arr.element_ty.can_specialize_to(&other_arr.element_ty, ctx)
