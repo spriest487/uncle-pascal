@@ -3,6 +3,6 @@ uses System;
 
 initialization
     var a: array of Integer := [];
-    var aLen := Length(a);
+    var aLen := a.Length;
     WriteLn(aLen.ToString());
 end

@@ -28,7 +28,7 @@ initialization
     var myClassInfo := typeinfo(MyClass);
     var methods := myClassInfo.Methods;
 
-    for var i := 0 to Length(methods) - 1 do begin
+    for var i := 0 to methods.Length - 1 do begin
         WriteLn(myClassInfo.Name + ' has method ' + methods[i].Name);
     end;
     

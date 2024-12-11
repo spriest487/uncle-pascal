@@ -61,7 +61,7 @@ function QuickSort[T](arr: array of T)
 where 
     T is Comparable;
 begin
-    QuickSortRange(arr, 0, Length(arr) - 1);
+    QuickSortRange(arr, 0, arr.Length - 1);
 end;
 
 end

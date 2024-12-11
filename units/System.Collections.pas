@@ -241,7 +241,7 @@ end;
 
 function ArrayList[T].Capacity: Integer;
 begin
-    Length(self.items);
+    self.items.Length
 end;
     
 function ArrayList[T].Get(n: Integer): T;
