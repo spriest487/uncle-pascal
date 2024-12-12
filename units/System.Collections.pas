@@ -3,16 +3,17 @@ interface
 
 uses System;
 
-type LinkedListNode[T] = class
+type
+    LinkedListNode[T] = class
     private
         next: Option[LinkedListNode[T]];
         val: T;
     public
         function Next: Option[LinkedListNode[T]];
         function Value: T;
-end;
+    end;
 
-type LinkedList[T] = class
+    LinkedList[T] = class
     private
         head: Option[LinkedListNode[T]];
     
@@ -32,9 +33,9 @@ type LinkedList[T] = class
         function Clear;
         
         constructor Create;
-end;
+    end;
 
-type ArrayList[T] = class
+    ArrayList[T] = class
     private
         items: array of T;
         len: Integer;
@@ -54,7 +55,7 @@ type ArrayList[T] = class
         function Clear;
         
         constructor Create;
-end;
+    end;
 
 implementation
 
@@ -71,7 +72,7 @@ begin
             var current := head;
             var tooShort := false;
 
-            for var i := 0 to (n - 1) do begin
+            for var i := 0 to n - 1 do begin
                 if current.next is Option.Some node then begin
                     current := node;
                 end
@@ -82,20 +83,20 @@ begin
             end;
 
             if tooShort then
-                Option.None()
+                Option.None
             else
                 Option.Some(current)
         end
     end
     else begin
-        Option.None()
+        Option.None
     end
 end;
 
 constructor LinkedList[T].Create;
 begin
     LinkedList(
-        head: Option.None();
+        head: Option.None;
     );
 end;
 
@@ -148,19 +149,19 @@ end;
 
 function LinkedList[T].TryGet(n: Integer): Option[T];
 begin
-    var nth := GetNodeAt[T](self, n);
+    var nth := self.GetNodeAt(n);
 
     var result: Option[T] := if nth is Option.Some node then
         Option.Some(node.val)
     else
-        Option.None();
+        Option.None;
 
     result
 end;
 
 function LinkedList[T].Set(n: Integer; value: T);
 begin
-    var nth := GetNodeAt[T](self, n);
+    var nth := self.GetNodeAt(n);
 
     if nth is Option.Some node then
         node.val := value
@@ -181,7 +182,7 @@ begin
         end; 
     end
     else
-        match GetNodeAt[T](self, n - 1) of
+        match self.GetNodeAt(n - 1) of
             Option.Some parent: 
                 match parent.next of
                     Option.Some removed:
@@ -198,7 +199,7 @@ end;
 
 function LinkedList[T].Clear;
 begin
-    self.head := Option.None();
+    self.head := Option.None;
 end;
 
 function LinkedList[T].Add(item: T);
@@ -211,7 +212,7 @@ begin
                 current := next
             else begin
                 current.next := Option.Some(LinkedListNode(
-                    next: Option.None();
+                    next: Option.None;
                     val: item;
                 ));
                 break;
@@ -220,7 +221,7 @@ begin
     end
     else begin
         self.head := Option.Some(LinkedListNode(
-            next: Option.None();
+            next: Option.None;
             val: item;
         ));
     end;
@@ -259,7 +260,8 @@ begin
         var item := self.items[n];
         Option.Some(item);
     end
-    else Option.None();
+    else 
+        Option.None;
 end;
 
 function ArrayList[T].Set(n: Integer; value: T);
@@ -275,12 +277,12 @@ end;
 function ReallocItems[T](list: ArrayList[T]; size: Integer);
 unsafe begin
     // unsafe: element type might be non-nullable reference
-    SetLength(list.items, size, default(T)); 
+    list.items.SetLength(size, default(T)); 
 end;
 
 function ArrayList[T].Add(item: T);
 begin
-    var capacity := Length(self.items);
+    var capacity := self.items.Length;
     if self.len + 1 > capacity then
     begin
         capacity := if capacity = 0 then 
@@ -288,7 +290,7 @@ begin
         else
             capacity * ARRAYLIST_GROWTH;
 
-        ReallocItems(self, capacity);
+        self.ReallocItems(capacity);
     end;
         
     self.items[self.len] := item;
@@ -300,7 +302,7 @@ unsafe begin
     if n < 0 or n >= self.len then 
         exit;
 
-    var capacity := Length(self.items);
+    var capacity := self.items.Length;
     for var i := n to capacity - 2 do
     begin
         self.items[i] := self.items[i + 1];

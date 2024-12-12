@@ -49,10 +49,10 @@ begin
         var pivot := arr.QuickSortPartition(left, right);
 
         if pivot > 1 then begin
-            QuickSortRange(arr, left, pivot - 1);
+            arr.QuickSortRange(left, pivot - 1);
         end;
         if pivot + 1 < right then begin
-            QuickSortRange(arr, pivot + 1, right);
+            arr.QuickSortRange(pivot + 1, right);
         end;
     end;
 end;

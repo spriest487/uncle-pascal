@@ -378,7 +378,7 @@ end;
 
 function Length[T](arr: array of T): Integer;
 unsafe begin
-    ArrayLengthInternal(arr)
+    (arr as Pointer).ArrayLengthInternal
 end;
 
 function Unbox[T](b: Box[T]): T;
@@ -533,12 +533,12 @@ end;
 
 function String.Concat(other: String): String;
 begin
-    StringConcat(self, other);
+    self.StringConcat(other);
 end;
 
 function String.Compare(other: String): Integer;
 begin
-    CompareStr(self, other)
+    self.CompareStr(other)
 end;
 
 function String.CharAt(at: Integer): Byte;
