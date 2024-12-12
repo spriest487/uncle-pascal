@@ -9,7 +9,6 @@ use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::TypeAnnotation;
-use crate::ast::Visibility;
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
@@ -36,8 +35,8 @@ use crate::typ::TypeArgResolver;
 use crate::typ::TypeError;
 use crate::typ::TypeParamContainer;
 use crate::typ::TypeResult;
-use crate::typ::Value;
 use crate::typ::TypedValue;
+use crate::typ::Value;
 use crate::typ::ValueKind;
 use crate::typ::{typecheck_type, InvalidOverloadKind};
 use common::span::Span;
@@ -485,11 +484,10 @@ fn validate_method_def_matches_decl(
 }
 
 pub fn typecheck_func_def(
+    mut decl: FunctionDecl,
     def: &ast::FunctionDef<Span>,
     ctx: &mut Context,
 ) -> TypeResult<FunctionDef> {
-    let mut decl = FunctionDecl::typecheck(&def.decl, true, ctx)?;
-
     // in the body of a method definition, the type parameters of the enclosing type are
     // used to specialize the types in the decl
     let owning_ty = decl
@@ -519,22 +517,10 @@ pub fn typecheck_func_def(
     };
 
     ctx.scope(body_env, |ctx| {
-        match &decl.name.owning_ty {
-            // free functions are always declared within their own bodies (allowing recursive calls)
-            // but forward-declared functions may already be present in the scope - in which case we
-            // don't need to declare it again
-            None => {
-                let find_existing_decl = ctx.find_function(&IdentPath::from(decl.name.ident().clone()));
-                if find_existing_decl.is_err() {
-                    ctx.declare_function(decl.name.ident().clone(), decl.clone(), Visibility::Implementation)?;
-                }
-            }
-
-            // declare type parameters from the owning type, if this is a method
-            Some(owning_ty) => {
-                if let Some(enclosing_ty_params) = owning_ty.type_params() {
-                    ctx.declare_type_params(enclosing_ty_params)?;
-                }
+        // declare type parameters from the owning type, if this is a method
+        if let Some(owning_ty) = &decl.name.owning_ty {
+            if let Some(enclosing_ty_params) = owning_ty.type_params() {
+                ctx.declare_type_params(enclosing_ty_params)?;
             }
         }
     

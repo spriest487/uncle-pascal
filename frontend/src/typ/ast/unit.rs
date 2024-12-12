@@ -116,21 +116,22 @@ fn typecheck_unit_func_def(
     visibility: Visibility,
     ctx: &mut Context,
 ) -> TypeResult<UnitDecl> {
-    let func_def = Rc::new(typecheck_func_def(func_def, ctx)?);
-    let func_decl = &func_def.decl;
+    let func_decl = FunctionDecl::typecheck(&func_def.decl, true, ctx)?;
     let func_name = &func_decl.name;
+    
+    // free functions may not already have a declaration in scope if they weren't forward
+    // declared, do that now
+    if func_decl.name.owning_ty.is_none() && !ctx.is_function_declared(&func_decl) {
+        ctx.declare_function(func_name.ident().clone(), Rc::new(func_decl.clone()), visibility)?;
+    }
 
+    let func_def = Rc::new(typecheck_func_def(func_decl.clone(), func_def, ctx)?);
     match &func_decl.name.owning_ty {
         Some(ty) => {
             ctx.define_method(ty.clone(), func_def.clone())?;
         }
 
         None => {
-            // functions may or may not be previously declared when we encounter a def
-            if !ctx.is_function_declared(&func_decl) {
-                ctx.declare_function(func_name.ident().clone(), func_decl.clone(), visibility)?;
-            }
-
             ctx.define_function(func_name.ident().clone(), func_def.clone())?;
         }
     }
