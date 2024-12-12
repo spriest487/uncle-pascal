@@ -1,7 +1,8 @@
 use crate::typ::context::ufcs::find_ufcs_free_functions;
+use crate::typ::test::try_unit_from_src;
 use crate::typ::test::unit_from_src;
 use crate::typ::test::units_from_src;
-use crate::typ::InstanceMethod;
+use crate::typ::{InstanceMethod, NameError, TypeError};
 use crate::typ::Type;
 use crate::typ::SYSTEM_UNIT_NAME;
 
@@ -112,7 +113,6 @@ fn doesnt_find_private_ufcs_func_from_other_unit() {
 fn generic_class_method_has_correct_self_ty() {
     let src = r"
         implementation
-        uses System;
         
         type MyClass[T] = class
             val: Integer;
@@ -138,6 +138,72 @@ fn generic_class_method_has_correct_self_ty() {
     // });
     
     unit_from_src("test", src);
+}
+
+#[test]
+fn doesnt_find_free_func_with_mismatched_type_constraint() {
+    let src = r"
+        implementation
+        
+        type
+            IMyConstraint = interface
+            end;
+            
+            MyClass = class of IMyConstraint
+            end;
+
+        function MyFunc[T](t: T)
+        where 
+            T is IMyConstraint;
+        begin
+        end;
+
+        initialization
+            var x: Integer := 123;
+            x.MyFunc;
+        end.
+    ";
+    
+    match try_unit_from_src("Test", src) {
+        Ok(..) => panic!("expected error"),
+        
+        Err(TypeError::NameError { err: NameError::MemberNotFound { member, .. }, .. }) => {
+            assert_eq!(member.to_string(), "MyFunc")
+        }
+        
+        Err(other) => {
+            panic!("expected member not found error, got {}", other)
+        },
+    }
+}
+
+#[test]
+fn finds_free_func_with_matched_type_constraint() {
+    let src = r"
+        implementation
+        
+        type
+            IMyConstraint = interface
+            end;
+            
+            MyClass = class of IMyConstraint
+            end;
+                
+        function MyFunc[T](t: T) 
+        where 
+            T is IMyConstraint;
+        begin
+        end;
+
+        initialization
+            var x := MyClass();
+            x.MyFunc;
+        end.
+    ";
+
+    if let Err(other) = try_unit_from_src("Test", src) {
+        panic!("expected success, got error:\n{}", other)
+    }
 }
 
 // all these tests should ignore any builtin UFCS candidates, we're only checking for the

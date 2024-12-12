@@ -57,9 +57,14 @@ where
 }
 
 pub fn unit_from_src(unit_name: &'static str, src: &'static str) -> ModuleUnit {
-    let mut module = module_from_src(unit_name, src);
+    try_unit_from_src(unit_name, src)
+        .unwrap_or_else(|err| panic!("{}", err))
+}
 
-    module.units.pop().unwrap()
+pub fn try_unit_from_src(unit_name: &'static str, src: &'static str) -> TypeResult<ModuleUnit> {
+    let mut module = try_module_from_src(unit_name, src)?;
+
+    Ok(module.units.pop().unwrap())
 }
 
 pub fn units_from_src<UnitSources>(unit_srcs: UnitSources) -> HashMap<String, ModuleUnit>

@@ -1,12 +1,15 @@
-use crate::ast::Unit;
-use crate::parse::{Parse, ParseResult};
-use crate::parse::TokenStream;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
+use crate::ast::Unit;
+use crate::parse::Parse;
+use crate::parse::ParseResult;
+use crate::parse::TokenStream;
+use crate::pp::Preprocessor;
 use crate::TokenTree;
 use common::span::Span;
 use common::BuildOptions;
-use crate::pp::Preprocessor;
+use common::DiagnosticLabel;
+use common::DiagnosticOutput;
 
 pub fn tokens_from_string(unit_name: &str, src: &str) -> TokenStream {
     let pp = Preprocessor::new(format!("{}.pas", unit_name), BuildOptions::default());
@@ -42,5 +45,15 @@ pub fn try_unit_from_string(unit_name: &str, src: &str) -> ParseResult<Unit<Span
 
 pub fn unit_from_string(unit_name: &str, src: &str) -> Unit<Span> {
     try_unit_from_string(unit_name, src)
-        .unwrap_or_else(|traced| panic!("{}", traced.err))
+        .unwrap_or_else(|traced| {
+            match &traced.err.label() {
+                Some(DiagnosticLabel { text: Some(text), span }) => {
+                    panic!("{} ({})\n{}", traced.err, span, text)
+                },
+                Some(DiagnosticLabel { text: None, span }) => {
+                    panic!("{} ({})", traced.err, span)
+                },
+                None => panic!("{}", traced.err)
+            }
+        })
 }

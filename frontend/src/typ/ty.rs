@@ -419,14 +419,20 @@ impl Type {
             _ => false,
         }
     }
-    
+
     pub fn can_specialize_to(&self, other: &Self, ctx: &Context) -> bool {
         if self == other {
             return true;
         }
 
         match (self, other) {
-            (Type::GenericParam(..), ..) => true,
+            (Type::GenericParam(param), ..) => {
+                if param.is_ty == Type::Any {
+                    return true;
+                }
+
+                ctx.is_implementation(other, &param.is_ty).unwrap_or(false)
+            },
 
             (Type::Array(arr), Type::Array(other_arr)) => {
                 arr.dim == other_arr.dim 
@@ -438,15 +444,18 @@ impl Type {
             }
 
             (Type::Function(sig), Type::Function(other_sig)) => {
-                sig.return_ty.can_specialize_to(&other_sig.return_ty, ctx)
-                    && sig.params.len() == other_sig.params.len()
-                    && sig.params
-                        .iter()
-                        .zip(other_sig.params.iter())
-                        .all(|(p, other_p)| {
-                            p.modifier == other_p.modifier
-                                && p.ty.can_specialize_to(&other_p.ty, ctx)
-                        })
+                if !sig.return_ty.can_specialize_to(&other_sig.return_ty, ctx)
+                    || sig.params.len() == other_sig.params.len() {
+                    return false;
+                }
+                
+                sig.params
+                    .iter()
+                    .zip(other_sig.params.iter())
+                    .all(|(p, other_p)| {
+                        p.modifier == other_p.modifier
+                            && p.ty.can_specialize_to(&other_p.ty, ctx)
+                    })
             }
             
             _ => self.same_decl_type(other),
