@@ -253,7 +253,9 @@ impl ScopeStack {
                         current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
                     }
                     
-                    None => false,
+                    None => {
+                        false
+                    },
                 }
             },
 

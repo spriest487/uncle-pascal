@@ -1,8 +1,9 @@
+use crate::ast;
 use crate::typ::context::ufcs::find_ufcs_free_functions;
 use crate::typ::test::try_unit_from_src;
 use crate::typ::test::unit_from_src;
 use crate::typ::test::units_from_src;
-use crate::typ::{InstanceMethod, NameError, TypeError};
+use crate::typ::{InstanceMethod, NameError, TypeError, Value};
 use crate::typ::Type;
 use crate::typ::SYSTEM_UNIT_NAME;
 
@@ -144,7 +145,7 @@ fn generic_class_method_has_correct_self_ty() {
 fn doesnt_find_free_func_with_mismatched_type_constraint() {
     let src = r"
         implementation
-        
+
         type
             IMyConstraint = interface
             end;
@@ -204,6 +205,40 @@ fn finds_free_func_with_matched_type_constraint() {
     if let Err(other) = try_unit_from_src("Test", src) {
         panic!("expected success, got error:\n{}", other)
     }
+}
+
+#[test]
+fn finds_func_in_its_own_body() {
+    let unit = unit_from_src("Test", r"
+        implementation
+        
+        type 
+            A = class 
+            end;
+
+        function MyFunc(a: A);
+        begin
+            a.MyFunc;
+        end;
+        end.
+    ");
+
+    let ast::UnitDecl::FunctionDef { def } = &unit.unit.impl_decls[1] else {
+        panic!("expected second item to be a function");
+    };
+    
+    let ast::Stmt::Call(call) = &def.body.stmts[0] else {
+        panic!("expected first statement to be a call");
+    };
+    
+    let func_call = call.as_func_call().expect("expected function call");
+    assert_eq!("a.MyFunc", func_call.target.to_string());
+    
+    let Value::Function(func_val) = func_call.target.annotation() else {
+        panic!("expected function value");
+    };
+    
+    assert_eq!(func_val.name.to_string(), "Test.MyFunc");
 }
 
 // all these tests should ignore any builtin UFCS candidates, we're only checking for the

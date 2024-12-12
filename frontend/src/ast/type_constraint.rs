@@ -131,7 +131,7 @@ impl<T: TypeAnnotation> fmt::Display for TypeParam<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(constraint) = &self.constraint {
-            write!(f, ": {}", constraint.is_ty)?;
+            write!(f, " is {}", constraint.is_ty)?;
         }
 
         Ok(())

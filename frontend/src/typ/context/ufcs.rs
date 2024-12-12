@@ -82,8 +82,10 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
     search_namespaces.extend(current_path.all_used_namespaces());
 
     let mut methods = Vec::new();
+    
+    // eprintln!("members of {}: current scopes: {}", ty, ctx.scopes);
 
-    ctx.scopes.visit_visible(|decl_path, decl| {
+    ctx.scopes.visit_visible(|decl_path, decl| {        
         // ignore decls that aren't members of one of the search namespaces
         if !search_namespaces.iter().any(|search_ns| search_ns.is_parent_of(decl_path)) {
             return;

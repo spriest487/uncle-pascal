@@ -132,7 +132,7 @@ impl fmt::Display for GenericContext {
             
             write!(f, "{}", self.items[i].param.name)?;
             if let Some(constraint) = &self.items[i].param.constraint {
-                write!(f, ": {}", constraint.is_ty)?;
+                write!(f, " is {}", constraint.is_ty)?;
             }
             
             write!(f, " = {}", self.items[i].arg)?;

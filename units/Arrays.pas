@@ -25,7 +25,7 @@ begin
         end;
 
         if l < r then begin
-            if Comparable.Compare(arr[l], arr[r]) = 0 then begin
+            if arr[l].Compare(arr[r]) = 0 then begin
                 exit r;
             end;
 
@@ -46,7 +46,7 @@ where
     T is Comparable;
 begin
     if left < right then begin
-        var pivot := QuickSortPartition(arr, left, right);
+        var pivot := arr.QuickSortPartition(left, right);
 
         if pivot > 1 then begin
             QuickSortRange(arr, left, pivot - 1);
@@ -61,7 +61,7 @@ function QuickSort[T](arr: array of T)
 where 
     T is Comparable;
 begin
-    QuickSortRange(arr, 0, arr.Length - 1);
+    arr.QuickSortRange(0, arr.Length - 1);
 end;
 
 end

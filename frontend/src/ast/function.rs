@@ -462,7 +462,7 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
         write!(f, "{}", self.name)?;
         if let Some(ty_list) = &self.type_params {
             write!(f, "{}", ty_list)?;
-        } 
+        }
         
         if !self.params.is_empty() {
             write!(f, "(")?;
