@@ -23,7 +23,7 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
-use ir_lang::InstructionFormatter as _;
+use ir_lang::{InstructionFormatter as _, EMPTY_STRING_ID};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::BitAnd;
@@ -46,6 +46,9 @@ pub struct Interpreter {
     functions: BTreeMap<ir::FunctionID, FunctionInfo>,
     
     diag_worker: Option<DiagnosticWorker>,
+    
+    // cache of type info by the names used to look them up from user code (TypeInfo.Find)
+    typeinfo_by_name: HashMap<String, ir::GlobalRef>,
 }
 
 impl Interpreter {
@@ -75,6 +78,8 @@ impl Interpreter {
             functions: BTreeMap::new(),
             
             diag_worker,
+
+            typeinfo_by_name: HashMap::new(),
         }
     }
 
@@ -1823,13 +1828,21 @@ impl Interpreter {
 
             let typeinfo_ptr = self.create_typeinfo(runtime_type, &string_lit_values)?;
             let ptr_bytes = self.marshaller.marshal_to_vec(&typeinfo_ptr)?;
-            
-            self.globals.insert(typeinfo_ref, GlobalValue::Variable {
+
+            self.globals.insert(typeinfo_ref.clone(), GlobalValue::Variable {
                 value: ptr_bytes.into_boxed_slice(),
                 ty: ir::Type::RcPointer(ir::TYPEINFO_VTYPE_ID),
             });
+
+            if let Some(runtime_name_id) = runtime_type.name {
+                let Some(runtime_name) = self.metadata.get_string(runtime_name_id) else {
+                    continue;
+                };
+
+                self.typeinfo_by_name.insert(runtime_name.clone(), typeinfo_ref);
+            }
         }
-        
+
         // declare global variables
         for (var_id, var_ty) in &lib.variables {
             // global variables start zero-initialized
@@ -1957,6 +1970,23 @@ impl Interpreter {
         Ok(chars.into_iter().collect())
     }
     
+    fn create_variant_tag(&self, variant: &ir::VariantDef, case_name: &str) -> ExecResult<DynValue> {
+        let case_index = variant.cases
+            .iter()
+            .position(|case| case.name == case_name)
+            .ok_or_else(|| {
+                let msg = format!("missing definition of {}.{} case", variant.name, case_name);
+                ExecError::illegal_state(msg)
+            })?;
+
+        DynValue::USize(case_index)
+            .try_cast(&variant.tag_type)
+            .ok_or_else(|| {
+                let msg = format!("failed to cast tag value {} for {}.{} case", case_index, variant.name, case_name);
+                ExecError::illegal_state(msg)
+            })
+    }
+    
     fn create_dyn_array(&mut self,
         element_ty: &ir::Type,
         elements: Vec<DynValue>,
@@ -2020,7 +2050,7 @@ impl Interpreter {
         string_lit_values: &HashMap<ir::StringID, DynValue>
     ) -> ExecResult<DynValue> {
         let type_name_string = match &rtti.name {
-            None => DynValue::Pointer(Pointer::null(ir::Type::Struct(ir::STRING_ID))),
+            None => string_lit_values[&EMPTY_STRING_ID].clone(),
             Some(name_id) => string_lit_values[name_id].clone(),
         };
         

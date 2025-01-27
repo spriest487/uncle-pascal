@@ -2,6 +2,7 @@ use crate::codegen::ir;
 use crate::codegen::library_builder::LibraryBuilder;
 use crate::codegen::translate_name;
 use crate::codegen::typ;
+use crate::typ::ast::VARIANT_TAG_TYPE;
 
 pub fn translate_variant_def(
     variant_def: &typ::ast::VariantDef,
@@ -9,6 +10,8 @@ pub fn translate_variant_def(
     lib: &mut LibraryBuilder,
 ) -> ir::VariantDef {
     let name_path = translate_name(&variant_def.name, generic_ctx, lib);
+    
+    let tag_type = lib.translate_type(&VARIANT_TAG_TYPE, generic_ctx);
 
     let mut cases = Vec::new();
     for case in &variant_def.cases {
@@ -29,6 +32,7 @@ pub fn translate_variant_def(
 
     ir::VariantDef {
         name: name_path,
+        tag_type,
         cases,
     }
 }

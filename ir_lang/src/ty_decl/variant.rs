@@ -13,5 +13,7 @@ pub struct VariantCase {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VariantDef {
     pub name: NamePath,
+    pub tag_type: Type,
+
     pub cases: Vec<VariantCase>,
 }

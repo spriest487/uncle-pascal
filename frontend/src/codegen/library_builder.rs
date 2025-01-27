@@ -93,11 +93,11 @@ impl LibraryBuilder {
         let type_cache = builtin_classes
             .into_iter()
             .map(|(name, id)| (typ::Type::class(name), ir::Type::class_ptr(id)))
-            .collect();        
+            .collect();
         
         let library = ir::Library::new(metadata);
 
-        let builder = LibraryBuilder {
+        let mut builder = LibraryBuilder {
             library,
 
             opts,
@@ -119,6 +119,15 @@ impl LibraryBuilder {
             free_mem_func: None,
             get_mem_func: None,
         };
+
+        // for all non-generic types defined in this module, eagerly generate RTTI info
+        let mut defined_types: Vec<_> = builder.src_metadata.defined_types();
+        defined_types.retain(|ty| !ty.is_unspecialized_generic());
+
+        for defined_type in defined_types {
+            let ir_type = builder.translate_type(&defined_type, &GenericContext::empty());
+            builder.gen_runtime_type(&ir_type);
+        }
 
         builder
     }

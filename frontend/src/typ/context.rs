@@ -1250,6 +1250,48 @@ impl Context {
         }
     }
 
+    pub fn defined_types(&self) -> Vec<Type> {
+        self.defs
+            .iter()
+            .flat_map(|(_, def_map)| def_map.iter())
+            .filter_map(|(def_key, def)| {
+                match def_key {
+                    DefKey::Unique => Some(def),
+                    DefKey::Sig(..) => None,
+                }
+            })                
+            .filter_map(|def| match def {
+                Def::Struct(struct_def) => {
+                    Some(Type::from_struct_type(struct_def.name.clone(), struct_def.kind))
+                },
+
+                Def::Variant(variant_def) => {
+                    Some(Type::variant(variant_def.name.clone()))
+                },
+
+                Def::Interface(iface_def) => {
+                    Some(Type::interface(iface_def.name.full_path.clone()))
+                },
+
+                Def::Set(set_def) => {
+                    let set_type=  set_def
+                        .to_set_type(self)
+                        .unwrap_or_else(|err| {
+                            panic!("defined set type {} was invalid: {}", set_def.name, err)
+                        });
+
+                    Some(Type::set(set_type))
+                },
+
+                Def::Enum(enum_def) => {
+                    Some(Type::enumeration(enum_def.name.full_path.clone()))
+                },
+                
+                _ => None,
+            })
+            .collect()
+    }
+
     pub fn find_def(&self, name: &IdentPath, def_key: &DefKey) -> Option<&Def> {
         self.defs.get(name).and_then(|overloads| overloads.get(def_key))
     }

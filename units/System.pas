@@ -91,6 +91,9 @@ type
     public
         function Name: String;
         function Methods: array of MethodInfo;
+        
+        class function LoadedTypes: array of TypeInfo;
+        class function Find(typeName: String): Option[TypeInfo]; 
     end;
 
 function GetMem(count: Int32): ^Byte; external 'rt';
@@ -170,6 +173,19 @@ function InvokeMethod(
     args: array of Pointer; 
     resultOut: Pointer;
 ); external 'rt';
+
+function GetLoadedTypes: array of TypeInfo; external 'rt';
+function FindTypeInfo(typeName: String): Option[TypeInfo]; external 'rt';
+
+class function TypeInfo.LoadedTypes: array of TypeInfo;
+begin
+    GetLoadedTypes;
+end;
+
+class function TypeInfo.Find(typeName: String): Option[TypeInfo];
+begin
+    FindTypeInfo(typeName);
+end;
 
 function ByteToStr(i: Byte): String;
 begin
@@ -265,6 +281,11 @@ end;
 
 function StringConcat(a, b: String): String;
 begin
+    unsafe begin
+        if a as Pointer = nil or b as Pointer = nil then 
+            raise 'string pointer was nil';
+    end;
+
     if a.len = 0 and b.len = 0 then exit '';
 
     if a.len = 0 then exit b;

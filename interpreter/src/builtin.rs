@@ -4,6 +4,7 @@ use crate::ExecError;
 use crate::ExecResult;
 use crate::Interpreter;
 use crate::Pointer;
+use crate::VariantValue;
 use ir_lang::*;
 use rand::Rng;
 use std::env::consts::OS;
@@ -351,6 +352,55 @@ fn invoke_method(state: &mut Interpreter) -> ExecResult<()> {
     Ok(())
 }
 
+fn find_type_info(state: &mut Interpreter) -> ExecResult<()> {
+    let name_arg = state.read_string(&Ref::Local(LocalID(1)))?;
+    
+    let option_of_typeinfo_id = option_of_typeinfo_id(&state.metadata);
+    let option_variant = state.metadata
+        .get_variant_def(option_of_typeinfo_id)
+        .ok_or_else(|| ExecError::illegal_state("missing definition of Option<TypeInfo> type"))?;
+    
+    let result = match state.typeinfo_by_name.get(&name_arg).cloned() {
+        Some(typeinfo_global) => {
+            let typeinfo_ptr = state.load(&Ref::Global(typeinfo_global))?;
+
+            DynValue::Variant(Box::new(VariantValue {
+                type_id: option_of_typeinfo_id,
+                tag: Box::new(state.create_variant_tag(&option_variant, "Some")?),
+                data: Box::new(typeinfo_ptr),
+            }))
+        }
+        
+        None => {
+            DynValue::Variant(Box::new(VariantValue {
+                type_id: option_of_typeinfo_id,
+                tag: Box::new(state.create_variant_tag(&option_variant, "None")?),
+                data: Box::new(DynValue::null_nothing()),
+            }))
+        }
+    };
+    
+    state.store(&Ref::Local(RETURN_LOCAL), result)?;
+    
+    Ok(())
+}
+
+fn get_loaded_types(state: &mut Interpreter) -> ExecResult<()> {
+    let mut typeinfos = Vec::with_capacity(state.typeinfo_by_name.len());
+
+    for typeinfo_global in state.typeinfo_by_name.values() {
+        let typeinfo_ptr = state.load(&Ref::Global(typeinfo_global.clone()))?;
+        typeinfos.push(typeinfo_ptr);
+    }
+    
+    let typeinfo_ty = Type::rc_ptr_to(TYPEINFO_VTYPE_ID);
+
+    let typeinfo_array = state.create_dyn_array(&typeinfo_ty, typeinfos, false)?;
+    state.store(&Ref::Local(RETURN_LOCAL), typeinfo_array)?;
+    
+    Ok(())
+}
+
 fn load_pointer(state: &mut Interpreter, at: &Ref) -> ExecResult<Pointer> {
     state
         .load(at)?
@@ -475,11 +525,29 @@ pub(super) fn is_nan(state: &mut Interpreter) -> ExecResult<()> {
     state.store(&RETURN_REF, DynValue::Bool(val.is_nan()))
 }
 
+fn option_of_typeinfo_id(metadata: &Metadata) -> TypeDefID {
+    let path = NamePath::new(["System".to_string()], "Option".to_string())
+        .with_ty_args([Type::rc_ptr_to(TYPEINFO_VTYPE_ID)]);
+
+    let (id, _) = metadata.find_variant_def(&path)
+        .expect("Option<TypeInfo> variant must exist in metadata");
+
+    id
+}
+
 pub fn system_funcs(
     metadata: &Metadata
 ) -> impl IntoIterator<Item=(&'static str, BuiltinFn, Type, Vec<Type>)> {
     let array_of_ptr = metadata.find_dyn_array_struct(&Type::Nothing.ptr())
         .expect("array of raw pointer type must exist in metadata");
+    
+    let type_info_type = Type::rc_ptr_to(TYPEINFO_VTYPE_ID);
+    
+    let option_of_type_info = Type::Variant(option_of_typeinfo_id(metadata));
+    
+    let array_of_typeinfo_type_id = metadata.find_dyn_array_struct(&type_info_type)
+        .expect("array of TypeInfo must exist in metadata");
+    let array_of_typeinfo = Type::rc_ptr_to(VirtualTypeID::Class(array_of_typeinfo_type_id));
     
     let items = [
         ("Int8ToStr", i8_to_str as BuiltinFn, Type::string_ptr(), vec![
@@ -548,6 +616,8 @@ pub fn system_funcs(
             Type::class_ptr(array_of_ptr),
             Type::Nothing.ptr(),
         ]),
+        ("FindTypeInfo", find_type_info, option_of_type_info, vec![Type::string_ptr()]),
+        ("GetLoadedTypes", get_loaded_types, array_of_typeinfo, vec![]),
         ("RandomInteger", random_integer, Type::I32, vec![
             Type::I32, Type::I32
         ]),

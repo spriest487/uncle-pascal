@@ -63,6 +63,8 @@ impl fmt::Display for VariableID {
     }
 }
 
+pub const EMPTY_STRING_ID: StringID = StringID(0);
+
 // builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
@@ -121,9 +123,11 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn new() -> Self {
-        let metadata = Self {
+        let mut metadata = Self {
             ..Default::default()
         };
+        
+        metadata.string_literals.insert(EMPTY_STRING_ID, String::new());
 
         metadata
     }
@@ -141,8 +145,10 @@ impl Metadata {
         }
 
         for (id, string_lit) in &other.string_literals {
-            if self.string_literals.contains_key(id) {
-                panic!("duplicate string ID {} in metadata", id);
+            if let Some(existing_str) = self.string_literals.get(id) {
+                if existing_str != string_lit {
+                    panic!("duplicate string ID {} in metadata", id);    
+                }
             }
 
             self.string_literals.insert(*id, string_lit.clone());

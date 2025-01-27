@@ -26,6 +26,10 @@ pub enum DynValue {
 }
 
 impl DynValue {
+    pub fn null_nothing() -> Self {
+        DynValue::Pointer(Pointer::null(ir::Type::Nothing))
+    }
+    
     pub fn try_cast(&self, ty: &ir::Type) -> Option<Self> {
         match ty {
             ir::Type::I8 => self.to_bigint().map(|x| x as i8).map(DynValue::I8),

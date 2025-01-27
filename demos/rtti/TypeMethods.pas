@@ -7,12 +7,12 @@ type
         function MyMethod1: String;
         function MyMethod2(i: Integer);
     end;
-    
+
 function MyClass.MyMethod;
 begin
     WriteLn('Hello world!');
 end;
-    
+
 function MyClass.MyMethod1: String;
 begin
     var name := 'world';
