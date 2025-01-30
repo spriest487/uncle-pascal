@@ -7,7 +7,6 @@ use crate::ast::Unit;
 use crate::ast::Type;
 use ir_lang as ir;
 use std::fmt;
-use std::fmt::Formatter;
 use ir_lang::VirtualTypeID;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -18,6 +17,8 @@ pub enum GlobalName {
 
     StaticClosure(ir::StaticClosureID),
     
+    TypeInfoList,
+    TypeInfoCount,
     StaticTypeInfo(Box<ir::Type>),
     
     Variable(ir::VariableID),
@@ -30,6 +31,9 @@ impl fmt::Display for GlobalName {
             GlobalName::StringLiteral(id) => write!(f, "String_{}", id.0),
             GlobalName::StaticClosure(id) => write!(f, "StaticClosure_{}", id.0),
             GlobalName::Variable(id) => write!(f, "Variable_{}", id.0),
+
+            GlobalName::TypeInfoList => write!(f, "typeinfo_list"),
+            GlobalName::TypeInfoCount => write!(f, "typeinfo_count"),
 
             GlobalName::StaticTypeInfo(ty) => {
                 write_global_typeinfo_decl_name(f, ty)
@@ -100,7 +104,7 @@ pub enum VariableID {
 }
 
 impl fmt::Display for VariableID {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "L")?;
         match self {
             VariableID::Local(id) => write!(f, "{}", id.0),

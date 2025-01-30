@@ -96,6 +96,13 @@ _Noreturn static void Raise(STRING_STRUCT* msg_str);
 
 static void InvokeMethod(METHODINFO_STRUCT* method, void* instance, POINTERARRAY_STRUCT* args, void* outResult);
 
+static TYPEINFO_STRUCT** typeinfo_list;
+static int32_t typeinfo_count;
+
+static TYPEINFO_STRUCT* System_FindTypeInfo(STRING_STRUCT* type_name);
+static int System_GetTypeInfoCount(void);
+static TYPEINFO_STRUCT* System_GetTypeInfo(int type_index);
+
 // implementations of System.pas builtins
 
 static int32_t System_StrToInt(STRING_STRUCT* str);
@@ -148,7 +155,7 @@ PACKED_DECL(STRING_STRUCT {
     int32_t field_1;
 });
 
-static void ModuleInit();
+static void ModuleInit(void);
 
 static void* LoadSymbol(const char* src, const char* sym);
 

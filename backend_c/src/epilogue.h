@@ -385,3 +385,41 @@ static void InvokeMethod(METHODINFO_STRUCT* method, void* instance, POINTERARRAY
         invoker(DYNARRAY_PTR(args), outResult);
     }    
 }
+
+static TYPEINFO_STRUCT* System_FindTypeInfo(STRING_STRUCT* type_name) {
+    if (STRING_LEN(type_name) == 0) {
+        return NULL;
+    }
+
+    const char* type_name_cstr = (const char*) STRING_CHARS(type_name);
+
+    for (int i = 0; i < typeinfo_count; i += 1) {
+        TYPEINFO_STRUCT* item = typeinfo_list[i];
+        
+        if (!TYPEINFO_NAME(item)
+            || STRING_LEN(TYPEINFO_NAME(item)) == 0) {
+            continue;
+        }
+        
+        const char* item_name_cstr = (const char*) STRING_CHARS(TYPEINFO_NAME(item));
+
+        size_t cmp_len = (size_t)(min(STRING_LEN(type_name), STRING_LEN(TYPEINFO_NAME(item))));
+        if (strncmp(type_name_cstr, item_name_cstr, cmp_len) == 0) {
+            return item;
+        }
+    }
+    
+    return NULL;
+}
+
+static int32_t System_GetTypeInfoCount(void) {
+    return typeinfo_count;
+}
+
+static TYPEINFO_STRUCT* System_GetTypeInfo(int32_t type_index) {
+    if (type_index < 0 || type_index >= typeinfo_count) {
+        return NULL;
+    }
+    
+    return typeinfo_list[type_index];
+}

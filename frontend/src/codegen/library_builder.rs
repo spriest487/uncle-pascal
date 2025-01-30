@@ -1,7 +1,7 @@
-use crate::ast::FunctionParamMod;
-use crate::ast::StructKind;
 use crate::ast::Access;
+use crate::ast::FunctionParamMod;
 use crate::ast::IdentPath;
+use crate::ast::StructKind;
 use crate::codegen::build_closure_function_def;
 use crate::codegen::build_func_def;
 use crate::codegen::build_func_static_closure_def;
@@ -39,13 +39,13 @@ use crate::typ::TypeParamContainer;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
+use ir_lang::Value;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use ir_lang::Value;
 
 #[derive(Debug)]
 pub struct LibraryBuilder {
@@ -120,9 +120,12 @@ impl LibraryBuilder {
             get_mem_func: None,
         };
 
-        // for all non-generic types defined in this module, eagerly generate RTTI info
+        // for all defined in this module, eagerly generate RTTI info
         let mut defined_types: Vec<_> = builder.src_metadata.defined_types();
-        defined_types.retain(|ty| !ty.is_unspecialized_generic());
+
+        // exclude generic types
+        defined_types.retain(|ty| !ty.is_unspecialized_generic() 
+            && !ty.contains_unresolved_params(&builder.src_metadata));
 
         for defined_type in defined_types {
             let ir_type = builder.translate_type(&defined_type, &GenericContext::empty());
@@ -140,15 +143,15 @@ impl LibraryBuilder {
         self.gen_static_closure_init();
 
         self.gen_iface_impls();
-        for (elem_ty, struct_id) in self.metadata().dyn_array_structs().clone() {
-            gen_dyn_array_rc_boilerplate(&mut self, &elem_ty, struct_id);
-            gen_dyn_array_funcs(&mut self, &elem_ty, struct_id);
-        }
         for class_ty in self.class_types().cloned().collect::<Vec<_>>() {
             gen_class_runtime_type(&mut self, &class_ty);
         }
         for closure_id in self.library.closure_types().collect::<Vec<_>>() {
             self.gen_runtime_type(&ir::Type::Struct(closure_id));
+        }
+        for (elem_ty, struct_id) in self.metadata().dyn_array_structs().clone() {
+            gen_dyn_array_rc_boilerplate(&mut self, &elem_ty, struct_id);
+            gen_dyn_array_funcs(&mut self, &elem_ty, struct_id);
         }
 
         // add optional RTTI info like class and method names

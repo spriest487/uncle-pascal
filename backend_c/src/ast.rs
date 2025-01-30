@@ -17,6 +17,7 @@ use std::collections::hash_map::HashMap;
 use std::fmt;
 use std::rc::Rc;
 use topological_sort::TopologicalSort;
+use ir_lang::EMPTY_STRING_ID;
 
 pub struct Unit {
     functions: Vec<FunctionDef>,
@@ -51,10 +52,12 @@ impl Unit {
         let methodinfo_array_class = metadata
             .find_dyn_array_struct(&ir::METHODINFO_TYPE)
             .expect("method info array type must exist");
-
+        
         let pointer_array_class = metadata
             .find_dyn_array_struct(&ir::Type::Nothing.ptr())
             .expect("raw pointer array type must exist");
+
+        let typeinfo_ty = Type::DefinedType(TypeDefName::Struct(ir::TYPEINFO_ID)).ptr();
 
         let system_funcs = &[
             ("Int8ToStr", FunctionName::Int8ToStr, string_ty.clone(), vec![
@@ -117,6 +120,9 @@ impl Unit {
                 Type::Int32, 
                 Type::Void.ptr()
             ]),
+            ("FindTypeInfo", FunctionName::FindTypeInfo, typeinfo_ty.clone(), vec![string_ty.clone()]),
+            ("GetTypeInfoCount", FunctionName::GetTypeInfoCount, Type::Int32, vec![]),
+            ("GetTypeInfo", FunctionName::GetTypeInfo, typeinfo_ty.clone(), vec![Type::Int32]),
             ("InvokeMethod", FunctionName::InvokeMethod, Type::Int32, vec![
                 Type::from_ir_struct(ir::METHODINFO_ID).ptr(),
                 Type::Void.ptr(),
@@ -430,6 +436,26 @@ impl Unit {
     }
     
     fn gen_rtti_init(&self, init_stmts: &mut Vec<Statement>) {
+        let typeinfo_ty = Type::DefinedType(TypeDefName::Struct(ir::TYPEINFO_ID)).ptr();
+        let typeinfo_count = i32::try_from(self.typeinfos.len()).unwrap_or(i32::MAX);
+
+        // allocate the global typeinfo list
+        init_stmts.push(Statement::Expr(Expr::assign(
+            Expr::Global(GlobalName::TypeInfoCount),
+            Expr::LitInt(typeinfo_count as i128),
+        )));
+
+        init_stmts.push(Statement::Expr(Expr::assign(
+            Expr::Global(GlobalName::TypeInfoList),
+            Expr::Function(FunctionName::GetMem)
+                .call([Expr::infix_op(
+                    Expr::LitInt(typeinfo_count as i128),
+                    InfixOp::Mul,
+                    Expr::SizeOf(typeinfo_ty.clone()),
+                )])
+                .cast(typeinfo_ty.ptr()),
+        )));
+        
         // initialize type info fields that can't be statically initialized
         const METHODS_ARRAY_NAME: &str = "methods_array";
         init_stmts.push(Statement::VariableDecl {
@@ -460,6 +486,8 @@ impl Unit {
 
         let call_array_rcalloc = Expr::Function(FunctionName::RcAlloc).call([method_array_class_ptr]);
 
+        let mut typeinfo_index = 0i128;
+        
         for (ty, typeinfo) in &self.typeinfos {
             // allocate the method dynarray instance for this typeinfo 
             init_stmts.push(Statement::Expr(Expr::assign(
@@ -487,12 +515,19 @@ impl Unit {
 
             let type_info_expr = Expr::Global(GlobalName::StaticTypeInfo(Box::new(ty.clone())));
 
-            if let Some(name_id) = typeinfo.name {
-                init_stmts.push(Statement::Expr(Expr::assign(
-                    type_info_expr.clone().field(FieldName::ID(ir::TYPEINFO_NAME_FIELD)),
-                    Expr::Global(GlobalName::StringLiteral(name_id)).addr_of(),
-                )));
-            }
+            // typeinfo_list[typeinfo_index] = &typeinfo
+            init_stmts.push(Statement::Expr(Expr::assign(
+                Expr::Global(GlobalName::TypeInfoList).index(Expr::LitInt(typeinfo_index)),
+                type_info_expr.clone().addr_of(),
+            )));
+
+            typeinfo_index += 1;
+
+            let type_name_string_id = typeinfo.name.unwrap_or(EMPTY_STRING_ID);
+            init_stmts.push(Statement::Expr(Expr::assign(
+                type_info_expr.clone().field(FieldName::ID(ir::TYPEINFO_NAME_FIELD)),
+                Expr::Global(GlobalName::StringLiteral(type_name_string_id)).addr_of(),
+            )));
 
             for method_index in 0..typeinfo.methods.len() {
                 // methodinfo = methods_array->ptr + method_index

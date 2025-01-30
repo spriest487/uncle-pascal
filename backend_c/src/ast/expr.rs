@@ -85,6 +85,10 @@ pub enum Expr {
     LitInt(i128),
     LitFloat(f64),
     Null,
+    Index {
+        lhs: Box<Expr>,
+        index: Box<Expr>,
+    },
     InfixOp {
         lhs: Box<Expr>,
         op: InfixOp,
@@ -186,6 +190,13 @@ impl Expr {
 
     pub fn deref(self) -> Self {
         Expr::Deref(Box::new(self))
+    }
+    
+    pub fn index(self, index: Self) -> Self {
+        Expr::Index {
+            lhs: Box::new(self),
+            index: Box::new(index),
+        }
     }
 
     pub fn addr_of(self) -> Self {
@@ -334,6 +345,7 @@ impl fmt::Display for Expr {
             Expr::LitBool(b) => write!(f, "{}", b),
             Expr::Deref(inner) => write!(f, "(*({}))", inner),
             Expr::AddrOf(inner) => write!(f, "&({})", inner),
+            Expr::Index { lhs, index } => write!(f, "({}[{}])", lhs, index),
             Expr::InfixOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
             Expr::PrefixOp { op, operand } => write!(f, "({}({}))", op, operand),
             Expr::Null => write!(f, "NULL"),
