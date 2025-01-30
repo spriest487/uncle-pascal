@@ -57,14 +57,18 @@ impl SourceMap {
             }
         }
 
-        let mut src = closest_entry.src;
-        if start.col > closest_entry.start.col {
-            src.start.col += start.col - closest_entry.start.col;
-        }
-        src.end.col = src.start.col + (end.col - start.col);
-        src.end.line = src.start.line + (end.line - start.line);
+        let mut result = closest_entry.src;
 
-        src
+        if start.col > closest_entry.start.col {
+            result.start.col += start.col - closest_entry.start.col;
+        }
+
+        if result.end.line == result.start.line {
+            result.end.col = result.start.col + (end.col - start.col);
+        }
+        result.end.line = result.start.line + (end.line - start.line);
+
+        result
     }
 }
 
