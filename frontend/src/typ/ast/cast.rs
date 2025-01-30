@@ -129,7 +129,7 @@ pub fn check_explicit_cast(
         | (Type::Enum(..), Type::Primitive(p)) if p.is_integer() => Ok(()),
 
         // upcast ref type to Any
-        | (Type::Class(..) | Type::Interface(..), Type::Any) => Ok(()),
+        | (Type::Class(..) | Type::Interface(..) | Type::DynArray { .. }, Type::Any) => Ok(()),
 
         // upcast class ref to interface it implements
         | (Type::Class(..), Type::Interface(..)) if ctx.is_implementation_at(from, to, span)? => Ok(()),
