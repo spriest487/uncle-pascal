@@ -4,7 +4,6 @@ use crate::ExecError;
 use crate::ExecResult;
 use crate::Interpreter;
 use crate::Pointer;
-use crate::VariantValue;
 use ir_lang::*;
 use rand::Rng;
 use std::env::consts::OS;
@@ -167,7 +166,7 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
     let mem_ptr = if len != 0 {
         state.dynalloc(&Type::U8, len as usize)?
     } else {
-        Pointer::null(Type::U8)
+        Pointer::nil(Type::U8)
     };
 
     state.store(&RETURN_REF, DynValue::Pointer(mem_ptr))?;
@@ -355,48 +354,44 @@ fn invoke_method(state: &mut Interpreter) -> ExecResult<()> {
 fn find_type_info(state: &mut Interpreter) -> ExecResult<()> {
     let name_arg = state.read_string(&Ref::Local(LocalID(1)))?;
     
-    let option_of_typeinfo_id = option_of_typeinfo_id(&state.metadata);
-    let option_variant = state.metadata
-        .get_variant_def(option_of_typeinfo_id)
-        .ok_or_else(|| ExecError::illegal_state("missing definition of Option<TypeInfo> type"))?;
-    
     let result = match state.typeinfo_by_name.get(&name_arg).cloned() {
         Some(typeinfo_global) => {
-            let typeinfo_ptr = state.load(&Ref::Global(typeinfo_global))?;
-
-            DynValue::Variant(Box::new(VariantValue {
-                type_id: option_of_typeinfo_id,
-                tag: Box::new(state.create_variant_tag(&option_variant, "Some")?),
-                data: Box::new(typeinfo_ptr),
-            }))
+            state.load(&Ref::Global(typeinfo_global))?
         }
         
         None => {
-            DynValue::Variant(Box::new(VariantValue {
-                type_id: option_of_typeinfo_id,
-                tag: Box::new(state.create_variant_tag(&option_variant, "None")?),
-                data: Box::new(DynValue::null_nothing()),
-            }))
+            DynValue::nil(TYPEINFO_TYPE)
         }
     };
     
-    state.store(&Ref::Local(RETURN_LOCAL), result)?;
+    state.store(&RETURN_REF, result)?;
     
     Ok(())
 }
 
-fn get_loaded_types(state: &mut Interpreter) -> ExecResult<()> {
-    let mut typeinfos = Vec::with_capacity(state.typeinfo_by_name.len());
+fn get_type_info_count(state: &mut Interpreter) -> ExecResult<()> {
+    let count = i32::try_from(state.typeinfo_by_name.len())
+        .unwrap_or(i32::MAX);
 
-    for typeinfo_global in state.typeinfo_by_name.values() {
-        let typeinfo_ptr = state.load(&Ref::Global(typeinfo_global.clone()))?;
-        typeinfos.push(typeinfo_ptr);
-    }
+    state.store(&RETURN_REF, DynValue::I32(count))
+}
+
+fn get_type_info(state: &mut Interpreter) -> ExecResult<()> {
+    let index_param_local = Ref::Local(LocalID(1));
+
+    let index = state.load(&index_param_local)?
+        .as_i32()
+        .ok_or_else(|| {
+            ExecError::illegal_state("parameter to get_type_info must be i32")
+        })?;
+
+    let type_info_ref = usize::try_from(index)
+        .ok()
+        .and_then(|i| state.typeinfo_refs.get(i).cloned())
+        .ok_or_else(|| ExecError::illegal_state(format!("illegal TypeInfo index: {index}")))?;
     
-    let typeinfo_ty = Type::rc_ptr_to(TYPEINFO_VTYPE_ID);
-
-    let typeinfo_array = state.create_dyn_array(&typeinfo_ty, typeinfos, false)?;
-    state.store(&Ref::Local(RETURN_LOCAL), typeinfo_array)?;
+    let type_info_ptr = state.load(&Ref::Global(type_info_ref))?;
+    state.store(&RETURN_REF, type_info_ptr)?;
     
     Ok(())
 }
@@ -525,29 +520,12 @@ pub(super) fn is_nan(state: &mut Interpreter) -> ExecResult<()> {
     state.store(&RETURN_REF, DynValue::Bool(val.is_nan()))
 }
 
-fn option_of_typeinfo_id(metadata: &Metadata) -> TypeDefID {
-    let path = NamePath::new(["System".to_string()], "Option".to_string())
-        .with_ty_args([Type::rc_ptr_to(TYPEINFO_VTYPE_ID)]);
-
-    let (id, _) = metadata.find_variant_def(&path)
-        .expect("Option<TypeInfo> variant must exist in metadata");
-
-    id
-}
-
 pub fn system_funcs(
     metadata: &Metadata
 ) -> impl IntoIterator<Item=(&'static str, BuiltinFn, Type, Vec<Type>)> {
-    let array_of_ptr = metadata.find_dyn_array_struct(&Type::Nothing.ptr())
+    let array_of_ptr = metadata
+        .find_dyn_array_struct(&Type::Nothing.ptr())
         .expect("array of raw pointer type must exist in metadata");
-    
-    let type_info_type = Type::rc_ptr_to(TYPEINFO_VTYPE_ID);
-    
-    let option_of_type_info = Type::Variant(option_of_typeinfo_id(metadata));
-    
-    let array_of_typeinfo_type_id = metadata.find_dyn_array_struct(&type_info_type)
-        .expect("array of TypeInfo must exist in metadata");
-    let array_of_typeinfo = Type::rc_ptr_to(VirtualTypeID::Class(array_of_typeinfo_type_id));
     
     let items = [
         ("Int8ToStr", i8_to_str as BuiltinFn, Type::string_ptr(), vec![
@@ -616,8 +594,9 @@ pub fn system_funcs(
             Type::class_ptr(array_of_ptr),
             Type::Nothing.ptr(),
         ]),
-        ("FindTypeInfo", find_type_info, option_of_type_info, vec![Type::string_ptr()]),
-        ("GetLoadedTypes", get_loaded_types, array_of_typeinfo, vec![]),
+        ("FindTypeInfo", find_type_info, TYPEINFO_TYPE, vec![Type::string_ptr()]),
+        ("GetTypeInfoCount", get_type_info_count, Type::I32, vec![]),
+        ("GetTypeInfo", get_type_info, TYPEINFO_TYPE, vec![Type::I32]),
         ("RandomInteger", random_integer, Type::I32, vec![
             Type::I32, Type::I32
         ]),

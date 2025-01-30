@@ -19,7 +19,7 @@ impl fmt::Display for Pointer {
 }
 
 impl Pointer {
-    pub fn null(ty: ir::Type) -> Self {
+    pub fn nil(ty: ir::Type) -> Self {
         Self {
             addr: 0,
             ty

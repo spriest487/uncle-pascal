@@ -160,6 +160,8 @@ function IsInfinite(value: Single): Boolean; external 'rt';
 function NaN: Single; external 'rt';
 function IsNaN(value: Single): Boolean; external 'rt';
 
+function Downcast[T](obj: Object): Option[T];
+
 const
     PI = 3.1415926;
     RAD_TO_DEG = 180.0 / PI;
@@ -170,21 +172,40 @@ implementation
 function InvokeMethod(
     method: MethodInfo; 
     instance: Pointer; 
-    args: array of Pointer; 
+    args: array of Pointer;
     resultOut: Pointer;
 ); external 'rt';
 
-function GetLoadedTypes: array of TypeInfo; external 'rt';
-function FindTypeInfo(typeName: String): Option[TypeInfo]; external 'rt';
+function GetTypeInfoCount: Integer; external 'rt';
+function GetTypeInfo(typeIndex: Integer): TypeInfo; external 'rt';
+function FindTypeInfo(typeName: String): TypeInfo; external 'rt';
 
 class function TypeInfo.LoadedTypes: array of TypeInfo;
 begin
-    GetLoadedTypes;
+    var count := GetTypeInfoCount;
+    var typeInfos: array of TypeInfo := [];
+
+    unsafe begin
+        var nilElement: TypeInfo := default;
+        typeInfos := Downcast[array of TypeInfo](ArraySetLengthInternal(typeInfos, count, @nilElement)).Get;
+        
+        for var i := 0 to count - 1 do begin
+            typeInfos[i] := GetTypeInfo(i);
+        end;  
+    end;
+    
+    typeInfos; 
 end;
 
 class function TypeInfo.Find(typeName: String): Option[TypeInfo];
 begin
-    FindTypeInfo(typeName);
+    unsafe begin
+        var obj := FindTypeInfo(typeName);
+        if obj <> nil then
+            Option.Some(obj)
+        else
+            Option.None;
+    end;
 end;
 
 function ByteToStr(i: Byte): String;
@@ -694,6 +715,15 @@ begin
             then newArr
             else raise 'unreachable';
     end;
+end;
+
+function Downcast[T](obj: Object): Option[T];
+begin
+    if obj is T target 
+    then 
+        Option.Some(target) 
+    else 
+        Option.None; 
 end;
 
 end.

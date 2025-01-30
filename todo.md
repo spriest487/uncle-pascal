@@ -1,5 +1,7 @@
 # critical
 * project files/don't auto load used units
+* fix generic arg resolving wrong with nested generic contexts
+  * function sigs are being created that have generic param lists which haven't been applied to their own types
 
 # features
 * generic interfaces 

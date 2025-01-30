@@ -949,7 +949,7 @@ impl Marshaller {
         let data_val = match case_ty {
             Some(case_ty) => self.unmarshal(&in_bytes[tag_val.byte_count..], case_ty)?,
             None => UnmarshalledValue {
-                value: DynValue::Pointer(Pointer::null(ir::Type::Nothing)),
+                value: DynValue::Pointer(Pointer::nil(ir::Type::Nothing)),
                 byte_count: 0,
             },
         };

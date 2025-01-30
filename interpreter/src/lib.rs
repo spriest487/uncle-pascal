@@ -49,6 +49,7 @@ pub struct Interpreter {
     
     // cache of type info by the names used to look them up from user code (TypeInfo.Find)
     typeinfo_by_name: HashMap<String, ir::GlobalRef>,
+    typeinfo_refs: Vec<ir::GlobalRef>,
 }
 
 impl Interpreter {
@@ -80,6 +81,7 @@ impl Interpreter {
             diag_worker,
 
             typeinfo_by_name: HashMap::new(),
+            typeinfo_refs: Vec::new(),
         }
     }
 
@@ -162,14 +164,14 @@ impl Interpreter {
             ir::Type::Flags(repr_id, ..) => DynValue::from(self.init_struct(*repr_id)?),
 
             ir::Type::RcPointer(class_id) 
-            | ir::Type::RcWeakPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
+            | ir::Type::RcWeakPointer(class_id) => DynValue::Pointer(Pointer::nil(match class_id {
                 ir::VirtualTypeID::Class(struct_id) => ir::Type::Struct(*struct_id),
                 ir::VirtualTypeID::Closure(..)
                 | ir::VirtualTypeID::Any
                 | ir::VirtualTypeID::Interface(..) => ir::Type::Nothing,
             })),
 
-            ir::Type::Pointer(target) => DynValue::Pointer(Pointer::null((**target).clone())),
+            ir::Type::Pointer(target) => DynValue::Pointer(Pointer::nil((**target).clone())),
 
             ir::Type::Array { element, dim } => {
                 let mut elements = Vec::with_capacity(*dim);
@@ -206,7 +208,7 @@ impl Interpreter {
 
                 let default_val = match case_ty {
                     Some(case_ty) => self.default_init_dyn_val(case_ty)?,
-                    None => DynValue::Pointer(Pointer::null(ir::Type::Nothing)),
+                    None => DynValue::Pointer(Pointer::nil(ir::Type::Nothing)),
                 };
 
                 DynValue::Variant(Box::new(VariantValue {
@@ -372,7 +374,7 @@ impl Interpreter {
             ir::Value::LiteralUSize(i) => Ok(DynValue::USize(*i)),
             ir::Value::LiteralF32(f) => Ok(DynValue::F32(*f)),
             ir::Value::LiteralBool(b) => Ok(DynValue::Bool(*b)),
-            ir::Value::LiteralNull => Ok(DynValue::Pointer(Pointer::null(ir::Type::Nothing))),
+            ir::Value::LiteralNull => Ok(DynValue::Pointer(Pointer::nil(ir::Type::Nothing))),
         }
     }
 
@@ -1839,7 +1841,8 @@ impl Interpreter {
                     continue;
                 };
 
-                self.typeinfo_by_name.insert(runtime_name.clone(), typeinfo_ref);
+                self.typeinfo_by_name.insert(runtime_name.clone(), typeinfo_ref.clone());
+                self.typeinfo_refs.push(typeinfo_ref);
             }
         }
 
@@ -1895,7 +1898,7 @@ impl Interpreter {
         let chars_ptr = if chars_len > 0 {
             self.dynalloc_init(&ir::Type::U8, chars)?
         } else {
-            Pointer::null(ir::Type::U8)
+            Pointer::nil(ir::Type::U8)
         };
 
         let mut string_struct = self.init_struct(ir::STRING_ID)?;
@@ -1970,6 +1973,7 @@ impl Interpreter {
         Ok(chars.into_iter().collect())
     }
     
+    #[allow(unused)]
     fn create_variant_tag(&self, variant: &ir::VariantDef, case_name: &str) -> ExecResult<DynValue> {
         let case_index = variant.cases
             .iter()
@@ -2003,7 +2007,7 @@ impl Interpreter {
         let array_ptr = if !elements.is_empty() {
             self.dynalloc_init(&element_ty, elements)?
         } else {
-            Pointer::null(element_ty.clone())
+            Pointer::nil(element_ty.clone())
         };
 
         let array = StructValue {
@@ -2058,7 +2062,7 @@ impl Interpreter {
         // get a real heap pointer to use for the "owner" field
         let mut typeinfo_struct = StructValue::new(ir::TYPEINFO_ID, [
             type_name_string,
-            DynValue::Pointer(Pointer::null(ir::Type::Struct(ir::METHODINFO_ID))),
+            DynValue::Pointer(Pointer::nil(ir::Type::Struct(ir::METHODINFO_ID))),
         ]);
         
         let typeinfo_ptr = self.rc_alloc(typeinfo_struct.clone(), true)?;
