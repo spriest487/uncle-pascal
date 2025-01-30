@@ -289,10 +289,10 @@ pub fn specialize_call_args(
         };
 
         // eprintln!(
-        //     "INFERRED ARGS:\n\tdecl: {}\n\tinferred:{}\n\tfinal sig: {}\n\tfinal argument types: [{}]", 
-        //     call_sig, 
-        //     inferred_ty_args, 
-        //     call_decl,
+        //     "INFERRED ARGS:\n\tdecl: {}\n\tinferred: {}\n\tfinal sig: {}\n\tfinal argument types: [{}]",
+        //     decl,
+        //     call_ty_args,
+        //     call_sig,
         //     actual_args
         //         .iter()
         //         .map(|arg| arg.annotation().ty().to_string())
