@@ -193,7 +193,7 @@ fn typecheck_equality(
     let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
     rhs.annotation().expect_any_value()?;
 
-    if !lhs.annotation().ty().equatable(&rhs.annotation().ty()) {
+    if !lhs.annotation().ty().equatable(&rhs.annotation().ty(), ctx.allow_unsafe()) {
         return Err(invalid_bin_op(bin_op, &lhs, &rhs));
     }
 

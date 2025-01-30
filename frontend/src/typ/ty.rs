@@ -583,10 +583,15 @@ impl Type {
         }
     }
 
-    pub fn equatable(&self, other: &Self) -> bool {
+    pub fn equatable(&self, other: &Self, allow_unsafe: bool) -> bool {
         match (self, other) {
             (Type::Nil, Type::Pointer(..) | Type::Primitive(Primitive::Pointer)) => true,
             (Type::Pointer(..) | Type::Primitive(Primitive::Pointer), Type::Nil) => true,
+
+            // weak and strong rc ptrs can be compared to null in an unsafe context
+            (a, Type::Nil) | (Type::Nil, a) if a.is_strong_rc_reference() => allow_unsafe, 
+            (Type::Weak(..), Type::Nil) | (Type::Nil, Type::Weak(..)) => allow_unsafe,
+            
             (a, b) if a == b => a.self_equatable(),
             _ => false,
         }
