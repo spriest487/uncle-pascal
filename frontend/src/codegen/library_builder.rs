@@ -39,7 +39,6 @@ use crate::typ::TypeParamContainer;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
-use ir_lang::Value;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -1283,10 +1282,7 @@ impl LibraryBuilder {
             Some(id) => id,
 
             None => {
-                let rtti_name = src_element_ty.clone().dyn_array().to_string();
-                let rtti_name_id = self.library.metadata.find_or_insert_string(&rtti_name);
-                
-                self.library.metadata.define_dyn_array_struct(element_ty, Some(rtti_name_id))
+                self.library.metadata.define_dyn_array_struct(element_ty)
             }
         }
     }
@@ -1677,7 +1673,7 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
 
     let skip_copy_label = builder.alloc_label();
     builder.comment("skip copying from source if copy_from is null");
-    let src_is_null = builder.eq_to_val(src_arr.clone(), Value::LiteralNull);
+    let src_is_null = builder.eq_to_val(src_arr.clone(), ir::Value::LiteralNull);
     builder.jmp_if(skip_copy_label, src_is_null);
 
     builder.comment("copy_len := copy_from->length");

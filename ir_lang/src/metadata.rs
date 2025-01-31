@@ -725,7 +725,7 @@ impl Metadata {
         self.dyn_array_structs.get(element).cloned()
     }
 
-    pub fn define_dyn_array_struct(&mut self, element: Type, rtti_name: Option<StringID>) -> TypeDefID {
+    pub fn define_dyn_array_struct(&mut self, element: Type) -> TypeDefID {
         assert!(
             !self.dyn_array_structs.contains_key(&element),
             "duplicate IR struct definition for dynamic array with element {}",
@@ -768,7 +768,7 @@ impl Metadata {
         // (but they do need custom finalization to clean up references they hold)
         let release_id = self.insert_func(None);
 
-        let mut rtt = RuntimeType::new(rtti_name);
+        let mut rtt = RuntimeType::new(None);
         rtt.release = Some(release_id);
         
         self.insert_runtime_type(Type::Struct(struct_id), rtt);
