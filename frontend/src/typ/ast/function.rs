@@ -12,6 +12,7 @@ use crate::ast::TypeAnnotation;
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::typecheck_block;
 use crate::typ::ast::typecheck_expr;
+use crate::typ::typecheck_type;
 use crate::typ::typecheck_type_params;
 use crate::typ::typecheck_type_path;
 use crate::typ::validate_generic_constraints;
@@ -25,6 +26,7 @@ use crate::typ::FunctionSigParam;
 use crate::typ::GenericError;
 use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
+use crate::typ::InvalidOverloadKind;
 use crate::typ::NameContainer;
 use crate::typ::NameError;
 use crate::typ::NameResult;
@@ -34,11 +36,11 @@ use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeError;
 use crate::typ::TypeParamContainer;
+use crate::typ::TypeParamList;
 use crate::typ::TypeResult;
 use crate::typ::TypedValue;
 use crate::typ::Value;
 use crate::typ::ValueKind;
-use crate::typ::{typecheck_type, InvalidOverloadKind};
 use common::span::Span;
 use common::span::Spanned;
 use derivative::Derivative;
@@ -89,6 +91,10 @@ impl TypedFunctionName {
             span: span.into(),
             owning_ty: None,
         }
+    }
+    
+    pub fn owning_type_params(&self) -> Option<&TypeParamList> {
+        self.owning_ty.as_ref()?.type_params()
     }
 }
 

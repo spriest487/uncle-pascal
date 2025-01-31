@@ -1187,19 +1187,6 @@ impl Context {
 
         Ok(())
     }
-    
-    pub fn defined_functions(&self) -> Vec<Rc<FunctionDef>> {
-        self.defs
-            .iter()
-            .flat_map(|(_, overloads)| {
-                overloads.values()
-            })
-            .filter_map(|def| match def {
-                Def::Function(func_def) => Some(func_def.clone()),
-                _ => None,
-            })
-            .collect()
-    }
 
     pub fn define_function(&mut self, name: Ident, def: Rc<FunctionDef>) -> TypeResult<()> {
         let sig = Rc::new(def.decl.sig());

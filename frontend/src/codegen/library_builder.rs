@@ -130,27 +130,19 @@ impl LibraryBuilder {
         self.gen_static_closure_init();
 
         self.gen_iface_impls();
-        for class_ty in self.class_types().cloned().collect::<Vec<_>>() {
-            gen_class_runtime_type(&mut self, &class_ty);
-        }
-        for closure_id in self.library.closure_types().collect::<Vec<_>>() {
-            self.gen_runtime_type(&ir::Type::Struct(closure_id));
-        }
-        for (elem_ty, struct_id) in self.metadata().dyn_array_structs().clone() {
-            gen_dyn_array_rc_boilerplate(&mut self, &elem_ty, struct_id);
-            gen_dyn_array_funcs(&mut self, &elem_ty, struct_id);
-        }
 
-        // for all types defined in this module, ensure RTTI info is generated if it wasn't already
+        // for all types defined in this module, ensure RTTI info is generated, even if they
+        // were unused
         let mut defined_types: Vec<_> = self.src_metadata.defined_types();
 
         // exclude generic types
+        let empty_generic_ctx = GenericContext::empty();
+
         defined_types.retain(|ty| !ty.is_unspecialized_generic()
             && !ty.contains_unresolved_params(&self.src_metadata));
 
         for defined_type in defined_types {
-            let ir_type = self.translate_type(&defined_type, &GenericContext::empty());
-            self.gen_runtime_type(&ir_type);
+            self.translate_type(&defined_type, &empty_generic_ctx);
         }
 
         // add optional RTTI info like class and method names
@@ -1197,7 +1189,12 @@ impl LibraryBuilder {
         rtti.retain = retain_func;
         rtti.release = release_func;
         
-        self.library.metadata.insert_runtime_type(ty.clone(), rtti)
+        let rtti = self.library.metadata.insert_runtime_type(ty.clone(), rtti);
+        
+        // for types that can have methods, we need to generate the runtime types for those now,
+        // so we don't run the risk of needing to 
+        
+        rtti
     }
     
     // gen_runtime_type only populates the basics needed for codegen, this fills in reflection
@@ -1207,13 +1204,52 @@ impl LibraryBuilder {
         // clone the type cache for iteration
         // the RTTI generation process can touch new parts of code and
         // cause the type cache to expand, so repeat until it stops growing
-        let mut done_count = 0;
-        while done_count < self.type_cache.len() {
-            let type_cache = self.type_cache.clone();
+        let mut done_types = 0;
+        let mut done_closures = 0;
+        let mut done_dynarrays = 0;
+        
+        let mut populate_types = Vec::new();
+        let mut populate_closures = Vec::new();
+        let mut populate_dynarrays = Vec::new();
 
-            for (src_ty, ty) in type_cache.into_iter().skip(done_count) {
+        loop {            
+            populate_types.extend(self.type_cache
+                .iter()
+                .skip(done_types)
+                .map(|(src_ty, ty)| (src_ty.clone(), ty.clone())));
+
+            populate_dynarrays.extend(self
+                .metadata()
+                .dyn_array_structs()
+                .iter()
+                .skip(done_dynarrays.clone())
+                .map(|(elem_ty, struct_id)| (elem_ty.clone(), struct_id.clone())));
+            
+            populate_closures.extend(self.library.closure_types().skip(done_closures));
+        
+            for closure_id in populate_closures.drain(0..) {
+                self.gen_runtime_type(&ir::Type::Struct(closure_id));
+                done_closures += 1;
+            }
+
+            for (elem_ty, struct_id) in populate_dynarrays.drain(0..) {
+                gen_dyn_array_rc_boilerplate(self, &elem_ty, struct_id);
+                gen_dyn_array_funcs(self, &elem_ty, struct_id);
+                
+                done_dynarrays += 1;
+            }
+
+            for (src_ty, ty) in populate_types.drain(0..) {
+                if src_ty.as_class().is_ok() {
+                    gen_class_runtime_type(self, &ty);
+                }
+
                 self.populate_runtime_type_info(src_ty, ty);
-                done_count += 1;
+                done_types += 1;
+            }
+
+            if done_types == self.type_cache.len() {
+                break;
             }
         }
     }
@@ -1363,16 +1399,6 @@ impl LibraryBuilder {
         };
 
         layout.members_of(&struct_def, &self.src_metadata).unwrap()
-    }
-
-    fn class_types(&self) -> impl Iterator<Item = &ir::Type> {
-        self.type_cache.iter().filter_map(|(src_ty, ir_ty)| {
-            if src_ty.as_class().is_ok() {
-                Some(ir_ty)
-            } else {
-                None
-            }
-        })
     }
 
     pub fn translate_func_ty(
@@ -1574,7 +1600,7 @@ pub(crate) struct FunctionDefKey {
     pub type_args: Option<typ::TypeArgList>,
 }
 
-fn gen_dyn_array_funcs(lib: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {
+fn gen_dyn_array_funcs(lib: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: ir::TypeDefID) {    
     let mut alloc_builder = Builder::new(lib);
     gen_dyn_array_alloc_func(&mut alloc_builder, elem_ty, struct_id);
     let alloc_body = alloc_builder.finish();
@@ -1612,7 +1638,7 @@ fn gen_dyn_array_funcs(lib: &mut LibraryBuilder, elem_ty: &ir::Type, struct_id: 
     } else {
         None
     };
-
+    
     lib.insert_func(dyn_array_rtti.length, ir::Function::Local(ir::FunctionDef {
         debug_name: length_debug_name,
         sig: ir::FunctionSig {
