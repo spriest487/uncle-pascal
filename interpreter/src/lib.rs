@@ -1827,6 +1827,7 @@ impl Interpreter {
 
         for (ty, runtime_type) in lib.metadata.runtime_types() {
             let typeinfo_ref = ir::GlobalRef::StaticTypeInfo(Box::new(ty.clone()));
+            self.typeinfo_refs.push(typeinfo_ref.clone());
 
             let typeinfo_ptr = self.create_typeinfo(runtime_type, &string_lit_values)?;
             let ptr_bytes = self.marshaller.marshal_to_vec(&typeinfo_ptr)?;
@@ -1841,8 +1842,7 @@ impl Interpreter {
                     continue;
                 };
 
-                self.typeinfo_by_name.insert(runtime_name.clone(), typeinfo_ref.clone());
-                self.typeinfo_refs.push(typeinfo_ref);
+                self.typeinfo_by_name.insert(runtime_name.clone(), typeinfo_ref);
             }
         }
 
