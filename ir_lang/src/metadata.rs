@@ -543,6 +543,28 @@ impl Metadata {
         }
     }
 
+    pub fn is_defined(&self, ty: &Type) -> bool {
+        let id = match ty {
+            Type::Struct(id)
+            | Type::Variant(id)
+            | Type::Function(id)
+            | Type::Flags(id, ..) => *id,
+
+            Type::RcPointer(virt_id) | Type::RcWeakPointer(virt_id) => {
+                match virt_id {
+                    VirtualTypeID::Class(id)
+                    | VirtualTypeID::Closure(id) => *id,
+                    VirtualTypeID::Interface(id) => return self.ifaces.contains_key(id),
+                    VirtualTypeID::Any => return true,
+                }
+            },
+
+            _ => return true,
+        };
+        
+        !self.type_decls[&id].is_forward()
+    }
+
     pub fn define_struct(&mut self, id: TypeDefID, struct_def: Struct) {
         match &self.type_decls[&id] {
             TypeDecl::Forward(name) => {

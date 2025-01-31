@@ -96,7 +96,7 @@ impl LibraryBuilder {
         
         let library = ir::Library::new(metadata);
 
-        let mut builder = LibraryBuilder {
+        let builder = LibraryBuilder {
             library,
 
             opts,
@@ -119,18 +119,6 @@ impl LibraryBuilder {
             get_mem_func: None,
         };
 
-        // for all defined in this module, eagerly generate RTTI info
-        let mut defined_types: Vec<_> = builder.src_metadata.defined_types();
-
-        // exclude generic types
-        defined_types.retain(|ty| !ty.is_unspecialized_generic() 
-            && !ty.contains_unresolved_params(&builder.src_metadata));
-
-        for defined_type in defined_types {
-            let ir_type = builder.translate_type(&defined_type, &GenericContext::empty());
-            builder.gen_runtime_type(&ir_type);
-        }
-
         builder
     }
 
@@ -151,6 +139,18 @@ impl LibraryBuilder {
         for (elem_ty, struct_id) in self.metadata().dyn_array_structs().clone() {
             gen_dyn_array_rc_boilerplate(&mut self, &elem_ty, struct_id);
             gen_dyn_array_funcs(&mut self, &elem_ty, struct_id);
+        }
+
+        // for all types defined in this module, ensure RTTI info is generated if it wasn't already
+        let mut defined_types: Vec<_> = self.src_metadata.defined_types();
+
+        // exclude generic types
+        defined_types.retain(|ty| !ty.is_unspecialized_generic()
+            && !ty.contains_unresolved_params(&self.src_metadata));
+
+        for defined_type in defined_types {
+            let ir_type = self.translate_type(&defined_type, &GenericContext::empty());
+            self.gen_runtime_type(&ir_type);
         }
 
         // add optional RTTI info like class and method names
@@ -1103,6 +1103,8 @@ impl LibraryBuilder {
         if let Some(existing) = self.library.metadata.get_runtime_type(&ty) {
             return existing;
         }
+
+        assert!(self.metadata().is_defined(ty), "gen_runtime_type: type {:?} is not defined yet", ty);
 
         let release_body = {
             let mut release_builder = Builder::new(self);
