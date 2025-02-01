@@ -1,3 +1,4 @@
+use crate::ast::Expr;
 use crate::ast::FunctionDecl;
 use crate::ast::FunctionDef;
 use crate::ast::FunctionName;
@@ -6,10 +7,8 @@ use crate::ast::Statement;
 use crate::ast::Type;
 use crate::ast::TypeDefName;
 use crate::ast::Unit;
-use crate::ast::Expr;
 use crate::ir;
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::fmt::Write;
 
 #[derive(Clone, Debug)]
@@ -108,13 +107,15 @@ pub struct InterfaceImpl {
 #[derive(Clone, Debug)]
 pub struct Class {
     struct_id: ir::TypeDefID,
-    impls: HashMap<ir::InterfaceID, InterfaceImpl>,
+    impls: BTreeMap<ir::InterfaceID, InterfaceImpl>,
 
     disposer: Option<MethodImplFunc>,
     release_func: Option<FunctionName>,
 
     // if this class is a dyn array, the RTTI for it
     dyn_array_type_info: Option<ir::DynArrayRuntimeType>,
+    
+    comment: Option<String>,
 }
 
 impl Class {
@@ -125,7 +126,7 @@ impl Class {
     ) -> Self {        
         let class_ty = ir::Type::RcPointer(ir::VirtualTypeID::Class(struct_id));
 
-        let mut impls = HashMap::new();
+        let mut impls = BTreeMap::new();
 
         for (iface_id, iface_impl) in metadata.find_impls(&class_ty) {
             let mut method_impls = BTreeMap::new();
@@ -163,18 +164,23 @@ impl Class {
                     .get(&ir::DISPOSABLE_DISPOSE_INDEX)
                     .cloned()
             });
+        
+        let runtime_type = metadata.get_runtime_type(&class_ty)
+            .unwrap_or_else(|| {
+                panic!("missing runtime type for class {}", metadata.pretty_ty_name(&class_ty))
+            });
 
         let resource_ty = ir::Type::Struct(struct_id);
-        let release_func = metadata
+        let res_runtime_type = metadata
             .get_runtime_type(&resource_ty)
             .unwrap_or_else(|| {
                 panic!(
-                    "missing runtime type for resource struct of IR class {}",
+                    "missing runtime type for resource struct of class {}",
                     metadata.pretty_ty_name(&resource_ty),
                 )
-            })
-            .release
-            .map(|id| FunctionName::ID(id));
+            });
+
+        let release_func = res_runtime_type.release.map(FunctionName::ID);
 
         let dyn_array_type_info = metadata
             .dyn_array_structs()
@@ -188,12 +194,18 @@ impl Class {
             })
             .next();
 
+        let comment = runtime_type
+            .get_name_string(metadata)
+            .map(|name| name.clone())
+            .unwrap_or_else(|| metadata.pretty_ty_name(&class_ty).to_string());
+
         Class {
             struct_id,
             impls,
             disposer,
             release_func,
             dyn_array_type_info,
+            comment: Some(comment),
         }
     }
 
@@ -243,6 +255,12 @@ impl Class {
 
     pub fn to_def_string(&self) -> String {
         let mut def = String::new();
+        
+        if let Some(comment) = &self.comment {
+            def.push_str("/** ");
+            def.push_str(comment);
+            def.push_str(" **/\n");
+        }
 
         // impl method tables
         let impls: Vec<_> = self.impls.iter().enumerate().collect();
