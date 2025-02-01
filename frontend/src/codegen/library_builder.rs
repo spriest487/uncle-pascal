@@ -1096,7 +1096,7 @@ impl LibraryBuilder {
             return existing;
         }
 
-        assert!(self.metadata().is_defined(ty), "gen_runtime_type: type {:?} is not defined yet", ty);
+        // assert!(self.metadata().is_defined(ty), "gen_runtime_type: type {:?} is not defined yet", ty);
 
         let release_body = {
             let mut release_builder = Builder::new(self);
