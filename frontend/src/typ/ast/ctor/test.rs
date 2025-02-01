@@ -29,8 +29,9 @@ fn can_construct_imported_class_with_public_fields() {
         ("UnitB", src_b),
     ];
     
-    try_module_from_srcs(srcs)
-        .expect("should typecheck successfully");
+    if let Err(err) = try_module_from_srcs(srcs) {
+        panic!("{err}");
+    }
 }
 
 #[test]
