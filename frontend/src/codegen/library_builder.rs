@@ -127,10 +127,6 @@ impl LibraryBuilder {
     }
 
     pub fn finish(mut self) -> ir::Library {
-        self.gen_static_closure_init();
-
-        self.gen_iface_impls();
-
         // for all types defined in this module, ensure RTTI info is generated, even if they
         // were unused
         let mut defined_types: Vec<_> = self.src_metadata.defined_types();
@@ -148,6 +144,8 @@ impl LibraryBuilder {
         // add optional RTTI info like class and method names
         // can maybe disable this with a compile option to reduce startup time/build size
         self.populate_all_runtime_type_info();
+
+        self.gen_static_closure_init();
 
         self.library.metadata.sort_type_defs_by_deps();
         self.library
@@ -717,57 +715,43 @@ impl LibraryBuilder {
     // interface methods may not be statically referenced for every type that implements them due to
     // dynamic dispatch, so we need to cover all possible combinations and generate function bodies for
     // every interface method implemented by a class at the end of codegen
-    pub fn gen_iface_impls(&mut self) {
-        let mut last_instance_count = self.type_cache.len();
+    fn gen_iface_impls(&mut self, self_ty: &typ::Type) {
+        let ifaces = self_ty
+            .implemented_ifaces(&self.src_metadata)
+            .unwrap_or_else(|err| {
+                panic!("failed to retrieve implementation list for type {}: {}", self_ty, err)
+            });
 
-        // generating an impl might actually reference new types in the body of the
-        // function, so just keep doing this until the type cache is a stable size
-        loop {
-            for self_ty in self.type_cache.keys().cloned().collect::<Vec<_>>() {
-                let ifaces = self_ty
-                    .implemented_ifaces(&self.src_metadata)
-                    .unwrap_or_else(|err| {
-                        panic!("failed to retrieve implementation list for type {}: {}", self_ty, err)
-                    });
+        for iface_ty in &ifaces {
+            let iface_methods: Vec<_> = iface_ty
+                .methods(&self.src_metadata)
+                .unwrap()
+                .into_iter()
+                .collect();
 
-                for iface_ty in &ifaces {
-                    let iface_methods: Vec<_> = iface_ty
-                        .methods(&self.src_metadata)
-                        .unwrap()
-                        .into_iter()
-                        .collect();
+            for (iface_method_index, iface_method) in iface_methods
+                .into_iter()
+                .enumerate()
+            {
+                let method_name = iface_method.func_decl.ident();
 
-                    for (iface_method_index, iface_method) in iface_methods
-                        .into_iter()
-                        .enumerate()
-                    {
-                        let method_name = iface_method.func_decl.ident();
+                let impl_sig = iface_method.func_decl.sig().with_self(&self_ty);
+                let impl_index = self.find_method_index(&self_ty, &method_name, &impl_sig);
 
-                        let impl_sig = iface_method.func_decl.sig().with_self(&self_ty);
-                        let impl_index = self.find_method_index(&self_ty, &method_name, &impl_sig);
+                let virtual_key = VirtualMethodKey {
+                    iface_ty: iface_ty.clone(),
+                    iface_method_index,
 
-                        let virtual_key = VirtualMethodKey {
-                            iface_ty: iface_ty.clone(),
-                            iface_method_index,
+                    impl_method: MethodDeclKey {
+                        self_ty: self_ty.clone(),
+                        method_index: impl_index,
+                    },
+                };
 
-                            impl_method: MethodDeclKey {
-                                self_ty: self_ty.clone(),
-                                method_index: impl_index,
-                            },
-                        };
-
-                        self.instantiate_func(&mut FunctionDefKey {
-                            decl_key: FunctionDeclKey::VirtualMethod(virtual_key),
-                            type_args: None,
-                        });
-                    }
-                }
-            }
-
-            if self.type_cache.len() == last_instance_count {
-                break;
-            } else {
-                last_instance_count = self.type_cache.len();
+                self.instantiate_func(&mut FunctionDefKey {
+                    decl_key: FunctionDeclKey::VirtualMethod(virtual_key),
+                    type_args: None,
+                });
             }
         }
     }
@@ -1209,7 +1193,7 @@ impl LibraryBuilder {
         let mut done_types = 0;
         let mut done_closures = 0;
         let mut done_dynarrays = 0;
-        
+
         let mut populate_types = Vec::new();
         let mut populate_closures = Vec::new();
         let mut populate_dynarrays = Vec::new();
@@ -1245,6 +1229,8 @@ impl LibraryBuilder {
                 if src_ty.as_class().is_ok() {
                     gen_class_runtime_type(self, &ty);
                 }
+
+                self.gen_iface_impls(&src_ty);
 
                 self.populate_runtime_type_info(src_ty, ty);
                 done_types += 1;
