@@ -1,4 +1,4 @@
-use crate::FunctionID;
+use crate::{FunctionID, Metadata};
 use crate::StringID;
 use crate::Type;
 use serde::Deserialize;
@@ -25,6 +25,11 @@ impl RuntimeType {
             retain: None,
         }
     }
+
+    pub fn get_name_string<'m>(&self, metadata: &'m Metadata) -> Option<&'m String> {
+        let id = self.name?;
+        metadata.get_string(id)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -36,9 +41,9 @@ pub struct DynArrayRuntimeType {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RuntimeMethod {
     pub name: StringID,
-    
+
     pub function: FunctionID,
-    
+
     pub result_ty: Type,
     pub params: Vec<Type>,
 }
