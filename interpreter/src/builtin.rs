@@ -433,7 +433,7 @@ pub(super) fn random_integer(state: &mut Interpreter) -> ExecResult<()> {
     let val = if range.is_empty() {
         from
     } else {
-        rand::thread_rng().gen_range(from..to)
+        rand::rng().random_range(from..to)
     };
 
     state.store(&RETURN_REF, DynValue::I32(val))
@@ -447,7 +447,7 @@ pub(super) fn random_single(state: &mut Interpreter) -> ExecResult<()> {
     let val = if range.is_empty() {
         from
     } else {
-        rand::thread_rng().gen_range(from..to)
+        rand::rng().random_range(from..to)
     };
 
     state.store(&RETURN_REF, DynValue::F32(val))
