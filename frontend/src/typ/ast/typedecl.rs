@@ -136,11 +136,18 @@ pub fn typecheck_methods(
     ctx: &mut Context
 ) -> TypeResult<Vec<MethodDecl>> {
     let mut dtor_span = None;
-    
+
     let mut methods: Vec<MethodDecl> = Vec::new();
     for method in decl_methods {
         let decl = typecheck_method(&method.func_decl, ctx)?;
         if decl.kind == FunctionDeclKind::Destructor {
+            if !matches!(owning_type, Type::Class(..)) {
+                return Err(TypeError::InvalidDtorOwningType {
+                    ty: owning_type.clone(),
+                    span: decl.span.clone(),
+                }) 
+            }
+            
             if let Some(prev_dtor) = dtor_span {
                 return Err(TypeError::TypeHasMultipleDtors {
                     owning_type: owning_type.clone(),

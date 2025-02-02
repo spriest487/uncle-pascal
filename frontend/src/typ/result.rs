@@ -157,6 +157,10 @@ pub enum TypeError {
     DtorCannotHaveTypeParams {
         span: Span,  
     },
+    InvalidDtorOwningType { 
+        ty: Type, 
+        span: Span,
+    },
     MethodDeclMissingType {
         ident: Ident,
         span: Span,
@@ -417,7 +421,7 @@ impl Spanned for TypeError {
             TypeError::TypeHasMultipleDtors { new_dtor, .. } => new_dtor,
             TypeError::DtorCannotHaveParams { span } => span,
             TypeError::DtorCannotHaveTypeParams { span } => span,
-            
+            TypeError::InvalidDtorOwningType { span, .. } => span,
             TypeError::DuplicateNamedArg { span, .. } => span,
             TypeError::DuplicateParamName { span, .. } => span,
             
@@ -533,6 +537,9 @@ impl DiagnosticOutput for TypeError {
             }
             TypeError::DtorCannotHaveTypeParams { .. } => {
                 "Destructor cannot have type parameters"
+            }
+            TypeError::InvalidDtorOwningType { .. } => {
+                "Type cannot have destructor"
             }
             TypeError::MethodDeclMissingType { .. } => {
                 "Method declaration missing type specification"
@@ -1021,6 +1028,10 @@ impl fmt::Display for TypeError {
             
             TypeError::DtorCannotHaveTypeParams { .. } => {
                 write!(f, "destructor must be declared without type parameters")
+            }
+            
+            TypeError::InvalidDtorOwningType { ty, .. } => {
+                write!(f, "{} `{}` cannot have a destructor", ty.kind_description(), ty)
             }
 
             TypeError::MethodDeclMissingType { kind, ident, .. } => {

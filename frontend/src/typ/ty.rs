@@ -1253,6 +1253,28 @@ impl Type {
 
         visitor(self);
     }
+
+    pub fn kind_description(&self) -> String {
+        match self {
+            Type::Nothing => "nothing".to_string(),
+            Type::Nil => "nil".to_string(),
+            Type::Primitive(..) => "primitive".to_string(),
+            Type::Pointer(ty) => format!("pointer to {}", ty.kind_description()),
+            Type::Function(..) => "function".to_string(),
+            Type::Record(..) => "record".to_string(),
+            Type::Class(..) => "class".to_string(),
+            Type::Interface(..) => "interface".to_string(),
+            Type::Variant(..) => "variant".to_string(),
+            Type::Array(array_ty) => format!("array of {}", array_ty.element_ty.kind_description()),
+            Type::DynArray { element } => format!("dynamic array of {}", element.kind_description()), 
+            Type::MethodSelf => "self".to_string(),
+            Type::GenericParam(..) => "generic argument".to_string(),
+            Type::Weak(..) => "weak reference".to_string(),
+            Type::Any => "any reference".to_string(),
+            Type::Enum(..) => "enumeration".to_string(),
+            Type::Set(..) => "set".to_string(),
+        }
+    }
 }
 
 impl fmt::Display for Type {
