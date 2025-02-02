@@ -1,7 +1,7 @@
-use crate::ast::Access;
 use crate::ast::FunctionParamMod;
 use crate::ast::IdentPath;
 use crate::ast::StructKind;
+use crate::ast::{Access, MethodOwner};
 use crate::codegen::build_closure_function_def;
 use crate::codegen::build_func_def;
 use crate::codegen::build_func_static_closure_def;
@@ -23,7 +23,7 @@ use crate::codegen::FunctionInstance;
 use crate::codegen::IROptions;
 use crate::codegen::SetFlagsType;
 use crate::typ::ast::apply_func_decl_named_ty_args;
-use crate::typ::builtin_ident;
+use crate::typ::{builtin_ident, Value};
 use crate::typ::builtin_methodinfo_name;
 use crate::typ::builtin_string_name;
 use crate::typ::builtin_typeinfo_name;
@@ -45,6 +45,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use ir_lang::TypeDefID;
 
 #[derive(Debug)]
 pub struct LibraryBuilder {
@@ -430,7 +431,7 @@ impl LibraryBuilder {
         cached_func
     }
 
-    fn instantiate_method(
+    pub(crate) fn instantiate_method(
         &mut self,
         method_key: &MethodDeclKey,
         type_args: Option<&typ::TypeArgList>,
@@ -892,6 +893,23 @@ impl LibraryBuilder {
     {
         target.apply_type_args(params, args)
     }
+    
+    fn insert_type_dtor(&mut self,
+        type_id: TypeDefID,
+        src_ty: typ::Type,
+        src_def: &impl MethodOwner<Value>
+    ) {
+        let Some(dtor_method_index) = src_def.find_dtor_index() else {
+            return;
+        };
+
+        let dtor = self.instantiate_method(&MethodDeclKey {
+            self_ty: src_ty,
+            method_index: dtor_method_index,
+        }, None);
+
+        self.metadata_mut().insert_dtor(type_id, dtor.id);
+    }
 
     pub fn translate_type(
         &mut self,
@@ -918,8 +936,10 @@ impl LibraryBuilder {
                 self.library.metadata.declare_struct(id, &name_path, false);
 
                 let variant_meta = translate_variant_def(&variant_def, generic_ctx, self);
-
                 self.library.metadata.define_variant(id, variant_meta);
+
+                self.insert_type_dtor(id, src_ty, variant_def.as_ref());
+                
                 ty
             },
 
@@ -945,6 +965,8 @@ impl LibraryBuilder {
 
                 let struct_meta = translate_struct_def(&def, generic_ctx, self);
                 self.library.metadata.define_struct(id, struct_meta);
+
+                self.insert_type_dtor(id, src_ty, def.as_ref());
 
                 ty
             },
@@ -1179,7 +1201,7 @@ impl LibraryBuilder {
         
         // for types that can have methods, we need to generate the runtime types for those now,
         // so we don't run the risk of needing to 
-        
+
         rtti
     }
     

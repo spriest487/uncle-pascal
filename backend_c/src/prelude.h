@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef void (*Disposer)(void*);
+typedef void (*DestructorFunc)(void*);
 
 typedef void (*RcCleanupFunc)(void*);
 typedef void (*RcRetainFunc)(void*);
@@ -30,7 +30,7 @@ struct Class {
     struct MethodTable* iface_methods;
 
     RcCleanupFunc cleanup;
-    Disposer disposer;
+    DestructorFunc dtor;
 };
 
 struct Rc {

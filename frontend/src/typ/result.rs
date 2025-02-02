@@ -151,6 +151,12 @@ pub enum TypeError {
         new_dtor: Span,
         prev_dtor: Span,
     },
+    DtorCannotHaveParams {
+        span: Span,
+    },
+    DtorCannotHaveTypeParams {
+        span: Span,  
+    },
     MethodDeclMissingType {
         ident: Ident,
         span: Span,
@@ -409,6 +415,8 @@ impl Spanned for TypeError {
             TypeError::CtorMissingMembers { span, .. } => span,
             TypeError::MethodDeclMissingType { span, .. } => span,
             TypeError::TypeHasMultipleDtors { new_dtor, .. } => new_dtor,
+            TypeError::DtorCannotHaveParams { span } => span,
+            TypeError::DtorCannotHaveTypeParams { span } => span,
             
             TypeError::DuplicateNamedArg { span, .. } => span,
             TypeError::DuplicateParamName { span, .. } => span,
@@ -519,6 +527,12 @@ impl DiagnosticOutput for TypeError {
             }
             TypeError::TypeHasMultipleDtors { .. } => {
                 "Type has multiple destructors"
+            }
+            TypeError::DtorCannotHaveParams { .. } => {
+                "Destructor cannot have parameters"
+            }
+            TypeError::DtorCannotHaveTypeParams { .. } => {
+                "Destructor cannot have type parameters"
             }
             TypeError::MethodDeclMissingType { .. } => {
                 "Method declaration missing type specification"
@@ -999,6 +1013,14 @@ impl fmt::Display for TypeError {
             
             TypeError::TypeHasMultipleDtors { owning_type, .. } => {
                 write!(f, "type `{}` has already declared a destructor", owning_type)
+            }
+            
+            TypeError::DtorCannotHaveParams { .. } => {
+                write!(f, "destructor must be declared without parameters")
+            }
+            
+            TypeError::DtorCannotHaveTypeParams { .. } => {
+                write!(f, "destructor must be declared without type parameters")
             }
 
             TypeError::MethodDeclMissingType { kind, ident, .. } => {

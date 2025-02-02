@@ -545,24 +545,27 @@ impl Interpreter {
         Ok(result_val)
     }
 
-    fn invoke_disposer(&mut self, val: &DynValue, ty: &ir::Type) -> ExecResult<()> {
-        let dispose_impl_id = self
-            .metadata
-            .find_virtual_impl(ty, ir::DISPOSABLE_ID, ir::DISPOSABLE_DISPOSE_INDEX);
-
-        if let Some(dispose_func_id) = dispose_impl_id {
-            let dispose_desc = self
+    fn invoke_dtor(&mut self, val: &DynValue, ty: &ir::Type) -> ExecResult<()> {
+        let dtor_func_id = ty
+            .rc_resource_def_id()
+            .or_else(|| ty.def_id())
+            .and_then(|id|  self.metadata.find_dtor(id));
+        
+        eprintln!("trying to invoke dtor for {}... {:?}, {:?}: {:?}", self.metadata.pretty_ty_name(ty), ty.def_id(), ty.rc_resource_def_id(), dtor_func_id);
+        
+        if let Some(func_id) = dtor_func_id {
+            let func_desc = self
                 .metadata
-                .func_desc(dispose_func_id)
-                .unwrap_or_else(|| dispose_func_id.to_string());
+                .func_desc(func_id)
+                .unwrap_or_else(|| func_id.to_string());
 
             if self.opts.trace_rc {
-                eprintln!("[rc] invoking {}", dispose_desc);
+                eprintln!("[rc] invoking dtor {}", func_desc);
             }
 
-            self.call_store(dispose_func_id, &[val.clone()], None)?;
+            self.call_store(func_id, &[val.clone()], None)?;
         } else if self.opts.trace_rc {
-            eprintln!("[rc] no disposer for {}", self.metadata.pretty_ty_name(ty));
+            eprintln!("[rc] no dtor for {}", self.metadata.pretty_ty_name(ty));
         }
 
         Ok(())
@@ -675,7 +678,7 @@ impl Interpreter {
                 // Dispose() the inner resource. For an RC type, interfaces are implemented
                 // for the RC pointer type, not the resource type
                 let class_id = ir::VirtualTypeID::Class(struct_val.type_id);
-                self.invoke_disposer(&val, &ir::Type::RcPointer(class_id))?;
+                self.invoke_dtor(&val, &ir::Type::RcPointer(class_id))?;
 
                 // Now release the fields of the struct as if it was a normal record
                 let rc_funcs = self.find_runtime_type(&ir::Type::Struct(struct_val.type_id))?;

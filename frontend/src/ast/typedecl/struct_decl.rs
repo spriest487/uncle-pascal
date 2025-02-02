@@ -3,11 +3,11 @@ mod member;
 use crate::ast::parse_implements_clause;
 use crate::ast::Access;
 use crate::ast::Annotation;
-use crate::ast::FunctionName;
 use crate::ast::Ident;
+use crate::ast::MethodOwner;
 use crate::ast::TypeDeclName;
-use crate::parse::TokenStream;
 use crate::parse::ParseResult;
+use crate::parse::TokenStream;
 use crate::Keyword;
 use crate::Separator;
 use common::span::Span;
@@ -54,11 +54,6 @@ impl<A: Annotation> StructDecl<A> {
     pub fn find_field(&self, by_ident: &Ident) -> Option<&FieldDecl<A>> {
         self.fields.iter().find(|field| field.ident == *by_ident)
     }
-
-    pub fn find_methods<'a>(&'a self, by_ident: &'a Ident) -> impl Iterator<Item=&'a MethodDecl<A>>  {
-        self.methods()
-            .filter(move |method| method.func_decl.name.ident() == by_ident)
-    }
     
     pub fn fields(&self) -> impl Iterator<Item=&FieldDecl<A>> {
         self.fields.iter()
@@ -68,6 +63,12 @@ impl<A: Annotation> StructDecl<A> {
         self.methods.iter()
     }
 }
+
+impl<A: Annotation> MethodOwner<A> for StructDecl<A> {
+    fn methods(&self) -> &[MethodDecl<A>] {
+        self.methods.as_slice()
+    }
+} 
 
 impl StructDecl<Span> {
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {

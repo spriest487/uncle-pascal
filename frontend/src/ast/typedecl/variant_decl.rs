@@ -1,4 +1,4 @@
-use crate::ast::{parse_implements_clause, type_method_start};
+use crate::ast::{parse_implements_clause, type_method_start, MethodOwner};
 use crate::ast::type_name::TypeName;
 use crate::ast::Access;
 use crate::ast::Annotation;
@@ -37,6 +37,12 @@ pub struct VariantDecl<A: Annotation> {
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
     pub span: Span,
+}
+
+impl<A: Annotation> MethodOwner<A> for VariantDecl<A> {
+    fn methods(&self) -> &[MethodDecl<A>] {
+        self.methods.as_slice()
+    }
 }
 
 #[derive(Clone, Eq, Derivative)]
@@ -93,15 +99,6 @@ impl ParseSeq for VariantCase<Span> {
 impl<A: Annotation> VariantDecl<A> {
     pub fn case_position(&self, case_ident: &Ident) -> Option<usize> {
         self.cases.iter().position(|c| c.ident == *case_ident)
-    }
-}
-
-impl<A: Annotation> VariantDecl<A> {
-    pub fn find_methods<'a>(&'a self, ident: &'a Ident) -> impl Iterator<Item=(usize, &'a MethodDecl<A>)> {
-        self.methods
-            .iter()
-            .enumerate()
-            .filter(move |(_, m)| m.func_decl.ident() == ident)
     }
 }
 

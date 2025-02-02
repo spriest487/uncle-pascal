@@ -19,7 +19,7 @@ pub use self::scope::*;
 pub use self::ufcs::InstanceMethod;
 pub use self::value_kind::*;
 use crate::ast as syn;
-use crate::ast::Access;
+use crate::ast::{Access, MethodOwner};
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Path;
@@ -174,7 +174,6 @@ impl Context {
         root_ctx
             .unit_scope(system_path, |ctx| {
                 let builtin_ifaces = [
-                    builtin_disposable_iface(),
                     builtin_displayable_iface(),
                     builtin_comparable_iface(),
                 ];
@@ -987,7 +986,7 @@ impl Context {
 
         struct_def
             .find_methods(&method)
-            .find(|m| m.func_decl.sig() == def.decl.sig())
+            .find(|(_, m)| m.func_decl.sig() == def.decl.sig())
             .ok_or_else(|| NameError::MemberNotFound {
                 base: NameContainer::Type(struct_ty.clone()),
                 member: method.clone(),

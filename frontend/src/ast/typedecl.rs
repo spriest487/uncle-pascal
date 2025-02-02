@@ -9,17 +9,17 @@ pub use self::access::Access;
 pub use self::access::INTERFACE_METHOD_ACCESS;
 pub use self::enum_decl::*;
 pub use self::iface_decl::*;
+pub use self::set_decl::*;
 pub use self::struct_decl::*;
 pub use self::variant_decl::*;
-pub use self::set_decl::*;
 use crate::ast::unit::AliasDecl;
-use crate::ast::Annotation;
 use crate::ast::Ident;
 use crate::ast::Keyword;
 use crate::ast::Operator;
 use crate::ast::TypeList;
 use crate::ast::TypeName;
 use crate::ast::TypeParam;
+use crate::ast::{Annotation, FunctionDeclKind};
 use crate::parse::LookAheadTokenStream;
 use crate::parse::Matcher;
 use crate::parse::Parse;
@@ -27,8 +27,8 @@ use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
-use crate::DelimiterPair;
 use crate::Separator;
+use crate::DelimiterPair;
 use common::span::Span;
 use common::span::Spanned;
 use common::TracedError;
@@ -298,4 +298,27 @@ pub fn parse_implements_clause(
     }
     
     Ok(implements)
+}
+
+pub trait MethodOwner<A: Annotation> {
+    fn methods(&self) -> &[MethodDecl<A>];
+
+    fn find_methods<'a>(
+        &'a self, 
+        ident: &'a Ident
+    ) -> impl Iterator<Item=(usize, &'a MethodDecl<A>)> 
+    where 
+        A: 'a 
+    {
+        self.methods()
+            .iter()
+            .enumerate()
+            .filter(move |(_, m)| m.func_decl.ident() == ident)
+    }
+
+    fn find_dtor_index(&self) -> Option<usize> {
+        self.methods()
+            .iter()
+            .position(|m| m.func_decl.kind == FunctionDeclKind::Destructor)
+    }
 }

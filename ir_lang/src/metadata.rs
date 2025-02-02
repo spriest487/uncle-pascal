@@ -31,6 +31,7 @@ use linked_hash_map::LinkedHashMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fmt;
@@ -64,11 +65,6 @@ impl fmt::Display for VariableID {
 }
 
 pub const EMPTY_STRING_ID: StringID = StringID(0);
-
-// builtin fixed IDs
-pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
-pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
-pub const DISPOSABLE_DISPOSE_INDEX: MethodID = MethodID(0);
 
 pub const STRING_ID: TypeDefID = TypeDefID(1);
 pub const STRING_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(STRING_ID);
@@ -104,6 +100,8 @@ pub struct Metadata {
     type_decls: LinkedHashMap<TypeDefID, TypeDecl>,
     string_literals: LinkedHashMap<StringID, String>,
     ifaces: LinkedHashMap<InterfaceID, InterfaceDecl>,
+
+    dtors: BTreeMap<TypeDefID, FunctionID>,
     
     class_ids: BTreeSet<TypeDefID>,
 
@@ -188,6 +186,13 @@ impl Metadata {
                 );
             }
             self.functions.insert(*id, func_decl.clone());
+        }
+
+        for (owning_ty_id, dtor_func) in &other.dtors {
+            if self.dtors.contains_key(&owning_ty_id) {
+                panic!("duplicate destructor definition for type {owning_ty_id}");
+            }
+            self.dtors.insert(*owning_ty_id, *dtor_func);
         }
 
         for (ty, funcs) in &other.runtime_types {
@@ -287,7 +292,7 @@ impl Metadata {
     fn next_iface_id(&mut self) -> InterfaceID {
         (1..)
             .map(InterfaceID)
-            .find(|id| !self.ifaces.contains_key(id) && *id != DISPOSABLE_ID)
+            .find(|id| !self.ifaces.contains_key(id))
             .unwrap()
     }
 
@@ -642,14 +647,6 @@ impl Metadata {
     }
 
     pub fn declare_iface(&mut self, name: &NamePath) -> InterfaceID {
-        // System.Disposable is defined in System.pas but we need to refer to it before processing
-        // any units, so it has a fixed IR struct ID
-        let disposable_name = NamePath::new(vec!["System".to_string()], "Disposable".to_string());
-        if *name == disposable_name {
-            self.ifaces.insert(DISPOSABLE_ID, InterfaceDecl::Forward(disposable_name));
-            return DISPOSABLE_ID;
-        }
-
         let existing = self.ifaces.iter().find_map(|(id, decl)| match decl {
             InterfaceDecl::Forward(decl_name) if decl_name == name => Some(*id),
             InterfaceDecl::Def(iface) if iface.name == *name => Some(*id),
@@ -741,6 +738,14 @@ impl Metadata {
                 Some((id, impl_for_ty))
             })
             .collect()
+    }
+    
+    pub fn insert_dtor(&mut self, owning_type: TypeDefID, dtor_func: FunctionID) {
+        self.dtors.insert(owning_type, dtor_func);
+    }
+    
+    pub fn find_dtor(&self, owning_type: TypeDefID) -> Option<FunctionID> {
+        self.dtors.get(&owning_type).cloned()
     }
 
     pub fn find_dyn_array_struct(&self, element: &Type) -> Option<TypeDefID> {

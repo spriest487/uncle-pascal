@@ -51,7 +51,7 @@ impl SetFlagsType {
                     ty: WORD_TYPE,
                     rc: false,
                 }))
-                .collect()
+                .collect(),
         };
 
         let struct_id = lib.metadata_mut().reserve_new_struct();

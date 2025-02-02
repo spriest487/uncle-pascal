@@ -124,6 +124,27 @@ impl Type {
             _ => None,
         }
     }
+    
+    pub fn def_id(&self) -> Option<TypeDefID> {
+        match self {
+            Type::Variant(id)
+            | Type::Function(id)
+            | Type::Flags(id, ..)
+            | Type::Struct(id) => {
+                Some(*id)
+            }
+
+            _ => None,
+        }
+    }
+    
+    pub fn rc_resource_def_id(&self) -> Option<TypeDefID> {
+        match self.rc_resource_class_id()? {
+            VirtualTypeID::Class(id)
+            | VirtualTypeID::Closure(id) => Some(id),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Type {

@@ -387,6 +387,10 @@ impl Unit {
             for wrapper_func_def in class.gen_vcall_wrappers(self) {
                 self.functions.push(wrapper_func_def);
             }
+            
+            if let Some(dtor_invoker) = class.gen_dtor_invoker() {
+                self.functions.push(dtor_invoker);
+            }
         }
 
         let init_index = self

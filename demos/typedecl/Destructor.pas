@@ -1,9 +1,11 @@
 implementation
 
 type 
-    MyRecord = record
+    MyScope = record
         name: String;
-        destructor Destroy;
+        
+        constructor Begin(name: String);
+        destructor End;
     end;
     
     MyClass = class
@@ -18,10 +20,16 @@ type
         constructor Create;
         destructor Destroy;
     end;
-    
-destructor MyRecord.Destroy;
+
+constructor MyScope.Begin(name: String);
 begin
-    WriteLn('destroying MyRecord ' + self.name);
+    WriteLn('creating MyScope ' + name);
+    (name: name)
+end;
+    
+destructor MyScope.End;
+begin
+    WriteLn('destroying MyScope ' + self.name);
 end;
 
 destructor MyClass.Destroy;
@@ -44,9 +52,9 @@ begin
 end;
 
 initialization
-    var rec1 := MyRecord(name: 'One');
-    rec1.Destroy;
+    var rec1 := MyScope.Begin('One');
 
     var var1 := MyVariant.Create;
-    var1.Destroy;
+    
+    var class1 := MyClass(name: 'Bob');
 end.

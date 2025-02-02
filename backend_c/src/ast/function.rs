@@ -22,6 +22,7 @@ pub enum FunctionName {
     ID(ir::FunctionID),
     Invoker(ir::FunctionID),
     Method(ir::InterfaceID, ir::MethodID),
+    DestructorInvoker(ir::TypeDefID),
     MethodWrapper(ir::InterfaceID, ir::MethodID, ir::TypeDefID),
 
     // runtime functions
@@ -86,6 +87,7 @@ impl fmt::Display for FunctionName {
 
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
             FunctionName::Invoker(id) => write!(f, "Invoker_{}", id.0),
+            FunctionName::DestructorInvoker(id) => write!(f, "Destructor_{}", id.0),
 
             FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method.0),
             FunctionName::MethodWrapper(iface, method, self_ty) => {

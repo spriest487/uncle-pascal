@@ -31,10 +31,6 @@ type
         function ToBytes(bytes: ^Byte; bytesLen: Integer);
     end;
 
-    Disposable = interface
-        function Dispose;
-    end;
-
     Box[T] = class
         value: T;
     public

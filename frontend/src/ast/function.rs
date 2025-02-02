@@ -502,7 +502,9 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
             write!(f, ")")?;
         }
 
-        if self.return_ty.is_known() {
+        if self.return_ty.is_known() 
+            && matches!(self.kind, FunctionDeclKind::Function | FunctionDeclKind::ClassMethod) 
+        {
             write!(f, ": {}", self.return_ty)?;
         }
         Ok(())

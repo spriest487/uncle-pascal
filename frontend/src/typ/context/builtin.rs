@@ -42,9 +42,6 @@ pub const TYPEINFO_METHODS_METHOD: &str = "Methods";
 pub const METHOD_TYPE_NAME: &str = "MethodInfo";
 pub const METHOD_NAME_METHOD: &str = "Name";
 
-pub const DISPOSABLE_IFACE_NAME: &str = "Disposable";
-pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
-
 pub const COMPARABLE_IFACE_NAME: &str = "Comparable";
 pub const COMPARABLE_COMPARE_NAME: &str = "Compare";
 
@@ -114,25 +111,6 @@ pub fn builtin_string_name() -> Symbol {
     }
 }
 
-// builtin name of the dispose method of the builtin disposable interface
-pub fn builtin_disposable_dispose_name(owning_ty: Option<Type>) -> ast::TypedFunctionName {
-    let iface_ty = Type::interface(builtin_disposable_name().full_path);
-    let owning_ty = owning_ty.unwrap_or(iface_ty.clone());
-    
-    ast::TypedFunctionName::new_method(
-        builtin_ident(DISPOSABLE_DISPOSE_METHOD),
-        owning_ty,
-        builtin_span(),
-    )
-}
-
-pub fn builtin_disposable_name() -> Symbol {
-    Symbol::from(IdentPath::from_vec(vec![
-        builtin_ident(SYSTEM_UNIT_NAME), 
-        builtin_ident(DISPOSABLE_IFACE_NAME),
-    ]))
-}
-
 pub fn builtin_methodinfo_name() -> Symbol {
     Symbol::from(IdentPath::from_vec(vec![
         builtin_ident(SYSTEM_UNIT_NAME),
@@ -154,32 +132,6 @@ pub fn string_to_char_lit(string: &str) -> Option<ast::Literal> {
     }
 
     None
-}
-
-pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
-    let builtin_span = builtin_span();
-
-    ast::InterfaceDecl {
-        name: builtin_disposable_name(),
-        methods: vec![ast::InterfaceMethodDecl {
-            decl: Rc::new(ast::FunctionDecl {
-                name: builtin_disposable_dispose_name(None),
-                kind: FunctionDeclKind::Function,
-                return_ty: Type::Nothing,
-                mods: Vec::new(),
-                type_params: None,
-                params: vec![ast::FunctionParam {
-                    ident: Ident::new(SELF_PARAM_NAME, builtin_span.clone()),
-                    ty: Type::MethodSelf,
-                    modifier: None,
-                    span: builtin_span.clone(),
-                }],
-                span: builtin_span.clone(),
-            }),
-        }],
-        forward: false,
-        span: builtin_span,
-    }
 }
 
 pub fn builtin_comparable_name() -> Symbol {

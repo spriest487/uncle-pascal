@@ -7,6 +7,7 @@ use crate::ast::FunctionName;
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Literal;
+use crate::ast::MethodOwner;
 use crate::ast::SetDeclRange;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
@@ -148,6 +149,13 @@ pub fn typecheck_methods(
                 })
             }
             dtor_span = Some(decl.span.clone());
+            
+            if decl.params.len() != 1 {
+                return Err(TypeError::DtorCannotHaveParams { span: decl.span.clone() })
+            }
+            if !decl.type_params.is_none() {
+                return Err(TypeError::DtorCannotHaveTypeParams { span: decl.span.clone() })
+            }
         }
 
         let existing: Vec<_> = methods

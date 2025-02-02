@@ -10,6 +10,7 @@ use crate::ast::Unit;
 use crate::ir;
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use ir_lang::LocalID;
 
 #[derive(Clone, Debug)]
 struct MethodImplFunc {
@@ -109,7 +110,7 @@ pub struct Class {
     struct_id: ir::TypeDefID,
     impls: BTreeMap<ir::InterfaceID, InterfaceImpl>,
 
-    disposer: Option<MethodImplFunc>,
+    dtor: Option<ir::FunctionID>,
     release_func: Option<FunctionName>,
 
     // if this class is a dyn array, the RTTI for it
@@ -156,14 +157,7 @@ impl Class {
             impls.insert(iface_id, InterfaceImpl { method_impls });
         }
 
-        let disposer = impls
-            .get(&ir::DISPOSABLE_ID)
-            .and_then(|disposable_impl| {
-                disposable_impl
-                    .method_impls
-                    .get(&ir::DISPOSABLE_DISPOSE_INDEX)
-                    .cloned()
-            });
+        let dtor = metadata.find_dtor(struct_id);
         
         let runtime_type = metadata.get_runtime_type(&class_ty)
             .unwrap_or_else(|| {
@@ -202,22 +196,47 @@ impl Class {
         Class {
             struct_id,
             impls,
-            disposer,
+            dtor,
             release_func,
             dyn_array_type_info,
             comment: Some(comment),
         }
     }
 
-    pub fn gen_vcall_wrappers(&self, module: &Unit) -> Vec<FunctionDef> {
+    pub fn gen_vcall_wrappers(&self, unit: &Unit) -> Vec<FunctionDef> {
         let mut wrappers = Vec::new();
         for (_iface_id, iface_impl) in &self.impls {
             for (_method_id, method_impl) in &iface_impl.method_impls {
-                wrappers.push(method_impl.gen_vcall_wrapper(module));
+                wrappers.push(method_impl.gen_vcall_wrapper(unit));
             }
         }
 
         wrappers
+    }
+    
+    pub fn gen_dtor_invoker(&self) -> Option<FunctionDef> {
+        let Some(dtor_func) = self.dtor else {
+            return None;
+        };
+        
+        let self_ty = Type::DefinedType(TypeDefName::Struct(self.struct_id));
+        
+        let def = FunctionDef {
+            decl: FunctionDecl {
+                name: FunctionName::DestructorInvoker(self.struct_id),
+                params: vec![Type::Void.ptr()],
+                comment: None,
+                return_ty: Type::Void,
+            },
+            body: vec![
+                // dtor((Self*) arg0);
+                Statement::Expr(Expr::Function(FunctionName::ID(dtor_func)).call([
+                    Expr::local_var(LocalID(0)).cast(self_ty.ptr())
+                ])),
+            ]
+        };
+        
+        Some(def)
     }
 
     pub fn to_decl_string(&self) -> String {
@@ -322,15 +341,11 @@ impl Class {
             Expr::SizeOf(Type::DefinedType(TypeDefName::Struct(self.struct_id)))
         ).unwrap();
 
-        if let Some(..) = &self.disposer {
-            let dispose_wrapper = FunctionName::MethodWrapper(
-                ir::DISPOSABLE_ID,
-                ir::DISPOSABLE_DISPOSE_INDEX,
-                self.struct_id,
-            );
-            writeln!(class_init, "  .disposer = &{},", dispose_wrapper).unwrap();
+        if self.dtor.is_some() {
+            let dtor_name = FunctionName::DestructorInvoker(self.struct_id);
+            writeln!(class_init, "  .dtor = &{},", dtor_name).unwrap();
         } else {
-            writeln!(class_init, "  .disposer = NULL,").unwrap();
+            writeln!(class_init, "  .dtor = NULL,").unwrap();
         };
 
         writeln!(class_init, "  .typeinfo = &TypeInfo_VType_Class_{},", self.struct_id).unwrap();        

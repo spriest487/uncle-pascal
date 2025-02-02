@@ -4,7 +4,6 @@ use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::Literal;
 use crate::typ::builtin_comparable_name;
 use crate::typ::builtin_displayable_name;
-use crate::typ::builtin_disposable_name;
 use crate::typ::builtin_string_name;
 use crate::typ::builtin_typeinfo_name;
 use crate::typ::Binding;
@@ -103,7 +102,6 @@ impl Decl {
             Decl::Type { ty: Type::Interface(iface), .. } => {
                 **iface == builtin_displayable_name().full_path
                     || **iface == builtin_comparable_name().full_path
-                    || **iface == builtin_disposable_name().full_path
             },
 
             Decl::Type { ty: Type::Class(sym), .. } => {

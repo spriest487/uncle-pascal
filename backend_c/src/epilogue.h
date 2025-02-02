@@ -183,13 +183,13 @@ static void RcRelease(void* instance, bool weak) {
         printf("rc: release %s @ 0x%p (%d+%d remain)\n", TYPEINFO_NAME_CHARS(rc->class->typeinfo), instance, rc->strong_count - 1, rc->weak_count);
 #endif
 
-        // call the disposer before decrementing the ref count, because it must still be a live reference
+        // call the dtor before decrementing the ref count, because it must still be a live reference
         // while the function is executing
-        if (rc->strong_count == 1 && rc->class->disposer) {
+        if (rc->strong_count == 1 && rc->class->dtor) {
 #if TRACE_RC
             printf("rc: \tdisposing %s @ 0x%p\n", TYPEINFO_NAME_CHARS(rc->class->typeinfo), instance);
 #endif
-            rc->class->disposer(instance);
+            rc->class->dtor(instance);
             
             // invoke structural release to release struct fields
             if (rc->class->cleanup) {

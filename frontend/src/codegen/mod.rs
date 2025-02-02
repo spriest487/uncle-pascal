@@ -43,20 +43,6 @@ pub fn gen_lib(module: &typ::Module, opts: IROptions) -> ir::Library {
     let metadata = ir::Metadata::new();
     let mut lib = LibraryBuilder::new((*module.root_ctx).clone(), metadata, opts);
 
-    let builtin_disposable = typ::builtin_disposable_iface();
-
-    // make sure frontend builtin types are defined e.g. dynamic array types add implementations
-    // to Disposable so need that interface to be defined
-    let disposable_iface = {
-        let mut builder = Builder::new(&mut lib);
-        let disposable_iface = builder.translate_iface(&builtin_disposable);
-        builder.finish();
-
-        disposable_iface
-    };
-
-    lib.metadata_mut().define_iface(disposable_iface);
-
     translate_builtin_class(&module, &mut lib, &typ::builtin_string_name(), ir::STRING_ID);
     translate_builtin_class(&module, &mut lib, &typ::builtin_typeinfo_name(), ir::TYPEINFO_ID);
     translate_builtin_class(&module, &mut lib, &typ::builtin_methodinfo_name(), ir::METHODINFO_ID);

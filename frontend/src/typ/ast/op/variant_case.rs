@@ -1,4 +1,4 @@
-use crate::ast::Call;
+use crate::ast::{Call, MethodOwner};
 use crate::ast::VariantCtorCall;
 use crate::typ::ast::{Expr, OverloadCandidate};
 use crate::typ::{Context, OverloadValue, Value};
