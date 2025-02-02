@@ -1,7 +1,6 @@
 # critical
 * project files/don't auto load used units
 * add Object.TypeInfo method
-* record/variant methods self param should be a pointer
 
 # features
 * generic interfaces 

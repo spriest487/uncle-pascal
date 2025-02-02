@@ -48,6 +48,7 @@ pub fn build_func_def(
     def_return_ty: &typ::Type,
     def_locals: &[typ::ast::FunctionLocalBinding],
     def_body: &typ::ast::Block,
+    is_instance_method: bool,
     debug_name: Option<String>,
 ) -> FunctionDef {
     let mut body_builder = create_function_body_builder(
@@ -62,7 +63,7 @@ pub fn build_func_def(
         .iter()
         .map(|param| FunctionParam::from_ast(param, &mut body_builder))
         .collect();
-    let bound_params = bind_function_params(def_params, &mut body_builder);
+    let bound_params = bind_function_params(def_params, is_instance_method, &mut body_builder);
 
     init_function_locals(def_locals, &mut body_builder);
 
@@ -115,7 +116,7 @@ pub fn build_func_static_closure_def(
 
     // this method needs to be compatible with the type-erased function pointer stored in a
     // closure struct, which has the sig "(Pointer, ...actual params)"
-    let mut bound_params = bind_function_params(params, &mut body_builder);
+    let mut bound_params = bind_function_params(params, false, &mut body_builder);
     bound_params.insert(0, (closure_ptr_local_id, Type::Nothing.ptr()));
 
     let func_global = Ref::Global(GlobalRef::Function(target_func.id));
@@ -169,7 +170,7 @@ pub fn build_closure_function_def(
         .map(|param| FunctionParam::from_ast(param, &mut body_builder))
         .collect();
 
-    let bound_params = bind_function_params(def_params, &mut body_builder);
+    let bound_params = bind_function_params(def_params, false, &mut body_builder);
 
     // cast the closure pointer param from the erased pointer passed in to its actual internal type
     let closure_struct_ty = Type::Struct(closure_id);
@@ -274,17 +275,33 @@ impl FunctionParam {
 
 fn bind_function_params(
     params: impl IntoIterator<Item=FunctionParam>,
+    is_instance_method: bool,
     builder: &mut Builder,
 ) -> Vec<(LocalID, Type)> {
     let mut bound_params = Vec::new();
 
+    let mut is_self = is_instance_method;
+
     for param in params.into_iter() {
+        let mut by_ref = param.by_ref;
+        let mut param_ty = param.ty.clone();
+
+        // pass the self parameter as a pointer for non-reference types
+        if is_self {
+            if !param.ty.is_rc() {
+                assert!(!by_ref, "self param should not already be by-ref");
+                by_ref = true;
+                param_ty = param_ty.ptr();
+            }
+            is_self = false;
+        }
+        
         let id = builder.next_local_id();
 
         builder.comment(&format!("{} = {}", id, builder.pretty_ty_name(&param.ty)));
-        builder.bind_param(id, param.ty.clone(), &param.name, param.by_ref);
+        builder.bind_param(id, param_ty.clone(), &param.name, by_ref);
 
-        bound_params.push((id, param.ty));
+        bound_params.push((id, param_ty));
     }
 
     for (id, ty) in &bound_params {

@@ -1,7 +1,8 @@
+use crate::ast::Access;
 use crate::ast::FunctionParamMod;
 use crate::ast::IdentPath;
+use crate::ast::MethodOwner;
 use crate::ast::StructKind;
-use crate::ast::{Access, MethodOwner};
 use crate::codegen::build_closure_function_def;
 use crate::codegen::build_func_def;
 use crate::codegen::build_func_static_closure_def;
@@ -23,7 +24,7 @@ use crate::codegen::FunctionInstance;
 use crate::codegen::IROptions;
 use crate::codegen::SetFlagsType;
 use crate::typ::ast::apply_func_decl_named_ty_args;
-use crate::typ::{builtin_ident, Value};
+use crate::typ::builtin_ident;
 use crate::typ::builtin_methodinfo_name;
 use crate::typ::builtin_string_name;
 use crate::typ::builtin_typeinfo_name;
@@ -36,16 +37,17 @@ use crate::typ::Specializable;
 use crate::typ::TypeArgResolver;
 use crate::typ::TypeArgsResult;
 use crate::typ::TypeParamContainer;
+use crate::typ::Value;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
+use ir_lang::TypeDefID;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use ir_lang::TypeDefID;
 
 #[derive(Debug)]
 pub struct LibraryBuilder {
@@ -370,6 +372,7 @@ impl LibraryBuilder {
             &specialized_decl.return_ty,
             &func_def.locals,
             &func_def.body,
+            false,
             debug_name,
         );
 
@@ -479,7 +482,7 @@ impl LibraryBuilder {
                 method_key.self_ty.clone()
             }
         };
-        
+
         let method_decl = decl_self_ty
             .get_method(method_key.method_index, &self.src_metadata)
             .unwrap_or_else(|e| {
@@ -553,6 +556,7 @@ impl LibraryBuilder {
             &generic_method_def.decl.return_ty,
             &generic_method_def.locals,
             &generic_method_def.body,
+            true,
             debug_name,
         );
         self.library.functions.insert(id, ir::Function::Local(ir_func));

@@ -851,6 +851,23 @@ impl<'m> Builder<'m> {
         })
     }
 
+    pub fn vcall(
+        &mut self,
+        iface_id: InterfaceID,
+        method: MethodID,
+        self_arg: impl Into<Value>,
+        rest_args: impl IntoIterator<Item=impl Into<Value>>,
+        out: Option<Ref>,
+    ) {
+        self.append(Instruction::VirtualCall {
+            iface_id,
+            method,
+            self_arg: self_arg.into(),
+            rest_args: rest_args.into_iter().map(|arg| arg.into()).collect(),
+            out,
+        })
+    }
+
     pub fn get_mem(&mut self, count: impl Into<Value>, out: Ref) {
         let function_ref = Ref::Global(GlobalRef::Function(self.library.instantiate_get_mem_func()));
         self.call(function_ref, [count.into()], Some(out));

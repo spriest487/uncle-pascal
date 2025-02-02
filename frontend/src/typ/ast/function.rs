@@ -619,7 +619,7 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
         let (kind, init) = match param.modifier {
             Some(ast::FunctionParamMod::Var) => (ValueKind::Mutable, true),
             Some(ast::FunctionParamMod::Out) => (ValueKind::Uninitialized, false),
-            None => (ValueKind::Immutable, false),
+            None => (ValueKind::Mutable, false),
         };
 
         ctx.declare_local_var(

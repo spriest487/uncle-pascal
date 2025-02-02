@@ -29,47 +29,43 @@ fn translate_call_with_args(
         arg_vals.push(closure_ptr.clone());
     }
 
-    for (arg, param) in args.iter().zip(sig.params.iter()) {
-        let arg_expr = if param.is_by_ref() {
-            let arg_ref = expr::translate_expr(arg, builder);
-            let arg_ty = builder.translate_type(&arg.annotation().ty());
-            let arg_ptr = builder.local_temp(arg_ty.ptr());
+    for (arg_index, (arg, param)) in args.iter().zip(sig.params.iter()).enumerate() {
+        let arg_ref = expr::translate_expr(arg, builder);
 
-            builder.append(Instruction::AddrOf {
-                out: arg_ptr.clone(),
-                a: arg_ref,
-            });
+        // for value types (any non RC), the self parameter of an instance method is invisibly
+        // turned into a pointer to the type, so we need to pass it by its address here
+        let is_value_type_method_self_arg = arg_index == 0 
+            && matches!(call_target, CallTarget::InstanceMethod(..))
+            && !sig.params[0].ty.is_strong_rc_reference();
+
+        let arg_expr = if is_value_type_method_self_arg || param.is_by_ref() {
+            let arg_ty = builder.translate_type(&arg.annotation().ty());
+
+            let arg_ptr = builder.local_temp(arg_ty.ptr());
+            builder.addr_of(arg_ptr.clone(), arg_ref);
 
             arg_ptr
         } else {
-            expr::translate_expr(arg, builder)
+            arg_ref
         };
 
         arg_vals.push(Value::from(arg_expr));
     }
 
-    builder.append(match call_target {
-        CallTarget::Closure { function, .. } | CallTarget::Function(function) => {
-            Instruction::Call {
-                function,
-                args: arg_vals.clone(),
-                out: out_val.clone(),
-            }
+    match call_target {
+        CallTarget::Closure { function, .. } 
+        | CallTarget::Function(function) 
+        | CallTarget::InstanceMethod(function) => {
+            builder.call(function, arg_vals.clone(), out_val.clone());
         },
 
         CallTarget::Virtual { iface_id, iface_method_id } => {
             let self_arg = arg_vals[0].clone();
             let rest_args = arg_vals[1..].to_vec();
-
-            Instruction::VirtualCall {
-                out: out_val.clone(),
-                iface_id,
-                method: iface_method_id,
-                self_arg,
-                rest_args,
-            }
+            
+            builder.vcall(iface_id, iface_method_id, self_arg, rest_args, out_val.clone());
         },
-    });
+    }
 
     // no need to retain, the result of a function must be retained as part of its body
 
@@ -80,6 +76,7 @@ fn translate_call_with_args(
 
 enum CallTarget {
     Function(Value),
+    InstanceMethod(Value),
     Closure {
         function: Value,
         closure_ptr: Value,
@@ -287,7 +284,7 @@ fn build_method_call(
             
             let func_val = Ref::Global(GlobalRef::Function(func_instance.id));
 
-            CallTarget::Function(func_val.into())
+            CallTarget::InstanceMethod(func_val.into())
         },
     };
 
