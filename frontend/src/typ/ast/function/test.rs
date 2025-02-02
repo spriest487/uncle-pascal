@@ -7,8 +7,8 @@ use crate::typ::ast::FunctionParam;
 use crate::typ::ast::TypedFunctionName;
 use crate::typ::builtin_displayable_name;
 use crate::typ::test::module_from_src;
-use crate::typ::test::try_module_from_srcs;
 use crate::typ::test::try_module_from_src;
+use crate::typ::test::try_module_from_srcs;
 use crate::typ::Context;
 use crate::typ::GenericError;
 use crate::typ::InvalidOverloadKind;
@@ -21,6 +21,7 @@ use crate::typ::TypeParamType;
 use crate::typ::TypeResult;
 use crate::Ident;
 use common::span::Span;
+use common::span::Spanned;
 use std::rc::Rc;
 
 fn test_span() -> Span {
@@ -186,7 +187,7 @@ fn duplicate_overload_is_error() {
         }
 
         Ok(..) => panic!("expected an error"),
-        Err(other) => panic!("expected invalid overload error, got:\n{}", other),
+        Err(other) => panic!("expected invalid overload error, got:\n{}\n{}", other, other.span()),
     }
 }
 

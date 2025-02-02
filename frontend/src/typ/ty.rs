@@ -1455,12 +1455,9 @@ impl Specializable for Type {
         assert_eq!(params.len(), args.len(), "apply_type_args: params and args counts did not match");
         
         self.visit_types_mut(|ty| {
-            if let Type::GenericParam(param) = ty {
-                *ty = params
-                    .find_position(param.name.name.as_str())
-                    .and_then(|pos| args.get(pos))
-                    .cloned()
-                    .unwrap_or_else(|| Type::GenericParam(param.clone()));
+            if let Some(result) = params.find_in_type_args(ty, args) {
+                eprintln!("{} := {}", ty, result);
+                *ty = result.clone();
             }
         });
 

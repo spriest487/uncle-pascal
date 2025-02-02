@@ -7,7 +7,6 @@ use crate::typ::ast::FunctionDecl;
 use crate::typ::ast::FunctionParam;
 use crate::typ::ast::MethodCallNoArgs;
 use crate::typ::Context;
-use crate::typ::Specializable;
 use crate::typ::Type;
 use crate::typ::TypeArgList;
 use crate::typ::TypeArgResolver;
@@ -202,9 +201,11 @@ impl FunctionSig {
     pub fn apply_type_args(&self, ty_params: &impl TypeParamContainer, args: &impl TypeArgResolver) -> Self {
         let mut new_sig = self.clone();
         new_sig.visit_types_mut(|ty| {
-            *ty = ty.clone().apply_type_args(ty_params, args)
+            if let Some(arg) = ty_params.find_in_type_args(ty, args) {
+                *ty = arg.clone();
+            }
         });
-        
+
         new_sig
     }
 

@@ -127,6 +127,22 @@ pub struct TypeParam<T: TypeAnnotation> {
     pub constraint: Option<TypeConstraint<T>>,
 }
 
+impl<T: TypeAnnotation> TypeParam<T> {
+    pub fn new(name: Ident) -> Self {
+        Self {
+            name,
+            constraint: None,
+        }
+    }
+    
+    pub fn with_constraint(name: Ident, constraint: TypeConstraint<T>) -> Self {
+        Self {
+            name,
+            constraint: Some(constraint),
+        }
+    }
+}
+
 impl<T: TypeAnnotation> fmt::Display for TypeParam<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;

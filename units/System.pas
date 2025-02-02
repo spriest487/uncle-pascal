@@ -710,10 +710,8 @@ begin
 
     unsafe begin
         var defaultValPtr: Pointer := @defaultValVar;
-
-        arr := if ArraySetLengthInternal(arr, len, defaultValPtr) is array of T newArr
-            then newArr
-            else raise 'unreachable';
+        var newArr := ArraySetLengthInternal(arr, len, defaultValPtr);
+        arr := Downcast[array of T](newArr).Get;
     end;
 end;
 

@@ -148,6 +148,18 @@ impl TypeArgResolver for TypeArgList {
 pub trait TypeParamContainer {
     fn find_position(&self, name: &str) -> Option<usize>;
     fn len(&self) -> usize;
+
+    // if the given type is a generic param type corresponding to an item in this list,
+    // return the corresponding argument in the given type arg list
+    fn find_in_type_args<'arg>(&self, ty: &Type, args: &'arg impl TypeArgResolver) -> Option<&'arg Type> {
+        let Type::GenericParam(param) = ty else {
+            return None;
+        };
+
+        self
+            .find_position(param.name.name.as_str())
+            .and_then(|pos| args.get(pos))
+    }
 }
 
 impl TypeParamContainer for TypeParamList {

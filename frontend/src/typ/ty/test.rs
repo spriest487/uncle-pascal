@@ -1,7 +1,11 @@
-use crate::typ::ast::{Call, FunctionCall, Stmt, StructDef};
+use crate::typ::ast::Call;
+use crate::typ::ast::FunctionCall;
+use crate::typ::ast::Stmt;
+use crate::typ::ast::StructDef;
 use crate::typ::context::*;
 use crate::typ::ty::*;
-use crate::{ast, typ};
+use crate::ast;
+use crate::typ;
 use std::rc::Rc;
 use crate::typ::ModuleUnit;
 
@@ -549,4 +553,44 @@ fn can_infer_from_enclosing_ty_param_in_class_method() {
 
         other => panic!("expected assignment, got {other:?}")
     }
+}
+
+// repro for a bug where the generic params were being resolved recursively during each step
+// of the already-recursive sig type visit-and-resolve process
+#[test]
+fn apply_ty_args_to_sig_with_array_of_param_ty_produces_correct_ty() {
+    let mut generic_ctx = GenericContext::empty();
+    generic_ctx.add(
+        TypeParam::new(builtin_ident("T")), 
+        Type::generic_param(builtin_ident("T")).dyn_array()
+    );
+
+    let ty = Type::generic_param(builtin_ident("T"));
+    let result = generic_ctx.apply_to_type(ty);  
+    assert_eq!("array of T", result.to_string());
+
+    let class_path = IdentPath::from_parts([builtin_ident("Box")]);
+    let ty_params = TypeParamList::new([
+        TypeParam::new(builtin_ident("T"))
+    ], builtin_span());
+
+    let sym = Symbol::from(class_path)
+        .with_ty_params(Some(ty_params.clone()))
+        .with_ty_args(Some(ty_params.into_type_args()));
+
+    let sym_result = sym.clone().apply_type_args(&generic_ctx, &generic_ctx);
+    assert_eq!("Box[array of T]", sym_result.to_string());
+    
+    let class = Type::class(sym);
+    let class_result = generic_ctx.apply_to_type(class.clone());
+
+    assert_eq!("Box[array of T]", class_result.to_string());
+    
+    let sig = FunctionSig {
+        return_ty: class,  
+        type_params: None,
+        params: vec![],
+    };
+    let sig_result = generic_ctx.apply_to_sig(&sig);    
+    assert_eq!("Box[array of T]", sig_result.return_ty.to_string());
 }

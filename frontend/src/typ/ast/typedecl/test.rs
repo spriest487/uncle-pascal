@@ -1,3 +1,4 @@
+use common::span::Spanned;
 use crate::ast;
 use crate::typ::ast::InterfaceDecl;
 use crate::typ::test::module_from_src;
@@ -94,7 +95,7 @@ fn expect_self_not_found_err(result: TypeResult<Module>) {
         Err(TypeError::NameError { err: NameError::NotFound { ident, .. }, .. }) => {
             assert_eq!("Self", ident.to_string());
         }
-        Err(err) => panic!("expected NotFound for Self, got:\n{}", err)
+        Err(err) => panic!("expected NotFound for Self, got:\n{}\n{}", err, err.span())
     }
 }
 
