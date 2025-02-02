@@ -1,7 +1,7 @@
 use crate::ast::Call;
 use crate::ast::VariantCtorCall;
-use crate::typ::ast::Expr;
-use crate::typ::Context;
+use crate::typ::ast::{Expr, OverloadCandidate};
+use crate::typ::{Context, OverloadValue, Value};
 use crate::typ::GenericError;
 use crate::typ::GenericTarget;
 use crate::typ::GenericTypeHint;
@@ -19,48 +19,90 @@ use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
 
-pub fn typecheck_variant_case(
+#[derive(Debug, Clone)]
+pub enum VariantTypeMemberValue {
+    Case(Value),
+    Method(Value),
+    Ctor(Expr),
+}
+
+pub fn typecheck_variant_type_member(    
     variant_name: &Symbol,
     member_ident: &Ident,
     span: &Span,
+    expect_ty: &Type,
     ctx: &mut Context,
-) -> TypeResult<VariantCaseValue> {
-    if let Some(args_list) = &variant_name.type_args {
-        return Err(TypeError::InvalidExplicitVariantCtorTypeArgs {
-            span: args_list.span.clone(),
-        });
-    }
-    assert!(
-        variant_name.type_args.is_none(),
-        "shouldn't be possible to have explicit type args for a variant constructor expr"
-    );
-
-    // we check the named case exists in the unspecialized definition here, but
-    // we don't want to try instantiating the actual variant type because we have
-    // no information about its type args.
-    let variant_def = ctx
-        .find_variant_def(&variant_name.full_path)
+) -> TypeResult<VariantTypeMemberValue> {
+    let variant_def = ctx.find_variant_def(&variant_name.full_path)
         .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
 
     let case_exists = variant_def.find_case(member_ident).is_some();
 
-    if !case_exists {
-        return Err(TypeError::from_name_err(
-            NameError::MemberNotFound {
-                base: NameContainer::Type(Type::variant(variant_name.clone())),
-                member: member_ident.clone(),
-            },
-            span.clone(),
-        ));
+    if case_exists {
+        // illegal to specify args directly when writing a case constructor
+        if let Some(args_list) = &variant_name.type_args {
+            return Err(TypeError::InvalidExplicitVariantCtorTypeArgs {
+                span: args_list.span.clone(),
+            });
+        }
+
+        let ctor_annotation = VariantCaseValue {
+            variant_name: Rc::new(variant_name.clone()),
+            case: member_ident.clone(),
+            span: member_ident.span().clone(),
+        };
+
+        if let Some(case_ctor) = try_expr_into_noargs_variant_ctor(&ctor_annotation, expect_ty, span, ctx)? {
+            // in this context, this becomes a case constructor
+            Ok(VariantTypeMemberValue::Ctor(case_ctor))
+        } else {
+            // reference to the case itself
+            Ok(VariantTypeMemberValue::Case(Value::VariantCase(Rc::new(ctor_annotation))))
+        }
+    } else {
+        // must be referencing a method
+        // we need the full specialized type in this case
+        let variant_def = ctx
+            .instantiate_variant_def(&variant_name)
+            .map_err(|err| TypeError::from_name_err(err, span.clone()))?;
+
+        let variant_ty = Type::variant(variant_name.clone());
+
+        let method_candidates: Vec<_> = variant_def
+            .find_methods(member_ident)
+            .map(|(method_index, method_decl)| {
+                OverloadCandidate::Method {
+                    self_ty: variant_ty.clone(),
+                    iface_ty: variant_ty.clone(),
+                    decl: method_decl.clone(),
+                    index: method_index,
+                }
+            })
+            .collect();
+        
+        if method_candidates.is_empty() {
+            return Err(TypeError::from_name_err(
+                NameError::MemberNotFound {
+                    base: NameContainer::Type(Type::variant(variant_name.clone())),
+                    member: member_ident.clone(),
+                },
+                span.clone(),
+            ));
+        }
+        
+        let known_sig = if method_candidates.len() == 1 {
+            Some(Rc::new(method_candidates[0].decl().sig()))
+        } else {
+            None
+        };
+        
+        Ok(VariantTypeMemberValue::Method(Value::from(OverloadValue {
+            candidates: method_candidates,
+            span: span.clone(),
+            self_arg: None,
+            sig: known_sig,
+        })))
     }
-
-    let ctor_annotation = VariantCaseValue {
-        variant_name: Rc::new(variant_name.clone()),
-        case: member_ident.clone(),
-        span: member_ident.span().clone(),
-    };
-
-    Ok(ctor_annotation)
 }
 
 pub fn try_expr_into_noargs_variant_ctor(

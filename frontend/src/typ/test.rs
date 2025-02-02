@@ -10,6 +10,7 @@ use common::read_source_file;
 use std::collections::HashMap;
 use std::iter;
 use std::path::PathBuf;
+use common::span::Spanned;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
@@ -51,14 +52,13 @@ pub fn module_from_srcs<'a, UnitSources>(unit_srcs: UnitSources) -> Module
 where
     UnitSources: IntoIterator<Item = (&'a str, &'a str)>,
 {
-
     try_module_from_srcs(unit_srcs)
-        .unwrap_or_else(|err| panic!("{}", err))
+        .unwrap_or_else(|err| panic!("{}\n{}", err, err.span()))
 }
 
 pub fn unit_from_src(unit_name: &'static str, src: &'static str) -> ModuleUnit {
     try_unit_from_src(unit_name, src)
-        .unwrap_or_else(|err| panic!("{}", err))
+        .unwrap_or_else(|err| panic!("{}\n{}", err, err.span()))
 }
 
 pub fn try_unit_from_src(unit_name: &'static str, src: &'static str) -> TypeResult<ModuleUnit> {

@@ -2,7 +2,6 @@
 mod test;
 
 use crate::ast::type_name::TypeName;
-use crate::ast::Annotation;
 use crate::ast::BindingDeclKind;
 use crate::ast::Block;
 use crate::ast::DeclMod;
@@ -15,6 +14,7 @@ use crate::ast::TypeList;
 use crate::ast::TypeParam;
 use crate::ast::TypePath;
 use crate::ast::WhereClause;
+use crate::ast::Annotation;
 use crate::parse::MatchOneOf;
 use crate::parse::Matcher;
 use crate::parse::Parse;
@@ -46,13 +46,31 @@ pub enum FunctionDeclKind {
     
     // declared with the `constructor` keyword, must not specify a return type
     Constructor,
+    
+    // declared with the `destructor` keyword, must not specify a return type or
+    // any parameters. one per concrete type
+    Destructor,
 }
 
 impl FunctionDeclKind {
-    pub fn is_static_method(&self) -> bool {
+    pub fn is_static_method(self) -> bool {
+        matches!(self, FunctionDeclKind::ClassMethod | FunctionDeclKind::Constructor)
+    }
+    
+    pub fn must_be_method(self) -> bool {
+        matches!(self, FunctionDeclKind::Destructor 
+            | FunctionDeclKind::Constructor 
+            | FunctionDeclKind::ClassMethod)
+    }
+}
+
+impl fmt::Display for FunctionDeclKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FunctionDeclKind::Function => false,
-            FunctionDeclKind::ClassMethod | FunctionDeclKind::Constructor => true,
+            FunctionDeclKind::Function => write!(f, "function"),
+            FunctionDeclKind::ClassMethod => write!(f, "class method"),
+            FunctionDeclKind::Constructor => write!(f, "constructor"),
+            FunctionDeclKind::Destructor => write!(f, "destructor"),
         }
     }
 }
@@ -125,11 +143,17 @@ pub struct FunctionDecl<A: Annotation = Span> {
 }
 
 impl FunctionDecl<Span> {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let func_kw = tokens.match_one(Keyword::Function 
-            | Keyword::Procedure 
-            | Keyword::Class 
-            | Keyword::Constructor)?;
+    pub fn parse(tokens: &mut TokenStream, allow_methods: bool) -> ParseResult<Self> {
+        let mut kw_matcher = Keyword::Function | Keyword::Procedure;
+        
+        if allow_methods {
+            kw_matcher = kw_matcher
+                | Keyword::Class
+                | Keyword::Constructor
+                | Keyword::Destructor;
+        }
+
+        let func_kw = tokens.match_one(kw_matcher)?;
         
         let (kind, expect_return) = if func_kw.is_keyword(Keyword::Class) {
             let class_func_kw = tokens.match_one(Keyword::Function | Keyword::Procedure)?;
@@ -147,6 +171,7 @@ impl FunctionDecl<Span> {
                 Some(Keyword::Function) => (FunctionDeclKind::Function, true),
                 Some(Keyword::Procedure) => (FunctionDeclKind::Function, false),
                 Some(Keyword::Constructor) => (FunctionDeclKind::Constructor, false),
+                Some(Keyword::Destructor) => (FunctionDeclKind::Destructor, false),
                 _ => unreachable!(),
             }
         };
@@ -457,6 +482,7 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
             FunctionDeclKind::Function => "function",
             FunctionDeclKind::ClassMethod => "class function",
             FunctionDeclKind::Constructor => "constructor",
+            FunctionDeclKind::Destructor => "destructor",
         })?;
 
         write!(f, "{}", self.name)?;

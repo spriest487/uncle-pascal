@@ -1,4 +1,4 @@
-use crate::ast::parse_implements_clause;
+use crate::ast::{parse_implements_clause, type_method_start};
 use crate::ast::type_name::TypeName;
 use crate::ast::Access;
 use crate::ast::Annotation;
@@ -97,10 +97,11 @@ impl<A: Annotation> VariantDecl<A> {
 }
 
 impl<A: Annotation> VariantDecl<A> {
-    pub fn find_methods<'a>(&'a self, ident: &'a Ident) -> impl Iterator<Item=&'a MethodDecl<A>> {
+    pub fn find_methods<'a>(&'a self, ident: &'a Ident) -> impl Iterator<Item=(usize, &'a MethodDecl<A>)> {
         self.methods
             .iter()
-            .filter(move |m| m.func_decl.ident() == ident)
+            .enumerate()
+            .filter(move |(_, m)| m.func_decl.ident() == ident)
     }
 }
 
@@ -145,13 +146,13 @@ impl VariantDecl<Span> {
 
                 let func_ahead = tokens
                     .look_ahead()
-                    .match_one(Keyword::Function | Keyword::Procedure);
+                    .match_one(type_method_start());
 
                 if func_ahead.is_none() {
                     break;
                 }
 
-                let method_decl= FunctionDecl::parse(tokens)?;
+                let method_decl= FunctionDecl::parse(tokens, true)?;
                 methods.push(MethodDecl { 
                     func_decl: Rc::new(method_decl),
                     access,

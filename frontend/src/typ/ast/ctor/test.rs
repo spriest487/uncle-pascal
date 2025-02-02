@@ -1,3 +1,4 @@
+use common::span::Spanned;
 use crate::ast::Access;
 use crate::typ::test::try_module_from_srcs;
 use crate::typ::TypeError;
@@ -68,6 +69,6 @@ fn cannot_construct_imported_class_with_private_fields() {
             assert_eq!("a", member.name.as_str());
             assert_eq!(Access::Private, access);
         }
-        Err(other) => panic!("expected access error, got {}", other),
+        Err(other) => panic!("expected access error, got {}\n{}", other, other.span()),
     }
 }

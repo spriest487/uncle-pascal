@@ -2,10 +2,14 @@
 mod test;
 
 use crate::ast;
+use crate::ast::FunctionDeclKind;
+use crate::ast::FunctionName;
 use crate::ast::Ident;
+use crate::ast::IdentPath;
+use crate::ast::Literal;
+use crate::ast::SetDeclRange;
 use crate::ast::StructKind;
 use crate::ast::Visibility;
-use crate::ast::{FunctionName, IdentPath, Literal, SetDeclRange};
 use crate::typ::ast::const_eval::ConstEval;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::typecheck_expr;
@@ -52,7 +56,13 @@ pub const SET_DEFAULT_VALUE_TYPE: Type = Type::Primitive(Primitive::UInt8);
 impl VariantDef {
     pub fn find_method<'a>(&'a self, name: &'a Ident, sig: &FunctionSig) -> Option<&'a MethodDecl> {
         self.find_methods(name)
-            .find(move |m| m.func_decl.sig() == *sig)
+            .find_map(move |(_,m)|{
+                if m.func_decl.sig() == *sig {
+                    Some(m)
+                } else {
+                    None
+                }
+            })
     }
 }
 
@@ -81,6 +91,9 @@ pub fn typecheck_struct_decl(
         }
     }
 
+    let implements_span = Span::range(&struct_def.implements)
+        .unwrap_or_else(|| struct_def.name.span.clone());
+
     ctx.declare_type(
         struct_def.name.ident.clone(),
         self_ty.clone(),
@@ -93,27 +106,66 @@ pub fn typecheck_struct_decl(
         let field = typecheck_field(src_field, ctx)?;
         fields.push(field);
     }
+    
+    let methods = typecheck_methods(
+        &self_ty,
+        &struct_def.methods,
+        &implements,
+        &implements_span,
+        ctx
+    )?;
 
+    Ok(StructDef {
+        kind: struct_def.kind,
+        packed: struct_def.packed,
+        name,
+        span: struct_def.span.clone(),
+        implements,
+        fields,
+        methods,
+        forward: struct_def.forward,
+    })
+}
+
+pub fn typecheck_methods(
+    owning_type: &Type,
+    decl_methods: &[ast::MethodDecl],
+    implements: &[Type],
+    implements_span: &Span,
+    ctx: &mut Context
+) -> TypeResult<Vec<MethodDecl>> {
+    let mut dtor_span = None;
+    
     let mut methods: Vec<MethodDecl> = Vec::new();
-    for method in &struct_def.methods {
+    for method in decl_methods {
         let decl = typecheck_method(&method.func_decl, ctx)?;
-        
+        if decl.kind == FunctionDeclKind::Destructor {
+            if let Some(prev_dtor) = dtor_span {
+                return Err(TypeError::TypeHasMultipleDtors {
+                    owning_type: owning_type.clone(),
+                    new_dtor: decl.span.clone(),
+                    prev_dtor,
+                })
+            }
+            dtor_span = Some(decl.span.clone());
+        }
+
         let existing: Vec<_> = methods
             .iter()
             .filter(|m| m.func_decl.ident() == decl.ident())
             .map(|m| m.func_decl.clone())
             .collect();
-        
+
         if !existing.is_empty() {
             if let Some(invalid) = decl.check_new_overload(existing.clone()) {
                 return Err(TypeError::InvalidMethodOverload {
-                    owning_type: self_ty,
+                    owning_type: owning_type.clone(),
                     prev_decls: existing
                         .into_iter()
                         .map(|decl| decl.ident().clone())
                         .collect(),
                     kind: invalid,
-                    method: name.ident().clone(),
+                    method: decl.name.ident().clone(),
                 });
             }
         }
@@ -122,25 +174,28 @@ pub fn typecheck_struct_decl(
             access: method.access,
             func_decl: Rc::new(decl),
         });
-    } 
-    
+    }
+
     for iface_ty in implements.iter() {
-        if let Type::Interface(iface_name) = &iface_ty {
-            let iface = ctx.find_iface_def(iface_name.as_ref())
-                .map_err(|e| TypeError::from_name_err(e, struct_def.name.span.clone()))?;
-            
+        if let Type::Interface(iface_name) = &iface_ty {            
+            let iface = ctx
+                .find_iface_def(iface_name.as_ref())
+                .map_err(|e| {
+                    TypeError::from_name_err(e, iface_name.span().clone())
+                })?;
+
             let mut missing_methods = Vec::new();
             let mut mismatched_methods = Vec::new();
-            
+
             for iface_method in &iface.methods {
-                let expect_sig = iface_method.decl.sig().with_self(&self_ty);
-                
+                let expect_sig = iface_method.decl.sig().with_self(owning_type);
+
                 let actual_method = methods
                     .iter()
                     .find(|method| {
                         method.func_decl.name.ident() == iface_method.ident()
                     });
-                
+
                 match actual_method {
                     None => {
                         missing_methods.push(MissingImplementation {
@@ -148,7 +203,7 @@ pub fn typecheck_struct_decl(
                             sig: expect_sig,
                         });
                     }
-                    
+
                     Some(impl_method) => {
                         let actual_sig = impl_method.func_decl.sig();
 
@@ -163,11 +218,11 @@ pub fn typecheck_struct_decl(
                     }
                 }
             }
-            
+
             if !missing_methods.is_empty() || !mismatched_methods.is_empty() {
                 return Err(TypeError::InvalidImplementation {
-                    ty: self_ty,
-                    span: Span::range(&struct_def.implements).unwrap_or(struct_def.name.span.clone()),
+                    ty: owning_type.clone(),
+                    span: implements_span.clone(),
                     missing: missing_methods,
                     mismatched: mismatched_methods,
                 });
@@ -176,17 +231,8 @@ pub fn typecheck_struct_decl(
             unreachable!("already checked that only valid types are accepted")
         }
     }
-
-    Ok(StructDef {
-        kind: struct_def.kind,
-        packed: struct_def.packed,
-        name,
-        span: struct_def.span.clone(),
-        implements,
-        fields,
-        methods,
-        forward: struct_def.forward,
-    })
+    
+    Ok(methods)
 }
 
 fn typecheck_method(decl: &ast::FunctionDecl, ctx: &mut Context) -> TypeResult<FunctionDecl> {
@@ -275,12 +321,15 @@ pub fn typecheck_variant(
     for implements_ty in &variant_def.implements {
         implements.push(typecheck_type(implements_ty, ctx)?);
     }
+
+    let implements_span = Span::range(&variant_def.implements)
+        .unwrap_or_else(|| variant_def.name.span.clone());
     
     let variant_ty = Type::variant(name.clone());
 
     ctx.declare_type(
         variant_def.name.ident.clone(),
-        variant_ty,
+        variant_ty.clone(),
         visibility,
         true
     )?;
@@ -298,15 +347,14 @@ pub fn typecheck_variant(
             data_ty,
         });
     }
-
-    let mut methods = Vec::new();
-    for method in &variant_def.methods {
-        let decl = typecheck_method(&method.func_decl, ctx)?;
-        methods.push(MethodDecl {
-            func_decl: Rc::new(decl),
-            access: method.access,
-        });
-    }
+    
+    let methods = typecheck_methods(
+        &variant_ty,
+        &variant_def.methods,
+        &implements,
+        &implements_span,
+        ctx
+    )?;
 
     Ok(VariantDef {
         name: Rc::new(name),

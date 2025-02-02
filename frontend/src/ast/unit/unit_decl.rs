@@ -77,6 +77,7 @@ impl UnitDecl<Span> {
         Keyword::Function
             .or(Keyword::Procedure)
             .or(Keyword::Constructor)
+            .or(Keyword::Destructor)
             .or(Keyword::Class)
             .or(Keyword::Uses)
             .or(Keyword::Type)

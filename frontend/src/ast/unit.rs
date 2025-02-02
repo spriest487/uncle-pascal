@@ -232,7 +232,7 @@ fn unit_binding_start_matcher() -> Matcher {
 }
 
 fn unit_func_start_matcher() -> Matcher {
-    Keyword::Function | Keyword::Class | Keyword::Procedure | Keyword::Constructor
+    Keyword::Function | Keyword::Class | Keyword::Procedure | Keyword::Constructor | Keyword::Destructor
 }
 
 fn parse_unit_decl(tokens: &mut TokenStream, part_kw: Keyword) -> ParseResult<UnitDecl<Span>> {
@@ -274,7 +274,7 @@ fn parse_unit_decl(tokens: &mut TokenStream, part_kw: Keyword) -> ParseResult<Un
 }
 
 fn parse_unit_func_decl(part_kw: Keyword, tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>> {
-    let func_decl = Rc::new(FunctionDecl::parse(tokens)?);
+    let func_decl = Rc::new(FunctionDecl::parse(tokens, true)?);
 
     let body_ahead = if part_kw == Keyword::Interface {
         // interface funcs - never expect a body, unless the function is marked `inline`

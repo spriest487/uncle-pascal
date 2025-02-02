@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::ast::Access;
+use crate::ast::{Access, FunctionDeclKind};
 use crate::ast::Ident;
 use crate::ast::IdentPath;
 use crate::ast::Operator;
@@ -145,9 +145,16 @@ pub enum TypeError {
         members: Vec<Ident>,
         span: Span,
     },
-    CtorMethodDefMissingType {
+    TypeHasMultipleDtors {
+        owning_type: Type,
+        
+        new_dtor: Span,
+        prev_dtor: Span,
+    },
+    MethodDeclMissingType {
         ident: Ident,
         span: Span,
+        kind: FunctionDeclKind,
     },
     DuplicateParamName {
         name: Ident,
@@ -400,7 +407,8 @@ impl Spanned for TypeError {
             
             TypeError::InvalidCtorType { span, .. } => span,
             TypeError::CtorMissingMembers { span, .. } => span,
-            TypeError::CtorMethodDefMissingType { span, .. } => span,
+            TypeError::MethodDeclMissingType { span, .. } => span,
+            TypeError::TypeHasMultipleDtors { new_dtor, .. } => new_dtor,
             
             TypeError::DuplicateNamedArg { span, .. } => span,
             TypeError::DuplicateParamName { span, .. } => span,
@@ -509,8 +517,11 @@ impl DiagnosticOutput for TypeError {
             TypeError::CtorMissingMembers { .. } => {
                 "Constructor is missing one or more named members"
             }
-            TypeError::CtorMethodDefMissingType { .. } => {
-                "Constructor definition missing type specification"
+            TypeError::TypeHasMultipleDtors { .. } => {
+                "Type has multiple destructors"
+            }
+            TypeError::MethodDeclMissingType { .. } => {
+                "Method declaration missing type specification"
             }
             TypeError::UndefinedSymbols { .. } => "Undefined symbol(s)",
             TypeError::UnableToInferType { .. } => {
@@ -703,14 +714,11 @@ impl DiagnosticOutput for TypeError {
                 })
                 .collect(),
 
-            TypeError::NotInitialized { ident, .. } => vec![DiagnosticMessage {
-                title: format!("uninitialized value `{}`", ident),
-                label: Some(DiagnosticLabel {
-                    text: Some("declared here".to_string()),
-                    span: ident.span().clone(),
-                }),
-                notes: Vec::new(),
-            }],
+            TypeError::NotInitialized { ident, .. } => vec![
+                DiagnosticMessage::new(format!("uninitialized value `{}`", ident))
+                    .with_label(DiagnosticLabel::new(ident.span().clone())
+                        .with_text("declared here")),
+            ],
 
             TypeError::NotMutable {
                 decl: Some(decl),
@@ -732,6 +740,14 @@ impl DiagnosticOutput for TypeError {
                 }),
                 notes: Vec::new(),
             }],
+            
+            TypeError::TypeHasMultipleDtors { new_dtor, prev_dtor, .. } => vec![
+                DiagnosticMessage::new("new destructor declaration")
+                    .with_label(DiagnosticLabel::new(new_dtor.clone())),
+                DiagnosticMessage::new("previous destructor declaration")
+                    .with_label(DiagnosticLabel::new(prev_dtor.clone())
+                        .with_text("previously declared here")),
+            ],
 
             TypeError::IncompatibleDeclMod { first_span, first_keyword, .. } => vec![DiagnosticMessage {
                 title: "incompatible modifier".to_string(),
@@ -980,9 +996,13 @@ impl fmt::Display for TypeError {
                 }
                 Ok(())
             }
+            
+            TypeError::TypeHasMultipleDtors { owning_type, .. } => {
+                write!(f, "type `{}` has already declared a destructor", owning_type)
+            }
 
-            TypeError::CtorMethodDefMissingType { ident, .. } => {
-                write!(f, "constructor definition `{}` has no type specification", ident)
+            TypeError::MethodDeclMissingType { kind, ident, .. } => {
+                write!(f, "{} definition `{}` must belong to a type", kind, ident)
             }
 
             TypeError::UndefinedSymbols { unit, .. } => {

@@ -56,11 +56,15 @@ pub struct DiagnosticLabel {
     pub span: Span,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct DiagnosticMessage {
-    pub title: String,
-    pub notes: Vec<String>,
-    pub label: Option<DiagnosticLabel>,
+impl DiagnosticLabel {    
+    pub fn new(span: Span) -> Self {
+        Self { text: None, span }
+    }
+
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = Some(text.into());
+        self
+    }
 }
 
 impl Ord for DiagnosticLabel {
@@ -78,6 +82,33 @@ impl Ord for DiagnosticLabel {
 impl PartialOrd for DiagnosticLabel {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct DiagnosticMessage {
+    pub title: String,
+    pub notes: Vec<String>,
+    pub label: Option<DiagnosticLabel>,
+}
+
+impl DiagnosticMessage {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            label: None,
+            notes: Vec::new(),
+        }
+    }
+    
+    pub fn with_label(mut self, label: DiagnosticLabel) -> Self {
+        self.label = Some(label);
+        self
+    }
+    
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.notes.push(note.into());
+        self
     }
 }
 

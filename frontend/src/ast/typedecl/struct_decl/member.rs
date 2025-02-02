@@ -162,7 +162,7 @@ fn parse_field(
 
     for ident in idents {
         let field = FieldDecl {
-            access: access,
+            access,
             span: ident.span().to(&ty),
             ty: ty.clone(),
             ident,
@@ -180,7 +180,7 @@ fn parse_method_decl(
     members: &mut Vec<StructMemberDecl>
 ) -> ParseResult<()> {
     // these get parsed one at a time
-    let decl = FunctionDecl::parse(tokens)?;
+    let decl = FunctionDecl::parse(tokens, true)?;
     
     members.push(StructMemberDecl::MethodDecl(MethodDecl {
         func_decl: Rc::new(decl),

@@ -1,6 +1,7 @@
 # critical
 * project files/don't auto load used units
 * destructors
+* add Object.TypeInfo method
 
 # features
 * generic interfaces 

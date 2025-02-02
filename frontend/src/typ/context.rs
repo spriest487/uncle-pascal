@@ -946,7 +946,7 @@ impl Context {
 
                 variant_def
                     .find_methods(&method)
-                    .find(|m| m.func_decl.sig() == def.decl.sig())
+                    .find(|(_, m)| m.func_decl.sig() == def.decl.sig())
                     .ok_or_else(|| NameError::MemberNotFound {
                         base: NameContainer::Type(variant_ty.clone()),
                         member: method.clone(),

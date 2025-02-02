@@ -11,6 +11,11 @@ type
         constructor Create;
     end;
     
+    MyVariant = variant
+        First: Integer;
+        class function MyFunc: Integer;
+    end;
+    
 class function MyClass.DefaultValue: Integer;
 begin
     123
@@ -26,10 +31,17 @@ begin
     MyClass(val: MyClass.DefaultValue);
 end;
 
+class function MyVariant.MyFunc: Integer;
+begin
+    321
+end;
+
 initialization
     var instance := MyClass.Create();    
     WriteLn('default val: ' + instance.val);
     
     var doubled := MyClass.Double(100);    
     WriteLn('doubled: ' + doubled);
+    
+    WriteLn('from variant: ' + MyVariant.MyFunc);
 end.

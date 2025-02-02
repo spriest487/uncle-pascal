@@ -44,7 +44,7 @@ impl ParseSeq for InterfaceMethodDecl<Span> {
             tokens.match_one(Separator::Semicolon)?;
         }
 
-        let decl = FunctionDecl::parse(tokens)?;
+        let decl = FunctionDecl::parse(tokens, false)?;
         Ok(InterfaceMethodDecl { decl: Rc::new(decl) })
     }
 

@@ -131,10 +131,11 @@ impl FunctionDecl {
 
             (None, Some(enclosing_ty)) => Some(enclosing_ty.clone()),
 
-            (None, None) if is_def && decl.kind == FunctionDeclKind::Constructor => {
-                return Err(TypeError::CtorMethodDefMissingType {
+            (None, None) if is_def && decl.kind.must_be_method() => {
+                return Err(TypeError::MethodDeclMissingType {
                     span: decl.name.span().clone(),
                     ident: decl.name.ident.clone(),
+                    kind: decl.kind,
                 })
             }
 
@@ -176,6 +177,10 @@ impl FunctionDecl {
                     ast::TypeName::Unspecified(..) => Type::Nothing,
                     ty_name => typecheck_type(ty_name, ctx)?,
                 },
+                
+                FunctionDeclKind::Destructor => {
+                    Type::Nothing
+                }
 
                 FunctionDeclKind::Constructor => {
                     assert!(

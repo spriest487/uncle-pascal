@@ -13,6 +13,7 @@ use crate::typ::ast::collection_ctor_elements;
 use crate::typ::ast::const_eval_integer;
 use crate::typ::ast::implicit_conversion;
 use crate::typ::ast::member_annotation;
+use crate::typ::ast::op::variant_case::{typecheck_variant_type_member, VariantTypeMemberValue};
 use crate::typ::ast::overload_to_no_args_call;
 use crate::typ::ast::try_resolve_overload;
 use crate::typ::ast::typecheck_expr;
@@ -49,8 +50,6 @@ use crate::IntConstant;
 use common::span::Span;
 use common::span::Spanned;
 use std::rc::Rc;
-use variant_case::try_expr_into_noargs_variant_ctor;
-use variant_case::typecheck_variant_case;
 
 pub type BinOp = ast::BinOp<Value>;
 
@@ -424,12 +423,16 @@ fn typecheck_member_of(
             let annotation = match lhs.annotation() {
                 // x is the name of a variant type - we are constructing that variant
                 Value::Type(Type::Variant(variant_name), ..) => {
-                    let case = typecheck_variant_case(variant_name, &member_ident, &span, ctx)?;
-                    if let Some(ctor) = try_expr_into_noargs_variant_ctor(&case, expect_ty, &span, ctx)? {
-                        return Ok(ctor);
+                    match typecheck_variant_type_member(variant_name, &member_ident, &span, expect_ty, ctx)? {
+                        VariantTypeMemberValue::Case(value) 
+                        | VariantTypeMemberValue::Method(value) => {
+                            value
+                        },
+
+                        VariantTypeMemberValue::Ctor(ctor_expr) => {
+                            return Ok(ctor_expr)
+                        }
                     }
-                    
-                    Value::from(case)
                 },
 
                 // x is a non-variant typename - we are accessing a member of that type

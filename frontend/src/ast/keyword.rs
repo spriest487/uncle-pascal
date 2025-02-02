@@ -11,6 +11,7 @@ pub enum Keyword {
     Procedure,
     Lambda,
     Constructor,
+    Destructor,
 
     Begin,
     End,
@@ -87,6 +88,7 @@ impl Keyword {
             "procedure" => Some(Keyword::Procedure),
             "lambda" => Some(Keyword::Lambda),
             "constructor" => Some(Keyword::Constructor),
+            "destructor" => Some(Keyword::Destructor),
             
             "begin" => Some(Keyword::Begin),
             "end" => Some(Keyword::End),
@@ -173,6 +175,7 @@ impl fmt::Display for Keyword {
             Keyword::Procedure => "procedure",
             Keyword::Lambda => "lambda",
             Keyword::Constructor => "constructor",
+            Keyword::Destructor => "destructor",
 
             Keyword::Begin => "begin",
             Keyword::End => "end",
