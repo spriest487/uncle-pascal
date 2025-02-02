@@ -198,7 +198,7 @@ static void RcRelease(void* instance, bool weak) {
             rc->class = NULL;
 
             if (rc->strong_count != 1) {
-                fprintf(stderr, "disposal routine for %s modified the reference count of the disposed instance\n", TYPEINFO_NAME_CHARS(rc->class->typeinfo));
+                fprintf(stderr, "destructor for %s modified the reference count of the destroyed instance\n", TYPEINFO_NAME_CHARS(rc->class->typeinfo));
                 abort();
             }
         }

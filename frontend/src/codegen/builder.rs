@@ -6,6 +6,7 @@ mod test;
 use self::scope::*;
 use crate::ast as ast;
 use crate::ast::IdentPath;
+use crate::codegen::ir;
 use crate::codegen::library_builder::FunctionDeclKey;
 use crate::codegen::library_builder::FunctionDefKey;
 use crate::codegen::library_builder::LibraryBuilder;
@@ -1166,6 +1167,16 @@ impl<'m> Builder<'m> {
             },
         }
     }
+    
+    fn call_release(&mut self, at: Ref, ty: &ir::Type) {
+        let rc_funcs = self.library.gen_runtime_type(ty);
+
+        if let Some(release) = rc_funcs.release {
+            let at_ptr = self.local_temp(ty.clone().ptr());
+            self.addr_of(at_ptr.clone(), at);
+            self.call(release, [Value::from(at_ptr)], None);
+        }
+    }
 
     pub fn release(&mut self, at: impl Into<Ref>, ty: &Type) -> bool {
         let at = at.into();
@@ -1175,23 +1186,17 @@ impl<'m> Builder<'m> {
         }
 
         match ty {
-            Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.library.gen_runtime_type(ty);
-
-                if let Some(release) = rc_funcs.release {
-                    let at_ptr = self.local_temp(ty.clone().ptr());
-                    self.append(Instruction::AddrOf {
-                        out: at_ptr.clone(),
-                        a: at,
-                    });
-
-                    self.append(Instruction::Call {
-                        function: Value::Ref(Ref::Global(GlobalRef::Function(release))),
-                        args: vec![Value::Ref(at_ptr)],
-                        out: None,
-                    });
-                }
-
+            Type::Array { .. } => {
+                self.call_release(at, ty);
+                true
+            }
+            
+            Type::Struct(_id) | Type::Variant(_id) => {
+                // if let Some(dtor) = self.library.metadata().find_dtor(*id) {
+                //     self.call(dtor, [Value::from(at.clone())], None);
+                // }
+                
+                self.call_release(at, ty);
                 true
             },
 

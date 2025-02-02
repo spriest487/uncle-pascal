@@ -41,6 +41,6 @@ initialization
     if dog is Animal then 
         WriteLn('yes, a dog is an animal');
     
-    if dog is not Disposable then 
-        WriteLn('a dog is not just for christmas');
+    if dog is not Animal then 
+        raise 'a dog is an animal!';
 end

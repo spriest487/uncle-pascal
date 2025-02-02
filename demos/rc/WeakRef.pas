@@ -4,25 +4,25 @@ uses System;
 type
     Child = class; 
 
-    Parent = class of Disposable
+    Parent = class
         child: Option[Child];
         name: String;
         
-        function Dispose;
+        destructor Destroy;
     end;
 
-    Child = class of Disposable
+    Child = class
         parent: Option[weak Parent];
 
-        function Dispose;
+        destructor Destroy;
     end;
     
-function Parent.Dispose;
+destructor Parent.Destroy;
 begin
     WriteLn('disposed parent ' + self.name);
 end;
 
-function Child.Dispose;
+destructor Child.Destroy;
 begin
     WriteLn('disposed child');
 end;

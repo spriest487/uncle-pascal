@@ -23,7 +23,8 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
-use ir_lang::{InstructionFormatter as _, EMPTY_STRING_ID};
+use ir_lang::InstructionFormatter as _;
+use ir_lang::EMPTY_STRING_ID;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::BitAnd;
@@ -547,11 +548,10 @@ impl Interpreter {
 
     fn invoke_dtor(&mut self, val: &DynValue, ty: &ir::Type) -> ExecResult<()> {
         let dtor_func_id = ty
-            .rc_resource_def_id()
-            .or_else(|| ty.def_id())
+            .def_id()
             .and_then(|id|  self.metadata.find_dtor(id));
         
-        eprintln!("trying to invoke dtor for {}... {:?}, {:?}: {:?}", self.metadata.pretty_ty_name(ty), ty.def_id(), ty.rc_resource_def_id(), dtor_func_id);
+        // eprintln!("trying to invoke dtor for {}... {:?}, {:?}: {:?}", self.metadata.pretty_ty_name(ty), ty.def_id(), ty.rc_resource_def_id(), dtor_func_id);
         
         if let Some(func_id) = dtor_func_id {
             let func_desc = self
@@ -663,26 +663,26 @@ impl Interpreter {
                 );
             }
 
-            // if we just removed the last strong reference, dispose the object, making it a zombie
+            // if we just removed the last strong reference, destroy the object, making it a zombie
             // until the last weak ref is removed, if there are any
             if struct_rc.strong_count == 1 {
+                let struct_ty = ir::Type::Struct(struct_val.type_id);
+
                 if self.opts.trace_rc {
                     println!(
-                        "[rc] dispose @ {} ({}+{} refs remain)",
+                        "[rc] destroy @ {} ({}+{} refs remain)",
                         ptr.to_pretty_string(&self.metadata),
                         struct_rc.strong_count,
                         struct_rc.weak_count,
                     );
                 }
 
-                // Dispose() the inner resource. For an RC type, interfaces are implemented
-                // for the RC pointer type, not the resource type
-                let class_id = ir::VirtualTypeID::Class(struct_val.type_id);
-                self.invoke_dtor(&val, &ir::Type::RcPointer(class_id))?;
+                // call dtor on the inner resource
+                self.invoke_dtor(&val, &struct_ty)?;
 
                 // Now release the fields of the struct as if it was a normal record
-                let rc_funcs = self.find_runtime_type(&ir::Type::Struct(struct_val.type_id))?;
-                if let Some(release_func) = rc_funcs.release {
+                let type_info = self.find_runtime_type(&struct_ty)?;
+                if let Some(release_func) = type_info.release {
                     self.call_store(release_func, &[val.clone()], None)?;
                 }
             }
