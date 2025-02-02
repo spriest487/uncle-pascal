@@ -1456,7 +1456,6 @@ impl Specializable for Type {
         
         self.visit_types_mut(|ty| {
             if let Some(result) = params.find_in_type_args(ty, args) {
-                eprintln!("{} := {}", ty, result);
                 *ty = result.clone();
             }
         });
