@@ -416,10 +416,14 @@ static int32_t System_GetTypeInfoCount(void) {
     return typeinfo_count;
 }
 
-static TYPEINFO_STRUCT* System_GetTypeInfo(int32_t type_index) {
+static TYPEINFO_STRUCT* System_GetTypeInfoByIndex(int32_t type_index) {
     if (type_index < 0 || type_index >= typeinfo_count) {
         return NULL;
     }
     
     return typeinfo_list[type_index];
+}
+
+static TYPEINFO_STRUCT* System_GetObjectTypeInfo(struct Rc* object) {
+    return object->class->typeinfo;
 }

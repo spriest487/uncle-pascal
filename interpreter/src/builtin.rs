@@ -376,7 +376,7 @@ fn get_type_info_count(state: &mut Interpreter) -> ExecResult<()> {
     state.store(&RETURN_REF, DynValue::I32(count))
 }
 
-fn get_type_info(state: &mut Interpreter) -> ExecResult<()> {
+fn get_type_info_by_index(state: &mut Interpreter) -> ExecResult<()> {
     let index_param_local = Ref::Local(LocalID(1));
 
     let index = state.load(&index_param_local)?
@@ -389,6 +389,29 @@ fn get_type_info(state: &mut Interpreter) -> ExecResult<()> {
         .ok()
         .and_then(|i| state.typeinfo_refs.get(i).cloned())
         .ok_or_else(|| ExecError::illegal_state(format!("illegal TypeInfo index: {index}")))?;
+    
+    let type_info_ptr = state.load(&Ref::Global(type_info_ref))?;
+    state.store(&RETURN_REF, type_info_ptr)?;
+    
+    Ok(())
+}
+
+fn get_object_type_info(state: &mut Interpreter) -> ExecResult<()> {
+    let obj_param = Ref::Local(LocalID(1));
+
+    let type_id = state
+        .load(&obj_param.to_deref())?
+        .as_any_struct()
+        .ok_or_else(|| {
+            ExecError::illegal_state("object pointer must refer to a struct value")
+        })?
+        .type_id;
+    
+    let type_info_ref = state
+        .get_class_runtime_type_ref(type_id)
+        .ok_or_else(|| {
+            ExecError::illegal_state(format!("missing runtime type info for class struct {type_id}"))
+        })?;
     
     let type_info_ptr = state.load(&Ref::Global(type_info_ref))?;
     state.store(&RETURN_REF, type_info_ptr)?;
@@ -596,7 +619,8 @@ pub fn system_funcs(
         ]),
         ("FindTypeInfo", find_type_info, TYPEINFO_TYPE, vec![Type::string_ptr()]),
         ("GetTypeInfoCount", get_type_info_count, Type::I32, vec![]),
-        ("GetTypeInfo", get_type_info, TYPEINFO_TYPE, vec![Type::I32]),
+        ("GetTypeInfoByIndex", get_type_info_by_index, TYPEINFO_TYPE, vec![Type::I32]),
+        ("GetObjectTypeInfo", get_object_type_info, TYPEINFO_TYPE, vec![Type::any()]),
         ("RandomInteger", random_integer, Type::I32, vec![
             Type::I32, Type::I32
         ]),

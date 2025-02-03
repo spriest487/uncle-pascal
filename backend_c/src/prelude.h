@@ -101,7 +101,8 @@ static int32_t typeinfo_count;
 
 static TYPEINFO_STRUCT* System_FindTypeInfo(STRING_STRUCT* type_name);
 static int System_GetTypeInfoCount(void);
-static TYPEINFO_STRUCT* System_GetTypeInfo(int type_index);
+static TYPEINFO_STRUCT* System_GetTypeInfoByIndex(int type_index);
+static TYPEINFO_STRUCT* System_GetObjectTypeInfo(struct Rc* obj);
 
 // implementations of System.pas builtins
 

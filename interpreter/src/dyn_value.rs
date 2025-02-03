@@ -414,6 +414,13 @@ impl DynValue {
             _ => None,
         }
     }
+    
+    pub fn as_any_struct(&self) -> Option<&StructValue> {
+        match self {
+            DynValue::Structure(struct_val) => Some(struct_val),
+            _ => None,
+        }
+    }
 
     pub fn as_array(&self, el_ty: &ir::Type) -> Option<&[DynValue]> {
         match self {

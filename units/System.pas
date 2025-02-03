@@ -88,8 +88,11 @@ type
         function Name: String;
         function Methods: array of MethodInfo;
         
+        function FindMethod(methodName: String): Option[MethodInfo];
+        
         class function LoadedTypes: array of TypeInfo;
         class function Find(typeName: String): Option[TypeInfo]; 
+        class function Get(object: Object): TypeInfo;
     end;
 
 function GetMem(count: Int32): ^Byte; external 'rt';
@@ -173,8 +176,9 @@ function InvokeMethod(
 ); external 'rt';
 
 function GetTypeInfoCount: Integer; external 'rt';
-function GetTypeInfo(typeIndex: Integer): TypeInfo; external 'rt';
+function GetTypeInfoByIndex(typeIndex: Integer): TypeInfo; external 'rt';
 function FindTypeInfo(typeName: String): TypeInfo; external 'rt';
+function GetObjectTypeInfo(obj: Object): TypeInfo; external 'rt';
 
 class function TypeInfo.LoadedTypes: array of TypeInfo;
 begin
@@ -186,7 +190,7 @@ begin
         typeInfos := Downcast[array of TypeInfo](ArraySetLengthInternal(typeInfos, count, @nilElement)).Get;
         
         for var i := 0 to count - 1 do begin
-            typeInfos[i] := GetTypeInfo(i);
+            typeInfos[i] := GetTypeInfoByIndex(i);
         end;  
     end;
     
@@ -597,6 +601,17 @@ begin
     self.methods
 end;
 
+function TypeInfo.FindMethod(methodName: String): Option[MethodInfo];
+begin
+    for var i := 0 to self.methods.Length - 1 do
+    begin
+        if self.methods[i].Name.Compare(methodName) = 0 then
+            exit Option.Some(self.methods[i]);
+    end;
+    
+    Option.None
+end;
+
 function MethodInfo.Name: String;
 begin
     self.name
@@ -718,6 +733,11 @@ begin
         Option.Some(target) 
     else 
         Option.None; 
+end;
+
+class function TypeInfo.Get(obj: Object): TypeInfo;
+begin
+    GetObjectTypeInfo(obj);
 end;
 
 end.

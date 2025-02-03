@@ -34,7 +34,8 @@ pub enum FunctionName {
     InvokeMethod,
     FindTypeInfo,
     GetTypeInfoCount,
-    GetTypeInfo,
+    GetTypeInfoByIndex,
+    GetObjectTypeInfo,
 
     // builtins
     Int8ToStr,
@@ -103,7 +104,8 @@ impl fmt::Display for FunctionName {
 
             FunctionName::FindTypeInfo => write!(f, "System_FindTypeInfo"),
             FunctionName::GetTypeInfoCount => write!(f, "System_GetTypeInfoCount"),
-            FunctionName::GetTypeInfo => write!(f, "System_GetTypeInfo"),
+            FunctionName::GetTypeInfoByIndex => write!(f, "System_GetTypeInfoByIndex"),
+            FunctionName::GetObjectTypeInfo => write!(f, "System_GetObjectTypeInfo"),
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
             FunctionName::Write => write!(f, "System_Write"),

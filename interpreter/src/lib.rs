@@ -23,8 +23,8 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
-use ir_lang::InstructionFormatter as _;
 use ir_lang::EMPTY_STRING_ID;
+use ir_lang::InstructionFormatter as _;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::BitAnd;
@@ -50,6 +50,10 @@ pub struct Interpreter {
     
     // cache of type info by the names used to look them up from user code (TypeInfo.Find)
     typeinfo_by_name: HashMap<String, ir::GlobalRef>,
+    
+    // cache of type info for declared types, used for finding type info via reflection
+    typeinfo_by_class_id: BTreeMap<ir::TypeDefID, ir::GlobalRef>,
+
     typeinfo_refs: Vec<ir::GlobalRef>,
 }
 
@@ -82,6 +86,8 @@ impl Interpreter {
             diag_worker,
 
             typeinfo_by_name: HashMap::new(),
+            typeinfo_by_class_id: BTreeMap::new(),
+
             typeinfo_refs: Vec::new(),
         }
     }
@@ -569,6 +575,10 @@ impl Interpreter {
         }
 
         Ok(())
+    }
+    
+    fn get_class_runtime_type_ref(&self, type_id: ir::TypeDefID) -> Option<ir::GlobalRef> {
+        self.typeinfo_by_class_id.get(&type_id).cloned()
     }
 
     fn find_runtime_type(&self, resource_ty: &ir::Type) -> ExecResult<Rc<ir::RuntimeType>> {
@@ -1839,6 +1849,10 @@ impl Interpreter {
                 value: ptr_bytes.into_boxed_slice(),
                 ty: ir::Type::RcPointer(ir::TYPEINFO_VTYPE_ID),
             });
+
+            if let Some(type_id) = ty.rc_resource_def_id() {
+                self.typeinfo_by_class_id.insert(type_id, typeinfo_ref.clone());
+            }
 
             if let Some(runtime_name_id) = runtime_type.name {
                 let Some(runtime_name) = self.metadata.get_string(runtime_name_id) else {

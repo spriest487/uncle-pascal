@@ -122,7 +122,8 @@ impl Unit {
             ]),
             ("FindTypeInfo", FunctionName::FindTypeInfo, typeinfo_ty.clone(), vec![string_ty.clone()]),
             ("GetTypeInfoCount", FunctionName::GetTypeInfoCount, Type::Int32, vec![]),
-            ("GetTypeInfo", FunctionName::GetTypeInfo, typeinfo_ty.clone(), vec![Type::Int32]),
+            ("GetTypeInfoByIndex", FunctionName::GetTypeInfoByIndex, typeinfo_ty.clone(), vec![Type::Int32]),
+            ("GetObjectTypeInfo", FunctionName::GetObjectTypeInfo, typeinfo_ty.clone(), vec![Type::Rc.ptr()]),
             ("InvokeMethod", FunctionName::InvokeMethod, Type::Int32, vec![
                 Type::from_ir_struct(ir::METHODINFO_ID).ptr(),
                 Type::Void.ptr(),
