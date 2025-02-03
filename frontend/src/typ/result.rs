@@ -96,10 +96,6 @@ pub enum TypeError {
         expected_expr_ty: Type,
     },
     InvalidBlockOutput(Box<Expr>),
-    AmbiguousMethod {
-        method: Ident,
-        span: Span,
-    },
     AmbiguousSelfType {
         method: Ident,
         iface: Type,
@@ -409,7 +405,6 @@ impl Spanned for TypeError {
             TypeError::BlockOutputIsNotExpression { stmt, .. } => stmt.annotation().span(),
             TypeError::InvalidBlockOutput(expr) => expr.annotation().span(),
             TypeError::AmbiguousFunction { span, .. } => span,
-            TypeError::AmbiguousMethod { span, .. } => span,
             TypeError::ExternalGenericFunction { func, .. } => func.span(),
             
             TypeError::DuplicateDeclMod { span, .. } => span,
@@ -521,7 +516,6 @@ impl DiagnosticOutput for TypeError {
             TypeError::BlockOutputIsNotExpression { .. } => "Expected block output expression",
             TypeError::InvalidBlockOutput(_) => "Invalid block output expression",
             TypeError::AmbiguousFunction { .. } => "Function reference is ambiguous",
-            TypeError::AmbiguousMethod { .. } => "Method reference is ambiguous",
             TypeError::AmbiguousSelfType { .. } => "Self type of method is ambiguous",
             TypeError::ExternalGenericFunction { .. } => "Function imported from external module may not have type parameters",
             
@@ -979,10 +973,6 @@ impl fmt::Display for TypeError {
 
             TypeError::AmbiguousFunction { .. } => {
                 write!(f, "call to function was ambiguous")
-            }
-
-            TypeError::AmbiguousMethod { method, .. } => {
-                write!(f, "call to method `{}` was ambiguous", method)
             }
 
             TypeError::AmbiguousSelfType { method, iface, .. } => {

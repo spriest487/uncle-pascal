@@ -10,6 +10,7 @@ pub mod primitive;
 pub mod sig;
 pub mod ty_param;
 pub mod set;
+pub mod seq;
 
 pub use self::array::*;
 pub use self::pattern::*;
@@ -32,8 +33,6 @@ use crate::typ::ast::MethodDecl;
 use crate::typ::ast::SELF_TY_NAME;
 use crate::typ::builtin_span;
 use crate::typ::builtin_unit_path;
-use crate::typ::context;
-use crate::typ::result::*;
 use crate::typ::Context;
 use crate::typ::Def;
 use crate::typ::GenericError;
@@ -41,6 +40,8 @@ use crate::typ::GenericResult;
 use crate::typ::GenericTarget;
 use crate::typ::NameResult;
 use crate::typ::Symbol;
+use crate::typ::TypeError;
+use crate::typ::TypeResult;
 use crate::typ::Value;
 use crate::typ::ANY_TYPE_NAME;
 use crate::typ::NIL_NAME;
@@ -48,7 +49,8 @@ use crate::typ::NOTHING_TYPE_NAME;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Keyword;
 use crate::Operator;
-use common::span::*;
+use common::span::Span;
+use common::span::Spanned;
 use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
@@ -1506,7 +1508,7 @@ where
 }
 
 pub fn string_type(ctx: &mut Context) -> TypeResult<Type> {
-    let span = context::builtin_span();
+    let span = builtin_span();
     let ns = IdentPath::from(Ident::new("System", span.clone()));
     let str_class_name = ast::TypeName::Ident(IdentTypeName {
         ident: ns.child(Ident::new("String", span.clone())),

@@ -345,7 +345,7 @@ impl SetFlagsType {
                 let next_word_start = ir::Value::LiteralU8(((word + 1) * WORD_BITS) as u8);
 
                 builder.gte(skip_flag.clone(), bit_arg.clone(), next_word_start.clone());
-                builder.jmp_if(skip_label, skip_flag.clone());
+                builder.jmpif(skip_label, skip_flag.clone());
                 Some(skip_label)
             } else {
                 None

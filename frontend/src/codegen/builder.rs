@@ -22,6 +22,7 @@ use ir_lang::*;
 use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
+use crate::typ::seq::TypeSequenceSupport;
 
 #[derive(Debug)]
 pub struct Builder<'m> {
@@ -299,6 +300,10 @@ impl<'m> Builder<'m> {
     #[allow(unused)]
     pub fn get_iface(&self, id: InterfaceID) -> Option<&Interface> {
         self.library.metadata().get_iface_def(id)
+    }
+    
+    pub fn find_type_seq_support(&self, src_ty: &typ::Type) -> Option<TypeSequenceSupport> {
+        self.library.find_type_seq_support(src_ty)
     }
 
     pub fn finish(mut self) -> Vec<Instruction> {
@@ -887,7 +892,7 @@ impl<'m> Builder<'m> {
         self.append(Instruction::Jump { dest })
     }
 
-    pub fn jmp_if(&mut self, dest: Label, cond: impl Into<Value>) {
+    pub fn jmpif(&mut self, dest: Label, cond: impl Into<Value>) {
         self.append(Instruction::JumpIf {
             dest,
             test: cond.into(),
@@ -949,7 +954,7 @@ impl<'m> Builder<'m> {
         })
     }
 
-    pub fn variant_tag(&mut self, out: impl Into<Ref>, a: impl Into<Ref>, of_ty: Type) {
+    pub fn vartag(&mut self, out: impl Into<Ref>, a: impl Into<Ref>, of_ty: Type) {
         self.append(Instruction::VariantTag {
             out: out.into(),
             a: a.into(),
@@ -957,7 +962,7 @@ impl<'m> Builder<'m> {
         })
     }
 
-    pub fn variant_data(
+    pub fn vardata(
         &mut self,
         out: impl Into<Ref>,
         a: impl Into<Ref>,
@@ -1113,7 +1118,7 @@ impl<'m> Builder<'m> {
                 let is_not_case = self.local_temp(Type::Bool);
 
                 // get the tag
-                self.variant_tag(tag_ptr.clone(), at.clone(), Type::Variant(*id));
+                self.vartag(tag_ptr.clone(), at.clone(), Type::Variant(*id));
 
                 // jump out of the search loop if we find the matching case
                 let break_label = self.alloc_label();
@@ -1139,7 +1144,7 @@ impl<'m> Builder<'m> {
                         self.eq(is_not_case.clone(), tag_ptr.clone().to_deref(), tag_val);
                         self.not(is_not_case.clone(), is_not_case.clone());
 
-                        self.jmp_if(skip_case_label, is_not_case.clone());
+                        self.jmpif(skip_case_label, is_not_case.clone());
 
                         // get ptr into case data and visit it
 
@@ -1148,7 +1153,7 @@ impl<'m> Builder<'m> {
                         // incremented once per case
                         self.scope(|builder| {
                             let data_ptr = builder.local_temp(data_ty.clone().ptr());
-                            builder.variant_data(
+                            builder.vardata(
                                 data_ptr.clone(),
                                 at.clone(),
                                 Type::Variant(*id),

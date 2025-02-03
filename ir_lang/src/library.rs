@@ -222,6 +222,8 @@ impl fmt::Display for Library {
                 None => {
                     if let Some(debug_name) = func.debug_name() {
                         writeln!(f, " ({})", debug_name)?;
+                    } else {
+                        writeln!(f)?;
                     }
                 },
             }

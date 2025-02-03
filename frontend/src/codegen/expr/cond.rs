@@ -47,7 +47,7 @@ where
             }
         };
 
-        builder.jmp_if(then_label, pattern_match.is_match.clone());
+        builder.jmpif(then_label, pattern_match.is_match.clone());
 
         if let Some(else_label) = else_label {
             builder.jmp(else_label);
@@ -122,7 +122,7 @@ pub fn translate_match_expr(match_expr: &typ::ast::MatchExpr, builder: &mut Buil
 
                 // jump to skip label if pattern match return false
                 builder.not(is_skip.clone(), pattern_match.is_match.clone());
-                builder.jmp_if(skip_label, is_skip.clone());
+                builder.jmpif(skip_label, is_skip.clone());
 
                 builder.scope(|builder| {
                     // code to run if we didn't skip - the actual branch

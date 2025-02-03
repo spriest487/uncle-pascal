@@ -166,7 +166,7 @@ pub fn translate_bin_op(
 
             // if lhs is false, short circuit
             let is_short_circuit = builder.not_to_val(lhs_val.clone());
-            builder.jmp_if(short_circuit, is_short_circuit);
+            builder.jmpif(short_circuit, is_short_circuit);
 
             // eval both sides
             let rhs = expr::expr_to_val(&bin_op.rhs, builder);
@@ -185,7 +185,7 @@ pub fn translate_bin_op(
             let exit = builder.alloc_label();
             
             // if lhs is true, short circuit
-            builder.jmp_if(short_circuit, lhs_val.clone());
+            builder.jmpif(short_circuit, lhs_val.clone());
 
             // eval both sides
             let rhs = expr::expr_to_val(&bin_op.rhs, builder);
@@ -266,7 +266,7 @@ pub fn translate_bin_op(
             let lt_min = builder.lt_to_val(item.clone(), min_lit.clone());
             let gt_max = builder.gt_to_val(item.clone(), max_lit);
             let out_of_range = builder.or_to_value(lt_min, gt_max);
-            builder.jmp_if(fail_label, out_of_range.clone());
+            builder.jmpif(fail_label, out_of_range.clone());
 
             // calc bit number
             let bit_num = builder.sub_to_val(item, min_lit, &value_type);

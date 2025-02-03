@@ -48,6 +48,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use crate::typ::seq::TypeSequenceSupport;
 
 #[derive(Debug)]
 pub struct LibraryBuilder {
@@ -268,6 +269,10 @@ impl LibraryBuilder {
             .unwrap_or_else(|| panic!("method {} of type {} must exist", name, ty));
 
         index
+    }
+
+    pub fn find_type_seq_support(&self, src_ty: &typ::Type) -> Option<TypeSequenceSupport> {
+        TypeSequenceSupport::try_from_type(src_ty, &self.src_metadata).ok()
     }
     
     pub fn get_set_flags_type_info(&mut self, bits: usize) -> SetFlagsType {
@@ -1716,7 +1721,7 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
     let skip_copy_label = builder.alloc_label();
     builder.comment("skip copying from source if copy_from is null");
     let src_is_null = builder.eq_to_val(src_arr.clone(), ir::Value::LiteralNull);
-    builder.jmp_if(skip_copy_label, src_is_null);
+    builder.jmpif(skip_copy_label, src_is_null);
 
     builder.comment("copy_len := copy_from->length");
     let src_len = builder.local_temp(ir::Type::I32);
@@ -1736,7 +1741,7 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
         builder.lte(copy_count_ok.clone(), copy_count.clone(), len_arg);
 
         builder.comment("if not copy_count_ok then copy_count := len");
-        builder.jmp_if(copy_count_ok_label, copy_count_ok);
+        builder.jmpif(copy_count_ok_label, copy_count_ok);
         builder.mov(copy_count.clone(), len_arg);
         builder.label(copy_count_ok_label);
 
@@ -1749,7 +1754,7 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
         builder.comment("done := counter = copy_count");
         builder.comment("if done then break");
         builder.eq(done.clone(), counter.clone(), copy_count.clone());
-        builder.jmp_if(copy_break_label, done.clone());
+        builder.jmpif(copy_break_label, done.clone());
 
         builder.scope(|builder| {
             let copy_dst = builder.local_temp(el_ptr_ty.clone());
@@ -1786,7 +1791,7 @@ fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &ir::Type, struct_id
     builder.comment("done := counter = len");
     builder.comment("if done then break");
     builder.eq(done.clone(), counter.clone(), len_arg);
-    builder.jmp_if(init_break_label, done);
+    builder.jmpif(init_break_label, done);
 
     builder.scope(|builder| {
         builder.comment("data[counter] := default_val_ptr^");
@@ -1878,7 +1883,7 @@ fn gen_dyn_array_rc_boilerplate(lib: &mut LibraryBuilder, elem_ty: &ir::Type, st
 
     builder.comment("if not has_more then break");
     let at_end = builder.not_to_val(has_more);
-    builder.jmp_if(end_loop_label, at_end);
+    builder.jmpif(end_loop_label, at_end);
 
     builder.comment("release arr[counter]");
     builder.add(el_ptr.clone(), arr_field_ptr.clone().to_deref(), counter.clone());
@@ -1892,7 +1897,7 @@ fn gen_dyn_array_rc_boilerplate(lib: &mut LibraryBuilder, elem_ty: &ir::Type, st
 
     builder.comment("free the dynamic-allocated buffer - if len > 0");
     builder.eq(zero_elements.clone(), len_field_ptr.clone().to_deref(), ir::Value::LiteralI32(0));
-    builder.jmp_if(after_free, zero_elements);
+    builder.jmpif(after_free, zero_elements);
 
     builder.cast(arr_mem_ptr.clone(), arr_field_ptr.clone().to_deref(), ir::Type::U8.ptr());
     builder.free_mem(arr_mem_ptr);

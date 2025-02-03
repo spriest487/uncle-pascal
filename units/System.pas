@@ -38,8 +38,8 @@ type
     end;
 
     Option[T] = variant
+        None;     
         Some: T;
-        None;        
     public
         function Get: T;
         function IsSome: Boolean;

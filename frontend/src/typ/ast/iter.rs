@@ -1,8 +1,10 @@
-use crate::ast;
 use crate::ast::TypeAnnotation;
 use crate::typ::ast::typecheck_stmt;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::{is_builtin_string_name, typecheck_type, STRING_CHAR_TYPE};
+use crate::typ::is_system_string_name;
+use crate::typ::seq::TypeSequenceError;
+use crate::typ::seq::TypeSequenceSupport;
+use crate::typ::typecheck_type;
 use crate::typ::Binding;
 use crate::typ::Context;
 use crate::typ::Environment;
@@ -12,6 +14,8 @@ use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Value;
 use crate::typ::ValueKind;
+use crate::typ::STRING_CHAR_TYPE;
+use crate::ast;
 use common::span::Span;
 use common::span::Spanned;
 
@@ -106,7 +110,7 @@ pub fn typecheck_for_loop(
                 DEFAULT_COUNTER_TY
             };
 
-            let expect_ty = match &range.seq_expr {
+            let expect_ty = match &range.src_expr {
                 ast::Expr::CollectionCtor(ctor) => {
                     expect_element_ty.array(ctor.elements.len())
                 }
@@ -114,19 +118,56 @@ pub fn typecheck_for_loop(
                     expect_element_ty.dyn_array()
                 }
             };
-            
-            let seq_expr = typecheck_expr(&range.seq_expr, &expect_ty, ctx)?;
+
+            let seq_expr = typecheck_expr(&range.src_expr, &expect_ty, ctx)?;
+            let seq_span = seq_expr.span();
 
             // for now, the range must be an array or dynarray
             let binding_ty = match seq_expr.annotation().ty().as_ref() {
                 Type::Array(array_ty) => array_ty.element_ty.clone(),
                 Type::DynArray { element } => (**element).clone(),
-                Type::Class(sym) if is_builtin_string_name(sym) => Type::from(STRING_CHAR_TYPE),
-                other => {
-                    return Err(TypeError::InvalidLoopSeqType {
-                        seq_ty: other.clone(),
-                        span: seq_expr.span().clone(),
-                    })
+                Type::Class(sym) if is_system_string_name(sym) => Type::from(STRING_CHAR_TYPE),
+                
+                ty => {
+                    match TypeSequenceSupport::try_from_type(ty, ctx) {
+                        Err(TypeSequenceError::MethodNotFound) => {
+                            return Err(TypeError::InvalidLoopSeqType {
+                                seq_ty: ty.clone(),
+                                span: seq_expr.span().clone(),
+                            })
+                        }
+                        
+                        Err(TypeSequenceError::MethodNotAccessible(ty, ident, access)) => {
+                            return Err(TypeError::TypeMemberInaccessible {
+                                ty,
+                                member: ident,
+                                access,
+                                span: seq_expr.span().clone(),
+                            })
+                        }
+                        
+                        Err(TypeSequenceError::Error(err)) => {
+                            return Err(TypeError::from_name_err(err, seq_span.clone()));
+                        }
+
+                        Err(TypeSequenceError::AmbiguousSequenceMethod(candidates)) => {
+                            return Err(TypeError::AmbiguousFunction {
+                                candidates,
+                                span: seq_span.clone(),
+                            });
+                        }
+                        
+                        Err(TypeSequenceError::AmbiguousNextMethod(candidates)) => {
+                            return Err(TypeError::AmbiguousFunction {
+                                candidates,
+                                span: seq_span.clone(),
+                            });
+                        }
+
+                        Ok(seq_support) => {
+                            seq_support.item_type
+                        }
+                    }
                 }
             };
 
@@ -141,7 +182,7 @@ pub fn typecheck_for_loop(
             ast::ForLoopRange::InSequence(ast::ForLoopSequenceRange {
                 binding_ty,
                 binding_name: range.binding_name.clone(),
-                seq_expr,
+                src_expr: seq_expr,
             })
         }
     };

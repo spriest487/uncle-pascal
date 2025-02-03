@@ -13,7 +13,8 @@ use crate::codegen::translate_expr;
 use crate::codegen::translate_if_cond_stmt;
 use crate::codegen::typ;
 use crate::codegen::Builder;
-use crate::typ::is_builtin_string_name;
+use crate::typ::{is_system_string_name, OPTION_NONE_CASE, OPTION_SOME_CASE};
+use crate::typ::system_option_type_of;
 use common::span::Spanned;
 
 pub fn translate_stmt(stmt: &typ::ast::Stmt, builder: &mut Builder) {
@@ -193,7 +194,7 @@ where
         builder.gt(break_cond_val.clone(), counter_val.clone(), high_val);
 
         // jump to break label if loop_val
-        builder.jmp_if(break_label, break_cond_val);
+        builder.jmpif(break_label, break_cond_val);
 
         let body_instructions = builder.loop_body_scope(continue_label, break_label, body_fn);
 
@@ -219,7 +220,7 @@ fn build_for_loop_sequence(
     builder: &mut Builder
 ) {
     builder.scope(|builder| {
-        let seq_val = translate_expr(&range.seq_expr, builder);
+        let src_ref = translate_expr(&range.src_expr, builder);
 
         let binding_ty = builder.translate_type(&range.binding_ty);
         let binding_name = range.binding_name.to_string();
@@ -227,7 +228,7 @@ fn build_for_loop_sequence(
 
         let counter_ref = builder.local_temp(ir::Type::I32);
 
-        match &range.seq_expr.annotation().ty().as_ref() {
+        match &range.src_expr.annotation().ty().as_ref() {
             typ::Type::Array(array_ty) => {
                 let high_index = i32::try_from(array_ty.dim)
                     .expect("array dimension is out of range for i32");
@@ -248,20 +249,20 @@ fn build_for_loop_sequence(
                     body,
                     builder,
                     |builder| {
-                        builder.element_to_val(seq_val, counter_ref, element_ty).value()
+                        builder.element_to_val(src_ref, counter_ref, element_ty).value()
                     }
                 );
             },
             
             typ::Type::DynArray { element } => {
                 let element_ty = builder.translate_type(element);
-                let dynarray_ty = builder.translate_type(&range.seq_expr.annotation().ty());
+                let dynarray_ty = builder.translate_type(&range.src_expr.annotation().ty());
                 
                 // high := seq_val.length
                 let high_index_ref = builder.local_temp(ir::Type::I32);
                 builder.field_val(
                     high_index_ref.clone(),
-                    seq_val.clone(),
+                    src_ref.clone(),
                     dynarray_ty.clone(),
                     ir::DYNARRAY_LEN_FIELD,
                     ir::Type::I32
@@ -271,7 +272,7 @@ fn build_for_loop_sequence(
                 builder.sub(high_index_ref.clone(), high_index_ref.clone(), ir::Value::LiteralI32(1));
 
                 let array_ty = element_ty.clone().ptr();
-                let array_ptr = builder.field_to_val(seq_val, dynarray_ty, ir::DYNARRAY_PTR_FIELD, array_ty.clone());
+                let array_ptr = builder.field_to_val(src_ref, dynarray_ty, ir::DYNARRAY_PTR_FIELD, array_ty.clone());
 
                 build_array_sequence_loop(
                     counter_ref.clone(),
@@ -289,15 +290,15 @@ fn build_for_loop_sequence(
                 );
             },
 
-            typ::Type::Class(sym) if is_builtin_string_name(sym) => {
+            typ::Type::Class(sym) if is_system_string_name(sym) => {
                 let char_ty = builder.translate_type(&typ::Type::from(typ::STRING_CHAR_TYPE));
-                let string_ty = builder.translate_type(&range.seq_expr.annotation().ty());
+                let string_ty = builder.translate_type(&range.src_expr.annotation().ty());
 
                 // high := str.length
                 let high_index_ref = builder.local_temp(ir::Type::I32);
                 builder.field_val(
                     high_index_ref.clone(),
-                    seq_val.clone(),
+                    src_ref.clone(),
                     string_ty.clone(),
                     ir::STRING_LEN_FIELD,
                     ir::Type::I32
@@ -308,7 +309,7 @@ fn build_for_loop_sequence(
 
                 let chars_ty = char_ty.clone().ptr();
                 let chars_ptr = builder.local_temp(chars_ty.clone());
-                builder.field_val(chars_ptr.clone(), seq_val, string_ty, ir::STRING_CHARS_FIELD, chars_ty);
+                builder.field_val(chars_ptr.clone(), src_ref, string_ty, ir::STRING_CHARS_FIELD, chars_ty);
 
                 build_array_sequence_loop(
                     counter_ref.clone(),
@@ -326,8 +327,103 @@ fn build_for_loop_sequence(
                 );
             },
             
-            ty => {
-                unimplemented!("sequence type: {}", ty)
+            src_ty => {
+                // typechecker must have verified that this type is sequence compatible
+                let seq_support = builder
+                    .find_type_seq_support(src_ty)
+                    .unwrap_or_else(|| {
+                        panic!("type {} is not sequence compatible", src_ty);
+                    });
+
+                let seq_method = builder.translate_method(
+                    (**src_ty).clone(),
+                    seq_support.sequence_method_index,
+                    None
+                );
+
+                let next_method = builder.translate_method(
+                    seq_support.sequence_type.clone(),
+                    seq_support.item_next_method_index,
+                    None,
+                );
+
+                let src_ty = builder.translate_type(src_ty);
+
+                let seq_ty = builder.translate_type(&seq_support.sequence_type);
+                let seq_ref = builder.local_new(seq_ty.clone(), None);
+
+                // call Sequence with a pointer to the source if it's a value type
+                let src_self_arg_ref = if src_ty.is_rc() {
+                    src_ref.clone()
+                } else {
+                    let src_ref_ptr = builder.local_temp(src_ty.ptr());
+                    builder.addr_of(src_ref_ptr.clone(), src_ref);
+                    src_ref_ptr
+                };
+
+                // call Next with a pointer to the sequence if it's a value type
+                let seq_self_arg_ref = if seq_ty.is_rc() {
+                    seq_ref.clone()
+                } else {
+                    let seq_ref_ptr = builder.local_temp(seq_ty.ptr());
+                    builder.addr_of(seq_ref_ptr.clone(), seq_ref.clone());
+                    seq_ref_ptr
+                };
+                
+                let next_result_ty = system_option_type_of(seq_support.item_type.clone());
+                let item_option_ty = builder.translate_type(&typ::Type::variant(next_result_ty));
+                
+                // vardata gives us a pointer so we can't copy the value straight into the binding   
+                let item_option_data_ref = builder.local_temp(binding_ty.clone().ptr());
+
+                // seq_ref := src_ref.Sequence();
+                builder.call(seq_method.id, [src_self_arg_ref.value()], Some(seq_ref.clone()));
+                
+                // stores the option resulting from calling Next. don't need to RC this,
+                // it'll either return an item and be stored in the binding local and retained there,
+                // or return None and will never need retaining in that case
+                let next_item_option_ref = builder.local_temp(item_option_ty.clone());
+                let next_item_tag_ptr_ref = builder.local_temp(ir::Type::I32.ptr());
+                
+                let continue_label = builder.alloc_label();
+                let break_label = builder.alloc_label();
+                let top_label = builder.alloc_label();
+
+                let loop_instructions = builder.scope(|builder| {
+                    builder.label(top_label);
+
+                    // next item in the sequence
+                    // next_item_option_ref := sequence.Next();
+                    builder.call(next_method.id, [seq_self_arg_ref.value()], Some(next_item_option_ref.clone()));
+
+                    // if the case is None, break
+                    // next_item_tag_ref := next_item_option_ref.tag
+                    builder.vartag(next_item_tag_ptr_ref.clone(), next_item_option_ref.clone(), item_option_ty.clone());
+
+                    let is_end_val = builder.eq_to_val(next_item_tag_ptr_ref.to_deref(), ir::Value::LiteralI32(OPTION_NONE_CASE as i32));
+                    builder.jmpif(break_label, is_end_val);
+
+                    // binding_ref := next_item_option_ref.Get()
+                    builder.release(binding_ref.clone(), &binding_ty);
+                    builder.vardata(item_option_data_ref.clone(), next_item_option_ref, item_option_ty.clone(), OPTION_SOME_CASE);
+                    builder.mov(binding_ref.clone(), item_option_data_ref.to_deref());
+                    builder.retain(binding_ref.clone(), &binding_ty);
+
+                    let body_instructions = builder.loop_body_scope(continue_label, break_label, |builder| {
+                        translate_stmt(&body, builder);
+                    });
+
+                    if jmp_exists(body_instructions, continue_label) {
+                        builder.label(continue_label);
+                    }
+
+                    // return to top of loop
+                    builder.jmp(top_label);
+                });
+
+                if jmp_exists(&loop_instructions, break_label) {
+                    builder.label(break_label);
+                }
             }
         };
     });
@@ -354,7 +450,7 @@ fn build_array_sequence_loop<ElementFn>(
             let skip_release_label = builder.alloc_label();
             
             let first_iter = builder.eq_to_val(counter_ref.clone(), ir::Value::LiteralI32(0));
-            builder.jmp_if(skip_release_label, first_iter);
+            builder.jmpif(skip_release_label, first_iter);
             
             builder.release(binding_ref.clone(), &binding_ty);
             builder.label(skip_release_label);
@@ -386,7 +482,7 @@ pub fn translate_while_loop(while_loop: &typ::ast::WhileLoop, builder: &mut Buil
         });
 
         // break now if condition is false
-        builder.jmp_if(break_label, not_cond);
+        builder.jmpif(break_label, not_cond);
 
         // run loop body
         let body_instructions = builder.loop_body_scope(continue_label, break_label, |builder| {
@@ -504,7 +600,7 @@ pub fn build_case_block<Item, ItemFn>(
                     let branch_val = expr_to_val(case_expr, builder);
                     let matches_cond = builder.eq_to_val(branch_val, cond_expr_val.clone());
 
-                    builder.jmp_if(*branch_label, matches_cond);
+                    builder.jmpif(*branch_label, matches_cond);
                 }
             });
         }
@@ -564,7 +660,7 @@ fn translate_match_stmt(match_stmt: &typ::ast::MatchStmt, builder: &mut Builder)
 
                 // jump to skip label if pattern match return false
                 builder.not(is_skip.clone(), pattern_match.is_match.clone());
-                builder.jmp_if(skip_label, is_skip.clone());
+                builder.jmpif(skip_label, is_skip.clone());
 
                 // code to run if we didn't skip - the actual branch
                 builder.scope(|builder| {

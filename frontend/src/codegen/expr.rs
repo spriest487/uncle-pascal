@@ -402,7 +402,7 @@ fn gen_fill_byte(at: ir::Ref, at_ty: ir::Type, count: ir::Value, byte_val: ir::V
     builder.eq(at_end.clone(), dst_ptr.clone(), end_ptr);
     
     // if at_end then break
-    builder.jmp_if(break_label, at_end);
+    builder.jmpif(break_label, at_end);
     
     // else dst_ptr^ := byte_val
     builder.mov(dst_ptr.clone().to_deref(), byte_val.clone());

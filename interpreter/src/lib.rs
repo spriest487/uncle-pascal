@@ -1221,7 +1221,7 @@ impl Interpreter {
 
     fn exec_variant_tag(&mut self, out: &ir::Ref, a: &ir::Ref) -> ExecResult<()> {
         // the variant tag is actually just the first member of the variant, so we just need to
-        // output a pointer ot hte variant
+        // output a pointer to the variant
         let tag_ptr = self.addr_of_ref(a)?;
 
         self.store(out, DynValue::Pointer(tag_ptr))?;

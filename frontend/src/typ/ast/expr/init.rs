@@ -46,7 +46,7 @@ pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypeResult<()> {
                 }
 
                 ast::ForLoopRange::InSequence(range) => { 
-                    expect_expr_initialized(&range.seq_expr, ctx)?;
+                    expect_expr_initialized(&range.src_expr, ctx)?;
                 }
             }
 

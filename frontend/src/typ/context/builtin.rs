@@ -3,7 +3,7 @@ use crate::ast::FunctionDeclKind;
 use crate::ast::IdentPath;
 use crate::ast::Path;
 use crate::ast::Visibility;
-use crate::typ::ast;
+use crate::typ::{ast, TypeParam, TypeParamList};
 use crate::typ::ast::SELF_PARAM_NAME;
 use crate::typ::Context;
 use crate::typ::Environment;
@@ -13,7 +13,7 @@ use crate::typ::Primitive;
 use crate::typ::Symbol;
 use crate::typ::Type;
 use crate::typ::TypeResult;
-use crate::Ident;
+use crate::{typ, Ident};
 use crate::IntConstant;
 use common::span::*;
 use linked_hash_map::LinkedHashMap;
@@ -53,7 +53,12 @@ pub const DISPLAYABLE_TOSTRING_METHOD: &str = "ToString";
 pub const STRING_TYPE_NAME: &str = "String";
 // const STRING_CHARS_FIELD: &str = "chars";
 // const STRING_LEN_FIELD: &str = "len";
-pub static STRING_CHAR_TYPE: Primitive = Primitive::UInt8;
+pub const STRING_CHAR_TYPE: Primitive = Primitive::UInt8;
+
+pub const OPTION_TYPE_NAME: &str = "Option";
+pub const OPTION_TYPE_PARAM_NAME: &str = "T";
+pub const OPTION_NONE_CASE: usize = 0;
+pub const OPTION_SOME_CASE: usize = 1;
 
 pub const STRING_CONCAT_FUNC_NAME: &str = "StringConcat";
 
@@ -111,11 +116,41 @@ pub fn builtin_string_name() -> Symbol {
     }
 }
 
-pub fn is_builtin_string_name(sym: &Symbol) -> bool {
+pub fn is_system_string_name(sym: &Symbol) -> bool {
     sym.type_params.is_none()
         && sym.full_path.len() == 2
         && sym.full_path.as_slice()[0].name.as_str() == SYSTEM_UNIT_NAME
         && sym.full_path.as_slice()[1].name.as_str() == STRING_TYPE_NAME
+}
+
+pub fn system_option_type() -> Symbol {
+    let path = IdentPath::from_parts([
+        builtin_ident(SYSTEM_UNIT_NAME),
+        builtin_ident(OPTION_TYPE_NAME),
+    ]);
+
+    Symbol::from(path).with_ty_params(Some(TypeParamList::new(
+        [TypeParam::new(builtin_ident(OPTION_TYPE_PARAM_NAME))],
+        builtin_span(),
+    )))
+}
+
+pub fn system_option_type_of(item_type: Type) -> Symbol {
+    system_option_type().with_ty_args(Some(typ::TypeArgList::new(
+        [item_type], 
+        builtin_span(),
+    )))
+}
+
+pub fn is_system_option_name(sym: &Symbol) -> bool {
+    let Some(type_params) = sym.type_params.as_ref() else {
+        return false;
+    };
+    
+    type_params.len() == 1
+        && sym.full_path.len() == 2
+        && sym.full_path.as_slice()[0].name.as_str() == SYSTEM_UNIT_NAME
+        && sym.full_path.as_slice()[1].name.as_str() == OPTION_TYPE_NAME
 }
 
 pub fn builtin_methodinfo_name() -> Symbol {

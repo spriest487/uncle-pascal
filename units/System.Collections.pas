@@ -12,6 +12,13 @@ type
         function Next: Option[LinkedListNode[T]];
         function Value: T;
     end;
+    
+    LinkedListSequence[T] = record
+    private
+        next: Option[LinkedListNode[T]];    
+    public
+        function Next: Option[T];
+    end;
 
     LinkedList[T] = class
     private
@@ -32,7 +39,20 @@ type
     
         function Clear;
         
+        function Sequence: LinkedListSequence[T];
+
         constructor Create;
+    end;
+    
+    ArrayList[T] = class;
+    
+    ArrayListSequence[T] = record
+    private
+        list: ArrayList[T];
+        pos: Integer;
+    
+    public
+        function Next: Option[T];
     end;
 
     ArrayList[T] = class
@@ -53,6 +73,8 @@ type
         function Remove(n: Integer);
         
         function Clear;
+        
+        function Sequence: ArrayListSequence[T];
         
         constructor Create;
     end;
@@ -227,6 +249,27 @@ begin
     end;
 end;
 
+function LinkedList[T].Sequence: LinkedListSequence[T];
+begin
+    LinkedListSequence(next: self.head);
+end;
+
+function LinkedListSequence[T].Next: Option[T];
+begin
+    match self.next of
+        Option.Some nextNode:
+        begin
+            var nextVal := nextNode.val;
+            self.next := nextNode.next;
+            
+            Option.Some(nextVal);
+        end;
+        
+        else
+            Option.None;
+    end; 
+end;
+
 constructor ArrayList[T].Create;
 begin
     ArrayList(
@@ -323,6 +366,24 @@ unsafe begin
     end;
 
     self.len := 0;
+end;
+
+function ArrayList[T].Sequence: ArrayListSequence[T];
+begin
+    ArrayListSequence(list: self; pos: 0)
+end;
+
+function ArrayListSequence[T].Next: Option[T];
+begin
+    if self.pos >= self.list.Length then
+    begin
+        exit Option.None;
+    end;
+
+    var next := self.list.Get(self.pos);
+    self.pos += 1;
+    
+    Option.Some(next)
 end;
 
 end

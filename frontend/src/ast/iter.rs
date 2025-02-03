@@ -58,7 +58,7 @@ pub struct ForLoopSequenceRange<A: Annotation = Span> {
     pub binding_name: Ident,
     pub binding_ty: A::Type,
     
-    pub seq_expr: Expr<A>,
+    pub src_expr: Expr<A>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -88,7 +88,7 @@ impl<A: Annotation> fmt::Display for ForLoop<A> {
                 write!(f, " {} to {}", init, to_expr)?;
             }
 
-            ForLoopRange::InSequence(ForLoopSequenceRange { binding_name, binding_ty, seq_expr }) => {
+            ForLoopRange::InSequence(ForLoopSequenceRange { binding_name, binding_ty, src_expr: seq_expr }) => {
                 write!(f, " {}", binding_name)?;
                 if binding_ty.is_known() {
                     write!(f, ": {}", binding_ty)?;
@@ -125,7 +125,7 @@ impl ForLoop<Span> {
                     ForLoopRange::InSequence(ForLoopSequenceRange {
                         binding_name,
                         binding_ty,
-                        seq_expr,
+                        src_expr: seq_expr,
                     })
                 } else {
                     // assignment to initialize counter

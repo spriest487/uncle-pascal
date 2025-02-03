@@ -31,7 +31,7 @@ initialization
     PrintIntegers(ints);
     
     ints.Remove(1);
-    
+
     PrintIntegers(ints);
 
     var words: ArrayList[WordObject] := ArrayList.Create();
@@ -44,4 +44,11 @@ initialization
     words.Add(WordObject(word: 'Alice'));
     
     PrintObjects(words);
+    
+    WriteLn('Enumerating words sequence:');
+    
+    for var wordObj in words do
+    begin
+        WriteLn(wordObj.word);
+    end;
 end.
