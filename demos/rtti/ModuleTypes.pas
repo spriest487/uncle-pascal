@@ -14,11 +14,9 @@ initialization
     var xs: array of Integer := [2];
     xs[0] := 1;
 
-    var allTypes := TypeInfo.LoadedTypes;
-
-    for var i := 0 to allTypes.Length - 1 do 
+    for var ty in TypeInfo.LoadedTypes do 
     begin
-        WriteLn('loaded type: ' + allTypes[i].Name);
+        WriteLn('loaded type: ' + ty.Name);
     end;
 
     var aType := TypeInfo.Find('ModuleTypes.A');

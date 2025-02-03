@@ -18,9 +18,8 @@ initialization
     
     QuickSort(foods);
     
-    for var i := 0 to Length(foods) - 1 do begin
-        WriteLn(foods[i].ToString());
-    end;
+    for var food in foods do
+        WriteLn(food);
     
     var numbers: array of Integer := [
         5,
@@ -34,7 +33,6 @@ initialization
     
     QuickSort(numbers);
     
-    for var i := 0 to Length(numbers) - 1 do begin
-        WriteLn(numbers[i].ToString());
-    end;
+    for var num in numbers do
+        WriteLn(num.ToString);
 end
