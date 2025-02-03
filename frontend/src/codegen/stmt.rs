@@ -13,8 +13,9 @@ use crate::codegen::translate_expr;
 use crate::codegen::translate_if_cond_stmt;
 use crate::codegen::typ;
 use crate::codegen::Builder;
-use crate::typ::{is_system_string_name, OPTION_NONE_CASE, OPTION_SOME_CASE};
 use crate::typ::system_option_type_of;
+use crate::typ::OPTION_NONE_CASE;
+use crate::typ::OPTION_SOME_CASE;
 use common::span::Spanned;
 
 pub fn translate_stmt(stmt: &typ::ast::Stmt, builder: &mut Builder) {
@@ -289,43 +290,6 @@ fn build_for_loop_sequence(
                     }
                 );
             },
-
-            typ::Type::Class(sym) if is_system_string_name(sym) => {
-                let char_ty = builder.translate_type(&typ::Type::from(typ::STRING_CHAR_TYPE));
-                let string_ty = builder.translate_type(&range.src_expr.annotation().ty());
-
-                // high := str.length
-                let high_index_ref = builder.local_temp(ir::Type::I32);
-                builder.field_val(
-                    high_index_ref.clone(),
-                    src_ref.clone(),
-                    string_ty.clone(),
-                    ir::STRING_LEN_FIELD,
-                    ir::Type::I32
-                );
-
-                // high -= 1;
-                builder.sub(high_index_ref.clone(), high_index_ref.clone(), ir::Value::LiteralI32(1));
-
-                let chars_ty = char_ty.clone().ptr();
-                let chars_ptr = builder.local_temp(chars_ty.clone());
-                builder.field_val(chars_ptr.clone(), src_ref, string_ty, ir::STRING_CHARS_FIELD, chars_ty);
-
-                build_array_sequence_loop(
-                    counter_ref.clone(),
-                    high_index_ref,
-                    binding_ref,
-                    binding_ty,
-                    body,
-                    builder,
-                    |builder| {
-                        let char_ptr = builder.local_temp(char_ty.clone().ptr());
-                        builder.add(char_ptr.clone(), chars_ptr, counter_ref.clone());
-
-                        char_ptr.to_deref().value()
-                    }
-                );
-            },
             
             src_ty => {
                 // typechecker must have verified that this type is sequence compatible
@@ -378,7 +342,7 @@ fn build_for_loop_sequence(
 
                 // seq_ref := src_ref.Sequence();
                 builder.call(seq_method.id, [src_self_arg_ref.value()], Some(seq_ref.clone()));
-                
+
                 // stores the option resulting from calling Next. don't need to RC this,
                 // it'll either return an item and be stored in the binding local and retained there,
                 // or return None and will never need retaining in that case

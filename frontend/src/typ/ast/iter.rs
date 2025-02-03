@@ -1,7 +1,6 @@
 use crate::ast::TypeAnnotation;
 use crate::typ::ast::typecheck_stmt;
 use crate::typ::ast::typecheck_expr;
-use crate::typ::is_system_string_name;
 use crate::typ::seq::TypeSequenceError;
 use crate::typ::seq::TypeSequenceSupport;
 use crate::typ::typecheck_type;
@@ -126,7 +125,6 @@ pub fn typecheck_for_loop(
             let binding_ty = match seq_expr.annotation().ty().as_ref() {
                 Type::Array(array_ty) => array_ty.element_ty.clone(),
                 Type::DynArray { element } => (**element).clone(),
-                Type::Class(sym) if is_system_string_name(sym) => Type::from(STRING_CHAR_TYPE),
                 
                 ty => {
                     match TypeSequenceSupport::try_from_type(ty, ctx) {

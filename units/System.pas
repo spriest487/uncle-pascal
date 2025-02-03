@@ -12,24 +12,8 @@ type
     Cardinal = UInt32;
     
     Single = Real32;
-
-    String = class of Displayable, Comparable
-        chars: ^Byte;
-        len: Int32;
-
-    public
-        function Length: Integer;
-        
-        function Compare(other: String): Integer;
-        function ToString: String;
-        
-        function SubString(at, len: Integer): String;
-        function CharAt(at: Integer): Byte;
-        function Concat(other: String): String;
-        function Trim: String;
-        
-        function ToBytes(bytes: ^Byte; bytesLen: Integer);
-    end;
+    
+    String = class;
 
     Box[T] = class
         value: T;
@@ -57,6 +41,34 @@ type
         function IsError: Boolean;
 
         function Then[TNext](f: function(T): Result[TNext, E]): Result[TNext, E];
+    end;
+    
+    CharSequence = record
+    private
+        string: String;
+        pos: Integer;
+    public
+        function Next: Option[Byte];        
+    end;
+
+    String = class of Displayable, Comparable
+        chars: ^Byte;
+        len: Int32;
+
+    public
+        function Length: Integer;
+        
+        function Compare(other: String): Integer;
+        function ToString: String;
+        
+        function SubString(at, len: Integer): String;
+        function CharAt(at: Integer): Byte;
+        function Concat(other: String): String;
+        function Trim: String;
+        
+        function ToBytes(bytes: ^Byte; bytesLen: Integer);
+        
+        function Sequence: CharSequence;
     end;
 
     Comparable = interface
@@ -416,6 +428,22 @@ begin
 
     var len := (endAt + 1) - startAt;
     self.SubString(startAt, len)
+end;
+
+function String.Sequence: CharSequence;
+begin
+    CharSequence(string: self; pos: 0);
+end;
+
+function CharSequence.Next: Option[Byte];
+begin
+    if self.pos >= self.string.Length then
+        exit Option.None;
+        
+    var next := self.string.CharAt(self.pos);
+    self.pos += 1;
+
+    Option.Some(next);
 end;
 
 function Length[T](arr: array of T): Integer;
