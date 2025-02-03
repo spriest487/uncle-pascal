@@ -1,7 +1,6 @@
 # critical
 * project files/don't auto load used units
-* add Object.TypeInfo method
-* foreach
+* `var x: LinkedList[Integer] := LinkedList.Create;` <- this should be simpler 
 
 # features
 * generic interfaces 
