@@ -347,6 +347,10 @@ pub enum TypeError {
         counter_ty: Type,
         span: Span,
     },
+    InvalidLoopSeqType {
+        seq_ty: Type,
+        span: Span,
+    },
 
     InvalidDeclWithTypeParams {
         span: Span,
@@ -470,6 +474,7 @@ impl Spanned for TypeError {
             TypeError::InvalidExitWithValue { span, .. } => span,
             TypeError::ConstDeclWithNoValue { span, .. } => span,
             TypeError::InvalidLoopCounterType { span, .. } => span,
+            TypeError::InvalidLoopSeqType { span, .. } => span,
             TypeError::InvalidDeclWithTypeParams { span, .. } => span,
             TypeError::EnumValuesMustBeAscending { span, .. } => span,
         }
@@ -629,6 +634,7 @@ impl DiagnosticOutput for TypeError {
             TypeError::InvalidExitWithValue { .. } => "Invalid exit with value",
             TypeError::ConstDeclWithNoValue { .. } => "Constant declaration without a value",
             TypeError::InvalidLoopCounterType { .. } => "Invalid loop counter type",
+            TypeError::InvalidLoopSeqType { .. } => "Invalid loop sequence type",
             TypeError::InvalidDeclWithTypeParams { .. } => "Invalid type declared with type params",
             TypeError::EnumValuesMustBeAscending { .. } => "Enumeration values must be ascending",
         })
@@ -1241,6 +1247,10 @@ impl fmt::Display for TypeError {
 
             TypeError::InvalidLoopCounterType { counter_ty, .. } => {
                 write!(f, "type `{}` cannot be used as a loop counter", counter_ty)
+            }
+
+            TypeError::InvalidLoopSeqType { seq_ty, .. } => {
+                write!(f, "type `{}` cannot be used as a sequence", seq_ty)
             }
 
             TypeError::InvalidDeclWithTypeParams { kind, .. } => {

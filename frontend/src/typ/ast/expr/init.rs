@@ -32,17 +32,24 @@ pub fn expect_stmt_initialized(stmt: &Stmt, ctx: &Context) -> TypeResult<()> {
 
         ast::Stmt::LocalBinding(binding) => expect_binding_initialized(binding, ctx),
 
-        ast::Stmt::ForLoop(for_loop) => {
-            match &for_loop.init {
-                ast::ForLoopInit::Binding(init_binding) => {
-                    expect_binding_initialized(init_binding, ctx)?
-                },
-                ast::ForLoopInit::Assignment { counter: _, value } => {
-                    // only the initial value needs to be initialized - we (re)initialize the counter in the loop
-                    expect_expr_initialized(value, ctx)?;
-                },
+        ast::Stmt::ForLoop(for_loop) => {            
+            match &for_loop.range {
+                ast::ForLoopRange::UpTo(range) => { 
+                    match &range.init {
+                        ast::ForLoopCounterInit::Binding { init, .. } => {
+                            expect_expr_initialized(init, ctx)?;
+                        },
+                        ast::ForLoopCounterInit::Assignment { value, .. } => {
+                            expect_expr_initialized(value, ctx)?;
+                        },
+                    }
+                }
+
+                ast::ForLoopRange::InSequence(range) => { 
+                    expect_expr_initialized(&range.seq_expr, ctx)?;
+                }
             }
-            expect_expr_initialized(&for_loop.to_expr, ctx)?;
+
             expect_stmt_initialized(&for_loop.body, ctx)?;
             Ok(())
         },

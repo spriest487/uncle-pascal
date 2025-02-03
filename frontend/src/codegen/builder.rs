@@ -683,6 +683,19 @@ impl<'m> Builder<'m> {
 
         self.mov(out, field_ptr.to_deref());
     }
+    
+    pub fn field_to_val(
+        &mut self,
+        base: impl Into<Ref>,
+        base_ty: impl Into<Type>,
+        field: FieldID,
+        field_ty: Type
+    ) -> Ref {
+        let result = self.local_temp(field_ty.clone());
+        self.field_val(result.clone(), base, base_ty, field, field_ty);
+        
+        result
+    }
 
     pub fn assign_field(
         &mut self,
@@ -696,6 +709,49 @@ impl<'m> Builder<'m> {
         self.field(field_ptr.clone(), base, base_ty, field);
 
         self.mov(field_ptr.to_deref(), val);
+    }
+    
+    pub fn element(
+        &mut self,
+        out: impl Into<Ref>,
+        a: impl Into<Ref>,
+        index: impl Into<Value>,
+        element_ty: impl Into<Type>,
+    ) {
+        self.append(Instruction::Element {
+            element: element_ty.into(),
+            out: out.into(),
+            a: a.into(),
+            index: index.into(),
+        });
+    }
+
+    pub fn element_val(
+        &mut self,
+        out: impl Into<Ref>,
+        a: impl Into<Ref>,
+        index: impl Into<Value>,
+        element_ty: impl Into<Type>,
+    ) {
+        let element_ty = element_ty.into();
+        let element_ptr = self.local_temp(element_ty.clone().ptr());
+
+        self.element(element_ptr.clone(), a, index, element_ty);
+        self.mov(out, element_ptr.to_deref());
+    }
+    
+    #[allow(unused)]
+    pub fn element_to_val(
+        &mut self,
+        a: impl Into<Ref>,
+        index: impl Into<Value>,
+        element_ty: impl Into<Type>,
+    ) -> Ref {
+        let element_ty = element_ty.into();
+        let result = self.local_temp(element_ty.clone());
+        self.element_val(result.clone(), a, index, element_ty);
+
+        result
     }
     
     pub fn set_include(&mut self, set_ref: impl Into<Ref>, bit_val: impl Into<Value>, set_type: &typ::SetType) {

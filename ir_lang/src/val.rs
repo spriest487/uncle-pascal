@@ -23,6 +23,10 @@ impl Ref {
     pub fn to_deref(self) -> Self {
         Ref::Deref(Box::new(Value::Ref(self)))
     }
+    
+    pub fn value(self) -> Value {
+        Value::Ref(self)
+    }
 }
 
 impl From<GlobalRef> for Ref {

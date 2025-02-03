@@ -1,7 +1,9 @@
 use crate::ast;
-use crate::typ::ast::typecheck_expr;
-use crate::typ::ast::typecheck_local_binding;
+use crate::ast::TypeAnnotation;
 use crate::typ::ast::typecheck_stmt;
+use crate::typ::ast::typecheck_expr;
+use crate::typ::{is_builtin_string_name, typecheck_type, STRING_CHAR_TYPE};
+use crate::typ::Binding;
 use crate::typ::Context;
 use crate::typ::Environment;
 use crate::typ::Primitive;
@@ -9,11 +11,14 @@ use crate::typ::Type;
 use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Value;
+use crate::typ::ValueKind;
 use common::span::Span;
 use common::span::Spanned;
 
 pub type ForLoop = ast::ForLoop<Value>;
 pub type WhileLoop = ast::WhileLoop<Value>;
+
+const DEFAULT_COUNTER_TY: Type = Type::Primitive(Primitive::Int32);
 
 pub fn typecheck_for_loop(
     for_loop: &ast::ForLoop<Span>,
@@ -24,48 +29,122 @@ pub fn typecheck_for_loop(
     let inner_scope = ctx.push_scope(Environment::Block {
         allow_unsafe: false,
     });
+    
+    let range = match &for_loop.range {
+        ast::ForLoopRange::UpTo(range) => {
+            let (init, counter_ty) = match &range.init {
+                ast::ForLoopCounterInit::Binding { name, init, ty } => {
+                    let expect_counter_ty = if ty.is_known() {
+                        typecheck_type(ty, ctx)?
+                    } else {
+                        Type::from(DEFAULT_COUNTER_TY)
+                    };
+                    
+                    let init_expr = typecheck_expr(init, &expect_counter_ty, ctx)?;
+                    let counter_ty = init_expr.annotation().ty().into_owned();
 
-    let (init, counter_ty) = match &for_loop.init {
-        ast::ForLoopInit::Binding(init_binding) => {
-            let init_binding = typecheck_local_binding(init_binding, ctx)?;
-            let counter_ty = init_binding.ty.clone();
+                    let binding = Binding {
+                        kind: ValueKind::Mutable,
+                        ty: counter_ty.clone(),
+                        def: Some(name.clone()),
+                    };
+                    
+                    ctx.declare_local_var(name.clone(), binding)?;
+                    
+                    let init = ast::ForLoopCounterInit::Binding {
+                        ty: counter_ty.clone(),
+                        init: init_expr,
+                        name: name.clone(),
+                    };
 
-            let init = ast::ForLoopInit::Binding(Box::new(init_binding));
-            (init, counter_ty)
-        },
+                    (init, counter_ty)
+                },
 
-        ast::ForLoopInit::Assignment { counter, value } => {
-            let counter = typecheck_expr(counter, &Primitive::Int32.into(), ctx)?;
-            if let ast::Expr::Ident(ident, ..) = &counter {
-                if ctx.get_decl_scope(ident).is_some() {
-                    ctx.initialize(ident)
-                }
-            }
+                ast::ForLoopCounterInit::Assignment { counter, value } => {
+                    let counter = typecheck_expr(counter, &DEFAULT_COUNTER_TY, ctx)?;
+                    if let ast::Expr::Ident(ident, ..) = &counter {
+                        if ctx.get_decl_scope(ident).is_some() {
+                            ctx.initialize(ident)
+                        }
+                    }
 
-            let counter_ty = counter.annotation().ty().into_owned();
-            let value = typecheck_expr(value, &counter_ty, ctx)?;
-            let init = ast::ForLoopInit::Assignment {
-                counter: Box::new(counter),
-                value: Box::new(value),
+                    let counter_ty = counter.annotation().ty().into_owned();
+                    let value = typecheck_expr(value, &counter_ty, ctx)?;
+                    let init = ast::ForLoopCounterInit::Assignment {
+                        counter: Box::new(counter),
+                        value: Box::new(value),
+                    };
+
+                    (init, counter_ty)
+                },
             };
 
-            (init, counter_ty)
-        },
+            if !counter_ty
+                .as_primitive()
+                .map(|p| p.is_integer())
+                .unwrap_or(false)
+            {
+                return Err(TypeError::InvalidLoopCounterType {
+                    counter_ty,
+                    span: annotation.span().clone(),
+                });
+            }
+
+            let to_expr = typecheck_expr(&range.to_expr, &counter_ty, ctx)?;
+            to_expr.annotation().expect_value(&counter_ty)?;
+            
+            ast::ForLoopRange::UpTo(ast::ForLoopCounterRange {
+                init,
+                to_expr,
+            })
+        }
+
+        ast::ForLoopRange::InSequence(range) => {
+            let expect_element_ty = if range.binding_ty.is_known() {
+                typecheck_type(&range.binding_ty, ctx)?
+            } else {
+                DEFAULT_COUNTER_TY
+            };
+
+            let expect_ty = match &range.seq_expr {
+                ast::Expr::CollectionCtor(ctor) => {
+                    expect_element_ty.array(ctor.elements.len())
+                }
+                _ => {
+                    expect_element_ty.dyn_array()
+                }
+            };
+            
+            let seq_expr = typecheck_expr(&range.seq_expr, &expect_ty, ctx)?;
+
+            // for now, the range must be an array or dynarray
+            let binding_ty = match seq_expr.annotation().ty().as_ref() {
+                Type::Array(array_ty) => array_ty.element_ty.clone(),
+                Type::DynArray { element } => (**element).clone(),
+                Type::Class(sym) if is_builtin_string_name(sym) => Type::from(STRING_CHAR_TYPE),
+                other => {
+                    return Err(TypeError::InvalidLoopSeqType {
+                        seq_ty: other.clone(),
+                        span: seq_expr.span().clone(),
+                    })
+                }
+            };
+
+            let binding = Binding {
+                kind: ValueKind::Immutable,
+                ty: binding_ty.clone(),
+                def: Some(range.binding_name.clone()),
+            };
+
+            ctx.declare_local_var(range.binding_name.clone(), binding)?;
+            
+            ast::ForLoopRange::InSequence(ast::ForLoopSequenceRange {
+                binding_ty,
+                binding_name: range.binding_name.clone(),
+                seq_expr,
+            })
+        }
     };
-
-    if !counter_ty
-        .as_primitive()
-        .map(|p| p.is_integer())
-        .unwrap_or(false)
-    {
-        return Err(TypeError::InvalidLoopCounterType {
-            counter_ty,
-            span: annotation.span().clone(),
-        });
-    }
-
-    let to_expr = typecheck_expr(&for_loop.to_expr, &counter_ty, ctx)?;
-    to_expr.annotation().expect_value(&counter_ty)?;
 
     // loops bodies never have values
     let body_expect_ty = Type::Nothing;
@@ -77,8 +156,7 @@ pub fn typecheck_for_loop(
     ctx.pop_scope(inner_scope);
 
     Ok(ForLoop {
-        init,
-        to_expr,
+        range,
         body,
         annotation,
     })

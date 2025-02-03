@@ -111,6 +111,13 @@ pub fn builtin_string_name() -> Symbol {
     }
 }
 
+pub fn is_builtin_string_name(sym: &Symbol) -> bool {
+    sym.type_params.is_none()
+        && sym.full_path.len() == 2
+        && sym.full_path.as_slice()[0].name.as_str() == SYSTEM_UNIT_NAME
+        && sym.full_path.as_slice()[1].name.as_str() == STRING_TYPE_NAME
+}
+
 pub fn builtin_methodinfo_name() -> Symbol {
     Symbol::from(IdentPath::from_vec(vec![
         builtin_ident(SYSTEM_UNIT_NAME),

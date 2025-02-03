@@ -332,9 +332,9 @@ function StringFromBytes(bytes: ^Byte; len: Integer): String;
 begin
     if len = 0 then exit '';
 
-    var strBytes: ^Byte := GetMem(len);
+    var strBytes := GetMem(len);
 
-    for var i: Integer := 0 to len - 1 do
+    for var i := 0 to len - 1 do
     begin
         strBytes[i] := bytes[i];
     end;

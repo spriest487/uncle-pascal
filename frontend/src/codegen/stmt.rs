@@ -1,3 +1,5 @@
+use crate::ast;
+use crate::ast::ForLoopRange;
 use crate::codegen::builder::jmp_exists;
 use crate::codegen::expr::call;
 use crate::codegen::expr::expr_to_val;
@@ -11,8 +13,8 @@ use crate::codegen::translate_expr;
 use crate::codegen::translate_if_cond_stmt;
 use crate::codegen::typ;
 use crate::codegen::Builder;
+use crate::typ::is_builtin_string_name;
 use common::span::Spanned;
-use std::borrow::Cow;
 
 pub fn translate_stmt(stmt: &typ::ast::Stmt, builder: &mut Builder) {
     builder.push_debug_context(stmt.annotation().span().clone());
@@ -99,40 +101,45 @@ fn build_binding(binding: &typ::ast::VarBinding, builder: &mut Builder) {
 }
 
 pub fn build_for_loop(for_loop: &typ::ast::ForLoop, builder: &mut Builder) {
-    let top_label = builder.alloc_label();
-    let continue_label = builder.alloc_label();
-    let break_label = builder.alloc_label();
+    match &for_loop.range {
+        ForLoopRange::UpTo(range) => {
+            build_for_loop_up_to(range, &for_loop.body, builder);
+        }
 
-    let counter_ty = match &for_loop.init {
-        syn::ForLoopInit::Assignment { counter, .. } => counter.annotation().ty(),
-        syn::ForLoopInit::Binding(binding) => Cow::Borrowed(&binding.ty),
-    };
+        ForLoopRange::InSequence(range) => {
+            build_for_loop_sequence(range, &for_loop.body, builder);
+        }
+    }
+}
 
-    let loop_instructions = builder.scope(|builder| {
-        // counter
-        let counter_ty = builder.translate_type(&counter_ty);
+fn build_for_loop_up_to(
+    range: &ast::ForLoopCounterRange<typ::Value>,
+    body: &typ::ast::Stmt,
+    builder: &mut Builder,
+) {
+    builder.scope(|builder| {
+        let (counter_val, counter_init_val, counter_ty) = match &range.init {
+            syn::ForLoopCounterInit::Assignment { counter, value } => {
+                let counter_ty = builder.translate_type(counter.annotation().ty().as_ref());
 
-        let (counter_val, counter_init_val) = match &for_loop.init {
-            syn::ForLoopInit::Assignment { counter, value } => {
                 let counter_ref = translate_expr(counter, builder);
                 let init_val = expr_to_val(&value, builder);
 
-                (counter_ref, init_val)
+                (counter_ref, init_val, counter_ty)
             }
 
-            syn::ForLoopInit::Binding(counter_binding) => {
-                let counter_init_val = counter_binding
-                    .val
-                    .as_ref()
-                    .expect("for loop counter binding must have an init expr");
+            syn::ForLoopCounterInit::Binding { name, init, ty } => {
+                let counter_binding_name = name.to_string();
+                let counter_ty = builder.translate_type(&ty);
 
-                let counter_binding_name = counter_binding.name.to_string();
                 let counter_val = builder.local_new(counter_ty.clone(), Some(counter_binding_name));
-                let init_val = expr_to_val(&counter_init_val, builder);
+                let init_val = expr_to_val(&init, builder);
 
-                (counter_val, init_val)
+                (counter_val, init_val, counter_ty)
             }
         };
+
+        let to_val = expr_to_val(&range.to_expr, builder);
 
         let inc_val = match counter_ty {
             ir::Type::I8 => ir::Value::LiteralI8(1),
@@ -148,23 +155,47 @@ pub fn build_for_loop(for_loop: &typ::ast::ForLoop, builder: &mut Builder) {
             _ => ir::Value::LiteralI32(1),
         };
 
+        build_for_loop_with_counter(
+            counter_val,
+            counter_init_val,
+            inc_val,
+            to_val,
+            builder,
+            |builder| translate_stmt(body, builder),
+        );
+    });
+}
+
+fn build_for_loop_with_counter<BodyFn>(
+    counter_val: ir::Ref,
+    counter_init_val: ir::Value,
+    inc_val: ir::Value,
+    high_val: ir::Value,
+    builder: &mut Builder,
+    body_fn: BodyFn,
+) 
+where
+    BodyFn: FnOnce(&mut Builder)
+{
+    let top_label = builder.alloc_label();
+    let continue_label = builder.alloc_label();
+    let break_label = builder.alloc_label();
+    
+    let loop_instructions = builder.scope(|builder| {
         // temp value to store the result of evaluating the break condition
         let break_cond_val = builder.local_temp(ir::Type::Bool);
-        let to_val = expr_to_val(&for_loop.to_expr, builder);
 
         builder.mov(counter_val.clone(), counter_init_val);
 
         builder.label(top_label);
 
-        // break check: break_cond_val := counter_val > to_val
-        builder.gt(break_cond_val.clone(), counter_val.clone(), to_val);
+        // break check: break_cond_val := counter_val > high_val
+        builder.gt(break_cond_val.clone(), counter_val.clone(), high_val);
 
         // jump to break label if loop_val
         builder.jmp_if(break_label, break_cond_val);
 
-        let body_instructions = builder.loop_body_scope(continue_label, break_label, |builder| {
-            translate_stmt(&for_loop.body, builder);
-        });
+        let body_instructions = builder.loop_body_scope(continue_label, break_label, body_fn);
 
         if jmp_exists(body_instructions, continue_label) {
             builder.label(continue_label);
@@ -180,6 +211,130 @@ pub fn build_for_loop(for_loop: &typ::ast::ForLoop, builder: &mut Builder) {
     if jmp_exists(&loop_instructions, break_label) {
         builder.label(break_label);
     }
+}
+
+fn build_for_loop_sequence(
+    range: &ast::ForLoopSequenceRange<typ::Value>,
+    body: &typ::ast::Stmt,
+    builder: &mut Builder
+) {
+    builder.scope(|builder| {
+        let seq_val = translate_expr(&range.seq_expr, builder);
+
+        let binding_ty = builder.translate_type(&range.binding_ty);
+        let binding_name = range.binding_name.to_string();
+        let binding_ref = builder.local_new(binding_ty.clone(), Some(binding_name));
+
+        let counter_ref = builder.local_temp(ir::Type::I32);
+
+        match &range.seq_expr.annotation().ty().as_ref() {
+            typ::Type::Array(array_ty) => {
+                let high_index = i32::try_from(array_ty.dim)
+                    .expect("array dimension is out of range for i32");
+
+                if high_index == 0 {
+                    return
+                }
+                
+                let high_val = ir::Value::LiteralI32(high_index - 1);
+
+                let element_ty = builder.translate_type(&array_ty.element_ty);
+
+                build_for_loop_with_counter(
+                    counter_ref.clone(),
+                    ir::Value::LiteralI32(0),
+                    ir::Value::LiteralI32(1),
+                    high_val,
+                    builder,
+                    |builder| {
+                        let element_val = builder.local_temp(element_ty.clone());
+
+                        builder.element_val(element_val.clone(), seq_val, counter_ref, element_ty);
+                        builder.cast(binding_ref, element_val, binding_ty);
+
+                        translate_stmt(body, builder);
+                    }
+                );
+            },
+            
+            typ::Type::DynArray { element } => {
+                let element_ty = builder.translate_type(element);
+                let dynarray_ty = builder.translate_type(&range.seq_expr.annotation().ty());
+                
+                // high := seq_val.length
+                let high_index_ref = builder.local_temp(ir::Type::I32);
+                builder.field_val(
+                    high_index_ref.clone(),
+                    seq_val.clone(),
+                    dynarray_ty.clone(),
+                    ir::DYNARRAY_LEN_FIELD,
+                    ir::Type::I32
+                );
+                
+                // high -= 1;
+                builder.sub(high_index_ref.clone(), high_index_ref.clone(), ir::Value::LiteralI32(1));
+
+                let array_ty = element_ty.clone().ptr();
+                let array_ptr = builder.field_to_val(seq_val, dynarray_ty, ir::DYNARRAY_PTR_FIELD, array_ty);
+
+                build_for_loop_with_counter(
+                    counter_ref.clone(),
+                    ir::Value::LiteralI32(0),
+                    ir::Value::LiteralI32(1),
+                    high_index_ref.value(),
+                    builder,
+                    |builder| {
+                        let element_ptr = builder.local_temp(element_ty.clone().ptr());
+                        builder.add(element_ptr.clone(), array_ptr, counter_ref.clone());
+                        builder.cast(binding_ref, element_ptr.to_deref(), binding_ty);
+
+                        translate_stmt(body, builder);
+                    }
+                );
+            },
+
+            typ::Type::Class(sym) if is_builtin_string_name(sym) => {
+                let char_ty = builder.translate_type(&typ::Type::from(typ::STRING_CHAR_TYPE));
+                let string_ty = builder.translate_type(&range.seq_expr.annotation().ty());
+
+                // high := str.length
+                let high_index_ref = builder.local_temp(ir::Type::I32);
+                builder.field_val(
+                    high_index_ref.clone(),
+                    seq_val.clone(),
+                    string_ty.clone(),
+                    ir::STRING_LEN_FIELD,
+                    ir::Type::I32
+                );
+
+                // high -= 1;
+                builder.sub(high_index_ref.clone(), high_index_ref.clone(), ir::Value::LiteralI32(1));
+
+                let chars_ty = char_ty.clone().ptr();
+                let chars_ptr = builder.local_temp(chars_ty.clone());
+                builder.field_val(chars_ptr.clone(), seq_val, string_ty, ir::STRING_CHARS_FIELD, chars_ty);
+
+                build_for_loop_with_counter(
+                    counter_ref.clone(),
+                    ir::Value::LiteralI32(0),
+                    ir::Value::LiteralI32(1),
+                    high_index_ref.value(),
+                    builder,
+                    |builder| {
+                        let char_ptr = builder.local_temp(char_ty.clone().ptr());
+                        builder.add(char_ptr.clone(), chars_ptr, counter_ref.clone());
+                        builder.cast(binding_ref, char_ptr.to_deref(), binding_ty);
+
+                        translate_stmt(body, builder);
+                    }
+                );
+            },
+            
+            ty => {
+                unimplemented!("sequence type: {}", ty)
+            }
+        };
+    });
 }
 
 pub fn translate_while_loop(while_loop: &typ::ast::WhileLoop, builder: &mut Builder) {
