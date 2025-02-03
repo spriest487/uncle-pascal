@@ -9,7 +9,8 @@ const addCommand: Byte = 43; // '+'
 initialization
     WriteLn('Enter an expression e.g. ''2*3'', ''4/2'' or ''exit''.');
     
-    while true do begin
+    while true do 
+    begin
         var command := ReadLn.Trim;
     
         if command.Compare('exit') = 0 then 
@@ -22,13 +23,15 @@ initialization
         for var i := 0 to command.Length - 1 do begin
             var c := command.CharAt(i);
     
-            if c = mulCommand or c = divCommand or c = addCommand or c = subCommand then begin
+            if c = mulCommand or c = divCommand or c = addCommand or c = subCommand then 
+            begin
                 opIndex := i;
                 break;
             end;
         end;
     
-        if opIndex = -1 then begin
+        if opIndex = -1 then 
+        begin
             WriteLn('invalid command: ''' + command + '''');
             continue;
         end;

@@ -603,10 +603,10 @@ end;
 
 function TypeInfo.FindMethod(methodName: String): Option[MethodInfo];
 begin
-    for var i := 0 to self.methods.Length - 1 do
+    for var method in self.methods do
     begin
-        if self.methods[i].Name.Compare(methodName) = 0 then
-            exit Option.Some(self.methods[i]);
+        if method.Name.Compare(methodName) = 0 then
+            exit Option.Some(method);
     end;
     
     Option.None

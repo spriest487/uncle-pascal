@@ -240,19 +240,15 @@ fn build_for_loop_sequence(
 
                 let element_ty = builder.translate_type(&array_ty.element_ty);
 
-                build_for_loop_with_counter(
+                build_array_sequence_loop(
                     counter_ref.clone(),
-                    ir::Value::LiteralI32(0),
-                    ir::Value::LiteralI32(1),
                     high_val,
+                    binding_ref,
+                    binding_ty,
+                    body,
                     builder,
                     |builder| {
-                        let element_val = builder.local_temp(element_ty.clone());
-
-                        builder.element_val(element_val.clone(), seq_val, counter_ref, element_ty);
-                        builder.cast(binding_ref, element_val, binding_ty);
-
-                        translate_stmt(body, builder);
+                        builder.element_to_val(seq_val, counter_ref, element_ty).value()
                     }
                 );
             },
@@ -275,20 +271,20 @@ fn build_for_loop_sequence(
                 builder.sub(high_index_ref.clone(), high_index_ref.clone(), ir::Value::LiteralI32(1));
 
                 let array_ty = element_ty.clone().ptr();
-                let array_ptr = builder.field_to_val(seq_val, dynarray_ty, ir::DYNARRAY_PTR_FIELD, array_ty);
+                let array_ptr = builder.field_to_val(seq_val, dynarray_ty, ir::DYNARRAY_PTR_FIELD, array_ty.clone());
 
-                build_for_loop_with_counter(
+                build_array_sequence_loop(
                     counter_ref.clone(),
-                    ir::Value::LiteralI32(0),
-                    ir::Value::LiteralI32(1),
-                    high_index_ref.value(),
+                    high_index_ref,
+                    binding_ref,
+                    binding_ty,
+                    body,
                     builder,
                     |builder| {
-                        let element_ptr = builder.local_temp(element_ty.clone().ptr());
+                        let element_ptr = builder.local_temp(array_ty);
                         builder.add(element_ptr.clone(), array_ptr, counter_ref.clone());
-                        builder.cast(binding_ref, element_ptr.to_deref(), binding_ty);
 
-                        translate_stmt(body, builder);
+                        element_ptr.to_deref().value()
                     }
                 );
             },
@@ -314,18 +310,18 @@ fn build_for_loop_sequence(
                 let chars_ptr = builder.local_temp(chars_ty.clone());
                 builder.field_val(chars_ptr.clone(), seq_val, string_ty, ir::STRING_CHARS_FIELD, chars_ty);
 
-                build_for_loop_with_counter(
+                build_array_sequence_loop(
                     counter_ref.clone(),
-                    ir::Value::LiteralI32(0),
-                    ir::Value::LiteralI32(1),
-                    high_index_ref.value(),
+                    high_index_ref,
+                    binding_ref,
+                    binding_ty,
+                    body,
                     builder,
                     |builder| {
                         let char_ptr = builder.local_temp(char_ty.clone().ptr());
                         builder.add(char_ptr.clone(), chars_ptr, counter_ref.clone());
-                        builder.cast(binding_ref, char_ptr.to_deref(), binding_ty);
 
-                        translate_stmt(body, builder);
+                        char_ptr.to_deref().value()
                     }
                 );
             },
@@ -335,6 +331,41 @@ fn build_for_loop_sequence(
             }
         };
     });
+}
+
+fn build_array_sequence_loop<ElementFn>(
+    counter_ref: ir::Ref,
+    high_val: impl Into<ir::Value>,
+    binding_ref: ir::Ref,
+    binding_ty: ir::Type,
+    body: &typ::ast::Stmt,
+    builder: &mut Builder,
+    element_fn: ElementFn,
+) 
+    where ElementFn: FnOnce(&mut Builder) -> ir::Value
+{
+    build_for_loop_with_counter(
+        counter_ref.clone(),
+        ir::Value::LiteralI32(0),
+        ir::Value::LiteralI32(1),
+        high_val.into(),
+        builder,
+        |builder| {
+            let skip_release_label = builder.alloc_label();
+            
+            let first_iter = builder.eq_to_val(counter_ref.clone(), ir::Value::LiteralI32(0));
+            builder.jmp_if(skip_release_label, first_iter);
+            
+            builder.release(binding_ref.clone(), &binding_ty);
+            builder.label(skip_release_label);
+            
+            let element = element_fn(builder);
+            builder.cast(binding_ref.clone(), element, binding_ty.clone());
+            builder.retain(binding_ref, &binding_ty);
+
+            translate_stmt(body, builder);
+        }
+    );
 }
 
 pub fn translate_while_loop(while_loop: &typ::ast::WhileLoop, builder: &mut Builder) {

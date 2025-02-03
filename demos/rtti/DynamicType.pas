@@ -24,13 +24,15 @@ initialization
         Cat() as IAnimal,
     ];
     
-    for var i := 0 to animals.Length - 1 do begin
-        var animalType := TypeInfo.Get(animals[i]);
-        WriteLn('animal ' + i + ' is a ' + animalType.Name);
+    for var animal in animals do
+    begin
+        var animalType := TypeInfo.Get(animal);
+        WriteLn('this animal is a ' + animalType.Name);
         
         if animalType.FindMethod('Bark') is Option.Some method then
         unsafe begin
-            method.Invoke(@animals[i] as Pointer, [], nil);
+            var animalPtr := animal;
+            method.Invoke(@animalPtr as Pointer, [], nil);
         end;
     end;
 end.
