@@ -1,13 +1,12 @@
 # critical
+* leak cleanup pass
 * project files/don't auto load used units
-* `var x: LinkedList[Integer] := LinkedList.Create;` <- this should be simpler 
 
 # features
 * generic interfaces 
 * Object should be an interface?
   * need interface inheritance so Object can imply Comparable and Displayable
 * @-attributes - replace `external` etc with these (eventually make them available at runtime but not now)
-* reflection for published members
 * property syntax
 * numeric compiler error codes
 * compound assignment bitwise ops
