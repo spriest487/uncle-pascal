@@ -1,6 +1,7 @@
+use crate::ast;
 use crate::ast::TypeAnnotation;
-use crate::typ::ast::typecheck_stmt;
 use crate::typ::ast::typecheck_expr;
+use crate::typ::ast::typecheck_stmt;
 use crate::typ::seq::TypeSequenceError;
 use crate::typ::seq::TypeSequenceSupport;
 use crate::typ::typecheck_type;
@@ -13,8 +14,6 @@ use crate::typ::TypeError;
 use crate::typ::TypeResult;
 use crate::typ::Value;
 use crate::typ::ValueKind;
-use crate::typ::STRING_CHAR_TYPE;
-use crate::ast;
 use common::span::Span;
 use common::span::Spanned;
 

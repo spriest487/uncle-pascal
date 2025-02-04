@@ -7,15 +7,16 @@ initialization
         WriteLn(number.ToString);
     
     // dynarray    
-    var letters := ['A', 'B', 'C'];
+    var letters: array of String := ['A', 'B', 'C'];
     for var letter in letters do
         WriteLn(letter);
     
     // string
     for var c in 'Hello, world' do
     begin
-        var char := c as Byte;
-        Write(StringFromBytes(@char, 1));
+        // can't take the address of an iteration var
+        var mutableChar := c;
+        Write(StringFromBytes(@mutableChar, 1));
     end;
     WriteLn('!');
 end

@@ -1114,42 +1114,49 @@ impl LibraryBuilder {
         }
 
         assert!(self.metadata().is_defined(ty), "gen_runtime_type: type {} ({:?}) is not defined yet", self.metadata().pretty_ty_name(ty), ty);
-
-        let release_body = {
+        
+        // generate deep release/retain funcs for non-RC types, including the internal structures
+        // of RC types
+        let release_body = if !ty.is_rc() {
             let mut release_builder = Builder::new(self);
             release_builder.bind_param(ir::LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = ir::Ref::Local(ir::LocalID(0)).to_deref();
 
-            match ty {
-                // special handling for System.String, which has magic cleanup behaviour for its
-                // allocated memory
-                ir::Type::Struct(ir::STRING_ID) => {
-                    let chars_field_ref = release_builder.local_temp(ir::Type::U8.ptr().ptr());
-                    release_builder.field(chars_field_ref.clone(), target_ref, ty.clone(), ir::STRING_CHARS_FIELD);
-                    release_builder.free_mem(chars_field_ref.to_deref());
-                },
+            let released_any = release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
+                builder.release(el_ref, el_ty)
+            });
 
-                _ => {
-                    release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
-                        builder.release(el_ref, el_ty)
-                    });
-                }
+            let body = release_builder.finish();
+            if released_any && !body.is_empty() { 
+                Some(body) 
+            } else {
+                None
             }
-            release_builder.finish()
+        } else {
+            None
         };
 
-        let retain_body = {
+        let retain_body = if !ty.is_rc() {
             let mut retain_builder = Builder::new(self);
             retain_builder.bind_param(ir::LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = ir::Ref::Local(ir::LocalID(0)).to_deref();
-            retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
+            
+            let retained_any = retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
                 builder.retain(el_ref, el_ty)
             });
-            retain_builder.finish()
+
+            let body = retain_builder.finish();
+            if retained_any && !body.is_empty() {
+                Some(body)
+            } else {
+                None
+            }
+        } else {
+            None
         };
 
         // declare new func IDs then define them here        
-        let retain_func = if retain_body.len() > 0 {
+        let retain_func = if let Some(body) = retain_body {
             let func_id = self.metadata_mut().insert_func(None);
 
             let debug_name = if self.opts.debug {
@@ -1161,7 +1168,7 @@ impl LibraryBuilder {
             self.insert_func(
                 func_id,
                 ir::Function::Local(ir::FunctionDef {
-                    body: retain_body,
+                    body,
                     sig: ir::FunctionSig {
                         return_ty: ir::Type::Nothing,
                         param_tys: vec![ty.clone().ptr()],
@@ -1175,11 +1182,11 @@ impl LibraryBuilder {
             None
         };
         
-        let release_func = if release_body.len() > 0 {
+        let release_func = if let Some(body) = release_body {
             let func_id = self.library.metadata.insert_func(None);
 
             let debug_name = if self.opts.debug {
-                Some(format!("<generated releaser for {}>", self.library.metadata.pretty_ty_name(ty)))
+                Some(format!("<generated RC release for {}>", self.library.metadata.pretty_ty_name(ty)))
             } else {
                 None
             };
@@ -1187,7 +1194,7 @@ impl LibraryBuilder {
             self.insert_func(
                 func_id,
                 ir::Function::Local(ir::FunctionDef {
-                    body: release_body,
+                    body,
                     sig: ir::FunctionSig {
                         return_ty: ir::Type::Nothing,
                         param_tys: vec![ty.clone().ptr()],
@@ -1206,12 +1213,7 @@ impl LibraryBuilder {
         rtti.retain = retain_func;
         rtti.release = release_func;
         
-        let rtti = self.library.metadata.insert_runtime_type(ty.clone(), rtti);
-        
-        // for types that can have methods, we need to generate the runtime types for those now,
-        // so we don't run the risk of needing to 
-
-        rtti
+        self.library.metadata.insert_runtime_type(ty.clone(), rtti)
     }
     
     // gen_runtime_type only populates the basics needed for codegen, this fills in reflection

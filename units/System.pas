@@ -54,6 +54,8 @@ type
     String = class of Displayable, Comparable
         chars: ^Byte;
         len: Int32;
+        
+        destructor Destroy;
 
     public
         function Length: Integer;
@@ -406,6 +408,13 @@ begin
     end;
 
     cmp
+end;
+
+destructor String.Destroy;
+begin
+    if self.chars <> nil then FreeMem(self.chars);
+    self.chars := nil;
+    self.len := 0;
 end;
 
 function String.Trim: String;
