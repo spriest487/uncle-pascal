@@ -48,13 +48,13 @@ type
         string: String;
         pos: Integer;
     public
-        function Next: Option[Byte];        
+        function Next: Option[Byte];
     end;
 
     String = class of Displayable, Comparable
         chars: ^Byte;
         len: Int32;
-        
+
         destructor Destroy;
 
     public

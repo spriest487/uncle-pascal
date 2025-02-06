@@ -562,6 +562,12 @@ impl From<ArrayValue> for DynValue {
     }
 }
 
+impl From<Pointer> for DynValue {
+    fn from(ptr: Pointer) -> Self {
+        DynValue::Pointer(ptr)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct StructValue {
     pub type_id: ir::TypeDefID,

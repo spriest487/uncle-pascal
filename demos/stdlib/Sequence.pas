@@ -4,6 +4,7 @@ type
     MyList = class;
     
     MyItem = class
+        val: Integer;
     end;
 
     MySeq = class
@@ -21,8 +22,7 @@ function MySeq.Next: Option[MyItem];
 begin
     var next: Option[MyItem] := if self.count > 0 then 
     begin
-        var item: MyItem := ();
-        Option.Some(item)
+        Option.Some((val: self.count))
     end
     else begin
         Option.None;
@@ -43,5 +43,6 @@ initialization
     
     for var i in list do 
     begin
-    end;    
+        WriteLn('next item: ' + i.val);
+    end;
 end.

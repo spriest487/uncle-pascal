@@ -1,3 +1,4 @@
 initialization
-    System.WriteLn('Hello, world!');
+    var world := 'world!';
+    System.WriteLn('Hello, ' + world);
 end.

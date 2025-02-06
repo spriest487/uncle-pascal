@@ -23,10 +23,10 @@ use crate::stack::StackFrame;
 use crate::stack::StackTrace;
 use crate::stack::StackTraceFrame;
 use ir_lang as ir;
-use ir_lang::EMPTY_STRING_ID;
 use ir_lang::InstructionFormatter as _;
-use std::collections::BTreeMap;
+use ir_lang::EMPTY_STRING_ID;
 use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::ops::BitAnd;
 use std::ops::BitOr;
 use std::ops::BitXor;
@@ -34,7 +34,7 @@ use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct Interpreter {
-    metadata: ir::Metadata,
+    metadata: Rc<ir::Metadata>,
     stack: Vec<StackFrame>,
     globals: HashMap<ir::GlobalRef, GlobalValue>,
 
@@ -62,8 +62,9 @@ impl Interpreter {
         let globals = HashMap::new();
 
         let marshaller = Rc::new(Marshaller::new());
+        let metadata = Rc::new(ir::Metadata::default());
 
-        let native_heap = NativeHeap::new(marshaller.clone(), opts.trace_heap);
+        let native_heap = NativeHeap::new(metadata.clone(), marshaller.clone(), opts.trace_heap);
         
         let diag_worker = match opts.diag_port {
             0 => None,
@@ -71,7 +72,7 @@ impl Interpreter {
         };
 
         Self {
-            metadata: ir::Metadata::default(),
+            metadata,
             globals,
             stack: Vec::new(),
 
@@ -1739,6 +1740,9 @@ impl Interpreter {
         });
 
         let res_ptr = self.dynalloc_init(&res_ty, [DynValue::from(value)])?;
+        if immortal {
+            self.native_heap.forget(&res_ptr)?;
+        }
 
         Ok(res_ptr)
     }
@@ -1753,7 +1757,8 @@ impl Interpreter {
     }
 
     pub fn load_lib(&mut self, lib: &ir::Library) -> ExecResult<()> {
-        self.metadata.extend(&lib.metadata());
+        let mut metadata = (*self.metadata).clone();
+        metadata.extend(&lib.metadata());
 
         let mut marshaller = (*self.marshaller).clone();
 
@@ -1813,8 +1818,9 @@ impl Interpreter {
             }
         }
 
+        self.metadata = Rc::new(metadata);
         self.marshaller = Rc::new(marshaller);
-        self.native_heap.set_marshaller(self.marshaller.clone());
+        self.native_heap.set_metadata(self.metadata.clone(), self.marshaller.clone());
 
         let mut string_lit_values = HashMap::new();
         for (id, literal) in lib.metadata().strings() {
@@ -1913,7 +1919,11 @@ impl Interpreter {
         })?;
 
         let chars_ptr = if chars_len > 0 {
-            self.dynalloc_init(&ir::Type::U8, chars)?
+            let ptr = self.dynalloc_init(&ir::Type::U8, chars)?;
+            if immortal {
+                self.native_heap.forget(&ptr)?;
+            }
+            ptr
         } else {
             Pointer::nil(ir::Type::U8)
         };
@@ -2012,7 +2022,7 @@ impl Interpreter {
         element_ty: &ir::Type,
         elements: Vec<DynValue>,
         immortal: bool
-    ) -> ExecResult<DynValue> {
+    ) -> ExecResult<Pointer> {
         let Some(array_id) = self.metadata.find_dyn_array_struct(element_ty) else {
             let ty_name = self.metadata.pretty_ty_name(&element_ty);
             return Err(ExecError::IllegalState {
@@ -2022,7 +2032,11 @@ impl Interpreter {
 
         let array_len = elements.len() as i32;
         let array_ptr = if !elements.is_empty() {
-            self.dynalloc_init(&element_ty, elements)?
+            let ptr = self.dynalloc_init(&element_ty, elements)?;
+            if immortal {
+                self.native_heap.forget(&ptr)?;
+            }
+            ptr
         } else {
             Pointer::nil(element_ty.clone())
         };
@@ -2037,7 +2051,7 @@ impl Interpreter {
         };
         
         let dynarray = self.rc_alloc(array, immortal)?;
-        Ok(DynValue::Pointer(dynarray))
+        Ok(dynarray)
     }
     
     fn read_dynarray(&self, ptr: &Pointer) -> ExecResult<Vec<DynValue>> {
@@ -2100,7 +2114,7 @@ impl Interpreter {
         }
 
         let method_array = self.create_dyn_array(&ir::METHODINFO_TYPE, method_info_ptrs, true)?;
-        typeinfo_struct[ir::TYPEINFO_METHODS_FIELD] = method_array;
+        typeinfo_struct[ir::TYPEINFO_METHODS_FIELD] = DynValue::from(method_array);
 
         // update the typeinfo instance in memory with the circular references set
         self.native_heap.store(&typeinfo_ptr, DynValue::from(typeinfo_struct))?;
@@ -2118,9 +2132,11 @@ impl Interpreter {
     }
 
     pub fn shutdown(mut self) -> ExecResult<()> {
-        let globals: Vec<_> = self.globals.values().cloned().collect();
+        let mut globals: Vec<_> = self.globals.values().cloned().collect();
 
-        for global_val in globals {
+        // first cleanup pass - release any global values which are left at shutdown time
+        for i in (0..globals.len()).rev() {
+            let global_val = &globals[i];
             let GlobalValue::Variable { value, ty } = global_val else {
                 continue;
             };
@@ -2134,12 +2150,14 @@ impl Interpreter {
             let dyn_val = self.marshaller.unmarshal(&value, &ty)?;
 
             if let Some(weak) = ref_weak {
-                self.release_dyn_val(&dyn_val.value, weak)?;
+                if self.release_dyn_val(&dyn_val.value, weak)? {
+                    globals.remove(i);
+                }
             }
         }
 
         if self.opts.trace_heap {
-            self.native_heap.print_trace_stats();
+            self.native_heap.print_trace();
         }
         
         if let Some(worker) = self.diag_worker.take() {

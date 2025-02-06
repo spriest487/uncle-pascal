@@ -1,9 +1,12 @@
 use crate::dyn_value::DynValue;
 use crate::ir;
-use crate::{ExecResult, Interpreter};
+use crate::ExecResult;
+use crate::Interpreter;
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
+
+pub const POINTER_FMT_WIDTH: usize = size_of::<usize>() * 2;
 
 /// pointer to native memory that is marshalled to/from value cells when accessed
 #[derive(Debug, Clone, Eq)]
@@ -14,7 +17,7 @@ pub struct Pointer {
 
 impl fmt::Display for Pointer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "0x{:0width$x} ({})", self.addr, self.ty, width = size_of::<usize>() * 2)
+        write!(f, "0x{:0width$x} ({})", self.addr, self.ty, width = POINTER_FMT_WIDTH)
     }
 }
 

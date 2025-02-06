@@ -32,6 +32,7 @@ use crate::typ::free_mem_sig;
 use crate::typ::get_mem_sig;
 use crate::typ::layout::StructLayout;
 use crate::typ::layout::StructLayoutMember;
+use crate::typ::seq::TypeSequenceSupport;
 use crate::typ::GenericContext;
 use crate::typ::Specializable;
 use crate::typ::TypeArgResolver;
@@ -41,14 +42,12 @@ use crate::typ::Value;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
 use common::span::Span;
-use ir_lang::TypeDefID;
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use crate::typ::seq::TypeSequenceSupport;
 
 #[derive(Debug)]
 pub struct LibraryBuilder {
@@ -76,18 +75,22 @@ pub struct LibraryBuilder {
     library: ir::Library,
 }
 
+thread_local! {
+    pub static BUILTIN_CLASS_NAMES: [(typ::Symbol, ir::TypeDefID); 3] = [
+        (builtin_string_name(), ir::STRING_ID),
+        (builtin_typeinfo_name(), ir::TYPEINFO_ID),
+        (builtin_methodinfo_name(), ir::METHODINFO_ID),
+    ];
+}
+
 impl LibraryBuilder {
     pub fn new(src_metadata: typ::Context, mut metadata: ir::Metadata, opts: IROptions) -> Self {
-        let builtin_classes = [
-            (builtin_string_name(), ir::STRING_ID),
-            (builtin_typeinfo_name(), ir::TYPEINFO_ID),
-            (builtin_methodinfo_name(), ir::METHODINFO_ID),
-        ];
-        
+        let builtin_classes = BUILTIN_CLASS_NAMES.with(|names| names.to_vec());
+
         for (_, builtin_class_id) in &builtin_classes {
             metadata.reserve_struct(*builtin_class_id);
         }
-
+        
         let cached_types = builtin_classes
             .iter()
             .map(|(name, id)| (ir::Type::class_ptr(*id), typ::Type::class(name.clone())))
@@ -150,6 +153,16 @@ impl LibraryBuilder {
         self.populate_all_runtime_type_info();
 
         self.gen_static_closure_init();
+
+        // builtin classes are added manually to the type cache but their methods (and therefore 
+        // any destructors) are expected to be defined in code, so we need to find those in the
+        // source if they exist
+        for (src_name, id) in BUILTIN_CLASS_NAMES.with(|names| names.to_vec()) {
+            if let Ok(def) = self.src_metadata.instantiate_struct_def(&src_name, StructKind::Class) {
+                let src_ty = typ::Type::class(src_name);
+                self.insert_type_dtor(id, src_ty, def.as_ref());
+            }
+        }
 
         self.library.metadata.sort_type_defs_by_deps();
         self.library
@@ -904,7 +917,7 @@ impl LibraryBuilder {
     }
     
     fn insert_type_dtor(&mut self,
-        type_id: TypeDefID,
+        type_id: ir::TypeDefID,
         src_ty: typ::Type,
         src_def: &impl MethodOwner<Value>
     ) {
@@ -927,7 +940,8 @@ impl LibraryBuilder {
     ) -> ir::Type {
         let src_ty = generic_ctx.apply_to_type(src_ty.clone());
         if let Some(cached) = self.type_cache.get(&src_ty) {
-            return cached.clone();
+            let ty = cached.clone();
+            return ty;
         }
 
         // instantiate types which may contain generic params

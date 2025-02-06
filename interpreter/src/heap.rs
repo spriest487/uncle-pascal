@@ -1,9 +1,14 @@
+use crate::ir;
+use crate::marshal::MarshalError;
+use crate::marshal::Marshaller;
+use crate::DynValue;
+use crate::Pointer;
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::mem::forget;
 use std::rc::Rc;
-use serde::Serialize;
-use crate::ir;
-use crate::{DynValue, marshal::{Marshaller, MarshalError}, Pointer};
+use crate::ptr::POINTER_FMT_WIDTH;
 
 #[derive(Clone, Debug)]
 pub enum NativeHeapError {
@@ -38,6 +43,7 @@ pub type NativeHeapResult<T> = Result<T, NativeHeapError>;
 #[derive(Debug)]
 pub struct NativeHeap {
     marshaller: Rc<Marshaller>,
+    metadata: Rc<ir::Metadata>,
 
     allocs: BTreeMap<usize, Box<[u8]>>,
 
@@ -48,8 +54,9 @@ pub struct NativeHeap {
 }
 
 impl NativeHeap {
-    pub fn new(marshaller: Rc<Marshaller>, trace_allocs: bool) -> Self {
+    pub fn new(metadata: Rc<ir::Metadata>, marshaller: Rc<Marshaller>, trace_allocs: bool) -> Self {
         Self {
+            metadata,
             marshaller,
             trace_allocs,
             allocs: BTreeMap::new(),
@@ -61,8 +68,9 @@ impl NativeHeap {
             },
         }
     }
-
-    pub fn set_marshaller(&mut self, marshaller: Rc<Marshaller>) {
+    
+    pub fn set_metadata(&mut self, metadata: Rc<ir::Metadata>, marshaller: Rc<Marshaller>) {
+        self.metadata = metadata;
         self.marshaller = marshaller;
     }
 
@@ -77,10 +85,13 @@ impl NativeHeap {
         let alloc_mem = vec![0; total_len];
         let addr = alloc_mem.as_ptr() as usize;
 
-        self.allocs.insert(addr, alloc_mem.into_boxed_slice());
+        if self.allocs.insert(addr, alloc_mem.into_boxed_slice()).is_some() {
+            unreachable!(); 
+        }
 
         if self.trace_allocs {
-            eprintln!("[heap] alloc {} bytes @ {}", total_len, addr);
+            let ty_name = self.metadata.pretty_ty_name(&ty);
+            eprintln!("[heap] alloc {} bytes @ 0x{:0width$x} ({})", total_len, addr, ty_name, width=POINTER_FMT_WIDTH);
             self.stats.alloc_count += 1;
             
             self.stats.peak_alloc = usize::max(self.stats.peak_alloc, self.allocs.iter()
@@ -93,13 +104,32 @@ impl NativeHeap {
     }
 
     pub fn free(&mut self, ptr: &Pointer) -> NativeHeapResult<()> {
+        if self.allocs.remove(&ptr.addr).is_none() {
+            return Err(NativeHeapError::BadFree(ptr.clone()));
+        }
+
         if self.trace_allocs {
-            eprintln!("[heap] free @ {}", ptr);
+            let ty_name = self.metadata.pretty_ty_name(&ptr.ty);
+            eprintln!("[heap] free @ 0x{:0width$x} ({ty_name})", ptr.addr, width=POINTER_FMT_WIDTH);
             self.stats.free_count += 1;
         }
 
-        if self.allocs.remove(&ptr.addr).is_none() {
+        Ok(())
+    }
+    
+    /// remove an allocation from tracking, indicating that it will never be freed
+    /// e.g. used for immortal data like TypeInfo and string literals.
+    pub fn forget(&mut self, ptr: &Pointer) -> NativeHeapResult<()> {
+        let Some(mem) = self.allocs.remove(&ptr.addr) else {
             return Err(NativeHeapError::BadFree(ptr.clone()));
+        };
+        
+        forget(mem);
+        
+        if self.trace_allocs {
+            let ty_name = self.metadata.pretty_ty_name(&ptr.ty);
+            eprintln!("[heap] forget @ 0x{:0width$x} ({ty_name})", ptr.addr, width=POINTER_FMT_WIDTH);
+            self.stats.free_count += 1;
         }
 
         Ok(())
@@ -125,10 +155,14 @@ impl NativeHeap {
         Ok(())
     }
     
-    pub fn print_trace_stats(&self) {
+    pub fn print_trace(&self) {
         eprintln!("[heap] alloc count = {}", self.stats.alloc_count);
         eprintln!("[heap] free count = {}", self.stats.free_count);
         eprintln!("[heap] peak alloc size = {}", self.stats.peak_alloc);
+        
+        for addr in self.allocs.keys() {
+            eprintln!("[heap] remaining alloc @ 0x{:0width$x}", addr, width=POINTER_FMT_WIDTH);
+        } 
     }
     
     pub fn stats(&self) -> HeapStats {
