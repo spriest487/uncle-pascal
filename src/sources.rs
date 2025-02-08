@@ -1,8 +1,7 @@
 use crate::Args;
 use crate::CompileError;
-use crate::CompileStage;
-use frontend::ast::IdentPath;
 use common::span::*;
+use frontend::ast::IdentPath;
 use std::collections::LinkedList;
 use std::env;
 use std::path::Path;
@@ -46,11 +45,15 @@ pub struct SourceCollection {
     verbose: bool,
 
     source_dirs: Vec<PathBuf>,
-    source_filenames: LinkedList<PathBuf>,
+
+    // ordered list of sources
+    source_list: LinkedList<PathBuf>,
 }
 
 impl SourceCollection {
-    pub fn new(args: &Args) -> Result<Self, CompileError> {
+    pub fn new<'a>(
+        args: &Args
+    ) -> Result<Self, CompileError> {
         let source_dirs = args.search_dirs.iter()
             .filter(|dir| dir.exists())
             .cloned()
@@ -69,30 +72,12 @@ impl SourceCollection {
             })
             .collect();
 
-        let mut sources = Self {
+        let sources = Self {
             verbose: args.verbose,
 
             source_dirs,
-            source_filenames: LinkedList::new(),
+            source_list: LinkedList::new(),
         };
-
-        // auto-add system units if we're going beyond parsing
-        let will_typecheck = args.print_stage
-            .map(|print_stage| print_stage >= CompileStage::Typecheck)
-            .unwrap_or(true);
-
-        if will_typecheck {
-            sources.add(&PathBuf::from("System.pas"), None)?;
-        }
-
-        // add extra referenced units
-        for unit_arg in &args.units {
-            let unit_arg_filename = PathBuf::from(unit_arg.clone());
-            sources.add(&unit_arg_filename, None)?;
-        }
-
-        // add main source unit
-        sources.add(&args.file, None)?;
 
         Ok(sources)
     }
@@ -101,36 +86,45 @@ impl SourceCollection {
         &self.source_dirs
     }
 
-    fn add(&mut self, unit_filename: &PathBuf, span: Option<Span>) -> Result<(), CompileError> {
+    pub fn add(&mut self, unit_filename: &PathBuf, span: Option<Span>) -> Result<PathBuf, CompileError> {
         match find_in_paths(unit_filename, &self.source_dirs) {
             Some(path) => {
-                if self.source_filenames.contains(&path) {
-                    return Ok(());
+                if !self.source_list.contains(&path) {
+                    if self.verbose {
+                        println!("added source path {}", path.display());
+                    }
+
+                    self.source_list.push_back(path.clone());
                 }
 
-                if self.verbose {
-                    println!("added source path {}", path.display());
-                }
-
-                self.source_filenames.push_back(path);
-                Ok(())
+                Ok(path)
             }
 
-            None => Err(CompileError::FileNotFound(unit_filename.clone(), span)),
+            None => {
+                Err(CompileError::FileNotFound(unit_filename.clone(), span))
+            },
         }
     }
 
-    pub fn add_used_unit(&mut self, base_unit_path: &PathBuf, used_unit: &IdentPath) -> Result<(), CompileError> {
+    pub fn add_used_unit(&mut self, base_unit_path: &PathBuf, used_unit: &IdentPath) -> Result<PathBuf, CompileError> {
         let unit_filename = PathBuf::from(used_unit.to_string() + ".pas");
 
         self.add_used_unit_in_file(base_unit_path, used_unit, &unit_filename)
     }
 
-    pub fn add_used_unit_in_file(&mut self, base_unit_path: &PathBuf, used_unit: &IdentPath, filename: &PathBuf) -> Result<(), CompileError> {
-        if let Some(from_unit_dir) = base_unit_path.parent() {
-            if let Some(used_path) = find_in_path(filename, from_unit_dir) {
-                self.source_filenames.push_back(used_path);
-                return Ok(());
+    pub fn add_used_unit_in_file(&mut self,
+        unit_dir: &PathBuf,
+        used_unit: &IdentPath,
+        filename: &PathBuf,
+    ) -> Result<PathBuf, CompileError> {
+        if let Some(unit_dir) = unit_dir.parent() {
+            if let Some(used_path) = find_in_path(filename, unit_dir) {
+                if self.verbose {
+                    println!("added source path {} for unit {}", used_path.display(), used_unit);
+                }
+
+                self.source_list.push_back(used_path.clone());
+                return Ok(used_path);
             }
         }
 
@@ -138,6 +132,6 @@ impl SourceCollection {
     }
 
     pub fn next(&mut self) -> Option<PathBuf> {
-        self.source_filenames.pop_front()
+        self.source_list.pop_back()
     }
 }

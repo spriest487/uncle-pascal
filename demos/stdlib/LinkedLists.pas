@@ -1,9 +1,9 @@
-implementation
+program LinkedLists;
 
 uses
     System.Collections;
 
-initialization
+begin
     var x: LinkedList[Integer] := LinkedList.Create;
 
     WriteLn('len of x: ' + x.Length);

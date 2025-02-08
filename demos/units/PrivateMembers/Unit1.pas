@@ -1,7 +1,10 @@
-implementation
-uses System, Unit2;
+program Unit1;
 
-initialization
+uses 
+    System,
+    Unit2;
+
+begin
     // error: class constructors are private to the declaring module
     { var c := Unit2.C(value: 123); }
     

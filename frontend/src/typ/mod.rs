@@ -12,9 +12,9 @@ pub use self::annotation::*;
 pub use self::context::*;
 pub use self::result::*;
 pub use self::ty::*;
-use crate::ast as syn;
 use ast::typecheck_unit;
 use common::span::*;
+use crate::ast as syn;
 
 #[derive(Debug, Clone)]
 pub struct ModuleUnit {
@@ -29,7 +29,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn typecheck(units: &[syn::Unit<Span>]) -> TypeResult<Self> {
+    pub fn typecheck(units: &[syn::Unit<Span>], verbose: bool) -> TypeResult<Self> {
         // eprintln!("function sig size: {}", std::mem::size_of::<sig::FunctionSig>());
         // eprintln!("type size: {}", std::mem::size_of::<Type>());
         // eprintln!("type annotation size: {}", std::mem::size_of::<TypeAnnotation>());
@@ -46,6 +46,9 @@ impl Module {
         let mut typed_units = Vec::new();
 
         for unit in units {
+            if verbose {
+                eprintln!("Typechecking {} {}", unit.kind, unit.ident)
+            }
             typed_units.push(typecheck_unit(&unit, &mut root_ctx)?);
         }
 

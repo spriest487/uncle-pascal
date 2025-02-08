@@ -45,7 +45,7 @@ where
         units.push(unit);
     }
 
-    Module::typecheck(&units)
+    Module::typecheck(&units, false)
 }
 
 pub fn module_from_srcs<'a, UnitSources>(unit_srcs: UnitSources) -> Module

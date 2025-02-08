@@ -9,7 +9,6 @@ pub use self::const_decl::*;
 pub use self::decl_mod::*;
 pub use self::unit_decl::*;
 pub use self::use_decl::*;
-use crate::ast::{Annotation, BindingDeclKind};
 use crate::ast::Block;
 use crate::ast::FunctionDecl;
 use crate::ast::FunctionDef;
@@ -17,13 +16,14 @@ use crate::ast::IdentPath;
 use crate::ast::Stmt;
 use crate::ast::TypeDecl;
 use crate::ast::TypeDeclItem;
+use crate::ast::{Annotation, BindingDeclKind};
 pub use crate::parse::MatchOneOf;
+use crate::parse::Matcher;
+use crate::parse::Parse;
 use crate::parse::ParseError;
 use crate::parse::ParseResult;
 use crate::parse::ParseSeq;
 use crate::parse::TokenStream;
-use crate::parse::Matcher;
-use crate::parse::Parse;
 use crate::typ::builtin_span;
 use crate::typ::SYSTEM_UNIT_NAME;
 use crate::Ident;
@@ -41,6 +41,16 @@ pub enum UnitKind {
     Program,
     Library,
     Unit,
+}
+
+impl fmt::Display for UnitKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnitKind::Program => write!(f, "program"),
+            UnitKind::Library => write!(f, "library"),
+            UnitKind::Unit => write!(f, "unit"),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

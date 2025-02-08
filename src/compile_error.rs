@@ -1,17 +1,18 @@
-use frontend::ast::IdentPath;
-use frontend::parse::ParseError;
-use frontend::pp::error::PreprocessorError;
-use frontend::typ::TypeError;
-use frontend::TokenizeError;
-use common::span::Span;
+use common::span::{Span, Spanned};
 use common::Backtrace;
 use common::DiagnosticLabel;
 use common::DiagnosticMessage;
 use common::DiagnosticOutput;
 use common::TracedError;
+use frontend::ast::{IdentPath, UnitKind};
+use frontend::parse::ParseError;
+use frontend::pp::error::PreprocessorError;
+use frontend::typ::TypeError;
+use frontend::TokenizeError;
 use interpreter::result::ExecError;
+use std::fmt;
+use std::io;
 use std::path::PathBuf;
-use std::{fmt, io};
 
 #[derive(Debug)]
 pub enum CompileError {
@@ -29,12 +30,21 @@ pub enum CompileError {
     OutputFailed(Span, io::Error),
     DuplicateUnit {
         unit_ident: IdentPath,
-        duplicate_path: PathBuf,
+        new_path: PathBuf,
+        existing_path: PathBuf,
+    },
+    UnexpectedMainUnit { 
+        unit_path: PathBuf, 
+        unit_kind: UnitKind,
+        existing_ident: Option<IdentPath>,
     },
     CircularDependency {
         unit_ident: IdentPath,
         used_unit: IdentPath,
         span: Span,
+    },
+    UnitNotLoaded {
+        unit_name: IdentPath,
     },
     InternalError(String),
     UnknownOutputFormat(String),
@@ -78,6 +88,12 @@ impl From<bincode::Error> for CompileError {
     }
 }
 
+impl From<io::Error> for CompileError {
+    fn from(err: io::Error) -> Self {
+        CompileError::InternalError(err.to_string())
+    }
+}
+
 impl DiagnosticOutput for CompileError {
     fn main(&self) -> DiagnosticMessage {
         match self {
@@ -113,11 +129,17 @@ impl DiagnosticOutput for CompileError {
                 label: None,
                 notes: Vec::new(),
             },
-            CompileError::DuplicateUnit { unit_ident, duplicate_path } => DiagnosticMessage {
-                title: format!("`{}` @ {} was already loaded", unit_ident, duplicate_path.display()),
-                label: None,
-                notes: Vec::new(),
+            CompileError::DuplicateUnit { unit_ident, new_path, existing_path } => {
+                DiagnosticMessage::new(format!("`{}` @ {} was already loaded from {}", unit_ident, new_path.display(), existing_path.display()))
+                    .with_label(DiagnosticLabel::new(unit_ident.span().clone()))
             },
+            CompileError::UnexpectedMainUnit { unit_path, unit_kind, existing_ident } => {
+                if let Some(ident) = existing_ident {
+                    DiagnosticMessage::new(format!("encountered {} unit @ `{}` but main unit `{}` was already loaded", unit_kind, unit_path.display(), ident))
+                } else {
+                    DiagnosticMessage::new(format!("encountered {} unit @ `{}` after other units were already loaded", unit_kind, unit_path.display()))
+                }
+            }
             CompileError::CircularDependency { unit_ident, used_unit, span } => DiagnosticMessage {
                 title: format!("unit `{}` used from `{}` creates a circular reference", used_unit, unit_ident),
                 label: Some(DiagnosticLabel {
@@ -125,6 +147,11 @@ impl DiagnosticOutput for CompileError {
                     span: span.clone(),
                 }),
                 notes: Vec::new(),
+            },
+            CompileError::UnitNotLoaded { unit_name } => {
+                DiagnosticMessage::new("used units must be referenced by the main unit or on the command line")
+                    .with_label(DiagnosticLabel::new(unit_name.path_span().clone()))
+                    .with_note(format!("unit `{}` is not loaded", unit_name))
             },
             CompileError::InternalError(msg) => DiagnosticMessage {
                 title: msg.to_string(),
@@ -178,12 +205,14 @@ impl fmt::Display for CompileError {
             CompileError::PreprocessorError(err) => write!(f, "{}", err),
             CompileError::ReadSourceFileFailed { msg, .. } => write!(f, "{}", msg),
             CompileError::OutputFailed(span, err) => {
-                write!(f, "writing to file {} failed: {}", span.file.display(), err,)
+                write!(f, "writing to file {} failed: {}", span.file.display(), err)
             }
             CompileError::ExecError(err) => write!(f, "{}", err),
             CompileError::DuplicateUnit { .. } => write!(f, "unit was already loaded"),
             CompileError::FileNotFound(_, _) => write!(f, "file not found"),
             CompileError::CircularDependency { .. } => write!(f, "circular unit reference"),
+            CompileError::UnexpectedMainUnit { .. } => write!(f, "unexpected main unit"),
+            CompileError::UnitNotLoaded { .. } => write!(f, "unit not loaded"),
             CompileError::InternalError(..) => write!(f, "internal compiler error"),
             CompileError::UnknownOutputFormat(..) => write!(f, "unknown output format"),
             CompileError::ClangBuildFailed(..) => write!(f, "clang build failed"),

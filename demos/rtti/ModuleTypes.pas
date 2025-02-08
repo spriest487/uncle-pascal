@@ -1,6 +1,7 @@
-unit ModuleTypes;
-implementation
-uses System.Collections;
+program ModuleTypes;
+
+uses
+    System.Collections;
 
 type
     A = class
@@ -10,7 +11,7 @@ type
         val: Integer;
     end;
 
-initialization
+begin
     var xs: array of Integer := [2];
     xs[0] := 1;
 

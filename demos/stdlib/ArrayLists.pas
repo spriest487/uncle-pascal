@@ -1,4 +1,5 @@
-implementation
+program ArrayLists;
+
 uses 
     System,
     System.Collections;
@@ -21,7 +22,7 @@ begin
     WriteLn('');
 end;
 
-initialization
+begin
     var ints: ArrayList[Integer] := ArrayList.Create();
     
     ints.Add(1);

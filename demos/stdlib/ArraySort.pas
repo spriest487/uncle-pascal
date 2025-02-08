@@ -1,9 +1,10 @@
-implementation
-uses 
-    System,
-    Arrays;
+program ArraySort;
 
-initialization
+uses
+    System,
+    System.Arrays;
+
+begin
     var foods: array of String := [
         'mustard',
         'onion',

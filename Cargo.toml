@@ -11,6 +11,7 @@ interpreter = { path = "interpreter" }
 backend_c = { path = "backend_c" }
 ir-lang = { path = "ir_lang" }
 
+linked-hash-map = "0.5.6"
 structopt = "0.3.25"
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"

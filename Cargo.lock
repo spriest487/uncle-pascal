@@ -758,6 +758,7 @@ dependencies = [
  "frontend",
  "interpreter",
  "ir-lang",
+ "linked-hash-map",
  "structopt",
  "topological-sort",
 ]

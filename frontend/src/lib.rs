@@ -87,8 +87,8 @@ pub fn parse(
     Ok(parsed_unit)
 }
 
-pub fn typecheck(units: &[Unit<Span>]) -> TypeResult<Module> {
-    Module::typecheck(units)
+pub fn typecheck(units: &[Unit<Span>], verbose: bool) -> TypeResult<Module> {
+    Module::typecheck(units, verbose)
 }
 
 pub fn codegen_ir(module: &Module, opts: IROptions) -> ir::Library {
