@@ -188,24 +188,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
                 let tokens = tokenize(pp_unit)?;
                 let parsed_unit = parse(canon_filename.clone(), tokens)?;
 
-                match unit_paths.entry(parsed_unit.ident.clone()) {
-                    Entry::Occupied(occupied_ident_filename) => {
-                        // the same unit can't be loaded from two separate filenames. it might
-                        // already be in the filename map because we insert the builtin units ahead
-                        // of time
-                        if *occupied_ident_filename.get() != canon_filename {
-                            return Err(CompileError::DuplicateUnit {
-                                unit_ident: occupied_ident_filename.key().clone(),
-                                new_path: unit_filename,
-                                existing_path: occupied_ident_filename.get().to_path_buf(),
-                            });
-                        }
-                    },
-
-                    Entry::Vacant(vacant_ident_filename) => {
-                        vacant_ident_filename.insert(canon_filename.clone());
-                    }
-                }
+                add_unit_path(&parsed_unit.ident, &unit_filename, &mut unit_paths)?;
 
                 dep_sort.insert(parsed_unit.ident.clone());
 
@@ -258,16 +241,18 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
                         println!("unit {} used from {}", used_unit, unit_ident);
                     }
 
-                    match used_unit.path {
+                    let used_unit_path = match used_unit.path {
                         Some(path) => {
                             let filename = PathBuf::from(path);
-                            sources.add_used_unit_in_file(&canon_filename, &used_unit.ident, &filename)?;
+                            sources.add_used_unit_in_file(&canon_filename, &used_unit.ident, &filename)?
                         }
 
                         None => {
-                            sources.add_used_unit(&canon_filename, &used_unit.ident)?;
+                            sources.add_used_unit(&canon_filename, &used_unit.ident)?
                         }
-                    }
+                    };
+
+                    add_unit_path(&used_unit.ident, &used_unit_path, &mut unit_paths)?;
                 } else {
                     return Err(CompileError::UnitNotLoaded {
                         unit_name: used_unit.ident.clone(),
@@ -283,6 +268,37 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
                     used_unit: used_unit.ident,
                     span: used_unit.span.clone(),
                 });
+            }
+        }
+    }
+    
+    fn add_unit_path(
+        unit_ident: &IdentPath,
+        path: &PathBuf,
+        unit_paths: &mut HashMap<IdentPath, PathBuf>
+    ) -> Result<(), CompileError> {
+        let canon_path = path.canonicalize()?;
+
+        match unit_paths.entry(unit_ident.clone()) {
+            Entry::Occupied(occupied_ident_filename) => {
+                // the same unit can't be loaded from two separate filenames. it might
+                // already be in the filename map because we insert the builtin units ahead
+                // of time
+                if *occupied_ident_filename.get() != canon_path {
+                    Err(CompileError::DuplicateUnit {
+                        unit_ident: occupied_ident_filename.key().clone(),
+                        new_path: path.clone(),
+                        existing_path: occupied_ident_filename.get().to_path_buf(),
+                    })
+                } else {
+                    Ok(())
+                }
+            },
+
+            Entry::Vacant(vacant_ident_filename) => {
+                vacant_ident_filename.insert(canon_path.clone());
+                
+                Ok(())
             }
         }
     }

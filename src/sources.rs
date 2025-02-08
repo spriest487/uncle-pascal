@@ -128,7 +128,7 @@ impl SourceCollection {
             }
         }
 
-        self.add(filename, Some(used_unit.span().clone()))
+        self.add(filename, Some(used_unit.path_span()))
     }
 
     pub fn next(&mut self) -> Option<PathBuf> {
